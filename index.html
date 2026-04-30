@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Captcha Solver</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0f1117;
+    color: #e4e4e7;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1b2e 0%, #16213e 100%);
+    border-bottom: 1px solid #27293d;
+    padding: 14px 20px 12px;
+    text-align: center;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #818cf8, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 2px;
+  }
+  .header .subtitle {
+    font-size: 12px;
+    color: #71717a;
+    font-weight: 400;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 14px 16px 30px;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1a1b2e;
+    border: 1px solid #27293d;
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+  }
+  .status-left { display: flex; align-items: center; gap: 8px; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #22c55e; box-shadow: 0 0 6px #22c55e80;
+    animation: pulse 2s infinite;
+  }
+  .status-dot.idle { background: #71717a; box-shadow: none; animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .status-text { font-size: 13px; font-weight: 500; color: #a1a1aa; }
+  .status-text strong { color: #e4e4e7; font-weight: 600; }
+  .status-badge {
+    background: #27293d; color: #a1a1aa; font-size: 11px;
+    font-weight: 600; padding: 3px 8px; border-radius: 16px;
+  }
+
+  .queue-section { margin-bottom: 14px; }
+  .queue-title {
+    font-size: 11px; font-weight: 600; color: #71717a;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .queue-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .queue-item {
+    flex-shrink: 0;
+    width: 100px;
+    background: #1a1b2e;
+    border: 1px solid #27293d;
+    border-radius: 8px;
+    padding: 5px;
+    cursor: default;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .queue-item:hover {
+    border-color: #818cf8;
+    transform: translateY(-2px);
+  }
+  .queue-item.active {
+    border-color: #818cf8;
+    box-shadow: 0 0 10px #818cf830;
+  }
+  .queue-label {
+    font-size: 10px;
+    color: #71717a;
+    margin-top: 4px;
+    text-align: center;
+    font-weight: 500;
+  }
+  .queue-label strong { color: #a1a1aa; }
+  .queue-empty {
+    font-size: 12px; color: #52525b; font-style: italic;
+    padding: 8px 0;
+  }
+
+  .active-section { margin-bottom: 16px; }
+  .active-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .active-title {
+    font-size: 14px; font-weight: 600; color: #e4e4e7;
+  }
+  .top3-chips { display: flex; gap: 5px; }
+  .chip {
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 16px;
+  }
+  .chip-1 { background: #22c55e20; color: #4ade80; border: 1px solid #22c55e40; }
+  .chip-2 { background: #3b82f620; color: #60a5fa; border: 1px solid #3b82f640; }
+  .chip-3 { background: #f59e0b20; color: #fbbf24; border: 1px solid #f59e0b40; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .card {
+    background: #1a1b2e;
+    border: 2px solid #27293d;
+    border-radius: 8px;
+    padding: 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card:hover {
+    border-color: #818cf8;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px #818cf820;
+  }
+  .card.selected {
+    border-color: #22c55e;
+    box-shadow: 0 0 16px #22c55e30;
+  }
+  .card.solved {
+    opacity: 0.2;
+    pointer-events: none;
+    border-color: #27293d;
+    transform: none;
+    box-shadow: none;
+  }
+  .captcha-img {
+    width: 100%;
+    border-radius: 5px;
+    background: #27293d;
+    display: block;
+    margin-bottom: 3px;
+  }
+  .card-label {
+    font-size: 10px;
+    color: #71717a;
+    font-weight: 500;
+  }
+  .badge {
+    position: absolute;
+    top: 4px; left: 4px;
+    font-size: 9px; font-weight: 700;
+    border-radius: 4px;
+    padding: 2px 5px;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .badge-1 { background: #22c55e; color: #000; }
+  .badge-2 { background: #3b82f6; color: #fff; }
+  .badge-3 { background: #f59e0b; color: #000; }
+
+  .empty-state {
+    text-align: center;
+    padding: 50px 20px;
+    color: #52525b;
+    font-size: 14px;
+  }
+  .empty-state .icon { font-size: 32px; margin-bottom: 10px; }
+
+  #log {
+    background: #1a1b2e;
+    border: 1px solid #27293d;
+    border-radius: 8px;
+    padding: 10px;
+    max-height: 140px;
+    overflow-y: auto;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  #log div {
+    padding: 3px 0;
+    border-bottom: 1px solid #27293d;
+    color: #71717a;
+  }
+  #log div:last-child { border-bottom: none; }
+  #log div .time { color: #52525b; margin-right: 6px; }
+  #log div .action { color: #a1a1aa; }
+  #log div .success { color: #4ade80; }
+
+  .section-gap { margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Captcha Solver</h1>
+  <div class="subtitle">Пазл-капча &middot; автоматический анализ + ручной выбор</div>
+</div>
+<div class="container">
+  <div class="status-bar">
+    <div class="status-left">
+      <div class="status-dot idle" id="statusDot"></div>
+      <div class="status-text" id="statusText">Ожидание запросов&hellip;</div>
+    </div>
+  </div>
+
+  <div class="active-section" id="activeSection" style="display:none;">
+    <div class="active-header">
+      <div class="active-title" id="activeTitle"></div>
+      <div class="top3-chips" id="top3Chips"></div>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <div class="icon">&#x1F50D;</div>
+    Ожидание капч&hellip; Отправьте запрос на POST /solve-captcha
+  </div>
+
+  <div class="section-gap">
+    <div id="log"></div>
+  </div>
+</div>
+<script>
+var queue = [];
+var activeId = null;
+
+function log(msg, cls) {
+  var el = document.getElementById('log');
+  var d = document.createElement('div');
+  var timeSpan = document.createElement('span');
+  timeSpan.className = 'time';
+  timeSpan.textContent = new Date().toLocaleTimeString();
+  var actionSpan = document.createElement('span');
+  actionSpan.className = cls || 'action';
+  actionSpan.textContent = msg;
+  d.appendChild(timeSpan);
+  d.appendChild(actionSpan);
+  el.prepend(d);
+}
+
+function connectSSE() {
+  var es = new EventSource('/stream');
+  es.onmessage = function(e) {
+    var msg = JSON.parse(e.data);
+    if (msg.type === 'new_captcha') {
+      queue.push({
+        id: msg.captcha_id,
+        images: msg.images,
+        top3: msg.top3 || [],
+        solved: false,
+
+        count: msg.count
+      });
+      log('Капча ' + msg.captcha_id + ' ' + msg.count + ' вариантов');
+      render();
+    }
+    if (msg.type === 'captcha_solved') {
+      queue.forEach(function(q) {
+        if (q.id === msg.captcha_id) q.solved = true;
+      });
+      render();
+    }
+  };
+  es.onerror = function() {
+    es.close();
+    setTimeout(connectSSE, 2000);
+  };
+}
+
+function render() {
+  var unsolved = queue.filter(function(q) { return !q.solved; });
+
+  var dot = document.getElementById('statusDot');
+  var statusText = document.getElementById('statusText');
+
+  if (unsolved.length === 0) {
+    dot.className = 'status-dot idle';
+    statusText.innerHTML = 'Ожидание запросов&hellip;';
+    document.getElementById('emptyState').style.display = 'block';
+    document.getElementById('activeSection').style.display = 'none';
+  } else {
+    dot.className = 'status-dot';
+    activeId = unsolved[0].id;
+    statusText.innerHTML = 'Активная: <strong>' + activeId + '</strong>';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('activeSection').style.display = 'block';
+  }
+
+  renderActive(unsolved[0]);
+}
+
+function renderActive(entry) {
+  if (!entry) return;
+
+  document.getElementById('activeTitle').textContent = 'Капча ' + entry.id + '; выберите вариант';
+
+  var chips = document.getElementById('top3Chips');
+  chips.innerHTML = '';
+  entry.top3.forEach(function(t, i) {
+    var c = document.createElement('span');
+    c.className = 'chip chip-' + (i + 1);
+    c.textContent = '#' + (i + 1) + ' = ' + t;
+    chips.appendChild(c);
+  });
+
+  var grid = document.getElementById('grid');
+  var imgKeys = Object.keys(entry.images);
+  var top3 = entry.top3;
+
+  var ordered = imgKeys.slice().sort(function(a, b) {
+    var ra = top3.indexOf(a), rb = top3.indexOf(b);
+    if (ra >= 0 && rb >= 0) return ra - rb;
+    if (ra >= 0) return -1;
+    if (rb >= 0) return 1;
+    return parseInt(a) - parseInt(b);
+  });
+
+  grid.innerHTML = '';
+  ordered.forEach(function(key) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.setAttribute('data-index', key);
+    card.onclick = function() { selectCaptcha(entry.id, parseInt(key)); };
+
+    var rank = top3.indexOf(key);
+    if (rank >= 0) {
+      var badge = document.createElement('div');
+      badge.className = 'badge badge-' + (rank + 1);
+      badge.textContent = 'TOP ' + (rank + 1);
+      card.appendChild(badge);
+    }
+
+    var img = document.createElement('img');
+    img.src = 'data:image/png;base64,' + entry.images[key];
+    img.className = 'captcha-img';
+
+    var label = document.createElement('div');
+    label.className = 'card-label';
+    label.textContent = '#' + key;
+
+    card.appendChild(img);
+    card.appendChild(label);
+    grid.appendChild(card);
+  });
+}
+
+function selectCaptcha(captchaId, index) {
+  document.querySelectorAll('.card').forEach(function(el) {
+    el.classList.remove('selected');
+  });
+  document.querySelector('.card[data-index="' + index + '"]').classList.add('selected');
+
+  fetch('/solve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ captcha_id: captchaId, variantIndex: index })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    queue.forEach(function(q) {
+      if (q.id === captchaId) q.solved = true;
+    });
+    log('Решено: ' + captchaId + ' &rarr; #' + index + '  (' + data.resultFile + ')', 'success');
+    push_sse_solved(captchaId);
+    setTimeout(render, 500);
+  });
+}
+
+function push_sse_solved(captchaId) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/broadcast', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.send(JSON.stringify({ type: 'captcha_solved', captcha_id: captchaId }));
+}
+
+connectSSE();
+</script>
+</body>
+</html>

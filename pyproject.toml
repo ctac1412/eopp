@@ -1,0 +1,39 @@
+[project]
+name = "eopp"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "annotated-doc==0.0.4",
+    "annotated-types==0.7.0",
+    "anyio==4.13.0",
+    "click==8.3.3",
+    "fastapi==0.136.1",
+    "h11==0.16.0",
+    "idna==3.13",
+    "imageio==2.37.3",
+    "iniconfig==2.3.0",
+    "lazy-loader==0.5",
+    "markdown-it-py==4.0.0",
+    "mdurl==0.1.2",
+    "networkx==3.6.1",
+    "numpy==2.4.4",
+    "packaging==26.2",
+    "pillow==12.2.0",
+    "pluggy==1.6.0",
+    "pydantic==2.13.3",
+    "pydantic-core==2.46.3",
+    "pygments==2.20.0",
+    "pytest==9.0.3",
+    "rich==15.0.0",
+    "scikit-image==0.26.0",
+    "scipy==1.17.1",
+    "shellingham==1.5.4",
+    "starlette==1.0.0",
+    "tifffile==2026.4.11",
+    "typer==0.25.0",
+    "typing-extensions==4.15.0",
+    "typing-inspection==0.4.2",
+    "uvicorn==0.46.0",
+]

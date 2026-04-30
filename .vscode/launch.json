@@ -1,0 +1,40 @@
+{
+    // Используйте IntelliSense, чтобы узнать о возможных атрибутах.
+    // Наведите указатель мыши, чтобы просмотреть описания существующих атрибутов.
+    // Для получения дополнительной информации посетите: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Test Captcha JS",
+            "program": "${workspaceFolder}/test_captcha.js",
+            "request": "launch",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "args": [
+                "tests/test_cases/test_01.json", 
+            ],
+            "type": "node"
+        },
+        {
+            "name": "Test Captcha JS AUTO",
+            "program": "${workspaceFolder}/test_captcha.js",
+            "request": "launch",
+            "skipFiles": [
+                "<node_internals>/**"
+            ],
+            "args": [
+                "tests/test_cases/test_01.json", 
+                "--auto",
+            ],
+            "type": "node"
+        },
+        {
+            "name": "Отладчик Python: текущий файл",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        }
+    ]
+}
