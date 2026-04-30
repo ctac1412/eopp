@@ -342,9 +342,13 @@ def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
         keys = list_keys()
         masked = []
         for k in keys:
+            key_val = k["key"]
+            masked_key = key_val[:4] + "••••" + key_val[-4:]
             masked.append(
                 {
                     "id": k["id"],
+                    "key": key_val,
+                    "masked_key": masked_key,
                     "label": k["label"],
                     "created_at": k["created_at"],
                     "usage_count": k["usage_count"],

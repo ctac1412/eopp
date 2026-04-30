@@ -319,6 +319,7 @@ function AdminPage() {
             <tr>
               <th>Label</th>
               <th>ID</th>
+              <th>Ключ</th>
               <th>Создан</th>
               <th>Использование</th>
               <th>Активен</th>
@@ -327,9 +328,9 @@ function AdminPage() {
           </thead>
           <tbody>
             {loading && keys.length === 0 ? (
-              <tr><td colSpan={7} className="admin-loading">Загрузка…</td></tr>
+              <tr><td colSpan={8} className="admin-loading">Загрузка…</td></tr>
             ) : keys.length === 0 ? (
-              <tr><td colSpan={7} className="admin-empty">Нет ключей</td></tr>
+              <tr><td colSpan={8} className="admin-empty">Нет ключей</td></tr>
             ) : (
               keys.map((k) => {
                 const isExpanded = expandedHistory[k.id] !== undefined
@@ -339,6 +340,15 @@ function AdminPage() {
                     <tr>
                       <td className="admin-label">{k.label || '—'}</td>
                       <td className="admin-id">{String(k.id)}</td>
+                      <td>
+                        <span
+                          className="admin-key-masked"
+                          onClick={() => copyToClipboard(k.key)}
+                          title="Нажмите, чтобы скопировать"
+                        >
+                          {k.masked_key || '—'}
+                        </span>
+                      </td>
                       <td className="admin-date">{formatDate(k.created_at)}</td>
                       <td className="admin-usage">
                         {k.usage_count ?? 0}
@@ -375,7 +385,7 @@ function AdminPage() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={7} className="admin-history-cell">
+                        <td colSpan={8} className="admin-history-cell">
                           <div className="admin-history-wrapper">
                             {historyLoading[k.id] && <div className="admin-history-loading">Загрузка…</div>}
                             {historyData === null && <div className="admin-history-error">Ошибка загрузки</div>}
