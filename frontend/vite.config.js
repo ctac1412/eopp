@@ -19,9 +19,6 @@ export default defineConfig({
       '/broadcast': {
         target: 'http://127.0.0.1:8765',
       },
-      '/injector-script': {
-        target: 'http://127.0.0.1:8765',
-      },
     },
   },
 })

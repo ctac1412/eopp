@@ -36,8 +36,8 @@ function StatusBar() {
         >
           {loading ? 'Запуск...' : 'Тестовый запуск'}
         </button>
-        <Link to="/injector" className="injector-link">
-          Injector Script
+        <Link to="/admin" className="injector-link admin-link">
+          Admin
         </Link>
       </div>
     </div>

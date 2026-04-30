@@ -34,6 +34,16 @@ from src.utils import (
 )
 
 from captcha_solver import solve_captcha
+from src.api_keys import (
+    create_key,
+    list_keys,
+    get_key_by_id,
+    update_key,
+    delete_key,
+    reset_usage,
+    validate_key,
+    increment_usage,
+)
 
 FRONTEND_DIST = os.path.join(PROJECT_DIR, "frontend", "dist")
 
@@ -105,6 +115,18 @@ def create_app(use_tests: bool = False) -> FastAPI:
     async def handle_captcha(request: Request):
         raw = await request.json()
         auto_solve = raw.get("auto_solve", False)
+
+        api_key = raw.get("api_key")
+        if api_key:
+            validation = validate_key(api_key)
+            if not validation["valid"]:
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": "Invalid API key",
+                        "reason": validation["reason"],
+                    },
+                )
 
         if "captcha_id" in raw and "data" in raw:
             captcha_id = raw["captcha_id"]
@@ -193,16 +215,9 @@ def create_app(use_tests: bool = False) -> FastAPI:
         result = entry["result"]
         with lock:
             pending.pop(captcha_id, None)
-
+        if api_key:
+            increment_usage(api_key)
         return JSONResponse(content=result)
-
-    @app.get("/injector-script")
-    async def injector_script():
-        script_path = os.path.join(PROJECT_DIR, "injector", "injector.js")
-        if os.path.exists(script_path):
-            with open(script_path, "r", encoding="utf-8") as f:
-                return JSONResponse(content={"script": f.read()})
-        return JSONResponse(status_code=404, content={"error": "injector.js not found"})
 
     @app.post("/solve")
     async def handle_solve(body: SolveRequest):
@@ -266,6 +281,78 @@ def create_app(use_tests: bool = False) -> FastAPI:
         data = await request.json()
         push_sse(data)
         return JSONResponse(content={"ok": True})
+
+    @app.post("/api-keys")
+    async def create_api_key(request: Request):
+        body = await request.json()
+        label = body.get("label", "")
+        max_uses = body.get("max_uses")
+        record = create_key(label, max_uses)
+        return JSONResponse(content=record)
+
+    @app.get("/api-keys")
+    async def list_api_keys():
+        keys = list_keys()
+        masked = []
+        for k in keys:
+            masked.append(
+                {
+                    "id": k["id"],
+                    "label": k["label"],
+                    "created_at": k["created_at"],
+                    "usage_count": k["usage_count"],
+                    "max_uses": k["max_uses"],
+                    "active": k["active"],
+                }
+            )
+        return JSONResponse(content=masked)
+
+    @app.put("/api-keys/{key_id}")
+    async def update_api_key(key_id: int, request: Request):
+        body = await request.json()
+        record = update_key(
+            key_id,
+            label=body.get("label"),
+            max_uses=body.get("max_uses"),
+            active=body.get("active"),
+        )
+        if not record:
+            return JSONResponse(status_code=404, content={"error": "Key not found"})
+        masked = {
+            "id": record["id"],
+            "label": record["label"],
+            "created_at": record["created_at"],
+            "usage_count": record["usage_count"],
+            "max_uses": record["max_uses"],
+            "active": record["active"],
+        }
+        return JSONResponse(content=masked)
+
+    @app.delete("/api-keys/{key_id}")
+    async def delete_api_key(key_id: int):
+        if delete_key(key_id):
+            return JSONResponse(content={"ok": True})
+        return JSONResponse(status_code=404, content={"error": "Key not found"})
+
+    @app.post("/api-keys/{key_id}/reset-usage")
+    async def reset_api_key_usage(key_id: int):
+        record = reset_usage(key_id)
+        if not record:
+            return JSONResponse(status_code=404, content={"error": "Key not found"})
+        masked = {
+            "id": record["id"],
+            "label": record["label"],
+            "created_at": record["created_at"],
+            "usage_count": record["usage_count"],
+            "max_uses": record["max_uses"],
+            "active": record["active"],
+        }
+        return JSONResponse(content=masked)
+
+    @app.get("/validate-key")
+    async def validate_api_key(key: str):
+        result = validate_key(key)
+        return JSONResponse(content=result)
 
     if os.path.isdir(FRONTEND_DIST):
 

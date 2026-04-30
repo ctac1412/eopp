@@ -1,6 +1,8 @@
 const CAPTCHA_SERVER = 'https://china.alabai.netcraze.pro';
 
 chrome.runtime.onConnect.addListener((port) => {
+  let responded = false;
+
   port.onMessage.addListener(async (msg) => {
     try {
       const res = await fetch(`${CAPTCHA_SERVER}/solve-captcha`, {
@@ -22,6 +24,13 @@ chrome.runtime.onConnect.addListener((port) => {
     } catch (err) {
       port.postMessage({ ok: false, error: { status: 0, body: err.message } });
     }
+    responded = true;
     port.disconnect();
+  });
+
+  port.onDisconnect.addListener(() => {
+    if (!responded) {
+      console.warn('[background] Port disconnected before response');
+    }
   });
 });

@@ -24,7 +24,7 @@
         "https://localhost:8765/*",
         "https://127.0.0.1:8765/*"
       ],
-      "js": ["content.js"],
+      "js": ["dist/content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
