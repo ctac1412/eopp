@@ -1,7 +1,8 @@
 function extractParams(json) {
   const vehicleId = json.vehicleData[0].vehicleId;
   const facilityId = json.facilityId;
-  const transportType = json.typeOfTransportation;
+  // const transportType = json.typeOfTransportation;
+  const transportType = 1;
   return { vehicleId, facilityId, transportType };
 }
 
@@ -97,7 +98,21 @@ async function getAvailableSlots() {
   log('Этап 1: получение свободных слотов');
 
   const isCreateReservation = currentConfig.mode === 'create';
-  const url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${currentConfig.facilityId}&vehicleId=${currentConfig.vehicleId}&date=${currentConfig.slotDate}&transportType=${currentConfig.transportType}&isCreateReservation=${isCreateReservation}&reservationId=${currentConfig.reservationId}`;
+
+  const url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${currentConfig.facilityId}&vehicleId=${currentConfig.vehicleId}&date=${currentConfig.slotDate}&transportType=${currentConfig.transportType}&isCreateReservation=${isCreateReservation}`;
+  if (currentConfig.mode !== 'create') {
+    url += `&reservationId=${currentConfig.reservationId}`
+  }
+
+  //   Слоты кончились статус 400
+//   {
+//     "title": "SlotsNotFound",
+//     "status": 400,
+//     "detail": "IsSuccess: False SlotsNotFound 41104",
+//     "eoppStatus": 41104,
+//     "payload": null,
+//     "isSuccess": false
+//  }
 
   const response = await httpRequest('GET', url);
   log(`Получено ${response.slots?.length || 0} доступных слотов`);
@@ -151,6 +166,16 @@ async function generateCaptcha(slotData) {
   };
 
   const response = await httpRequest('POST', '/reservations-api/v1/captcha', payload);
+
+  // Слота больше нет
+  // {
+  //     "title": "CaptchaNotExistFreeTimeslot",
+  //     "status": 400,
+  //     "detail": "Для данного АПП (1dae5b1c-e2b3-44a4-848f-df8ce2ddde42) не найдены таймслоты на 13.05.2026 10:00",
+  //     "eoppStatus": 40144,
+  //     "payload": null,
+  //     "isSuccess": false
+  // }
   log('Капча сгенерирована');
   return response;
 }
