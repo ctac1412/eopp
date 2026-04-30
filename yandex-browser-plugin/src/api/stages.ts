@@ -36,7 +36,7 @@ export async function generateCaptcha(config: InjectorConfig, slot: { time: stri
   return response as CaptchaResponse;
 }
 
-export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: boolean, apiKey: string): Promise<SolvedAnswer> {
+export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: boolean, apiKey: string, reservationId:string ): Promise<SolvedAnswer> {
   log('Этап 3: запрос к нашему серверу /solve-captcha');
   useInjectorStore.getState().setStage('solving');
 
@@ -46,6 +46,9 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
   };
   if (apiKey) {
     payload.api_key = apiKey;
+  }
+  if (reservationId) {
+    payload.reservationId = reservationId;
   }
 
   const response = await sendMessageToBackground('solveCaptcha', payload);

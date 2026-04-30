@@ -22,7 +22,8 @@
       "matches": [
         "https://eopp.epd-portal.ru/ru/reservations/reservation/*",
         "https://localhost:8765/*",
-        "https://127.0.0.1:8765/*"
+        "https://127.0.0.1:8765/*",
+        "https://china.alabai.netcraze.pro/*"
       ],
       "js": ["dist/content.js"],
       "css": ["content.css"],

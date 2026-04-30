@@ -69,6 +69,7 @@ function serializeError(err: unknown): string {
 
 export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unknown | null> {
   const config = useInjectorStore.getState().config;
+
   const slotData = selectBestSlot(slotsResponse.slots);
   log('Выбранный слот', slotData);
 
@@ -88,7 +89,7 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
     return null;
   }
 
-  const solvedAnswer = await solveCaptcha(captchaResponse, config.autoSolve, config.apiKey);
+  const solvedAnswer = await solveCaptcha(captchaResponse, config.autoSolve, config.apiKey, config.reservationId);
   log('Ответ от нашего сервера', solvedAnswer);
 
   if (config.runUpTo < 4) {

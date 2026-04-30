@@ -61,8 +61,6 @@ ADMIN_TOKEN = str(ADMIN_TOKEN)
 PROTECTED_PATHS = (
     "/api-keys",
     "/usage-log",
-    "/confirm-usage",
-    "/fail-usage",
 )
 
 
@@ -71,7 +69,7 @@ class SolveRequest(BaseModel):
     variantIndex: int
 
 
-def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
+def create_app(use_tests: bool = False, write_mode: bool = False, captcha_timeout=CAPTCHA_TIMEOUT) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if use_tests:
@@ -89,7 +87,7 @@ def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
         pending.clear()
 
     if write_mode:
-        CAPTCHA_TIMEOUT = 99
+        captcha_timeout = 99
 
     app = FastAPI(lifespan=lifespan)
 
@@ -236,7 +234,7 @@ def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
                 "count": len(entry["images"]),
                 "top3": top3,
                 "created_at": time.time(),
-                "timeout": CAPTCHA_TIMEOUT,
+                "timeout": captcha_timeout,
             }
         )
 
@@ -244,7 +242,7 @@ def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
             f"[{captcha_id}] Waiting for solution ({len(entry['images'])} variants). Top3: {top3}"
         )
         await asyncio.get_event_loop().run_in_executor(
-            None, lambda: event.wait(timeout=CAPTCHA_TIMEOUT)
+            None, lambda: event.wait(timeout=captcha_timeout)
         )
 
         if entry["result"] is None:
