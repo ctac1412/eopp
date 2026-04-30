@@ -31,6 +31,20 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 1
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            api_key_id INTEGER NOT NULL,
+            reservation_id TEXT NOT NULL,
+            captcha_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            error_message TEXT,
+            error_stage TEXT,
+            created_at TEXT NOT NULL,
+            confirmed_at TEXT,
+            FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -155,6 +169,34 @@ def increment_usage(key: str) -> bool:
     return True
 
 
+def get_key_record(key: str) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return _row_to_dict(row) if row else None
+
+
+def get_usage_log_entry(usage_log_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "api_key_id": row["api_key_id"],
+        "reservation_id": row["reservation_id"],
+        "captcha_id": row["captcha_id"],
+        "status": row["status"],
+        "error_message": row["error_message"],
+        "error_stage": row["error_stage"],
+        "created_at": row["created_at"],
+        "confirmed_at": row["confirmed_at"],
+    }
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict:
     return {
         "id": row["id"],
@@ -165,6 +207,97 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
         "max_uses": row["max_uses"],
         "active": bool(row["active"]),
     }
+
+
+def log_usage(api_key: str, reservation_id: str, captcha_id: str) -> int:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (api_key,)).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError(f"API key not found: {api_key[:8]}...")
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, captcha_id, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
+        (row["id"], reservation_id, captcha_id, now),
+    )
+    conn.commit()
+    usage_log_id = cursor.lastrowid
+    conn.close()
+    return usage_log_id
+
+
+def confirm_usage(usage_log_id: int) -> bool:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "UPDATE usage_log SET status = 'confirmed', confirmed_at = ? WHERE id = ?",
+        (now, usage_log_id),
+    )
+    conn.execute(
+        "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
+        (row["api_key_id"],),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def fail_usage(usage_log_id: int, error_message: str, error_stage: str) -> bool:
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return False
+    conn.execute(
+        "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ? WHERE id = ?",
+        (error_message, error_stage, usage_log_id),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def list_usages(api_key_id: int | None = None) -> list[dict]:
+    conn = get_connection()
+    if api_key_id is not None:
+        rows = conn.execute(
+            "SELECT u.*, k.label FROM usage_log u LEFT JOIN api_keys k ON u.api_key_id = k.id WHERE u.api_key_id = ? ORDER BY u.created_at DESC",
+            (api_key_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT u.*, k.label FROM usage_log u LEFT JOIN api_keys k ON u.api_key_id = k.id ORDER BY u.created_at DESC"
+        ).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        captcha_id = r["captcha_id"] or ""
+        result.append(
+            {
+                "id": r["id"],
+                "api_key_id": r["api_key_id"],
+                "reservation_id": r["reservation_id"],
+                "captcha_id": captcha_id,
+                "captcha_id_short": captcha_id[:16]
+                if len(captcha_id) > 16
+                else captcha_id,
+                "status": r["status"],
+                "error_message": r["error_message"],
+                "error_stage": r["error_stage"],
+                "created_at": r["created_at"],
+                "confirmed_at": r["confirmed_at"],
+                "label": r["label"],
+            }
+        )
+    return result
 
 
 init_db()

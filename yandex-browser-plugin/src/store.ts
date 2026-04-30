@@ -13,6 +13,7 @@ interface InjectorState {
   logs: Array<{ ts: string; msg: string }>;
   currentStage: PipelineStage | null;
   collapsedSections: { slotRetry: boolean; errorRetry: boolean };
+  usageLogId: number | null;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) => void;
@@ -25,6 +26,7 @@ interface InjectorState {
   clearLogs: () => void;
   setStage: (stage: PipelineStage | null) => void;
   toggleSection: (section: 'slotRetry' | 'errorRetry') => void;
+  setUsageLogId: (id: number | null) => void;
   reset: () => void;
 }
 
@@ -38,6 +40,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   logs: [],
   currentStage: null,
   collapsedSections: { slotRetry: true, errorRetry: true },
+  usageLogId: null,
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) => set((state) => ({ config: { ...state.config, [key]: value } })),
@@ -54,5 +57,6 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   toggleSection: (section) => set((state) => ({
     collapsedSections: { ...state.collapsedSections, [section]: !state.collapsedSections[section] },
   })),
-  reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null }),
+  setUsageLogId: (id) => set({ usageLogId: id }),
+  reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null, usageLogId: null }),
 }));

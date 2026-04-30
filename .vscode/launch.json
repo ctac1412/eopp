@@ -5,6 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Отладчик Python: Текущий файл с аргументами",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "manage.py",
+            "console": "integratedTerminal",
+            // "args": "--write"
+        },
+        {
             "name": "Test Captcha JS",
             "program": "${workspaceFolder}/test_captcha.js",
             "request": "launch",
@@ -12,7 +20,7 @@
                 "<node_internals>/**"
             ],
             "args": [
-                "tests/test_cases/test_01.json", 
+                "tests/test_cases/test_01.json",
             ],
             "type": "node"
         },
@@ -24,7 +32,7 @@
                 "<node_internals>/**"
             ],
             "args": [
-                "tests/test_cases/test_01.json", 
+                "tests/test_cases/test_01.json",
                 "--auto",
             ],
             "type": "node"

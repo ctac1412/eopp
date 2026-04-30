@@ -47,12 +47,15 @@ function injectButton(info: PageInfo): void {
       };
     }
 
+    const savedApiKey = localStorage.getItem('injector_api_key') || '';
+
     const defaultConfig: InjectorConfig = createDefaultConfig(
       actualInfo.reservationId,
       params.facilityId,
       params.vehicleId,
       params.transportType
     );
+    defaultConfig.apiKey = savedApiKey;
 
     useInjectorStore.setState({ config: defaultConfig });
 

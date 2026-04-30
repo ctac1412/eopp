@@ -39,6 +39,13 @@ export interface CaptchaResponse {
 export interface SolvedAnswer {
   variantIndex: number;
   variantTiles: string[];
+  usage_log_id?: number;
+}
+
+export interface ApiKeyStatusResponse {
+  valid: boolean;
+  remaining: number | null;
+  label: string;
 }
 
 export interface CaptchaValidationResponse {

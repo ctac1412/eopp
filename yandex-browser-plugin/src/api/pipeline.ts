@@ -8,6 +8,7 @@ import {
   submitReschedule,
   submitCreate,
 } from './stages';
+import { confirmUsage, failUsage } from './background';
 import { log } from '@/logger';
 import { useInjectorStore } from '@/store';
 
@@ -44,6 +45,26 @@ export function selectBestSlot(slots: Slot[]): Slot {
   usedSlotIds.add(selected.id);
   log(`Выбран слот: ${selected.slotCaption} (count: ${selected.count})`);
   return selected;
+}
+
+function getErrorStage(): string {
+  const stage = useInjectorStore.getState().currentStage;
+  if (stage === 'solving') return 'stage3';
+  if (stage === 'validating') return 'stage4';
+  if (stage === 'submitting') return 'stage5';
+  return 'other';
+}
+
+function serializeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null) {
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
 }
 
 export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unknown | null> {
@@ -94,6 +115,15 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
     config.retryDelayMs
   );
 
+  const usageLogId = useInjectorStore.getState().usageLogId;
+  if (usageLogId != null && config.apiKey) {
+    try {
+      await confirmUsage(usageLogId, config.apiKey);
+    } catch {
+      // fire-and-forget, silently swallow
+    }
+  }
+
   return submitResponse;
 }
 
@@ -131,6 +161,19 @@ export async function main(config: InjectorConfig): Promise<void> {
 
     log('=== Превышено количество попыток выбора слота ===');
   } catch (err) {
+    const usageLogId = useInjectorStore.getState().usageLogId;
+    if (usageLogId != null && config.apiKey) {
+      try {
+        await failUsage(
+          usageLogId,
+          config.apiKey,
+          serializeError(err),
+          getErrorStage()
+        );
+      } catch {
+        // fire-and-forget, silently swallow
+      }
+    }
     log('=== ОШИБКА ===', err);
     throw err;
   }

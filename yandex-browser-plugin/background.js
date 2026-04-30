@@ -4,15 +4,58 @@ chrome.runtime.onConnect.addListener((port) => {
   let responded = false;
 
   port.onMessage.addListener(async (msg) => {
+    const serverUrl = (msg.serverUrl || CAPTCHA_SERVER).replace(/\/+$/, '');
     try {
-      const res = await fetch(`${CAPTCHA_SERVER}/solve-captcha`, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(msg.payload),
-      });
+      let res;
+
+      if (msg.action === 'solveCaptcha') {
+        res = await fetch(`${serverUrl}/solve-captcha`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(msg.payload),
+        });
+      } else if (msg.action === 'confirmUsage') {
+        res = await fetch(`${serverUrl}/confirm-usage`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            usage_log_id: msg.payload.usageLogId,
+            api_key: msg.payload.apiKey,
+          }),
+        });
+      } else if (msg.action === 'failUsage') {
+        res = await fetch(`${serverUrl}/fail-usage`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            usage_log_id: msg.payload.usageLogId,
+            api_key: msg.payload.apiKey,
+            error_message: msg.payload.errorMessage,
+            error_stage: msg.payload.errorStage,
+          }),
+        });
+      } else if (msg.action === 'apiKeyStatus') {
+        res = await fetch(`${serverUrl}/api-key-status?key=${encodeURIComponent(msg.payload.apiKey)}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+          },
+        });
+      } else {
+        port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
+        responded = true;
+        port.disconnect();
+        return;
+      }
 
       if (!res.ok) {
         const errorText = await res.text();

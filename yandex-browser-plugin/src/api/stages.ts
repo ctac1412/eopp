@@ -49,8 +49,12 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
   }
 
   const response = await sendMessageToBackground('solveCaptcha', payload);
+  const solved = response as SolvedAnswer;
+  if (solved.usage_log_id != null) {
+    useInjectorStore.getState().setUsageLogId(solved.usage_log_id);
+  }
   log('Капча решена');
-  return response as SolvedAnswer;
+  return solved;
 }
 
 export async function validateCaptcha(

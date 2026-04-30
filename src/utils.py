@@ -24,7 +24,6 @@ sse_queues: list[asyncio.Queue] = []
 lock = threading.Lock()
 result_counter = 0
 counter_lock = threading.Lock()
-write_mode = False
 source_files = {}
 
 from captcha_solver import solve_captcha

@@ -15,11 +15,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.utils import (
     PORT,
     PROJECT_DIR,
-    TEST_DIR,
     VALID_DIR,
     NO_VALID_DIR,
     CAPTCHA_TIMEOUT,
-    write_mode,
     source_files,
     pending,
     sse_queues,
@@ -42,10 +40,30 @@ from src.api_keys import (
     delete_key,
     reset_usage,
     validate_key,
-    increment_usage,
+    get_key_record,
+    get_usage_log_entry,
+    log_usage,
+    confirm_usage,
+    fail_usage,
+    list_usages,
 )
 
 FRONTEND_DIST = os.path.join(PROJECT_DIR, "frontend", "dist")
+
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN") or 13243546
+if not ADMIN_TOKEN:
+    admin_token_path = os.path.join(PROJECT_DIR, "data", "admin_token")
+    if os.path.exists(admin_token_path):
+        with open(admin_token_path) as f:
+            ADMIN_TOKEN = f.readline().strip()
+
+ADMIN_TOKEN = str(ADMIN_TOKEN)
+PROTECTED_PATHS = (
+    "/api-keys",
+    "/usage-log",
+    "/confirm-usage",
+    "/fail-usage",
+)
 
 
 class SolveRequest(BaseModel):
@@ -53,7 +71,7 @@ class SolveRequest(BaseModel):
     variantIndex: int
 
 
-def create_app(use_tests: bool = False) -> FastAPI:
+def create_app(use_tests: bool = False, write_mode: bool = False) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if use_tests:
@@ -70,6 +88,9 @@ def create_app(use_tests: bool = False) -> FastAPI:
                 entry["event"].set()
         pending.clear()
 
+    if write_mode:
+        CAPTCHA_TIMEOUT = 99
+
     app = FastAPI(lifespan=lifespan)
 
     app.add_middleware(
@@ -79,6 +100,16 @@ def create_app(use_tests: bool = False) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def admin_auth_middleware(request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in PROTECTED_PATHS):
+            token = request.headers.get("X-Admin-Token")
+            if not token or token != ADMIN_TOKEN:
+                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        response = await call_next(request)
+        return response
 
     @app.get("/stream")
     async def sse_stream():
@@ -117,16 +148,21 @@ def create_app(use_tests: bool = False) -> FastAPI:
         auto_solve = raw.get("auto_solve", False)
 
         api_key = raw.get("api_key")
-        if api_key:
-            validation = validate_key(api_key)
-            if not validation["valid"]:
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "error": "Invalid API key",
-                        "reason": validation["reason"],
-                    },
-                )
+        if not api_key:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "api_key is required"},
+            )
+
+        validation = validate_key(api_key)
+        if not validation["valid"]:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "Invalid API key",
+                    "reason": validation["reason"],
+                },
+            )
 
         if "captcha_id" in raw and "data" in raw:
             captcha_id = raw["captcha_id"]
@@ -139,6 +175,12 @@ def create_app(use_tests: bool = False) -> FastAPI:
         variants = puzzle.get("variantsCapture", [])
 
         captcha_id = captcha_hash(data)
+        reservation_id = (
+            raw.get("reservationId") or raw.get("reservation_id") or "unknown"
+        )
+
+        usage_log_id = log_usage(api_key, reservation_id, captcha_id)
+
         has_valid_index = "valid_index" in data
         target_dir = VALID_DIR if has_valid_index else NO_VALID_DIR
         os.makedirs(target_dir, exist_ok=True)
@@ -162,6 +204,7 @@ def create_app(use_tests: bool = False) -> FastAPI:
                 content={
                     "variantIndex": best_variant,
                     "variantTiles": tile_order,
+                    "usage_log_id": usage_log_id,
                 }
             )
 
@@ -179,6 +222,7 @@ def create_app(use_tests: bool = False) -> FastAPI:
             "event": event,
             "result": None,
             "source_file": source_files.get(captcha_id),
+            "usage_log_id": usage_log_id,
         }
 
         with lock:
@@ -215,8 +259,8 @@ def create_app(use_tests: bool = False) -> FastAPI:
         result = entry["result"]
         with lock:
             pending.pop(captcha_id, None)
-        if api_key:
-            increment_usage(api_key)
+        if result:
+            result["usage_log_id"] = entry["usage_log_id"]
         return JSONResponse(content=result)
 
     @app.post("/solve")
@@ -246,15 +290,18 @@ def create_app(use_tests: bool = False) -> FastAPI:
                 with open(source_path, "r") as f:
                     source_data = json.load(f)
                 source_data["valid_index"] = variant_index
-                base, _ = os.path.splitext(source_path)
-                num = os.path.basename(base).replace("test_", "")
-                new_path = os.path.join(TEST_DIR, f"test_answ_{int(num):02d}.json")
-                with open(new_path, "w") as f:
-                    json.dump(source_data, f, indent=2)
-                os.remove(source_path)
-                print(
-                    f"  Saved: {os.path.basename(source_path)} -> {os.path.basename(new_path)} (valid_index={variant_index})"
-                )
+                new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
+                if os.path.exists(new_path):
+                    print(
+                        f"  DUPLICATE: {os.path.basename(source_path)} already exists in valid/ as {captcha_id}.json"
+                    )
+                else:
+                    with open(new_path, "w") as f:
+                        json.dump(source_data, f, indent=2)
+                    os.remove(source_path)
+                    print(
+                        f"  Saved: {os.path.basename(source_path)} -> valid/{captcha_id}.json (valid_index={variant_index})"
+                    )
 
             push_sse(
                 {
@@ -353,6 +400,72 @@ def create_app(use_tests: bool = False) -> FastAPI:
     async def validate_api_key(key: str):
         result = validate_key(key)
         return JSONResponse(content=result)
+
+    @app.get("/api-key-status")
+    async def api_key_status(key: str):
+        result = validate_key(key)
+        return JSONResponse(
+            content={
+                "valid": result["valid"],
+                "remaining": result.get("remaining"),
+                "label": result.get("label", ""),
+            }
+        )
+
+    @app.post("/confirm-usage")
+    async def handle_confirm_usage(request: Request):
+        body = await request.json()
+        usage_log_id = body["usage_log_id"]
+        api_key = body["api_key"]
+        key_record = get_key_record(api_key)
+        if not key_record:
+            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+        log_entry = get_usage_log_entry(usage_log_id)
+        if not log_entry or log_entry["api_key_id"] != key_record["id"]:
+            return JSONResponse(
+                status_code=404, content={"error": "Usage log entry not found"}
+            )
+        ok = confirm_usage(usage_log_id)
+        if not ok:
+            return JSONResponse(
+                status_code=404, content={"error": "Usage log entry not found"}
+            )
+        return JSONResponse(content={"ok": True})
+
+    @app.get("/usage-log")
+    async def get_usage_log(api_key_id: int | None = None):
+        records = list_usages(api_key_id)
+        return JSONResponse(content=records)
+
+    @app.post("/fail-usage")
+    async def handle_fail_usage(request: Request):
+        body = await request.json()
+        usage_log_id = body["usage_log_id"]
+        api_key = body["api_key"]
+        error_message = body.get("error_message", "")
+        error_stage = body.get("error_stage", "other")
+        key_record = get_key_record(api_key)
+        if not key_record:
+            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+        log_entry = get_usage_log_entry(usage_log_id)
+        if not log_entry or log_entry["api_key_id"] != key_record["id"]:
+            return JSONResponse(
+                status_code=404, content={"error": "Usage log entry not found"}
+            )
+        ok = fail_usage(usage_log_id, error_message, error_stage)
+        if not ok:
+            return JSONResponse(
+                status_code=404, content={"error": "Usage log entry not found"}
+            )
+        return JSONResponse(content={"ok": True})
+
+    @app.post("/admin/auth")
+    async def admin_auth(request: Request):
+        body = await request.json()
+        token = body.get("token", "")
+        if token == ADMIN_TOKEN:
+            return JSONResponse(content={"ok": True})
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     if os.path.isdir(FRONTEND_DIST):
 

@@ -63,9 +63,6 @@ def main(
     import uvicorn
     import src.utils
 
-    if write:
-        src.utils.write_mode = True
-
     certfile, keyfile = ensure_self_signed_cert()
 
     typer.echo("=" * 56)
@@ -115,7 +112,7 @@ def main(
             f"▶ LABELING MODE — loading unlabelled cases from {src.utils.NO_VALID_DIR} ..."
         )
 
-    fastapi_app = create_app(use_tests=test)
+    fastapi_app = create_app(use_tests=test, write_mode=write)
     uvicorn.run(
         fastapi_app,
         host=host,

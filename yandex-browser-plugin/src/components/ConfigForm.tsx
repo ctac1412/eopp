@@ -1,6 +1,7 @@
-import React from 'react';
-import type { InjectorConfig } from '@/types';
+import React, { useEffect, useState } from 'react';
+import type { InjectorConfig, ApiKeyStatusResponse } from '@/types';
 import { useInjectorStore } from '@/store';
+import { getApiKeyStatus } from '@/api/background';
 import { FACILITIES } from '@/constants';
 
 const ConfigForm = React.memo(function ConfigForm() {
@@ -8,9 +9,57 @@ const ConfigForm = React.memo(function ConfigForm() {
   const updateField = useInjectorStore((s) => s.updateField);
   const collapsed = useInjectorStore((s) => s.collapsedSections);
   const toggleSection = useInjectorStore((s) => s.toggleSection);
+  const [keyStatus, setKeyStatus] = useState<ApiKeyStatusResponse | null>(null);
+  const [keyStatusLoading, setKeyStatusLoading] = useState(false);
 
   function handleChange<K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) {
     updateField(key, value);
+    if (key === 'apiKey') {
+      localStorage.setItem('injector_api_key', value as string);
+    }
+  }
+
+  useEffect(() => {
+    if (!config.apiKey) {
+      console.log('[ConfigForm] apiKey empty, skipping status check');
+      setKeyStatus(null);
+      return;
+    }
+    console.log('[ConfigForm] checking apiKey status:', config.apiKey.slice(0, 8) + '...');
+    setKeyStatusLoading(true);
+    getApiKeyStatus(config.apiKey)
+      .then((status) => {
+        console.log('[ConfigForm] apiKey status response:', status);
+        setKeyStatus(status);
+      })
+      .catch((err) => {
+        console.error('[ConfigForm] apiKey status error:', err);
+        setKeyStatus({ valid: false, remaining: null, label: '' });
+      })
+      .finally(() => {
+        setKeyStatusLoading(false);
+      });
+  }, [config.apiKey]);
+
+  let statusText = '';
+  let statusColor = '';
+  if (keyStatusLoading) {
+    statusText = 'Проверка...';
+    statusColor = '#999';
+  } else if (!config.apiKey) {
+    statusText = 'Ключ не введён';
+    statusColor = '#e67e22';
+  } else if (keyStatus && keyStatus.valid) {
+    if (keyStatus.remaining !== null) {
+      statusText = `Осталось: ${keyStatus.remaining}`;
+      statusColor = '#27ae60';
+    } else {
+      statusText = 'Без лимита';
+      statusColor = '#2980b9';
+    }
+  } else {
+    statusText = 'Недействителен';
+    statusColor = '#e74c3c';
   }
 
   return (
@@ -54,14 +103,26 @@ const ConfigForm = React.memo(function ConfigForm() {
         </div>
         <div className="injector-form-row" style={{ gridColumn: '1 / -1' }}>
           <label className="injector-form-label" style={{ gridColumn: '1 / -1' }}>
-            API ключ
+            API ключ <span style={{ color: '#e74c3c' }}>*</span>
             <input
               className="injector-form-input injector-form-text"
               type="text"
-              placeholder="(необязательно)"
+              placeholder="Введите API ключ"
               value={config.apiKey}
               onChange={(e) => handleChange('apiKey', e.target.value)}
             />
+            {statusText && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  fontSize: '11px',
+                  color: statusColor,
+                  marginTop: '4px',
+                }}
+              >
+                {statusText}
+              </span>
+            )}
           </label>
         </div>
       </div>

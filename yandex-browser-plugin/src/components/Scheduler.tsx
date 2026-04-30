@@ -15,6 +15,11 @@ const Scheduler = React.memo(function Scheduler() {
   const [statusClass, setStatusClass] = useState('');
 
   const handleSchedule = useCallback(() => {
+    if (!config.apiKey) {
+      setStatusMessage('Введите API ключ');
+      setStatusClass('injector-modal-status-error');
+      return;
+    }
     const mskSeconds = parseTime(timeInput);
     if (mskSeconds === null) {
       setStatusMessage('Неверный формат. Используйте HH:MM:SS');
@@ -35,11 +40,16 @@ const Scheduler = React.memo(function Scheduler() {
   }, [cancelSchedule]);
 
   const handleRun = useCallback(() => {
+    if (!config.apiKey) {
+      setStatusMessage('Введите API ключ');
+      setStatusClass('injector-modal-status-error');
+      return;
+    }
     cancelSchedule();
     setStatusMessage('');
     setStatusClass('');
     run();
-  }, [cancelSchedule, run]);
+  }, [cancelSchedule, run, config.apiKey]);
 
   const handleNowPlus10 = useCallback(() => {
     const now = new Date();

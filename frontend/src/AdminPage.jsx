@@ -1,7 +1,19 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 
+function adminHeaders(token) {
+  return { 'Content-Type': 'application/json', 'X-Admin-Token': token }
+}
+
+function adminHeadersJson(token) {
+  return { 'X-Admin-Token': token }
+}
+
 function AdminPage() {
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('admin_token') || null)
+  const [authInput, setAuthInput] = useState('')
+  const [authError, setAuthError] = useState(null)
+  const [authLoading, setAuthLoading] = useState(false)
   const [keys, setKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -11,11 +23,15 @@ function AdminPage() {
   const [createForm, setCreateForm] = useState({ label: '', maxUses: '' })
   const [editForm, setEditForm] = useState({ label: '', maxUses: '', active: true })
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [expandedHistory, setExpandedHistory] = useState({})
+  const [historyLoading, setHistoryLoading] = useState({})
   const intervalRef = useRef(null)
 
-  const fetchKeys = useCallback(async () => {
+  const fetchKeys = useCallback(async (token) => {
+    const t = token || adminToken
+    if (!t) return
     try {
-      const res = await fetch('/api-keys')
+      const res = await fetch('/api-keys', { headers: adminHeadersJson(t) })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setKeys(Array.isArray(data) ? data : (data.keys || []))
@@ -25,16 +41,48 @@ function AdminPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [adminToken])
 
   useEffect(() => {
-    fetchKeys()
-  }, [fetchKeys])
+    if (adminToken) {
+      fetchKeys(adminToken)
+    }
+  }, [adminToken])
 
   useEffect(() => {
-    intervalRef.current = setInterval(fetchKeys, 5000)
+    if (!adminToken) return
+    intervalRef.current = setInterval(() => fetchKeys(adminToken), 5000)
     return () => clearInterval(intervalRef.current)
-  }, [fetchKeys])
+  }, [adminToken, fetchKeys])
+
+  const doAuth = async () => {
+    setAuthError(null)
+    setAuthLoading(true)
+    try {
+      const res = await fetch('/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: authInput }),
+      })
+      if (!res.ok) throw new Error('Неверный токен')
+      const token = authInput
+      localStorage.setItem('admin_token', token)
+      setAdminToken(token)
+      setAuthError(null)
+      fetchKeys(token)
+    } catch (err) {
+      setAuthError(err.message)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_token')
+    setAdminToken(null)
+    setKeys([])
+    setExpandedHistory({})
+  }
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -45,7 +93,7 @@ function AdminPage() {
       }
       const res = await fetch('/api-keys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -53,7 +101,7 @@ function AdminPage() {
       setNewKey(data)
       setCreateForm({ label: '', maxUses: '' })
       setShowCreate(false)
-      fetchKeys()
+      fetchKeys(adminToken)
     } catch (err) {
       setError(err.message)
     }
@@ -71,12 +119,12 @@ function AdminPage() {
       }
       const res = await fetch(`/api-keys/${showEdit}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setShowEdit(null)
-      fetchKeys()
+      fetchKeys(adminToken)
     } catch (err) {
       setError(err.message)
     }
@@ -84,10 +132,13 @@ function AdminPage() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`/api-keys/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api-keys/${id}`, {
+        method: 'DELETE',
+        headers: adminHeadersJson(adminToken),
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setConfirmDelete(null)
-      fetchKeys()
+      fetchKeys(adminToken)
     } catch (err) {
       setError(err.message)
     }
@@ -95,9 +146,12 @@ function AdminPage() {
 
   const handleResetUsage = async (id) => {
     try {
-      const res = await fetch(`/api-keys/${id}/reset-usage`, { method: 'POST' })
+      const res = await fetch(`/api-keys/${id}/reset-usage`, {
+        method: 'POST',
+        headers: adminHeadersJson(adminToken),
+      })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      fetchKeys()
+      fetchKeys(adminToken)
     } catch (err) {
       setError(err.message)
     }
@@ -107,11 +161,11 @@ function AdminPage() {
     try {
       const res = await fetch(`/api-keys/${keyObj.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: adminHeaders(adminToken),
         body: JSON.stringify({ active: !keyObj.active }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      fetchKeys()
+      fetchKeys(adminToken)
     } catch (err) {
       setError(err.message)
     }
@@ -124,6 +178,31 @@ function AdminPage() {
       active: keyObj.active,
     })
     setShowEdit(keyObj.id)
+  }
+
+  const fetchUsageHistory = async (keyId) => {
+    if (expandedHistory[keyId]) return
+    setHistoryLoading(p => ({ ...p, [keyId]: true }))
+    try {
+      const res = await fetch(`/usage-log?api_key_id=${keyId}`, {
+        headers: adminHeadersJson(adminToken),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setExpandedHistory(p => ({ ...p, [keyId]: Array.isArray(data) ? data : (data.logs || data.records || []) }))
+    } catch (err) {
+      setExpandedHistory(p => ({ ...p, [keyId]: null }))
+    } finally {
+      setHistoryLoading(p => ({ ...p, [keyId]: false }))
+    }
+  }
+
+  const toggleHistory = (keyId) => {
+    if (expandedHistory[keyId] !== undefined) {
+      setExpandedHistory(p => { const n = { ...p }; delete n[keyId]; return n })
+    } else {
+      fetchUsageHistory(keyId)
+    }
   }
 
   const copyToClipboard = (text) => {
@@ -147,6 +226,42 @@ function AdminPage() {
     })
   }
 
+  if (!adminToken) {
+    return (
+      <div className="admin-page">
+        <div className="admin-auth-wrapper">
+          <div className="admin-auth-box">
+            <h2>Админ-панель</h2>
+            <p className="admin-auth-desc">Введите ADMIN_TOKEN для доступа</p>
+            <form
+              className="admin-auth-form"
+              onSubmit={(e) => { e.preventDefault(); doAuth() }}
+            >
+              <input
+                type="password"
+                value={authInput}
+                onChange={(e) => setAuthInput(e.target.value)}
+                placeholder="Token"
+                className="admin-input"
+                required
+                autoFocus
+              />
+              <button
+                type="submit"
+                className="admin-btn-primary"
+                disabled={authLoading}
+              >
+                {authLoading ? 'Проверка…' : 'Войти'}
+              </button>
+            </form>
+            {authError && <div className="admin-auth-error">{authError}</div>}
+            <Link to="/" className="back-link" style={{ marginTop: '10px', display: 'inline-block' }}>← Назад к капчам</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -157,6 +272,13 @@ function AdminPage() {
             onClick={() => setShowCreate(true)}
           >
             + Новый ключ
+          </button>
+          <button
+            className="admin-btn-secondary"
+            onClick={handleLogout}
+            style={{ fontSize: '11px', padding: '5px 10px' }}
+          >
+            Выйти
           </button>
           <Link to="/" className="back-link">← Назад к капчам</Link>
         </div>
@@ -205,41 +327,111 @@ function AdminPage() {
           </thead>
           <tbody>
             {loading && keys.length === 0 ? (
-              <tr><td colSpan={6} className="admin-loading">Загрузка…</td></tr>
+              <tr><td colSpan={7} className="admin-loading">Загрузка…</td></tr>
             ) : keys.length === 0 ? (
-              <tr><td colSpan={6} className="admin-empty">Нет ключей</td></tr>
+              <tr><td colSpan={7} className="admin-empty">Нет ключей</td></tr>
             ) : (
-              keys.map((k) => (
-                <tr key={k.id}>
-                  <td className="admin-label">{k.label || '—'}</td>
-                  <td className="admin-id">{String(k.id)}</td>
-                  <td className="admin-date">{formatDate(k.created_at)}</td>
-                  <td className="admin-usage">
-                    {k.usage_count ?? 0}
-                    {k.max_uses != null ? ` / ${k.max_uses}` : ''}
-                  </td>
-                  <td>
-                    <button
-                      className={'admin-toggle ' + (k.active ? 'admin-toggle-on' : 'admin-toggle-off')}
-                      onClick={() => handleToggleActive(k)}
-                      title={k.active ? 'Деактивировать' : 'Активировать'}
-                    >
-                      <span className="admin-toggle-dot" />
-                    </button>
-                  </td>
-                  <td className="admin-actions">
-                    <button className="admin-btn-sm admin-btn-edit" onClick={() => openEdit(k)}>
-                      Изменить
-                    </button>
-                    <button className="admin-btn-sm admin-btn-reset" onClick={() => handleResetUsage(k.id)}>
-                      Сбросить
-                    </button>
-                    <button className="admin-btn-sm admin-btn-del" onClick={() => setConfirmDelete(k.id)}>
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))
+              keys.map((k) => {
+                const isExpanded = expandedHistory[k.id] !== undefined
+                const historyData = expandedHistory[k.id]
+                return (
+                  <React.Fragment key={k.id}>
+                    <tr>
+                      <td className="admin-label">{k.label || '—'}</td>
+                      <td className="admin-id">{String(k.id)}</td>
+                      <td className="admin-date">{formatDate(k.created_at)}</td>
+                      <td className="admin-usage">
+                        {k.usage_count ?? 0}
+                        {k.max_uses != null ? ` / ${k.max_uses}` : ''}
+                      </td>
+                      <td>
+                        <button
+                          className={'admin-toggle ' + (k.active ? 'admin-toggle-on' : 'admin-toggle-off')}
+                          onClick={() => handleToggleActive(k)}
+                          title={k.active ? 'Деактивировать' : 'Активировать'}
+                        >
+                          <span className="admin-toggle-dot" />
+                        </button>
+                      </td>
+                      <td className="admin-actions">
+                        <button className="admin-btn-sm admin-btn-edit" onClick={() => openEdit(k)}>
+                          Изменить
+                        </button>
+                        <button className="admin-btn-sm admin-btn-reset" onClick={() => handleResetUsage(k.id)}>
+                          Сбросить
+                        </button>
+                        <button className="admin-btn-sm admin-btn-del" onClick={() => setConfirmDelete(k.id)}>
+                          Удалить
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          className={'admin-btn-sm ' + (isExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                          onClick={() => toggleHistory(k.id)}
+                        >
+                          {isExpanded ? 'Свернуть' : 'История'}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={7} className="admin-history-cell">
+                          <div className="admin-history-wrapper">
+                            {historyLoading[k.id] && <div className="admin-history-loading">Загрузка…</div>}
+                            {historyData === null && <div className="admin-history-error">Ошибка загрузки</div>}
+                            {historyData && historyData.length === 0 && <div className="admin-history-empty">Нет записей</div>}
+                            {historyData && historyData.length > 0 && (
+                              <table className="admin-history-table">
+                                <thead>
+                                  <tr>
+                                    <th>Время</th>
+                                    <th>Reservation ID</th>
+                                    <th>Captcha ID</th>
+                                    <th>Статус</th>
+                                    <th>Этап</th>
+                                    <th>Ошибка</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {historyData.map((entry) => (
+                                    <tr key={entry.id}>
+                                      <td className="admin-history-time">{formatDate(entry.created_at)}</td>
+                                      <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
+                                      <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
+                                      <td>
+                                        <span className={
+                                          'admin-status-badge ' +
+                                          (entry.status === 'confirmed' ? 'admin-status-confirmed' :
+                                           entry.status === 'pending' ? 'admin-status-pending' :
+                                           'admin-status-failed')
+                                        }>
+                                          {entry.status === 'confirmed' ? 'Подтверждено' :
+                                           entry.status === 'pending' ? 'Ожидание' :
+                                           'Ошибка'}
+                                        </span>
+                                      </td>
+                                      <td className="admin-history-stage">
+                                        {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
+                                      </td>
+                                      <td className="admin-history-error-msg">
+                                        {entry.status === 'failed' && entry.error_message
+                                          ? (entry.error_message.length > 100
+                                            ? entry.error_message.slice(0, 100) + '…'
+                                            : entry.error_message)
+                                          : '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })
             )}
           </tbody>
         </table>
