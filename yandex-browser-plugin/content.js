@@ -11,6 +11,9 @@ function shouldInject(pageUrl) {
   if (match) {
     return { reservationId: match[1] };
   }
+  if (pageUrl.startsWith('https://localhost:8765') || pageUrl.startsWith('https://127.0.0.1:8765') || pageUrl.startsWith('https://china.alabai.netcraze.pro/')) {
+    return { reservationId: '00000000-0000-0000-0000-000000000000', isLocalhost: true };
+  }
   return null;
 }
 
@@ -20,6 +23,10 @@ function shouldInject(pageUrl) {
 
 const usedSlotIds = new Set();
 let currentConfig = null;
+let scheduledConfig = null;
+let scheduledTime = null;
+let scheduleInterval = null;
+const TZ_OFFSET = 3;
 
 function log(msg, data) {
   const ts = new Date().toISOString().slice(11, 19);
@@ -99,20 +106,20 @@ async function getAvailableSlots() {
 
   const isCreateReservation = currentConfig.mode === 'create';
 
-  const url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${currentConfig.facilityId}&vehicleId=${currentConfig.vehicleId}&date=${currentConfig.slotDate}&transportType=${currentConfig.transportType}&isCreateReservation=${isCreateReservation}`;
+  var url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${currentConfig.facilityId}&vehicleId=${currentConfig.vehicleId}&date=${currentConfig.slotDate}&transportType=${currentConfig.transportType}&isCreateReservation=${isCreateReservation}`;
   if (currentConfig.mode !== 'create') {
     url += `&reservationId=${currentConfig.reservationId}`
   }
 
   //   Слоты кончились статус 400
-//   {
-//     "title": "SlotsNotFound",
-//     "status": 400,
-//     "detail": "IsSuccess: False SlotsNotFound 41104",
-//     "eoppStatus": 41104,
-//     "payload": null,
-//     "isSuccess": false
-//  }
+  //   {
+  //     "title": "SlotsNotFound",
+  //     "status": 400,
+  //     "detail": "IsSuccess: False SlotsNotFound 41104",
+  //     "eoppStatus": 41104,
+  //     "payload": null,
+  //     "isSuccess": false
+  //  }
 
   const response = await httpRequest('GET', url);
   log(`Получено ${response.slots?.length || 0} доступных слотов`);
@@ -361,29 +368,300 @@ async function main(config) {
 //  Модальное окно
 // ========================================
 
-function createModal() {
+function getMSKTime() {
+  const now = new Date();
+  const utcSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+  const mskSec = (utcSec + TZ_OFFSET * 3600) % 86400;
+  const h = Math.floor(mskSec / 3600);
+  const m = Math.floor((mskSec % 3600) / 60);
+  const s = mskSec % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function parseTime(str) {
+  const parts = str.trim().split(':');
+  if (parts.length !== 3) return null;
+  const [h, m, s] = parts.map(Number);
+  if (isNaN(h) || isNaN(m) || isNaN(s) || h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) return null;
+  return h * 3600 + m * 60 + s;
+}
+
+function mskToUtcSeconds(mskSeconds) {
+  return ((mskSeconds - TZ_OFFSET * 3600) % 86400 + 86400) % 86400;
+}
+
+function getMsUntilTarget(targetUtcSeconds) {
+  const now = new Date();
+  const currentUtcSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+  const currentMs = currentUtcSec * 1000 + now.getUTCMilliseconds();
+  const targetMs = targetUtcSeconds * 1000;
+  let diff = targetMs - currentMs;
+  if (diff <= 0) diff += 86400000;
+  return diff;
+}
+
+function getRemainingSeconds(targetUtcSeconds) {
+  return Math.max(0, Math.ceil(getMsUntilTarget(targetUtcSeconds) / 1000));
+}
+
+function formatCountdown(totalSeconds) {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function clearSchedule() {
+  if (scheduleInterval) {
+    clearTimeout(scheduleInterval);
+    scheduleInterval = null;
+  }
+  scheduledConfig = null;
+  scheduledTime = null;
+}
+
+function scheduleTick(targetUtcSeconds, config, clockEl, statusEl) {
+  const now = new Date();
+  const currentUtcSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+  const targetSec = targetUtcSeconds % 86400;
+  const fired = currentUtcSec === targetSec;
+
+  if (fired) {
+    clearSchedule();
+    log('Таймер истек, запускаю инжектор...');
+    main(config).then(() => {
+      scheduledConfig = null;
+      scheduledTime = null;
+    });
+    if (clockEl) clockEl.textContent = `МСК: ${getMSKTime()}`;
+    if (statusEl) {
+      statusEl.textContent = 'Запущено!';
+      statusEl.className = 'injector-modal-status injector-modal-status-done';
+    }
+    return;
+  }
+
+  if (clockEl) clockEl.textContent = `МСК: ${getMSKTime()}`;
+  const remaining = getRemainingSeconds(targetUtcSeconds);
+  if (statusEl) {
+    statusEl.textContent = `Запуск через ${formatCountdown(remaining)}`;
+    statusEl.className = 'injector-modal-status injector-modal-status-waiting';
+  }
+
+  const msUntilNextSecond = 1000 - now.getUTCMilliseconds();
+  scheduleInterval = setTimeout(() => {
+    scheduleTick(targetUtcSeconds, config, clockEl, statusEl);
+  }, msUntilNextSecond);
+}
+
+function startSchedule(targetUtcSeconds, config, clockEl, statusEl) {
+  clearSchedule();
+  scheduledTime = targetUtcSeconds;
+  scheduledConfig = config;
+  scheduleTick(targetUtcSeconds, config, clockEl, statusEl);
+}
+
+function createModal(injectorUrl, defaultConfig) {
   const overlay = document.createElement('div');
   overlay.className = 'injector-modal-overlay';
   overlay.innerHTML = `
-    <div class="injector-modal">
+    <div class="injector-modal injector-modal-wide">
       <div class="injector-modal-header">
-        <span class="injector-modal-title">Конфигурация инжектора</span>
-        <button class="injector-modal-close">&times;</button>
+        <span class="injector-modal-title">Настройки <a class="injector-server-link" href="https://china.alabai.netcraze.pro" target="_blank" rel="noopener">Капчи ↗</a></span>
+        <div class="injector-header-center">
+          <span class="injector-modal-status"></span>
+        </div>
+        <div class="injector-header-right">
+          <span class="injector-modal-clock">МСК: ${getMSKTime()}</span>
+          <button class="injector-modal-close">&times;</button>
+        </div>
       </div>
       <div class="injector-modal-body">
-        <textarea class="injector-modal-textarea" rows="16"></textarea>
-      </div>
-      <div class="injector-modal-footer">
-        <button class="injector-modal-btn injector-modal-btn-run">Запустить</button>
+        <div class="injector-config-form">
+          <div class="injector-form-section" style="grid-column: 1 / -1;">
+            <h3 class="injector-section-title">Общие настройки</h3>
+            <div class="injector-form-row injector-form-row-3">
+              <label class="injector-form-label">
+                Режим
+                <select class="injector-form-input" data-field="mode">
+                  <option value="reschedule">Перенос брони</option>
+                  <option value="create">Создание брони</option>
+                </select>
+              </label>
+              <label class="injector-form-label">
+                Остановиться на этапе
+                <select class="injector-form-input" data-field="runUpTo">
+                  <option value="1">1 — слоты</option>
+                  <option value="2">2 — капча</option>
+                  <option value="3">3 — решение капчи</option>
+                  <option value="4">4 — валидация</option>
+                  <option value="5">5 — отправка</option>
+                </select>
+              </label>
+              <label class="injector-form-label injector-checkbox-label">
+                <input type="checkbox" data-field="autoSolve" />
+                Авто-решение капчи
+              </label>
+            </div>
+          </div>
+
+          <div class="injector-form-section" style="grid-column: 1 / -1;">
+            <h3 class="injector-section-title">Данные запроса</h3>
+            <div class="injector-form-row">
+              <label class="injector-form-label">
+                ID бронирования
+                <span class="injector-form-text injector-form-readonly" data-field="reservationId"></span>
+              </label>
+              <label class="injector-form-label">
+                ID транспортного средства
+                <input class="injector-form-input injector-form-text" type="text" data-field="vehicleId" />
+              </label>
+            </div>
+            <div class="injector-form-row">
+              <label class="injector-form-label">
+                Вид перевозки
+                <select class="injector-form-input" data-field="transportType">
+                  <option value="1">Экспорт</option>
+                  <option value="2">Транзит</option>
+                </select>
+              </label>
+              <label class="injector-form-label">
+                Пропускной пункт (АПП)
+                <select class="injector-form-input" data-field="facilityId">
+                  <option value="1dae5b1c-e2b3-44a4-848f-df8ce2ddde42">АПП Забайкальск</option>
+                  <option value="93c9939a-2182-4e78-98b4-0cf314b09cfa">АПП Тагиркент-Казмаляр</option>
+                  <option value="cbde069a-7e18-4ca6-9b38-f790348d6c24">АПП Бугристое</option>
+                  <option value="1fffb312-4ebe-4ad2-a356-0b8f04587c11">АПП Верхний Ларс</option>
+                  <option value="ab6edb80-5f8f-4bf9-bf9a-a925271d9df8">АПП Чернышевское</option>
+                </select>
+              </label>
+            </div>
+            <div class="injector-form-row">
+              <label class="injector-form-label">
+                Дата пропуска
+                <input class="injector-form-input" type="date" data-field="slotDate" />
+              </label>
+              <label class="injector-form-label">
+                Предпочтительное время
+                <select class="injector-form-input" data-field="preferredTime">
+                  <option value="">Не выбрано (любой слот)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="injector-form-section">
+            <h3 class="injector-section-title">Повтор при занятых слотах</h3>
+            <label class="injector-form-label injector-checkbox-label">
+              <input type="checkbox" data-field="retryOnAllSlotsOccupied" />
+              Пробовать другой слот при занятости
+            </label>
+            <div class="injector-form-row">
+              <label class="injector-form-label">
+                Макс. попыток
+                <input class="injector-form-input injector-form-number" type="number" data-field="maxSlotRetries" />
+              </label>
+              <label class="injector-form-label">
+                Задержка (мс)
+                <input class="injector-form-input injector-form-number" type="number" data-field="slotRetryDelayMs" />
+              </label>
+            </div>
+          </div>
+
+          <div class="injector-form-section">
+            <h3 class="injector-section-title">Повтор при ошибке 429</h3>
+            <div class="injector-form-row">
+              <label class="injector-form-label">
+                Макс. попыток
+                <input class="injector-form-input injector-form-number" type="number" data-field="maxRetries" />
+              </label>
+              <label class="injector-form-label">
+                Задержка (мс)
+                <input class="injector-form-input injector-form-number" type="number" data-field="retryDelayMs" />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="injector-schedule-sticky">
+          <div class="injector-time-tags">
+            <span class="injector-time-tag" data-time="10:00:01">10:00</span>
+            <span class="injector-time-tag" data-time="12:00:01">12:00</span>
+            <span class="injector-time-tag injector-time-tag-now">Сейчас+10с</span>
+          </div>
+          <div class="injector-schedule-row">
+            <input type="text" class="injector-schedule-input" value="12:00:01" maxlength="8" placeholder="ЧЧ:ММ:СС МСК" />
+            <button class="injector-modal-btn injector-modal-btn-cancel">Отменить</button>
+            <button class="injector-modal-btn injector-modal-btn-schedule">Запланировать</button>
+            <button class="injector-modal-btn injector-modal-btn-run">Запустить сейчас</button>
+          </div>
+        </div>
       </div>
     </div>
   `;
 
   const closeBtn = overlay.querySelector('.injector-modal-close');
   const runBtn = overlay.querySelector('.injector-modal-btn-run');
-  const textarea = overlay.querySelector('.injector-modal-textarea');
+  const scheduleBtn = overlay.querySelector('.injector-modal-btn-schedule');
+  const cancelBtn = overlay.querySelector('.injector-modal-btn-cancel');
+  const timeInput = overlay.querySelector('.injector-schedule-input');
+  const timeTags = overlay.querySelectorAll('.injector-time-tag');
+  const clockEl = overlay.querySelector('.injector-modal-clock');
+  const statusEl = overlay.querySelector('.injector-modal-status');
+
+  function readConfigFromForm() {
+    const fields = {};
+    overlay.querySelectorAll('[data-field]').forEach((el) => {
+      const key = el.getAttribute('data-field');
+      if (el.type === 'checkbox') {
+        fields[key] = el.checked;
+      } else if (el.tagName === 'SPAN') {
+        fields[key] = el.textContent;
+      } else if (el.type === 'number' || ['runUpTo', 'transportType', 'maxSlotRetries', 'slotRetryDelayMs', 'maxRetries', 'retryDelayMs'].includes(key)) {
+        fields[key] = Number(el.value);
+      } else {
+        fields[key] = el.value || (key === 'preferredTime' ? null : el.value);
+      }
+    });
+    if (!fields.preferredTime) fields.preferredTime = null;
+    return fields;
+  }
+
+  function populateForm(config) {
+    const preferredTimeSelect = overlay.querySelector('select[data-field="preferredTime"]');
+    for (let h = 0; h < 24; h++) {
+      const opt = document.createElement('option');
+      opt.value = `${String(h).padStart(2, '0')}:00`;
+      opt.textContent = `${String(h).padStart(2, '0')}:00`;
+      preferredTimeSelect.appendChild(opt);
+    }
+
+    overlay.querySelectorAll('[data-field]').forEach((el) => {
+      const key = el.getAttribute('data-field');
+      const val = config[key];
+      if (el.type === 'checkbox') {
+        el.checked = !!val;
+      } else if (el.tagName === 'SPAN') {
+        el.textContent = val !== undefined && val !== null ? val : '';
+      } else {
+        el.value = val !== undefined && val !== null ? val : '';
+      }
+    });
+  }
+
+  populateForm(defaultConfig);
+
+  let clockTimer = null;
+  function clockTick() {
+    clockEl.textContent = `МСК: ${getMSKTime()}`;
+    const msLeft = 1000 - new Date().getUTCMilliseconds();
+    clockTimer = setTimeout(clockTick, msLeft);
+  }
+  clockTick();
 
   function closeModal() {
+    clearTimeout(clockTimer);
+    clearSchedule();
     overlay.remove();
   }
 
@@ -392,23 +670,67 @@ function createModal() {
     if (e.target === overlay) closeModal();
   });
 
+  timeTags.forEach((tag) => {
+    tag.addEventListener('click', () => {
+      if (tag.classList.contains('injector-time-tag-now')) {
+        const now = new Date();
+        const utcSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds() + 10;
+        const mskSec = (utcSec + TZ_OFFSET * 3600) % 86400;
+        const h = Math.floor(mskSec / 3600);
+        const m = Math.floor((mskSec % 3600) / 60);
+        const s = mskSec % 60;
+        timeInput.value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      } else {
+        timeInput.value = tag.getAttribute('data-time');
+      }
+    });
+  });
+
+  scheduleBtn.addEventListener('click', () => {
+    const timeStr = timeInput.value.trim();
+    if (!timeStr) {
+      statusEl.textContent = 'Введите время запуска';
+      statusEl.className = 'injector-modal-status injector-modal-status-error';
+      return;
+    }
+    const mskSeconds = parseTime(timeStr);
+    if (mskSeconds === null) {
+      statusEl.textContent = 'Неверный формат. Используйте HH:MM:SS';
+      statusEl.className = 'injector-modal-status injector-modal-status-error';
+      return;
+    }
+    const targetUtcSeconds = mskToUtcSeconds(mskSeconds);
+    const config = readConfigFromForm();
+    startSchedule(targetUtcSeconds, config, clockEl, statusEl);
+    log(`Инжектор запланирован на ${timeStr} МСК`);
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    clearSchedule();
+    statusEl.textContent = '';
+    statusEl.className = 'injector-modal-status';
+    timeInput.value = '12:00:01';
+    log('Расписание отменено');
+  });
+
   runBtn.addEventListener('click', async () => {
+    clearSchedule();
+    statusEl.textContent = '';
+    statusEl.className = 'injector-modal-status';
+    const config = readConfigFromForm();
+    closeModal();
+    runBtn.disabled = true;
+    runBtn.textContent = 'Запуск...';
     try {
-      const config = JSON.parse(textarea.value);
-      closeModal();
-      runBtn.disabled = true;
-      runBtn.textContent = 'Запуск...';
       await main(config);
-    } catch (err) {
-      alert('Ошибка парсинга JSON: ' + err.message);
     } finally {
       runBtn.disabled = false;
-      runBtn.textContent = 'Запустить';
+      runBtn.textContent = 'Запустить сейчас';
     }
   });
 
   document.body.appendChild(overlay);
-  return { overlay, textarea };
+  return { overlay };
 }
 
 // ========================================
@@ -428,72 +750,83 @@ if (info) {
       alert("Не та страница");
       return;
     }
-    const apiResponse = await fetch(
-      `https://eopp.epd-portal.ru/reservations-api/v1/${info.reservationId}`,
-      {
-        credentials: "omit",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          "Accept-Language": "ru,en;q=0.9",
-          FacilityMode: "false",
-        },
-        method: "GET",
-        mode: "cors",
-        credentials: "include",
-      }
-    );
 
-    const json = await apiResponse.json();
-    const params = extractParams(json);
+    let params, injectorUrl;
 
-    const url =
-      "https://china.alabai.netcraze.pro/injector?" +
-      `facilityId=${params.facilityId}` +
-      `&vehicleId=${params.vehicleId}` +
-      `&reservationId=${info.reservationId}` +
-      `&transportType=${params.transportType}`;
-
-    window.open(url, "_blank");
+    if (actualInfo.isLocalhost) {
+      params = {
+        facilityId: '1dae5b1c-e2b3-44a4-848f-df8ce2ddde42',
+        vehicleId: 'test-vehicle-id',
+        transportType: 1,
+      };
+      injectorUrl = `https://localhost:8765/injector?facilityId=${params.facilityId}&vehicleId=${params.vehicleId}&reservationId=${actualInfo.reservationId}&transportType=${params.transportType}`;
+    } else {
+      const apiResponse = await fetch(
+        `https://eopp.epd-portal.ru/reservations-api/v1/${actualInfo.reservationId}`,
+        {
+          credentials: "omit",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Accept-Language": "ru,en;q=0.9",
+            FacilityMode: "false",
+          },
+          method: "GET",
+          mode: "cors",
+          credentials: "include",
+        }
+      );
+      const json = await apiResponse.json();
+      params = extractParams(json);
+      injectorUrl =
+        "https://china.alabai.netcraze.pro/injector?" +
+        `facilityId=${params.facilityId}` +
+        `&vehicleId=${params.vehicleId}` +
+        `&reservationId=${actualInfo.reservationId}` +
+        `&transportType=${params.transportType}`;
+    }
 
     const defaultConfig = {
       runUpTo: 4,
       facilityId: params.facilityId,
       vehicleId: params.vehicleId,
-      reservationId: info.reservationId,
+      reservationId: actualInfo.reservationId,
       transportType: params.transportType,
       slotDate: new Date().toISOString().split('T')[0],
       mode: "reschedule",
       preferredTime: null,
-      autoSolve: true,
+      autoSolve: false,
       retryOnAllSlotsOccupied: true,
-      maxSlotRetries: 5,
+      maxSlotRetries: 3,
       slotRetryDelayMs: 500,
       retryDelayMs: 5000,
-      maxRetries: 5,
+      maxRetries: 3,
     };
 
-    const { overlay, textarea } = createModal();
-    textarea.value = JSON.stringify(defaultConfig, null, 2);
+    createModal(injectorUrl, defaultConfig);
   });
 
-  const selector =
-    "body > app-root > div > div.page-wrapper.zit-scrollbar > app-reservations-list-page > div > form > div.page-controls";
+  if (info.isLocalhost) {
+    document.body.appendChild(btn);
+  } else {
+    const selector =
+      "body > app-root > div > div.page-wrapper.zit-scrollbar > app-reservations-list-page > div > form > div.page-controls";
 
-  const waitForContainer = () => {
-    const container = document.querySelector(selector);
-    if (container) {
-      container.appendChild(btn);
-      return true;
-    }
-    return false;
-  };
-
-  if (!waitForContainer()) {
-    const observer = new MutationObserver(() => {
-      if (waitForContainer()) {
-        observer.disconnect();
+    const waitForContainer = () => {
+      const container = document.querySelector(selector);
+      if (container) {
+        container.appendChild(btn);
+        return true;
       }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+      return false;
+    };
+
+    if (!waitForContainer()) {
+      const observer = new MutationObserver(() => {
+        if (waitForContainer()) {
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
 }
