@@ -5,12 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Отладчик Python: Текущий файл с аргументами",
+            "name": "Сервер HTTP",
             "type": "debugpy",
             "request": "launch",
             "program": "manage.py",
             "console": "integratedTerminal",
-            // "args": "--write"
+            "args": "--no-ssl"
         },
         {
             "name": "Test Captcha JS",

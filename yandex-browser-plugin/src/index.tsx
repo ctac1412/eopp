@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from '@/App';
 import { useInjectorStore } from '@/store';
 import type { InjectorConfig, PageInfo } from '@/types';
-import { shouldInject, createDefaultConfig } from '@/constants';
+import { shouldInject, createDefaultConfig, getDefaultSlotDate } from '@/constants';
 import cssContent from '@/content.css?inline';
 
 function injectButton(info: PageInfo): void {

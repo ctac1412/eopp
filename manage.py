@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import typer
 
-from src.utils import PORT, TEST_DIR
+from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, PORT, TEST_DIR, VALID_DIR
 from src.app import create_app
 
 app = typer.Typer(help="Captcha Solver Server")
@@ -58,27 +58,33 @@ def main(
     write: bool = False,
     host: str = "127.0.0.1",
     port: int = PORT,
+    no_ssl: bool = False,
 ):
     """Start the captcha solver server."""
     import uvicorn
     import src.utils
 
-    certfile, keyfile = ensure_self_signed_cert()
+    certfile, keyfile = None, None
+    if not no_ssl:
+        certfile, keyfile = ensure_self_signed_cert()
 
     typer.echo("=" * 56)
     typer.echo("  EOPP Captcha Solver Server — Configuration")
     typer.echo("=" * 56)
     typer.echo(f"  Host            : {host}")
     typer.echo(f"  Port            : {port}")
-    typer.echo(f"  Protocol        : HTTPS (self-signed)")
-    typer.echo(f"  Cert            : {certfile}")
-    typer.echo(f"  Key             : {keyfile}")
+    typer.echo(
+        f"  Protocol        : {'HTTP (no SSL)' if no_ssl else 'HTTPS (self-signed)'}"
+    )
+    if not no_ssl:
+        typer.echo(f"  Cert            : {certfile}")
+        typer.echo(f"  Key             : {keyfile}")
     typer.echo(f"  Test mode       : {test}")
     typer.echo(f"  Write mode      : {write}")
-    typer.echo(f"  Captcha timeout : {src.utils.CAPTCHA_TIMEOUT}s")
+    typer.echo(f"  Captcha timeout : {CAPTCHA_TIMEOUT}s")
     typer.echo(f"  Test dir        : {TEST_DIR}")
-    typer.echo(f"  Valid dir       : {src.utils.VALID_DIR}")
-    typer.echo(f"  No-valid dir    : {src.utils.NO_VALID_DIR}")
+    typer.echo(f"  Valid dir       : {VALID_DIR}")
+    typer.echo(f"  No-valid dir    : {NO_VALID_DIR}")
 
     import captcha_solver
 
@@ -113,15 +119,16 @@ def main(
         )
 
     fastapi_app = create_app(use_tests=test, write_mode=write)
-    uvicorn.run(
-        fastapi_app,
-        host=host,
-        port=port,
-        log_level="warning",
-        timeout_graceful_shutdown=2,
-        ssl_certfile=certfile,
-        ssl_keyfile=keyfile,
-    )
+    uvicorn_kwargs = {
+        "host": host,
+        "port": port,
+        "log_level": "warning",
+        "timeout_graceful_shutdown": 2,
+    }
+    if certfile and keyfile:
+        uvicorn_kwargs["ssl_certfile"] = certfile
+        uvicorn_kwargs["ssl_keyfile"] = keyfile
+    uvicorn.run(fastapi_app, **uvicorn_kwargs)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ export function shouldInject(pageUrl: string): PageInfo | null {
     return { reservationId: match[1] };
   }
   if (
+    pageUrl.startsWith('http://localhost:8765') ||
+    pageUrl.startsWith('http://127.0.0.1:8765') ||
     pageUrl.startsWith('https://localhost:8765') ||
     pageUrl.startsWith('https://127.0.0.1:8765') ||
     pageUrl.startsWith('https://china.alabai.netcraze.pro/')
@@ -27,6 +29,12 @@ export function shouldInject(pageUrl: string): PageInfo | null {
   return null;
 }
 
+function addDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 export function createDefaultConfig(reservationId: string, facilityId: string, vehicleId: string, transportType: 1 | 2): InjectorConfig {
   return {
     runUpTo: 4,
@@ -34,7 +42,7 @@ export function createDefaultConfig(reservationId: string, facilityId: string, v
     vehicleId,
     reservationId,
     transportType,
-    slotDate: new Date().toISOString().split('T')[0],
+    slotDate: getDefaultSlotDate('reschedule'),
     mode: 'reschedule',
     preferredTime: null,
     autoSolve: false,
@@ -45,4 +53,8 @@ export function createDefaultConfig(reservationId: string, facilityId: string, v
     apiKey: '',
     maxRetries: 3,
   };
+}
+
+export function getDefaultSlotDate(mode: 'reschedule' | 'create'): string {
+  return mode === 'reschedule' ? addDays(1) : addDays(14);
 }

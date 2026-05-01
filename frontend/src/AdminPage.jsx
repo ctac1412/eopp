@@ -25,6 +25,7 @@ function AdminPage() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [expandedHistory, setExpandedHistory] = useState({})
   const [historyLoading, setHistoryLoading] = useState({})
+  const [expandedLogs, setExpandedLogs] = useState({})
   const intervalRef = useRef(null)
 
   const fetchKeys = useCallback(async (token) => {
@@ -82,6 +83,7 @@ function AdminPage() {
     setAdminToken(null)
     setKeys([])
     setExpandedHistory({})
+    setExpandedLogs({})
   }
 
   const handleCreate = async (e) => {
@@ -203,6 +205,10 @@ function AdminPage() {
     } else {
       fetchUsageHistory(keyId)
     }
+  }
+
+  const togglePluginLogs = (usageLogId) => {
+    setExpandedLogs(p => ({ ...p, [usageLogId]: !p[usageLogId] }))
   }
 
   const copyToClipboard = (text) => {
@@ -403,35 +409,67 @@ function AdminPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {historyData.map((entry) => (
-                                    <tr key={entry.id}>
-                                      <td className="admin-history-time">{formatDate(entry.created_at)}</td>
-                                      <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
-                                      <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
-                                      <td>
-                                        <span className={
-                                          'admin-status-badge ' +
-                                          (entry.status === 'confirmed' ? 'admin-status-confirmed' :
-                                           entry.status === 'pending' ? 'admin-status-pending' :
-                                           'admin-status-failed')
-                                        }>
-                                          {entry.status === 'confirmed' ? 'Подтверждено' :
-                                           entry.status === 'pending' ? 'Ожидание' :
-                                           'Ошибка'}
-                                        </span>
-                                      </td>
-                                      <td className="admin-history-stage">
-                                        {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
-                                      </td>
-                                      <td className="admin-history-error-msg">
-                                        {entry.status === 'failed' && entry.error_message
-                                          ? (entry.error_message.length > 100
-                                            ? entry.error_message.slice(0, 100) + '…'
-                                            : entry.error_message)
-                                          : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
+                                  {historyData.map((entry) => {
+                                    const isPluginExpanded = expandedLogs[entry.id]
+                                    const pluginData = entry.logs
+                                    return (
+                                      <React.Fragment key={entry.id}>
+                                        <tr>
+                                          <td className="admin-history-time">{formatDate(entry.created_at)}</td>
+                                          <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
+                                          <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
+                                          <td>
+                                            <span className={
+                                              'admin-status-badge ' +
+                                              (entry.status === 'confirmed' ? 'admin-status-confirmed' :
+                                               entry.status === 'pending' ? 'admin-status-pending' :
+                                               'admin-status-failed')
+                                            }>
+                                              {entry.status === 'confirmed' ? 'Подтверждено' :
+                                               entry.status === 'pending' ? 'Ожидание' :
+                                               'Ошибка'}
+                                            </span>
+                                          </td>
+                                          <td className="admin-history-stage">
+                                            {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
+                                          </td>
+                                          <td className="admin-history-error-msg">
+                                            {entry.status === 'failed' && entry.error_message
+                                              ? (entry.error_message.length > 100
+                                                ? entry.error_message.slice(0, 100) + '…'
+                                                : entry.error_message)
+                                              : '—'}
+                                          </td>
+                                          <td className="admin-history-slot-date">
+                                            {entry.slot_date || '—'}
+                                          </td>
+                                          <td>
+                                            {pluginData && pluginData.length > 0 && (
+                                              <button
+                                                className={'admin-btn-sm ' + (isPluginExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                                                onClick={() => togglePluginLogs(entry.id)}
+                                              >
+                                                {isPluginExpanded ? 'Свернуть логи' : 'Логи'}
+                                              </button>
+                                            )}
+                                          </td>
+                                        </tr>
+                                        {isPluginExpanded && pluginData && pluginData.length > 0 && (
+                                          <tr>
+                                            <td colSpan={8} className="admin-plugin-logs-cell">
+                                              <div className="admin-plugin-logs-wrapper">
+                                                <div className="admin-plugin-logs-body">
+                                                  {pluginData.map((line, idx) => (
+                                                    <div key={idx} className="admin-plugin-log-line">{line}</div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </React.Fragment>
+                                    )
+                                  })}
                                 </tbody>
                               </table>
                             )}

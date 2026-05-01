@@ -779,3 +779,38 @@ body {
   background: #ef444420;
   color: #f87171;
 }
+
+/* Plugin logs */
+.admin-plugin-logs-cell {
+  padding: 0 !important;
+  background: #0a0b1080;
+}
+.admin-plugin-logs-wrapper {
+  padding: 8px 14px;
+}
+.admin-plugin-logs-body {
+  background: #0f1117;
+  border: 1px solid #27293d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.admin-plugin-log-line {
+  color: #71717a;
+  border-bottom: 1px solid #27293d20;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.admin-plugin-log-line:last-child {
+  border-bottom: none;
+}
+.admin-history-slot-date {
+  font-size: 10px;
+  color: #a1a1aa;
+  white-space: nowrap;
+}

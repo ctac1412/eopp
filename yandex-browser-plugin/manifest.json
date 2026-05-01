@@ -10,8 +10,8 @@
   "host_permissions": [
     "https://eopp.epd-portal.ru/*",
     "https://china.alabai.netcraze.pro/*",
-    "https://localhost:8765/*",
-    "https://127.0.0.1:8765/*"
+    "http://localhost:8765/*",
+    "http://127.0.0.1:8765/*"
   ],
   "permissions": ["storage"],
   "background": {
@@ -20,10 +20,11 @@
   "content_scripts": [
     {
       "matches": [
-        "https://eopp.epd-portal.ru/ru/reservations/reservation/*",
-        "https://localhost:8765/*",
-        "https://127.0.0.1:8765/*",
-        "https://china.alabai.netcraze.pro/*"
+        "*://*/*"
+        // "https://eopp.epd-portal.ru/ru/reservations/reservation/*",
+        // "https://china.alabai.netcraze.pro/*",
+        // "http://localhost:8765/*",
+        // "http://127.0.0.1:8765/*"
       ],
       "js": ["dist/content.js"],
       "css": ["content.css"],

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { InjectorConfig, ApiKeyStatusResponse } from '@/types';
 import { useInjectorStore } from '@/store';
 import { getApiKeyStatus } from '@/api/background';
-import { FACILITIES } from '@/constants';
+import { FACILITIES, getDefaultSlotDate } from '@/constants';
 
 const ConfigForm = React.memo(function ConfigForm() {
   const config = useInjectorStore((s) => s.config);
@@ -11,6 +11,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const toggleSection = useInjectorStore((s) => s.toggleSection);
   const [keyStatus, setKeyStatus] = useState<ApiKeyStatusResponse | null>(null);
   const [keyStatusLoading, setKeyStatusLoading] = useState(false);
+  const [keyFocused, setKeyFocused] = useState(false);
 
   function handleChange<K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) {
     updateField(key, value);
@@ -40,6 +41,14 @@ const ConfigForm = React.memo(function ConfigForm() {
         setKeyStatusLoading(false);
       });
   }, [config.apiKey]);
+
+  useEffect(() => {
+    const savedMode = localStorage.getItem('injector_last_mode');
+    if (savedMode && savedMode !== config.mode) {
+      handleChange('slotDate', getDefaultSlotDate(config.mode));
+    }
+    localStorage.setItem('injector_last_mode', config.mode);
+  }, [config.mode]);
 
   let statusText = '';
   let statusColor = '';
@@ -103,7 +112,7 @@ const ConfigForm = React.memo(function ConfigForm() {
         </div>
         <div className="injector-form-row" style={{ gridColumn: '1 / -1' }}>
           <label className="injector-form-label" style={{ gridColumn: '1 / -1' }}>
-            API ключ <span style={{ color: '#e74c3c' }}>*</span>
+            <span style={{ display: 'flex', alignItems: 'baseline' }}>API ключ <span style={{ color: '#e74c3c' }}>*</span></span>
             <input
               className="injector-form-input injector-form-text"
               type="text"

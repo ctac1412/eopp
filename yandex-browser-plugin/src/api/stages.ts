@@ -14,7 +14,7 @@ export async function getAvailableSlots(config: InjectorConfig): Promise<SlotsRe
     url += `&reservationId=${config.reservationId}`;
   }
 
-  const response = await httpRequest('GET', url, {
+  const response = await httpRequest('GET', url, undefined, {
     'FacilityMode': 'false',
   });
 
@@ -34,7 +34,7 @@ export async function generateCaptcha(config: InjectorConfig, slot: { time: stri
     encryptedTso: null,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/captcha', payload{
+  const response = await httpRequest('POST', '/reservations-api/v1/captcha', payload, {
     'FacilityMode': 'false',
   });
   log('Капча сгенерирована');
@@ -53,15 +53,15 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
     payload.api_key = apiKey;
   }
   if (reservationId) {
-    payload.reservationId = reservationId;
+    payload.reservation_id = reservationId;
   }
 
   const response = await sendMessageToBackground('solveCaptcha', payload);
-  const solved = response as SolvedAnswer;
+  const solved = response as SolvedAnswer | null;
 
-  // TODO: ОБРАБОТАТЬ не пройденную капчу.
-  // 09:14:42 Этап 3: запрос к нашему серверу /solve-captcha
-  // 09:14:52 === ОШИБКА === TypeError: Cannot read properties of null (reading 'usage_log_id')
+  if (!solved) {
+    throw new Error('Сервер вернул null — капча не решена (таймаут или ошибка)');
+  }
 
   if (solved.usage_log_id != null) {
     useInjectorStore.getState().setUsageLogId(solved.usage_log_id);
@@ -88,7 +88,7 @@ export async function validateCaptcha(
     encryptedTso: null,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/captcha-validate', payload{
+  const response = await httpRequest('POST', '/reservations-api/v1/captcha-validate', payload, {
     'FacilityMode': 'false',
   });
   log('Капча валидирована');
@@ -114,18 +114,16 @@ export async function submitReschedule(
     encryptedTso: null,
   };
 
-  // TODO: make success reshedule if responce like RescheduleSuccess
-  // {
-  //     "title": "RescheduleSuccess",
-  //     "status": 200,
-  //     "detail": "IsSuccess: True RescheduleSuccess 20118",
-  //     "eoppStatus": 20118,
-  //     "payload": null,
-  //     "isSuccess": true
-  // }
-
   const response = await httpRequest('POST', '/reservations-api/v1/Reschedule', payload);
-  log('Бронь перенесена');
+  const resp = response as { title?: string; eoppStatus?: number; isSuccess?: boolean };
+
+  if (resp.title === 'RescheduleSuccess' && resp.eoppStatus === 20118) {
+    log('Бронь успешно перенесена (RescheduleSuccess)');
+  } else if (resp.isSuccess) {
+    log('Бронь перенесена');
+  } else {
+    log('Ответ Reschedule', response);
+  }
   return response;
 }
 
@@ -149,24 +147,17 @@ export async function submitCreate(
     transportType: config.transportType,
   };
 
-  // TODO:  Check submit is sucess if reslonce like SubmitReservationSuccess
-  //   {
-  //     "title": "SubmitReservationSuccess",
-  //     "status": 200,
-  //     "detail": "IsSuccess: True SubmitReservationSuccess 20117",
-  //     "eoppStatus": 20117,
-  //     "payload": {
-  //         "slotIds": [
-  //             "0b8194aa-7301-4a95-b20e-bf7fda5f99c8"
-  //         ],
-  //         "arrivalDatePlan": "2026-05-13T23:00:00"
-  //     },
-  //     "isSuccess": true
-  // }
-
   const response = await httpRequest('POST', '/reservations-api/v1/SubmitDraft', payload, {
     'FacilityMode': 'false',
   });
-  log('Бронь создана');
+  const resp = response as { title?: string; eoppStatus?: number; isSuccess?: boolean };
+
+  if (resp.title === 'SubmitReservationSuccess' && resp.eoppStatus === 20117) {
+    log('Бронь успешно создана (SubmitReservationSuccess)');
+  } else if (resp.isSuccess) {
+    log('Бронь создана');
+  } else {
+    log('Ответ SubmitDraft', response);
+  }
   return response;
 }

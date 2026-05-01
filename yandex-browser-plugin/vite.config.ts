@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
+const isDevBuild = process.env.DEV_BUILD === 'true';
+
 export default defineConfig({
   plugins: [react()],
   define: {
-    'process.env.NODE_ENV': JSON.stringify('production'),
+    'process.env.NODE_ENV': JSON.stringify(isDevBuild ? 'development' : 'production'),
   },
   build: {
     lib: {
@@ -17,6 +19,8 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'chrome120',
+    minify: isDevBuild ? false : 'esbuild',
+    sourcemap: isDevBuild ? true : false,
     rollupOptions: {
       output: {
         inlineDynamicImports: true,

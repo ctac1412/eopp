@@ -3,7 +3,7 @@ import { CAPTCHA_SERVER } from '@/constants';
 
 function getServerUrl(): string {
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return window.location.origin;
+    return `http://127.0.0.1:${window.location.port || '8765'}`;
   }
   return CAPTCHA_SERVER;
 }
@@ -32,13 +32,13 @@ export function sendMessageToBackground(action: string, payload: unknown): Promi
   });
 }
 
-export async function confirmUsage(usageLogId: number, apiKey: string): Promise<boolean> {
-  const response = await sendMessageToBackground('confirmUsage', { usageLogId, apiKey });
+export async function confirmUsage(usageLogId: number, apiKey: string, slotDate?: string, logs?: string[]): Promise<boolean> {
+  const response = await sendMessageToBackground('confirmUsage', { usageLogId, apiKey, slotDate, logs });
   return response as boolean;
 }
 
-export async function failUsage(usageLogId: number, apiKey: string, errorMessage: string, errorStage: string): Promise<boolean> {
-  const response = await sendMessageToBackground('failUsage', { usageLogId, apiKey, errorMessage, errorStage });
+export async function failUsage(usageLogId: number, apiKey: string, errorMessage: string, errorStage: string, slotDate?: string, logs?: string[]): Promise<boolean> {
+  const response = await sendMessageToBackground('failUsage', { usageLogId, apiKey, errorMessage, errorStage, slotDate, logs });
   return response as boolean;
 }
 

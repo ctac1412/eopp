@@ -118,8 +118,9 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
 
   const usageLogId = useInjectorStore.getState().usageLogId;
   if (usageLogId != null && config.apiKey) {
+    const logs = useInjectorStore.getState().logs.map((l) => `${l.ts} ${l.msg}`);
     try {
-      await confirmUsage(usageLogId, config.apiKey);
+      await confirmUsage(usageLogId, config.apiKey, config.slotDate, logs);
     } catch {
       // fire-and-forget, silently swallow
     }
@@ -164,12 +165,15 @@ export async function main(config: InjectorConfig): Promise<void> {
   } catch (err) {
     const usageLogId = useInjectorStore.getState().usageLogId;
     if (usageLogId != null && config.apiKey) {
+      const logs = useInjectorStore.getState().logs.map((l) => `${l.ts} ${l.msg}`);
       try {
         await failUsage(
           usageLogId,
           config.apiKey,
           serializeError(err),
-          getErrorStage()
+          getErrorStage(),
+          config.slotDate,
+          logs
         );
       } catch {
         // fire-and-forget, silently swallow

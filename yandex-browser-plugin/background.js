@@ -27,6 +27,8 @@ chrome.runtime.onConnect.addListener((port) => {
           body: JSON.stringify({
             usage_log_id: msg.payload.usageLogId,
             api_key: msg.payload.apiKey,
+            slot_date: msg.payload.slotDate,
+            logs: msg.payload.logs,
           }),
         });
       } else if (msg.action === 'failUsage') {
@@ -41,6 +43,8 @@ chrome.runtime.onConnect.addListener((port) => {
             api_key: msg.payload.apiKey,
             error_message: msg.payload.errorMessage,
             error_stage: msg.payload.errorStage,
+            slot_date: msg.payload.slotDate,
+            logs: msg.payload.logs,
           }),
         });
       } else if (msg.action === 'apiKeyStatus') {
@@ -50,6 +54,7 @@ chrome.runtime.onConnect.addListener((port) => {
             'Accept': 'application/json, text/plain, */*',
           },
         });
+
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;

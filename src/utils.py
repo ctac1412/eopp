@@ -8,16 +8,18 @@ import os
 import sys
 import glob
 import asyncio
+import ssl
+import http.client
 
 from PIL import Image, ImageDraw, ImageFont
 
-PORT = 8765
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEST_DIR = os.path.join(PROJECT_DIR, "tests", "test_cases")
-VALID_DIR = os.path.join(TEST_DIR, "valid")
-NO_VALID_DIR = os.path.join(TEST_DIR, "no_valid")
-HTML_PATH = os.path.join(PROJECT_DIR, "index.html")
-CAPTCHA_TIMEOUT = 10  # seconds to wait for user solution
+from src.constants import (
+    PORT,
+    VALID_DIR,
+    NO_VALID_DIR,
+    HTML_PATH,
+    ADMIN_TOKEN,
+)
 
 pending = {}
 sse_queues: list[asyncio.Queue] = []
@@ -30,7 +32,6 @@ from captcha_solver import solve_captcha
 
 
 def captcha_hash(data):
-    """Generate a unique hash from captcha body (tiles + variantsCapture)."""
     puzzle = data.get("puzzle", data)
     tiles = puzzle.get("tiles", [])
     variants = puzzle.get("variantsCapture", [])
@@ -121,6 +122,21 @@ def load_html():
         return f.read()
 
 
+def _http_post(path, body, extra_headers=None):
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    conn = http.client.HTTPSConnection("127.0.0.1", PORT, context=ctx)
+    headers = {"Content-Type": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
+    conn.request("POST", path, body=body, headers=headers)
+    resp = conn.getresponse()
+    resp.read()
+    conn.close()
+    return resp
+
+
 def send_test_cases():
     pattern = os.path.join(VALID_DIR, "*.json")
     files = sorted(glob.glob(pattern))
@@ -134,7 +150,9 @@ def send_test_cases():
         with open(filepath, "r") as f:
             body = f.read()
         print(f"Sending test: {os.path.basename(filepath)}")
-        t = threading.Thread(target=_send_captcha, args=(body,), daemon=True)
+        t = threading.Thread(
+            target=_send_captcha, args=(body, ADMIN_TOKEN), daemon=True
+        )
         t.start()
         time.sleep(1)
 
@@ -156,50 +174,43 @@ def send_write_cases():
         source_files[captcha_id] = filepath
         print(f"Sending for labeling: {os.path.basename(filepath)} [{captcha_id}]")
         t = threading.Thread(
-            target=_send_captcha_with_id, args=(captcha_id, body), daemon=True
+            target=_send_captcha_with_id,
+            args=(captcha_id, body, ADMIN_TOKEN),
+            daemon=True,
         )
         t.start()
         time.sleep(1)
 
 
-def _send_captcha(body):
-    import ssl
-    import http.client
-
+def _send_captcha(body, admin_token):
     try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        conn = http.client.HTTPSConnection("127.0.0.1", PORT, context=ctx)
-        conn.request(
-            "POST",
+        from src.constants import get_test_api_key
+
+        data = json.loads(body)
+        data["api_key"] = get_test_api_key()
+        wrapped_body = json.dumps(data)
+        _http_post(
             "/solve-captcha",
-            body=body,
-            headers={"Content-Type": "application/json"},
+            wrapped_body,
+            extra_headers={"X-Admin-Token": admin_token},
         )
-        conn.getresponse()
-        conn.close()
     except Exception as e:
         print(f"Error sending test captcha: {e}")
 
 
-def _send_captcha_with_id(captcha_id, body):
-    import ssl
-    import http.client
-
+def _send_captcha_with_id(captcha_id, body, admin_token):
     try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        conn = http.client.HTTPSConnection("127.0.0.1", PORT, context=ctx)
-        wrapper = json.dumps({"captcha_id": captcha_id, "data": json.loads(body)})
-        conn.request(
-            "POST",
+        from src.constants import get_test_api_key
+
+        wrapper = {
+            "captcha_id": captcha_id,
+            "data": json.loads(body),
+            "api_key": get_test_api_key(),
+        }
+        _http_post(
             "/solve-captcha",
-            body=wrapper,
-            headers={"Content-Type": "application/json"},
+            json.dumps(wrapper),
+            extra_headers={"X-Admin-Token": admin_token},
         )
-        conn.getresponse()
-        conn.close()
     except Exception as e:
         print(f"Error sending test captcha: {e}")

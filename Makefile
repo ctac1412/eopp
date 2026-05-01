@@ -4,6 +4,9 @@ bench:
 run: build-frontend build-extension
 	uv run python manage.py --host 0.0.0.0
 
+run-http: build-frontend build-extension-dev
+	uv run python manage.py --host 0.0.0.0 --no-ssl
+
 run-test: build-frontend build-extension
 	uv run python manage.py --test
 
@@ -21,6 +24,9 @@ dev-frontend:
 
 build-extension:
 	cd yandex-browser-plugin && npm run build
+
+build-extension-dev:
+	cd yandex-browser-plugin && DEV_BUILD=true npm run build
 
 install-extension:
 	cd yandex-browser-plugin && npm install

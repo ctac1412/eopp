@@ -1,9 +1,10 @@
+import json
 import sqlite3
 import os
 import secrets
 from datetime import datetime, timezone
 
-from src.utils import PROJECT_DIR
+from src.constants import ADMIN_TOKEN, PROJECT_DIR
 
 DB_DIR = os.path.join(PROJECT_DIR, "data")
 DB_PATH = os.path.join(DB_DIR, "api_keys.db")
@@ -40,12 +41,35 @@ def init_db():
             status TEXT NOT NULL DEFAULT 'pending',
             error_message TEXT,
             error_stage TEXT,
+            slot_date TEXT,
             created_at TEXT NOT NULL,
             confirmed_at TEXT,
             FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
         )
     """)
-    conn.commit()
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN slot_date TEXT")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN logs TEXT")
+        conn.commit()
+    except Exception:
+        pass
+
+    # Инициализация админского токена, если его нет
+    existing = conn.execute(
+        "SELECT id FROM api_keys WHERE key = ?", (ADMIN_TOKEN,)
+    ).fetchone()
+    if not existing:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",
+            (ADMIN_TOKEN, "admin", now),
+        )
+        conn.commit()
+
     conn.close()
 
 
@@ -192,6 +216,7 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "status": row["status"],
         "error_message": row["error_message"],
         "error_stage": row["error_stage"],
+        "slot_date": row["slot_date"],
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
     }
@@ -226,7 +251,9 @@ def log_usage(api_key: str, reservation_id: str, captcha_id: str) -> int:
     return usage_log_id
 
 
-def confirm_usage(usage_log_id: int) -> bool:
+def confirm_usage(
+    usage_log_id: int, slot_date: str | None = None, logs: list[str] | None = None
+) -> bool:
     conn = get_connection()
     row = conn.execute(
         "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
@@ -235,9 +262,10 @@ def confirm_usage(usage_log_id: int) -> bool:
         conn.close()
         return False
     now = datetime.now(timezone.utc).isoformat()
+    logs_json = json.dumps(logs) if logs else None
     conn.execute(
-        "UPDATE usage_log SET status = 'confirmed', confirmed_at = ? WHERE id = ?",
-        (now, usage_log_id),
+        "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
+        (now, slot_date, logs_json, usage_log_id),
     )
     conn.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
@@ -248,7 +276,13 @@ def confirm_usage(usage_log_id: int) -> bool:
     return True
 
 
-def fail_usage(usage_log_id: int, error_message: str, error_stage: str) -> bool:
+def fail_usage(
+    usage_log_id: int,
+    error_message: str,
+    error_stage: str,
+    slot_date: str | None = None,
+    logs: list[str] | None = None,
+) -> bool:
     conn = get_connection()
     row = conn.execute(
         "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
@@ -256,9 +290,10 @@ def fail_usage(usage_log_id: int, error_message: str, error_stage: str) -> bool:
     if not row:
         conn.close()
         return False
+    logs_json = json.dumps(logs) if logs else None
     conn.execute(
-        "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ? WHERE id = ?",
-        (error_message, error_stage, usage_log_id),
+        "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ? WHERE id = ?",
+        (error_message, error_stage, slot_date, logs_json, usage_log_id),
     )
     conn.commit()
     conn.close()
@@ -280,6 +315,8 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
     result = []
     for r in rows:
         captcha_id = r["captcha_id"] or ""
+        logs_raw = r["logs"]
+        logs = json.loads(logs_raw) if logs_raw else None
         result.append(
             {
                 "id": r["id"],
@@ -292,6 +329,8 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "status": r["status"],
                 "error_message": r["error_message"],
                 "error_stage": r["error_stage"],
+                "slot_date": r["slot_date"],
+                "logs": logs,
                 "created_at": r["created_at"],
                 "confirmed_at": r["confirmed_at"],
                 "label": r["label"],
