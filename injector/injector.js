@@ -214,7 +214,7 @@ async function submitReschedule(slotData, captchaValidation) {
 // ========================================
 
 async function submitCreate(slotData, captchaValidation) {
-  log('Этап 5: создание брони (CreateReservation)');
+  log('Этап 5: создание брони (SubmitDraft)');
 
   const payload = {
     reservationId: CONFIG.reservationId,
@@ -228,7 +228,7 @@ async function submitCreate(slotData, captchaValidation) {
     captchaToken: captchaValidation.successToken,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/CreateReservation', payload, {
+  const response = await httpRequest('POST', '/reservations-api/v1/SubmitDraft', payload, {
     'FacilityMode': 'false',
   });
   log('Бронь создана');

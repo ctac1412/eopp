@@ -112,22 +112,22 @@ export async function submitCreate(
   slot: { intervalIndex: number },
   captchaValidation: CaptchaValidationResponse
 ): Promise<unknown> {
-  log('Этап 5: создание брони (CreateReservation)');
+  log('Этап 5: создание брони (SubmitDraft)');
   useInjectorStore.getState().setStage('submitting');
 
   const payload = {
-    reservationId: config.reservationId,
-    facilityId: config.facilityId,
     arrivalDatePlan: config.slotDate,
-    intervalIndex: slot.intervalIndex,
-    transportType: config.transportType,
-    modeType: 1,
-    isTso: false,
-    encryptedTso: null,
     captchaToken: captchaValidation.successToken,
+    encryptedTso: null,
+    facilityId: config.facilityId,
+    intervalIndex: slot.intervalIndex,
+    isTso: false,
+    modeType: 1,
+    reservationId: config.reservationId,
+    transportType: config.transportType,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/CreateReservation', payload, {
+  const response = await httpRequest('POST', '/reservations-api/v1/SubmitDraft', payload, {
     'FacilityMode': 'false',
   });
   log('Бронь создана');
