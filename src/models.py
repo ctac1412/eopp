@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 class SolveRequest(BaseModel):
     captcha_id: str
     variantIndex: int
+    api_key: Optional[str] = None
+    usage_log_id: Optional[int] = None
 
 
 class SolveCaptchaBody(BaseModel):
@@ -72,3 +74,7 @@ class ApiKeyStatusQuery(BaseModel):
 
 class UsageLogQuery(BaseModel):
     api_key_id: Optional[int] = None
+
+
+class MockConfigBody(BaseModel):
+    endpoints: dict[str, dict[str, Any]] = {}

@@ -5,6 +5,7 @@ import { playNewCaptchaSound } from '../utils/sounds'
 const sounded = new Set()
 
 function useSSE() {
+  const apiKey = useCaptchaStore((s) => s.apiKey)
   const addCaptcha = useCaptchaStore((s) => s.addCaptcha)
   const markSolved = useCaptchaStore((s) => s.markSolved)
   const removeCaptcha = useCaptchaStore((s) => s.removeCaptcha)
@@ -15,7 +16,12 @@ function useSSE() {
     let closed = false
 
     function connect() {
-      es = new EventSource('/stream')
+      if (closed) return
+      let url = '/stream'
+      if (apiKey) {
+        url += `?api_key=${encodeURIComponent(apiKey)}`
+      }
+      es = new EventSource(url)
 
       es.onmessage = (e) => {
         if (closed) return
@@ -66,7 +72,7 @@ function useSSE() {
       closed = true
       if (es) es.close()
     }
-  }, [addCaptcha, markSolved, removeCaptcha, addLog])
+  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog])
 }
 
 export default useSSE

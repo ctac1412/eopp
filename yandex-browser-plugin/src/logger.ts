@@ -15,7 +15,7 @@ function safeStringify(data: unknown): string {
 }
 
 export function log(msg: string, data?: unknown): void {
-  const ts = new Date().toISOString().slice(11, 19);
+  const ts = new Date().toISOString().slice(11, 21);
   const fullMsg = data !== undefined ? `${msg} ${safeStringify(data)}` : msg;
   console.log(`[injector ${ts}] ${msg}`, data !== undefined ? data : '');
   useInjectorStore.getState().addLog(fullMsg);

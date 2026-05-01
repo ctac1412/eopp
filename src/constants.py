@@ -6,7 +6,6 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEST_DIR = os.path.join(PROJECT_DIR, "tests", "test_cases")
 VALID_DIR = os.path.join(TEST_DIR, "valid")
 NO_VALID_DIR = os.path.join(TEST_DIR, "no_valid")
-HTML_PATH = os.path.join(PROJECT_DIR, "index.html")
 CAPTCHA_TIMEOUT = 10
 FRONTEND_DIST = os.path.join(PROJECT_DIR, "frontend", "dist")
 

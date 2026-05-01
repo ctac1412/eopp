@@ -1,7 +1,7 @@
 import type { ApiKeyStatusResponse } from '@/types';
 import { CAPTCHA_SERVER } from '@/constants';
 
-function getServerUrl(): string {
+export function getServerUrl(): string {
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
     return `http://127.0.0.1:${window.location.port || '8765'}`;
   }

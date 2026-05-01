@@ -1,3 +1,21 @@
+export interface RetryConfig {
+  enabled: boolean;
+  maxRetries: number;
+  delayMs: number;
+  retry400Enabled: boolean;
+  retry400MaxRetries: number;
+  retry400DelayMs: number;
+}
+
+export type EndpointName = 'getAvailableSlots' | 'generateCaptcha' | 'validateCaptcha' | 'submitReschedule' | 'submitCreate';
+
+export interface QueueItemState {
+  slotId: string;
+  slotTime: string;
+  status: 'pending' | 'solving' | 'validating' | 'submitting' | 'done' | 'failed';
+  error?: string;
+}
+
 export interface InjectorConfig {
   runUpTo: number;
   facilityId: string;
@@ -12,8 +30,17 @@ export interface InjectorConfig {
   retryOnAllSlotsOccupied: boolean;
   maxSlotRetries: number;
   slotRetryDelayMs: number;
-  retryDelayMs: number;
-  maxRetries: number;
+  retryPerEndpoint: {
+    getAvailableSlots: RetryConfig;
+    generateCaptcha:   RetryConfig;
+    validateCaptcha:   RetryConfig;
+    submitReschedule:  RetryConfig;
+    submitCreate:      RetryConfig;
+  };
+  retryMode: 'sequential' | 'queue';
+  queueSize: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
 }
 
 export type PipelineStage = 'slots' | 'captcha' | 'solving' | 'validating' | 'submitting';

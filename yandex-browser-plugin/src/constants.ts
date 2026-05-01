@@ -1,4 +1,4 @@
-import { Facility, PageInfo, InjectorConfig } from '@/types';
+import { Facility, PageInfo, InjectorConfig, RetryConfig, EndpointName } from '@/types';
 
 export const FACILITIES: Facility[] = [
   { id: '1dae5b1c-e2b3-44a4-848f-df8ce2ddde42', name: 'АПП Забайкальск' },
@@ -35,6 +35,14 @@ function addDays(days: number): string {
   return d.toISOString().split('T')[0];
 }
 
+function defaultRetryConfig(): RetryConfig {
+  return { enabled: true, maxRetries: 3, delayMs: 5000, retry400Enabled: false, retry400MaxRetries: 0, retry400DelayMs: 0 };
+}
+
+function defaultSlotsRetryConfig(): RetryConfig {
+  return { enabled: true, maxRetries: 3, delayMs: 2000, retry400Enabled: true, retry400MaxRetries: 3, retry400DelayMs: 500 };
+}
+
 export function createDefaultConfig(reservationId: string, facilityId: string, vehicleId: string, transportType: 1 | 2): InjectorConfig {
   return {
     runUpTo: 4,
@@ -49,12 +57,35 @@ export function createDefaultConfig(reservationId: string, facilityId: string, v
     retryOnAllSlotsOccupied: true,
     maxSlotRetries: 3,
     slotRetryDelayMs: 500,
-    retryDelayMs: 5000,
+    retryPerEndpoint: {
+      getAvailableSlots: defaultSlotsRetryConfig(),
+      generateCaptcha:   defaultRetryConfig(),
+      validateCaptcha:   defaultRetryConfig(),
+      submitReschedule:  defaultRetryConfig(),
+      submitCreate:      defaultRetryConfig(),
+    },
+    retryMode: 'sequential',
+    queueSize: 3,
     apiKey: '',
     maxRetries: 3,
+    retryDelayMs: 5000,
   };
 }
 
 export function getDefaultSlotDate(mode: 'reschedule' | 'create'): string {
   return mode === 'reschedule' ? addDays(1) : addDays(14);
+}
+
+export function getEndpointRetry(config: InjectorConfig, endpoint: EndpointName): RetryConfig {
+  if (config.retryPerEndpoint && config.retryPerEndpoint[endpoint]) {
+    return config.retryPerEndpoint[endpoint];
+  }
+  return {
+    enabled: true,
+    maxRetries: config.maxRetries ?? 3,
+    delayMs: config.retryDelayMs ?? 5000,
+    retry400Enabled: false,
+    retry400MaxRetries: 0,
+    retry400DelayMs: 0,
+  };
 }

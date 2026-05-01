@@ -1,10 +1,30 @@
 import { create } from 'zustand'
 
+const STORAGE_KEY = 'captcha_api_key'
+
+function loadApiKey() {
+  const fromStorage = localStorage.getItem(STORAGE_KEY)
+  if (fromStorage) return fromStorage
+  const params = new URLSearchParams(window.location.search)
+  const fromUrl = params.get('api_key')
+  if (fromUrl) {
+    localStorage.setItem(STORAGE_KEY, fromUrl)
+    return fromUrl
+  }
+  return ''
+}
+
 const useCaptchaStore = create((set) => ({
   queue: [],
   logs: [],
   selectedCard: null,
   selectedCaptchaId: null,
+  apiKey: loadApiKey(),
+
+  setApiKey: (key) => {
+    localStorage.setItem(STORAGE_KEY, key)
+    set({ apiKey: key })
+  },
 
   addCaptcha: (captcha) =>
     set((state) => ({

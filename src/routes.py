@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import time
 import threading
 import asyncio
@@ -29,6 +30,7 @@ from src.models import (
     ValidateKeyQuery,
     ApiKeyStatusQuery,
     UsageLogQuery,
+    MockConfigBody,
 )
 from src.utils import (
     source_files,
@@ -58,6 +60,11 @@ from src.api_keys import (
 )
 
 
+# --- Mock config store (Task 3) ---
+mock_config: dict[str, dict] = {}
+mock_config_lock = threading.Lock()
+
+
 def admin_auth_middleware_factory(app):
     @app.middleware("http")
     async def admin_auth_middleware(request: Request, call_next):
@@ -74,10 +81,21 @@ def admin_auth_middleware_factory(app):
 
 def register_sse_routes(app):
     @app.get("/stream")
-    async def sse_stream():
+    async def sse_stream(api_key: Optional[str] = Query(None)):
         q: asyncio.Queue = asyncio.Queue()
+
+        if api_key:
+            key_record = get_key_record(api_key)
+            if not key_record:
+                return JSONResponse(
+                    status_code=403, content={"error": "Invalid API key"}
+                )
+            api_key_id = key_record["id"]
+        else:
+            api_key_id = None
+
         with lock:
-            sse_queues.append(q)
+            sse_queues.setdefault(api_key_id, []).append(q)
 
         async def event_stream():
             try:
@@ -91,8 +109,9 @@ def register_sse_routes(app):
                 pass
             finally:
                 with lock:
-                    if q in sse_queues:
-                        sse_queues.remove(q)
+                    queues_for_key = sse_queues.get(api_key_id, [])
+                    if q in queues_for_key:
+                        queues_for_key.remove(q)
 
         return StreamingResponse(
             event_stream(),
@@ -119,6 +138,9 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                     "reason": validation["reason"],
                 },
             )
+
+        key_record = get_key_record(api_key)
+        api_key_id = key_record["id"]
 
         data = body.model_dump(exclude={"api_key", "auto_solve", "reservation_id"})
 
@@ -176,6 +198,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             "result": None,
             "source_file": source_files.get(captcha_id),
             "usage_log_id": usage_log_id,
+            "api_key_id": api_key_id,
         }
 
         with lock:
@@ -190,7 +213,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 "top3": top3,
                 "created_at": time.time(),
                 "timeout": captcha_timeout,
-            }
+            },
+            api_key_id=api_key_id,
         )
 
         print(
@@ -206,7 +230,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 {
                     "type": "captcha_timeout",
                     "captcha_id": captcha_id,
-                }
+                },
+                api_key_id=api_key_id,
             )
 
         result = entry["result"]
@@ -223,6 +248,22 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         with lock:
             entry = pending.get(captcha_id)
+
+        if entry and body.api_key:
+            key_record = get_key_record(body.api_key)
+            if not key_record or key_record["id"] != entry.get("api_key_id"):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "API key does not own this captcha"},
+                )
+
+        if entry and body.usage_log_id:
+            log_entry = get_usage_log_entry(body.usage_log_id)
+            if not log_entry or log_entry["captcha_id"] != captcha_id:
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "Usage log ID does not match this captcha"},
+                )
 
         result = None
         if entry:
@@ -260,7 +301,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 {
                     "type": "captcha_solved",
                     "captcha_id": captcha_id,
-                }
+                },
+                api_key_id=entry.get("api_key_id"),
             )
 
         if result is None:
@@ -283,6 +325,40 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         data = await request.json()
         push_sse(data)
         return JSONResponse(content={"ok": True})
+
+
+# --- Task 3: Helper to resolve mock response ---
+def _get_mock_response(endpoint: str):
+    with mock_config_lock:
+        cfg = mock_config.get(endpoint)
+    if not cfg:
+        return None
+    return cfg
+
+
+def _mock_429():
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too Many Requests"},
+        headers={"Retry-After": "5"},
+    )
+
+
+def _mock_400(body: dict):
+    return JSONResponse(status_code=400, content=body)
+
+
+def _load_random_captcha():
+    files = [
+        os.path.join(VALID_DIR, f) for f in os.listdir(VALID_DIR) if f.endswith(".json")
+    ]
+    if not files:
+        return JSONResponse(
+            status_code=500, content={"error": "No test captcha files found"}
+        )
+    filepath = random.choice(files)
+    with open(filepath) as f:
+        return json.load(f)
 
 
 def register_api_key_routes(app):
@@ -369,29 +445,57 @@ def register_api_key_routes(app):
             }
         )
 
+    # --- Task 3: Mock config endpoints ---
+    @app.post("/mock-config")
+    async def set_mock_config(body: MockConfigBody):
+        with mock_config_lock:
+            mock_config.clear()
+            mock_config.update(body.endpoints)
+        return JSONResponse(content={"ok": True, "endpoints": dict(mock_config)})
+
+    @app.get("/mock-config")
+    async def get_mock_config():
+        with mock_config_lock:
+            return JSONResponse(content={"endpoints": dict(mock_config)})
+
+    @app.delete("/mock-config")
+    async def reset_mock_config():
+        with mock_config_lock:
+            mock_config.clear()
+        return JSONResponse(content={"ok": True, "endpoints": {}})
+
+    # --- Mock EOPP endpoints with configurable responses (Task 3) ---
     @app.post("/reservations-api/v1/captcha")
     async def mock_captcha(body: GenerateCaptchaBody):
-        import random
-
-        files = [
-            os.path.join(VALID_DIR, f)
-            for f in os.listdir(VALID_DIR)
-            if f.endswith(".json")
-        ]
-        if not files:
-            return JSONResponse(
-                status_code=500, content={"error": "No test captcha files found"}
+        cfg = _get_mock_response("/reservations-api/v1/captcha")
+        if cfg and cfg.get("mode") == "429":
+            return _mock_429()
+        if cfg and cfg.get("mode") == "400":
+            return _mock_400(
+                cfg.get(
+                    "custom_body",
+                    {"title": "CaptchaGenerationError", "eoppStatus": 40001},
+                )
             )
-
-        filepath = random.choice(files)
-        with open(filepath) as f:
-            data = json.load(f)
-
+        if cfg and cfg.get("mode") == "custom":
+            return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
+        data = _load_random_captcha()
+        if isinstance(data, JSONResponse):
+            return data
         return JSONResponse(content=data)
 
     @app.post("/reservations-api/v1/captcha-validate")
     async def mock_captcha_validate(request: Request):
         body = await request.json()
+        cfg = _get_mock_response("/reservations-api/v1/captcha-validate")
+        if cfg and cfg.get("mode") == "429":
+            return _mock_429()
+        if cfg and cfg.get("mode") == "400":
+            return _mock_400(
+                cfg.get("custom_body", {"title": "InvalidCaptcha", "eoppStatus": 40002})
+            )
+        if cfg and cfg.get("mode") == "custom":
+            return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
             content={
                 "successToken": "mock-success-token-"
@@ -408,6 +512,45 @@ def register_api_key_routes(app):
         isCreateReservation: bool = Query(None),
         reservationId: str = Query(None),
     ):
+        cfg = _get_mock_response("/reservations-api/v1/timeslot/AvailableSlots")
+        if cfg and cfg.get("mode") == "429":
+            return _mock_429()
+        if cfg and cfg.get("mode") == "400":
+            return _mock_400(
+                cfg.get("custom_body", {"title": "SlotsError", "eoppStatus": 40003})
+            )
+        if cfg and cfg.get("mode") == "all_occupied":
+            return JSONResponse(
+                content={
+                    "slots": [
+                        {
+                            "id": "slot-mock-1",
+                            "time": "06:00",
+                            "count": 0,
+                            "slotCaption": "06:00 - 08:00",
+                            "intervalIndex": 1,
+                        },
+                        {
+                            "id": "slot-mock-2",
+                            "time": "08:00",
+                            "count": 0,
+                            "slotCaption": "08:00 - 10:00",
+                            "intervalIndex": 2,
+                        },
+                        {
+                            "id": "slot-mock-3",
+                            "time": "10:00",
+                            "count": 0,
+                            "slotCaption": "10:00 - 12:00",
+                            "intervalIndex": 3,
+                        },
+                    ]
+                }
+            )
+        if cfg and cfg.get("mode") == "custom":
+            return JSONResponse(
+                status_code=200, content=cfg.get("custom_body", {"slots": []})
+            )
         return JSONResponse(
             content={
                 "slots": [
@@ -439,6 +582,21 @@ def register_api_key_routes(app):
     @app.post("/reservations-api/v1/Reschedule")
     async def mock_reschedule(request: Request):
         body = await request.json()
+        cfg = _get_mock_response("/reservations-api/v1/Reschedule")
+        if cfg and cfg.get("mode") == "429":
+            return _mock_429()
+        if cfg and cfg.get("mode") == "400":
+            return _mock_400(
+                cfg.get(
+                    "custom_body", {"title": "RescheduleError", "eoppStatus": 40004}
+                )
+            )
+        if cfg and cfg.get("mode") == "all_slots_occupied":
+            return _mock_400(
+                {"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001}
+            )
+        if cfg and cfg.get("mode") == "custom":
+            return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
             content={
                 "title": "RescheduleSuccess",
@@ -450,6 +608,21 @@ def register_api_key_routes(app):
     @app.post("/reservations-api/v1/SubmitDraft")
     async def mock_submit_draft(request: Request):
         body = await request.json()
+        cfg = _get_mock_response("/reservations-api/v1/SubmitDraft")
+        if cfg and cfg.get("mode") == "429":
+            return _mock_429()
+        if cfg and cfg.get("mode") == "400":
+            return _mock_400(
+                cfg.get(
+                    "custom_body", {"title": "SubmitDraftError", "eoppStatus": 40005}
+                )
+            )
+        if cfg and cfg.get("mode") == "all_slots_occupied":
+            return _mock_400(
+                {"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001}
+            )
+        if cfg and cfg.get("mode") == "custom":
+            return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
             content={
                 "title": "SubmitReservationSuccess",

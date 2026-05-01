@@ -31,3 +31,12 @@ dist/
 build/
 
 *.db
+
+# SSL certs (auto-generated)
+certs/
+
+# Runtime data
+data/
+
+# opencode plans
+.opencode/

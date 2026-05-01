@@ -17,12 +17,11 @@ from src.constants import (
     PORT,
     VALID_DIR,
     NO_VALID_DIR,
-    HTML_PATH,
     ADMIN_TOKEN,
 )
 
 pending = {}
-sse_queues: list[asyncio.Queue] = []
+sse_queues: dict[int | None, list[asyncio.Queue]] = {}
 lock = threading.Lock()
 result_counter = 0
 counter_lock = threading.Lock()
@@ -97,17 +96,25 @@ def get_top3_from_solver(data):
         return []
 
 
-def push_sse(msg):
+def push_sse(msg, api_key_id=None):
     data = f"data: {json.dumps(msg)}\n\n"
     dead_queues = []
     with lock:
-        for q in sse_queues:
+        if api_key_id is not None:
+            queues = sse_queues.get(api_key_id, [])
+        else:
+            queues = []
+            for v in sse_queues.values():
+                queues.extend(v)
+        for q in queues:
             try:
                 q.put_nowait(data)
             except Exception:
                 dead_queues.append(q)
         for q in dead_queues:
-            sse_queues.remove(q)
+            for v in sse_queues.values():
+                if q in v:
+                    v.remove(q)
 
 
 def next_result_id():

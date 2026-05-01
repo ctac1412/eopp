@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import type { InjectorConfig, PipelineStage } from '@/types';
+import type { InjectorConfig, PipelineStage, QueueItemState } from '@/types';
 
 export type InjectorStatus = 'idle' | 'running' | 'scheduling' | 'done' | 'error';
+
+type CollapsibleSection = 'slotRetry' | 'retryGetAvailableSlots' | 'retryGenerateCaptcha' | 'retryValidateCaptcha' | 'retrySubmitReschedule' | 'retrySubmitCreate' | 'retryMode' | 'mockResponses';
 
 interface InjectorState {
   config: InjectorConfig;
@@ -12,11 +14,14 @@ interface InjectorState {
   scheduledConfig: InjectorConfig | null;
   logs: Array<{ ts: string; msg: string }>;
   currentStage: PipelineStage | null;
-  collapsedSections: { slotRetry: boolean; errorRetry: boolean };
+  collapsedSections: Record<CollapsibleSection, boolean>;
   usageLogId: number | null;
+  queueItems: QueueItemState[] | null;
+  queueIndex: number | null;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) => void;
+  updateRetryEndpoint: <E extends keyof InjectorConfig['retryPerEndpoint']>(endpoint: E, field: keyof InjectorConfig['retryPerEndpoint'][E], value: InjectorConfig['retryPerEndpoint'][E][typeof field]) => void;
   setStatus: (status: InjectorStatus) => void;
   setError: (error: string | null) => void;
   setResult: (result: unknown) => void;
@@ -25,10 +30,24 @@ interface InjectorState {
   addLog: (msg: string) => void;
   clearLogs: () => void;
   setStage: (stage: PipelineStage | null) => void;
-  toggleSection: (section: 'slotRetry' | 'errorRetry') => void;
+  toggleSection: (section: CollapsibleSection) => void;
   setUsageLogId: (id: number | null) => void;
+  setQueueItems: (items: QueueItemState[] | null) => void;
+  setQueueIndex: (idx: number | null) => void;
+  updateQueueItemStatus: (idx: number, status: QueueItemState['status'], error?: string) => void;
   reset: () => void;
 }
+
+const defaultCollapsed: Record<CollapsibleSection, boolean> = {
+  slotRetry: true,
+  retryGetAvailableSlots: true,
+  retryGenerateCaptcha: true,
+  retryValidateCaptcha: true,
+  retrySubmitReschedule: true,
+  retrySubmitCreate: true,
+  retryMode: true,
+  mockResponses: true,
+};
 
 export const useInjectorStore = create<InjectorState>((set, get) => ({
   config: {} as InjectorConfig,
@@ -39,18 +58,32 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   scheduledConfig: null,
   logs: [],
   currentStage: null,
-  collapsedSections: { slotRetry: true, errorRetry: true },
+  collapsedSections: defaultCollapsed,
   usageLogId: null,
+  queueItems: null,
+  queueIndex: null,
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) => set((state) => ({ config: { ...state.config, [key]: value } })),
+  updateRetryEndpoint: (endpoint, field, value) => set((state) => ({
+    config: {
+      ...state.config,
+      retryPerEndpoint: {
+        ...state.config.retryPerEndpoint,
+        [endpoint]: {
+          ...state.config.retryPerEndpoint[endpoint],
+          [field]: value,
+        },
+      },
+    },
+  })),
   setStatus: (status) => set({ status }),
   setError: (error) => set({ error }),
   setResult: (result) => set({ result }),
   startSchedule: (time, config) => set({ status: 'scheduling', scheduleTime: time, scheduledConfig: config }),
   cancelSchedule: () => set({ status: 'idle', scheduleTime: null, scheduledConfig: null }),
   addLog: (msg) => set((state) => ({
-    logs: [...state.logs, { ts: new Date().toISOString().slice(11, 19), msg }],
+    logs: [...state.logs, { ts: new Date().toISOString().slice(11, 21), msg }],
   })),
   clearLogs: () => set({ logs: [] }),
   setStage: (stage) => set({ currentStage: stage }),
@@ -58,5 +91,12 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
     collapsedSections: { ...state.collapsedSections, [section]: !state.collapsedSections[section] },
   })),
   setUsageLogId: (id) => set({ usageLogId: id }),
-  reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null, usageLogId: null }),
+  setQueueItems: (items) => set({ queueItems: items }),
+  setQueueIndex: (idx) => set({ queueIndex: idx }),
+  updateQueueItemStatus: (idx, status, error) => set((state) => {
+    if (!state.queueItems) return { queueIndex: null };
+    const updated = state.queueItems.map((item, i) => i === idx ? { ...item, status, error } : item);
+    return { queueItems: updated, queueIndex: idx + 1 < updated.length ? idx + 1 : null };
+  }),
+  reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null, usageLogId: null, queueItems: null, queueIndex: null }),
 }));

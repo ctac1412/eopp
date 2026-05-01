@@ -29,7 +29,6 @@
 │  POST /solve-captcha  ← принимает капчу, блокирует до ответа │
 │  POST /solve          ← ручной ответ от UI                   │
 │  GET  /stream         ← SSE, пуш новых капч                  │
-│  GET  /injector-script ← отдаёт injector.js для фронтенда    │
 │  /*                     ← React SPA (frontend/dist/)         │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -54,7 +53,6 @@
 | `POST` | `/solve` | Отправляет ручной ответ: `{ captcha_id, variantIndex }` |
 | `POST` | `/broadcast` | Ручной пуш SSE-события |
 | `POST` | `/trigger-test` | Запуск тестовых капч из `tests/test_cases/valid/` |
-| `GET` | `/injector-script` | JSON с текстом `injector/injector.js` |
 | `GET` | `/*` | React SPA (файлы из `frontend/dist/`) |
 
 ### Режимы запуска сервера
@@ -137,10 +135,8 @@ Vite + React 18 + React Router + Zustand.
 | `src/app.py` | FastAPI-приложение: роуты, SSE, обработка капч, serve фронтенда |
 | `src/utils.py` | Утилиты: хеширование капч, сборка изображений, SSE push, загрузка тестов |
 | `captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
-| `injector/injector.js` | Оригинальный standalone-скрипт (источник логики pipeline, НЕ модифицируется) |
 | `yandex-browser-plugin/manifest.json` | Manifest V3, permissions, content script match |
-| `yandex-browser-plugin/content.js` | Content script: 5-стадийный pipeline + модалка + port messaging |
-| `yandex-browser-plugin/background.js` | Background: прокси к `china.alabai.netcraze.pro` через port |
+| `yandex-browser-plugin/src/` | TypeScript-источники расширения (Vite-билд → `dist/`) |
 | `yandex-browser-plugin/content.css` | Стили кнопки и модалки расширения |
 | `frontend/src/App.jsx` | Главная страница: SSE + CaptchaGrid + StatusBar + LogViewer |
 | `frontend/src/InjectorPage.jsx` | Страница `/injector`: конфиг, генерация скрипта, экспорт JSON |
