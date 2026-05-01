@@ -95,7 +95,7 @@ Manifest V3 расширение для Яндекс.Браузера (совм�
 2. `generateCaptcha()` — POST `/reservations-api/v1/captcha`
 3. `solveCaptcha()` → background → POST `china.alabai.netcraze.pro/solve-captcha`
 4. `validateCaptcha()` — POST `/reservations-api/v1/captcha-validate`
-5. `submitReschedule()` / `submitCreate()` — POST `/reservations-api/v1/Reschedule` или `/reservations-api/v1/CreateReservation`
+5. `submitReschedule()` / `submitCreate()` — POST `/reservations-api/v1/Reschedule` или `/reservations-api/v1/SubmitDraft`
 
 **UI:** Кнопка "Инжектор" (фиксированная, bottom-right) → модалка с JSON-конфигуратором (textarea) → кнопка "Запустить".
 

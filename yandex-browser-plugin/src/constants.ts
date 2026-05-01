@@ -13,7 +13,7 @@ export const CAPTCHA_SERVER = 'https://china.alabai.netcraze.pro';
 export const EOPP_API_BASE = 'https://eopp.epd-portal.ru/reservations-api/v1';
 
 export function shouldInject(pageUrl: string): PageInfo | null {
-  const match = pageUrl.match(/\/reservations\/reservation\/([a-f0-9-]{36})\/edit/);
+  const match = pageUrl.match(/\/reservations\/reservation\/([a-f0-9-]{36})\/(edit|reschedule)/);
   if (match) {
     return { reservationId: match[1] };
   }
