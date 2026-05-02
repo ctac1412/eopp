@@ -9,7 +9,9 @@ export async function getAvailableSlots(config: InjectorConfig): Promise<SlotsRe
   useInjectorStore.getState().setStage('slots');
 
   const isCreateReservation = config.mode === 'create';
-  let url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${config.facilityId}&vehicleId=${config.vehicleId}&date=${config.slotDate}&transportType=${config.transportType}&isCreateReservation=${isCreateReservation}`;
+  // const transportType = config.transportType;
+  const transportType = 1;
+  let url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${config.facilityId}&vehicleId=${config.vehicleId}&date=${config.slotDate}&transportType=${transportType}&isCreateReservation=${isCreateReservation}`;
   if (config.mode !== 'create') {
     url += `&reservationId=${config.reservationId}`;
   }
@@ -107,7 +109,8 @@ export async function submitReschedule(
     reservationRequestId: config.reservationId,
     timeslot: `${config.slotDate.split('-').slice(1).reverse().join('.')}, ${slot.slotCaption}`,
     date: config.slotDate,
-    transportType: config.transportType,
+    // transportType: config.transportType,
+    transportType: 1,
     intervalIndex: slot.intervalIndex,
     facilityId: config.facilityId,
     captchaToken: captchaValidation.successToken,
@@ -144,7 +147,8 @@ export async function submitCreate(
     isTso: false,
     modeType: 1,
     reservationId: config.reservationId,
-    transportType: config.transportType,
+    transportType: 1,
+    // transportType: config.transportType,
   };
 
   const response = await httpRequest('POST', '/reservations-api/v1/SubmitDraft', payload, {
