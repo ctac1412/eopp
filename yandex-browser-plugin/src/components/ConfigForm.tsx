@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import type { InjectorConfig, ApiKeyStatusResponse } from '@/types';
+import type { InjectorConfig } from '@/types';
 import { useInjectorStore } from '@/store';
-import { getApiKeyStatus, getServerUrl } from '@/api/background';
+import { getServerUrl } from '@/api/background';
 import { FACILITIES, getDefaultSlotDate } from '@/constants';
 
 const MOCK_ENDPOINTS: { path: string; label: string; extraModes: MockMode[] }[] = [
+  { path: '/reservations-api/v1/timeslot/AvailableSlots', label: 'GET /AvailableSlots', extraModes: ['all_occupied'] },
   { path: '/reservations-api/v1/captcha', label: 'POST /captcha', extraModes: [] },
   { path: '/reservations-api/v1/captcha-validate', label: 'POST /captcha-validate', extraModes: [] },
-  { path: '/reservations-api/v1/timeslot/AvailableSlots', label: 'GET /AvailableSlots', extraModes: ['all_occupied'] },
   { path: '/reservations-api/v1/Reschedule', label: 'POST /Reschedule', extraModes: ['all_slots_occupied'] },
   { path: '/reservations-api/v1/SubmitDraft', label: 'POST /SubmitDraft', extraModes: ['all_slots_occupied'] },
 ];
@@ -24,6 +24,10 @@ type MockMode = 'success' | '429' | '400' | 'all_occupied' | 'all_slots_occupied
 
 interface MockEndpointConfig {
   mode: MockMode;
+}
+
+interface MockEndpointConfigNew {
+  responses: MockMode[];
 }
 
 const ENDPOINT_LABELS: Record<keyof InjectorConfig['retryPerEndpoint'], string> = {
@@ -142,9 +146,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const updateField = useInjectorStore((s) => s.updateField);
   const collapsed = useInjectorStore((s) => s.collapsedSections);
   const toggleSection = useInjectorStore((s) => s.toggleSection);
-  const [keyStatus, setKeyStatus] = useState<ApiKeyStatusResponse | null>(null);
-  const [keyStatusLoading, setKeyStatusLoading] = useState(false);
-  const [mockConfig, setMockConfig] = useState<Record<string, MockMode>>({});
+  const [mockConfig, setMockConfig] = useState<Record<string, MockMode[]>>({});
   const [mockLoading, setMockLoading] = useState(false);
   const [mockSending, setMockSending] = useState(false);
 
@@ -152,32 +154,7 @@ const ConfigForm = React.memo(function ConfigForm() {
 
   function handleChange<K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) {
     updateField(key, value);
-    if (key === 'apiKey') {
-      localStorage.setItem('injector_api_key', value as string);
-    }
   }
-
-  useEffect(() => {
-    if (!config.apiKey) {
-      console.log('[ConfigForm] apiKey empty, skipping status check');
-      setKeyStatus(null);
-      return;
-    }
-    console.log('[ConfigForm] checking apiKey status:', config.apiKey.slice(0, 8) + '...');
-    setKeyStatusLoading(true);
-    getApiKeyStatus(config.apiKey)
-      .then((status) => {
-        console.log('[ConfigForm] apiKey status response:', status);
-        setKeyStatus(status);
-      })
-      .catch((err) => {
-        console.error('[ConfigForm] apiKey status error:', err);
-        setKeyStatus({ valid: false, remaining: null, label: '' });
-      })
-      .finally(() => {
-        setKeyStatusLoading(false);
-      });
-  }, [config.apiKey]);
 
   useEffect(() => {
     const savedMode = localStorage.getItem('injector_last_mode');
@@ -195,10 +172,15 @@ const ConfigForm = React.memo(function ConfigForm() {
     fetch(`${serverUrl}/mock-config`, { method: 'GET' })
       .then((r) => r.json())
       .then((data) => {
-        const parsed: Record<string, MockMode> = {};
+        const parsed: Record<string, MockMode[]> = {};
         if (data.endpoints) {
           for (const [path, cfg] of Object.entries(data.endpoints)) {
-            parsed[path] = (cfg as MockEndpointConfig).mode || 'success';
+            const cfgObj = cfg as MockEndpointConfigNew;
+            if (cfgObj.responses && cfgObj.responses.length > 0) {
+              parsed[path] = cfgObj.responses;
+            } else {
+              parsed[path] = ['success'];
+            }
           }
         }
         setMockConfig(parsed);
@@ -211,18 +193,39 @@ const ConfigForm = React.memo(function ConfigForm() {
       });
   }, [isLocalhost]);
 
-  const updateMockMode = (endpointPath: string, mode: MockMode) => {
-    setMockConfig((prev) => ({ ...prev, [endpointPath]: mode }));
+  const updateMockMode = (endpointPath: string, attemptIndex: number, mode: MockMode) => {
+    setMockConfig((prev) => {
+      const current = prev[endpointPath] || ['success'];
+      const updated = [...current];
+      updated[attemptIndex] = mode;
+      return { ...prev, [endpointPath]: updated };
+    });
+  };
+
+  const addMockAttempt = (endpointPath: string) => {
+    setMockConfig((prev) => {
+      const current = prev[endpointPath] || ['success'];
+      return { ...prev, [endpointPath]: [...current, 'success'] };
+    });
+  };
+
+  const removeMockAttempt = (endpointPath: string, attemptIndex: number) => {
+    setMockConfig((prev) => {
+      const current = prev[endpointPath] || ['success'];
+      if (current.length <= 1) return prev;
+      const updated = current.filter((_, i) => i !== attemptIndex);
+      return { ...prev, [endpointPath]: updated };
+    });
   };
 
   const sendMockConfig = () => {
     if (!isLocalhost) return;
     setMockSending(true);
     const serverUrl = getServerUrl();
-    const endpoints: Record<string, MockEndpointConfig> = {};
-    for (const [path, mode] of Object.entries(mockConfig)) {
-      if (mode !== 'success') {
-        endpoints[path] = { mode };
+    const endpoints: Record<string, MockEndpointConfigNew> = {};
+    for (const [path, responses] of Object.entries(mockConfig)) {
+      if (responses.length > 0 && !responses.every((m) => m === 'success')) {
+        endpoints[path] = { responses };
       }
     }
     fetch(`${serverUrl}/mock-config`, {
@@ -258,35 +261,15 @@ const ConfigForm = React.memo(function ConfigForm() {
       });
   };
 
-  let statusText = '';
-  let statusColor = '';
-  if (keyStatusLoading) {
-    statusText = 'Проверка...';
-    statusColor = '#999';
-  } else if (!config.apiKey) {
-    statusText = 'Ключ не введён';
-    statusColor = '#e67e22';
-  } else if (keyStatus && keyStatus.valid) {
-    if (keyStatus.remaining !== null) {
-      statusText = `Осталось: ${keyStatus.remaining}`;
-      statusColor = '#27ae60';
-    } else {
-      statusText = 'Без лимита';
-      statusColor = '#2980b9';
-    }
-  } else {
-    statusText = 'Недействителен';
-    statusColor = '#e74c3c';
-  }
-
   return (
     <div className="injector-config-form">
-      <div className="injector-form-section" style={{ gridColumn: '1 / -1' }}>
+      <div className="injector-form-section injector-fullscreen-wide" style={{ gridColumn: '1 / -1' }}>
         <h3 className="injector-section-title">Общие настройки</h3>
         <div className="injector-form-row injector-form-row-3">
           <label className="injector-form-label">
             Режим
             <select
+              id="mode-select"
               className="injector-form-input"
               value={config.mode}
               onChange={(e) => handleChange('mode', e.target.value as InjectorConfig['mode'])}
@@ -298,6 +281,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             Остановиться на этапе
             <select
+              id="runUpTo-select"
               className="injector-form-input"
               value={config.runUpTo}
               onChange={(e) => handleChange('runUpTo', Number(e.target.value))}
@@ -311,6 +295,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           </label>
           <label className="injector-form-label injector-checkbox-label">
             <input
+              id="autoSolve-checkbox"
               type="checkbox"
               checked={config.autoSolve}
               onChange={(e) => handleChange('autoSolve', e.target.checked)}
@@ -318,33 +303,9 @@ const ConfigForm = React.memo(function ConfigForm() {
             Авто-решение капчи
           </label>
         </div>
-        <div className="injector-form-row" style={{ gridColumn: '1 / -1' }}>
-          <label className="injector-form-label" style={{ gridColumn: '1 / -1' }}>
-            <span style={{ display: 'flex', alignItems: 'baseline' }}>API ключ <span style={{ color: '#e74c3c' }}>*</span></span>
-            <input
-              className="injector-form-input injector-form-text"
-              type="text"
-              placeholder="Введите API ключ"
-              value={config.apiKey}
-              onChange={(e) => handleChange('apiKey', e.target.value)}
-            />
-            {statusText && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  fontSize: '11px',
-                  color: statusColor,
-                  marginTop: '4px',
-                }}
-              >
-                {statusText}
-              </span>
-            )}
-          </label>
-        </div>
       </div>
 
-      <div className="injector-form-section" style={{ gridColumn: '1 / -1' }}>
+      <div className="injector-form-section injector-fullscreen-wide" style={{ gridColumn: '1 / -1' }}>
         <h3 className="injector-section-title">Данные запроса</h3>
         <div className="injector-form-row">
           <label className="injector-form-label">
@@ -354,6 +315,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             ID транспортного средства
             <input
+              id="vehicleId-input"
               className="injector-form-input injector-form-text"
               type="text"
               value={config.vehicleId}
@@ -365,6 +327,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             Вид перевозки
             <select
+              id="transportType-select"
               className="injector-form-input"
               value={config.transportType}
               onChange={(e) => handleChange('transportType', Number(e.target.value) as 1 | 2)}
@@ -376,6 +339,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             Пропускной пункт (АПП)
             <select
+              id="facilityId-select"
               className="injector-form-input"
               value={config.facilityId}
               onChange={(e) => handleChange('facilityId', e.target.value)}
@@ -390,6 +354,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             Дата пропуска
             <input
+              id="slotDate-input"
               className="injector-form-input"
               type="date"
               value={config.slotDate}
@@ -399,6 +364,7 @@ const ConfigForm = React.memo(function ConfigForm() {
           <label className="injector-form-label">
             Предпочтительное время
             <select
+              id="preferredTime-select"
               className="injector-form-input"
               value={config.preferredTime || ''}
               onChange={(e) => handleChange('preferredTime', e.target.value || null)}
@@ -424,34 +390,37 @@ const ConfigForm = React.memo(function ConfigForm() {
         </h3>
         {!collapsed.slotRetry && (
           <>
-            <label className="injector-form-label injector-checkbox-label">
+          <label className="injector-form-label injector-checkbox-label">
+            <input
+              id="retry-slots-enabled"
+              type="checkbox"
+              checked={config.retryOnAllSlotsOccupied}
+              onChange={(e) => handleChange('retryOnAllSlotsOccupied', e.target.checked)}
+            />
+            Пробовать другой слот при занятости
+          </label>
+          <div className="injector-form-row">
+            <label className="injector-form-label">
+              Макс. попыток
               <input
-                type="checkbox"
-                checked={config.retryOnAllSlotsOccupied}
-                onChange={(e) => handleChange('retryOnAllSlotsOccupied', e.target.checked)}
+                id="retry-slots-maxRetries"
+                className="injector-form-input injector-form-number"
+                type="number"
+                value={config.maxSlotRetries}
+                onChange={(e) => handleChange('maxSlotRetries', Number(e.target.value))}
               />
-              Пробовать другой слот при занятости
             </label>
-            <div className="injector-form-row">
-              <label className="injector-form-label">
-                Макс. попыток
-                <input
-                  className="injector-form-input injector-form-number"
-                  type="number"
-                  value={config.maxSlotRetries}
-                  onChange={(e) => handleChange('maxSlotRetries', Number(e.target.value))}
-                />
-              </label>
-              <label className="injector-form-label">
-                Задержка (мс)
-                <input
-                  className="injector-form-input injector-form-number"
-                  type="number"
-                  value={config.slotRetryDelayMs}
-                  onChange={(e) => handleChange('slotRetryDelayMs', Number(e.target.value))}
-                />
-              </label>
-            </div>
+            <label className="injector-form-label">
+              Задержка (мс)
+              <input
+                id="retry-slots-delayMs"
+                className="injector-form-input injector-form-number"
+                type="number"
+                value={config.slotRetryDelayMs}
+                onChange={(e) => handleChange('slotRetryDelayMs', Number(e.target.value))}
+              />
+            </label>
+          </div>
           </>
         )}
       </div>
@@ -474,6 +443,7 @@ const ConfigForm = React.memo(function ConfigForm() {
             <div className="injector-form-row" style={{ alignItems: 'center' }}>
               <label className="injector-form-label" style={{ marginBottom: 0 }}>
                 <input
+                  id="retryMode-sequential"
                   type="radio"
                   name="retryMode"
                   checked={config.retryMode === 'sequential'}
@@ -483,6 +453,7 @@ const ConfigForm = React.memo(function ConfigForm() {
               </label>
               <label className="injector-form-label" style={{ marginBottom: 0 }}>
                 <input
+                  id="retryMode-queue"
                   type="radio"
                   name="retryMode"
                   checked={config.retryMode === 'queue'}
@@ -495,17 +466,18 @@ const ConfigForm = React.memo(function ConfigForm() {
               <div className="injector-form-row">
                 <label className="injector-form-label">
                   Размер очереди
-                  <input
-                    className="injector-form-input injector-form-number"
-                    type="number"
-                    min={2}
-                    max={3}
-                    value={config.queueSize}
-                    onChange={(e) => {
-                      const v = Math.min(3, Math.max(2, Number(e.target.value)));
-                      handleChange('queueSize', v);
-                    }}
-                  />
+                    <input
+                      id="retry-queueSize"
+                      className="injector-form-input injector-form-number"
+                      type="number"
+                      min={2}
+                      max={3}
+                      value={config.queueSize}
+                      onChange={(e) => {
+                        const v = Math.min(3, Math.max(2, Number(e.target.value)));
+                        handleChange('queueSize', v);
+                      }}
+                    />
                 </label>
               </div>
             )}
@@ -515,7 +487,7 @@ const ConfigForm = React.memo(function ConfigForm() {
 
       {/* Mock responses section (localhost only) */}
       {isLocalhost && (
-        <div className="injector-form-section" style={{ gridColumn: '1 / -1' }}>
+        <div className="injector-form-section injector-fullscreen-wide" style={{ gridColumn: '1 / -1' }}>
           <h3
             className="injector-section-title injector-collapsible"
             onClick={() => toggleSection('mockResponses')}
@@ -530,27 +502,55 @@ const ConfigForm = React.memo(function ConfigForm() {
                 <div style={{ padding: '8px', color: '#999' }}>Загрузка...</div>
               ) : (
                 <>
-                  {MOCK_ENDPOINTS.map((ep) => (
-                    <div key={ep.path} style={{ marginBottom: '8px' }}>
-                      <div style={{ fontSize: '11px', color: '#888', marginBottom: '2px' }}>{ep.label}</div>
-                      <select
-                        className="injector-form-input"
-                        value={mockConfig[ep.path] || 'success'}
-                        onChange={(e) => updateMockMode(ep.path, e.target.value as MockMode)}
-                        style={{ width: '100%' }}
-                      >
-                        <option value="success">{MODE_LABELS.success}</option>
-                        <option value="429">{MODE_LABELS['429']}</option>
-                        <option value="400">{MODE_LABELS['400']}</option>
-                        {ep.extraModes.includes('all_occupied') && (
-                          <option value="all_occupied">{MODE_LABELS.all_occupied}</option>
-                        )}
-                        {ep.extraModes.includes('all_slots_occupied') && (
-                          <option value="all_slots_occupied">{MODE_LABELS.all_slots_occupied}</option>
-                        )}
-                      </select>
-                    </div>
-                  ))}
+                  {MOCK_ENDPOINTS.map((ep) => {
+                    const responses = mockConfig[ep.path] || ['success'];
+                    return (
+                      <div key={ep.path} style={{ marginBottom: '10px' }}>
+                        <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', display: 'flex', justifyContent: 'space', alignItems: 'center' }}>
+                          <span>{ep.label}</span>
+                          <button
+                            onClick={() => addMockAttempt(ep.path)}
+                            style={{ fontSize: '10px', background: 'none', border: '1px solid #555', color: '#aaa', cursor: 'pointer', padding: '1px 6px', borderRadius: '3px' }}
+                          >
+                            + попытка
+                          </button>
+                        </div>
+                        <div className="injector-mock-attempts">
+                          {responses.map((mode, idx) => (
+                            <div key={idx} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                              <span style={{ fontSize: '10px', color: '#666', minWidth: '50px' }}>#{idx + 1}</span>
+                              <select
+                                id={`mock-${ep.path.replace(/\//g, '-').replace(/^\-/, '')}-attempt-${idx}`}
+                                className="injector-form-input"
+                                value={mode}
+                                onChange={(e) => updateMockMode(ep.path, idx, e.target.value as MockMode)}
+                                style={{ minWidth: '140px' }}
+                              >
+                                <option value="success">{MODE_LABELS.success}</option>
+                                <option value="429">{MODE_LABELS['429']}</option>
+                                <option value="400">{MODE_LABELS['400']}</option>
+                                {ep.extraModes.includes('all_occupied') && (
+                                  <option value="all_occupied">{MODE_LABELS.all_occupied}</option>
+                                )}
+                                {ep.extraModes.includes('all_slots_occupied') && (
+                                  <option value="all_slots_occupied">{MODE_LABELS.all_slots_occupied}</option>
+                                )}
+                              </select>
+                              {responses.length > 1 && (
+                                <button
+                                  onClick={() => removeMockAttempt(ep.path, idx)}
+                                  style={{ fontSize: '14px', background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', padding: '0 4px' }}
+                                  title="Удалить попытку"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
                       className="injector-btn"

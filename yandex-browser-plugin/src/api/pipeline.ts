@@ -129,6 +129,7 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
 
   const slotData = selectBestSlot(slotsResponse.slots);
   log('Выбранный слот', slotData);
+  log('Этап 1 (слоты) завершён успешно');
 
   if (config.runUpTo < 2) {
     log('Остановка по конфигу runUpTo');
@@ -139,6 +140,7 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
     () => generateCaptcha(config, slotData),
     'generateCaptcha'
   );
+  log('Этап 2 (капча) завершён успешно');
 
   if (config.runUpTo < 3) {
     log('Остановка по конфигу runUpTo');
@@ -147,6 +149,7 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
 
   const solvedAnswer = await solveCaptcha(captchaResponse, config.autoSolve, config.apiKey, config.reservationId);
   log('Ответ от нашего сервера', solvedAnswer);
+  log('Этап 3 (решение капчи) завершён успешно');
 
   if (config.runUpTo < 4) {
     log('Остановка по конфигу runUpTo');
@@ -157,6 +160,7 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
     () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
     'validateCaptcha'
   );
+  log('Этап 4 (валидация) завершён успешно');
 
   if (config.runUpTo < 5) {
     log('Остановка по конфигу runUpTo');
@@ -208,6 +212,7 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
   useInjectorStore.getState().setQueueIndex(0);
 
   const queue: QueueEntry[] = [];
+  log('Этап 1 (слоты) завершён успешно');
 
   for (let i = 0; i < selectedSlots.length; i++) {
     const slot = selectedSlots[i];
@@ -225,6 +230,7 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
         () => generateCaptcha(config, slot),
         'generateCaptcha'
       );
+      log(`Этап 2 (капча) завершён успешно для слота ${slot.time}`);
     } catch (err) {
       log(`Ошибка генерации капчи ${i + 1}/${selectedSlots.length}: ${serializeError(err)}`);
       useInjectorStore.getState().updateQueueItemStatus(i, 'failed', serializeError(err));
@@ -240,6 +246,7 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
     try {
       solvedAnswer = await solveCaptcha(captchaResponse, config.autoSolve, config.apiKey, config.reservationId);
       log(`Капча ${i + 1}/${selectedSlots.length} решена`);
+      log(`Этап 3 (решение капчи) завершён успешно для слота ${slot.time}`);
     } catch (err) {
       log(`Ошибка решения капчи ${i + 1}/${selectedSlots.length}: ${serializeError(err)}`);
       useInjectorStore.getState().updateQueueItemStatus(i, 'failed', serializeError(err));
@@ -273,6 +280,7 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
         'validateCaptcha'
       );
       log(`Капча ${i + 1}/${queue.length} валидирована`);
+      log(`Этап 4 (валидация) завершён успешно для слота ${entry.slot.time}`);
     } catch (err) {
       const errMsg = serializeError(err);
       log(`Капча ${i + 1}/${queue.length} провалена (валидация): ${errMsg}`);
@@ -310,6 +318,7 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
         }
       }
 
+      log(`Этап 5 (отправка) завершён успешно для слота ${entry.slot.time}`);
       log(`Капча ${i + 1}/${queue.length} успешно отправлена`);
       return submitResponse;
     } catch (err) {
@@ -338,6 +347,7 @@ export async function main(config: InjectorConfig): Promise<void> {
       () => getAvailableSlots(config),
       config
     );
+    log('Этап 1 (слоты) завершён успешно');
 
     if (config.retryMode === 'queue') {
       let slotRetryCount = 0;
@@ -347,6 +357,8 @@ export async function main(config: InjectorConfig): Promise<void> {
           const result = await runQueueMode(slotsResponse);
           if (result !== null) {
             log('=== Скрипт завершён успешно (queue mode) ===', result);
+          } else {
+            log('=== Скрипт завершён (queue mode, runUpTo остановка) ===');
           }
           return;
         } catch (err) {
@@ -365,7 +377,7 @@ export async function main(config: InjectorConfig): Promise<void> {
         }
       }
 
-      log('=== Превышено количество попыток выбора слотов для очереди ===');
+      log('=== Скрипт завершён (queue mode, превышено количество попыток выбора слотов) ===');
     } else {
       let slotRetryCount = 0;
 
@@ -373,7 +385,9 @@ export async function main(config: InjectorConfig): Promise<void> {
         try {
           const result = await runFromStage2(slotsResponse);
           if (result !== null) {
-            log('=== Скрипт завершён успешно ===', result);
+            log('=== Скрипт завершён успешно (sequential mode) ===', result);
+          } else {
+            log('=== Скрипт завершён (sequential mode, runUpTo остановка на этапе ' + (config.runUpTo) + ') ===');
           }
           return;
         } catch (err) {
@@ -392,7 +406,7 @@ export async function main(config: InjectorConfig): Promise<void> {
         }
       }
 
-      log('=== Превышено количество попыток выбора слота ===');
+      log('=== Скрипт завершён (sequential mode, превышено количество попыток выбора слота) ===');
     }
   } catch (err) {
     const usageLogId = useInjectorStore.getState().usageLogId;

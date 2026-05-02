@@ -1,7 +1,4 @@
-function log(msg: string, data?: unknown): void {
-  const ts = new Date().toISOString().slice(11, 19);
-  console.log(`[injector ${ts}] ${msg}`, data !== undefined ? data : '');
-}
+import { log } from '@/logger';
 
 export async function httpRequest(method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<unknown> {
   return fetch(url, {

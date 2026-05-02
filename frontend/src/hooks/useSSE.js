@@ -14,17 +14,22 @@ function useSSE() {
   useEffect(() => {
     let es
     let closed = false
+    let retryCount = 0
 
     function connect() {
       if (closed) return
       let url = '/stream'
       if (apiKey) {
         url += `?api_key=${encodeURIComponent(apiKey)}`
+      } else {
+        addLog('SSE: API ключ не установлен, подключение невозможно', 'error')
+        return
       }
       es = new EventSource(url)
 
       es.onmessage = (e) => {
         if (closed) return
+        retryCount = 0
         const msg = JSON.parse(e.data)
 
         if (msg.type === 'new_captcha') {
@@ -59,10 +64,16 @@ function useSSE() {
       }
 
       es.onerror = () => {
+        const status = es.readyState === EventSource.CONNECTING ? 0 : es.url
         es.close()
-        if (!closed) {
-          setTimeout(connect, 2000)
+        if (closed) return
+        retryCount++
+        if (retryCount > 10) {
+          addLog('SSE: превышено количество попыток переподключения', 'error')
+          return
         }
+        const delay = Math.min(2000 * Math.pow(1.5, retryCount - 1), 30000)
+        setTimeout(connect, delay)
       }
     }
 

@@ -1,28 +1,31 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useInjectorStore } from '@/store';
 import { parseTime, mskToUtcSeconds } from '@/hooks/useClock';
 import { useInjector } from '@/hooks/useInjector';
+import { useScheduler } from '@/hooks/useScheduler';
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
   const startSchedule = useInjectorStore((s) => s.startSchedule);
   const cancelSchedule = useInjectorStore((s) => s.cancelSchedule);
   const config = useInjectorStore((s) => s.config);
+  const authKey = useInjectorStore((s) => s.authKey);
   const { run } = useInjector();
+  const { countdown } = useScheduler();
 
-  const [timeInput, setTimeInput] = useState('12:00:01');
+  const [timeInput, setTimeInput] = useState('12:00:01.0');
   const [statusMessage, setStatusMessage] = useState('');
   const [statusClass, setStatusClass] = useState('');
 
   const handleSchedule = useCallback(() => {
-    if (!config.apiKey) {
+    if (!authKey) {
       setStatusMessage('Введите API ключ');
       setStatusClass('injector-modal-status-error');
       return;
     }
     const mskSeconds = parseTime(timeInput);
     if (mskSeconds === null) {
-      setStatusMessage('Неверный формат. Используйте HH:MM:SS');
+      setStatusMessage('Неверный формат. Используйте HH:MM:SS.d');
       setStatusClass('injector-modal-status-error');
       return;
     }
@@ -36,11 +39,11 @@ const Scheduler = React.memo(function Scheduler() {
     cancelSchedule();
     setStatusMessage('');
     setStatusClass('');
-    setTimeInput('12:00:01');
+    setTimeInput('12:00:01.0');
   }, [cancelSchedule]);
 
   const handleRun = useCallback(() => {
-    if (!config.apiKey) {
+    if (!authKey) {
       setStatusMessage('Введите API ключ');
       setStatusClass('injector-modal-status-error');
       return;
@@ -49,7 +52,7 @@ const Scheduler = React.memo(function Scheduler() {
     setStatusMessage('');
     setStatusClass('');
     run();
-  }, [cancelSchedule, run, config.apiKey]);
+  }, [cancelSchedule, run, authKey]);
 
   const handleNowPlus10 = useCallback(() => {
     const now = new Date();
@@ -58,24 +61,37 @@ const Scheduler = React.memo(function Scheduler() {
     const h = Math.floor(mskSec / 3600);
     const m = Math.floor((mskSec % 3600) / 60);
     const s = mskSec % 60;
-    setTimeInput(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    const d = Math.floor(now.getUTCMilliseconds() / 100);
+    setTimeInput(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${d}`);
   }, []);
+
+  const countdownDisplay = useMemo(() => {
+    if (status !== 'scheduling' || !countdown) return '';
+    return `Запуск через ${countdown}`;
+  }, [status, countdown]);
 
   return (
     <div className="injector-schedule-sticky">
+      {countdownDisplay && (
+        <div className="injector-modal-status injector-modal-status-waiting">{countdownDisplay}</div>
+      )}
+      {statusMessage && (
+        <div className={`injector-modal-status ${statusClass}`}>{statusMessage}</div>
+      )}
       <div className="injector-time-tags">
-        <span className="injector-time-tag" onClick={() => setTimeInput('10:00:01')}>10:00</span>
-        <span className="injector-time-tag" onClick={() => setTimeInput('12:00:01')}>12:00</span>
+        <span className="injector-time-tag" onClick={() => setTimeInput('10:00:00.5')}>10:00:00.5</span>
+        <span className="injector-time-tag" onClick={() => setTimeInput('12:00:00.5')}>12:00:00.5</span>
         <span className="injector-time-tag injector-time-tag-now" onClick={handleNowPlus10}>Сейчас+10с</span>
       </div>
       <div className="injector-schedule-row">
         <input
+          id="schedule-time-input"
           type="text"
           className="injector-schedule-input"
           value={timeInput}
           onChange={(e) => setTimeInput(e.target.value)}
-          maxLength={8}
-          placeholder="ЧЧ:ММ:СС МСК"
+          maxLength={12}
+          placeholder="ЧЧ:ММ:СС.d МСК"
         />
         <button className="injector-modal-btn injector-modal-btn-cancel" onClick={handleCancel}>Отменить</button>
         <button className="injector-modal-btn injector-modal-btn-schedule" onClick={handleSchedule}>Запланировать</button>

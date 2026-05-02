@@ -8,10 +8,9 @@ export function useClock() {
   useEffect(() => {
     function tick() {
       setTime(getMSKTime());
-      const msLeft = 1000 - new Date().getUTCMilliseconds();
-      timerRef.current = window.setTimeout(tick, msLeft);
+      timerRef.current = window.setTimeout(tick, 100);
     }
-    timerRef.current = window.setTimeout(tick, 1000 - new Date().getUTCMilliseconds());
+    timerRef.current = window.setTimeout(tick, 100);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -27,15 +26,19 @@ function getMSKTime(): string {
   const h = Math.floor(mskSec / 3600);
   const m = Math.floor((mskSec % 3600) / 60);
   const s = mskSec % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  const d = Math.floor(now.getUTCMilliseconds() / 100);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${d}`;
 }
 
 export function parseTime(str: string): number | null {
   const parts = str.trim().split(':');
   if (parts.length !== 3) return null;
-  const [h, m, s] = parts.map(Number);
-  if (isNaN(h) || isNaN(m) || isNaN(s) || h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) return null;
-  return h * 3600 + m * 60 + s;
+  const hVal = Number(parts[0].trim());
+  const mVal = Number(parts[1].trim());
+  const secParts = parts[2].trim().split('.');
+  const sVal = secParts.length === 2 ? parseFloat(secParts[0] + '.' + secParts[1]) : Number(secParts[0]);
+  if (isNaN(hVal) || isNaN(mVal) || isNaN(sVal) || hVal < 0 || hVal > 23 || mVal < 0 || mVal > 59 || sVal < 0 || sVal > 59.9) return null;
+  return hVal * 3600 + mVal * 60 + sVal;
 }
 
 export function mskToUtcSeconds(mskSeconds: number): number {

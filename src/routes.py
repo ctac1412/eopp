@@ -42,6 +42,11 @@ from src.utils import (
     push_sse,
     next_result_id,
     captcha_hash,
+    register_sse_connection,
+    unregister_sse_connection,
+    get_connected_streams,
+    get_test_stats,
+    run_benchmark_cached,
 )
 from captcha_solver import solve_captcha
 from src.api_keys import (
@@ -60,9 +65,10 @@ from src.api_keys import (
 )
 
 
-# --- Mock config store (Task 3) ---
+# --- Mock config store (Task 3/4) ---
 mock_config: dict[str, dict] = {}
 mock_config_lock = threading.Lock()
+mock_attempt_counters: dict[str, int] = {}
 
 
 def admin_auth_middleware_factory(app):
@@ -81,21 +87,16 @@ def admin_auth_middleware_factory(app):
 
 def register_sse_routes(app):
     @app.get("/stream")
-    async def sse_stream(api_key: Optional[str] = Query(None)):
-        q: asyncio.Queue = asyncio.Queue()
+    async def sse_stream(request: Request, api_key: str = Query(...)):
+        key_record = get_key_record(api_key)
+        if not key_record:
+            return JSONResponse(
+                status_code=401, content={"error": "Invalid or missing API key"}
+            )
+        api_key_id = key_record["id"]
+        client_ip = request.client.host if request.client else "unknown"
 
-        if api_key:
-            key_record = get_key_record(api_key)
-            if not key_record:
-                return JSONResponse(
-                    status_code=403, content={"error": "Invalid API key"}
-                )
-            api_key_id = key_record["id"]
-        else:
-            api_key_id = None
-
-        with lock:
-            sse_queues.setdefault(api_key_id, []).append(q)
+        q = register_sse_connection(api_key_id, client_ip)
 
         async def event_stream():
             try:
@@ -108,10 +109,7 @@ def register_sse_routes(app):
             except GeneratorExit:
                 pass
             finally:
-                with lock:
-                    queues_for_key = sse_queues.get(api_key_id, [])
-                    if q in queues_for_key:
-                        queues_for_key.remove(q)
+                unregister_sse_connection(q, api_key_id)
 
         return StreamingResponse(
             event_stream(),
@@ -313,10 +311,27 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         return JSONResponse(content=result)
 
     @app.post("/trigger-test")
-    async def trigger_test():
-        from src.utils import send_test_cases
+    async def trigger_test(request: Request):
+        from src.utils import send_test_cases_with_key
 
-        t = threading.Thread(target=send_test_cases, daemon=True)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        api_key = body.get("api_key")
+
+        if api_key:
+            key_record = get_key_record(api_key)
+            if not key_record:
+                return JSONResponse(
+                    status_code=403, content={"error": "Invalid API key"}
+                )
+
+        t = threading.Thread(
+            target=send_test_cases_with_key,
+            kwargs={"api_key": api_key},
+            daemon=True,
+        )
         t.start()
         return JSONResponse(content={"ok": True})
 
@@ -327,13 +342,31 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         return JSONResponse(content={"ok": True})
 
 
-# --- Task 3: Helper to resolve mock response ---
+# --- Task 3/4: Helper to resolve mock response (per-attempt) ---
 def _get_mock_response(endpoint: str):
     with mock_config_lock:
         cfg = mock_config.get(endpoint)
-    if not cfg:
-        return None
-    return cfg
+        if not cfg:
+            return None
+
+        responses = cfg.get("responses")
+        if responses is None:
+            # Backward compat: old format { "mode": "..." }
+            mode = cfg.get("mode")
+            if mode:
+                responses = [mode]
+            else:
+                return {"mode": "success"}
+
+        counter = mock_attempt_counters.get(endpoint, 0)
+        idx = counter % len(responses)
+        mock_attempt_counters[endpoint] = counter + 1
+
+        mode = responses[idx]
+        result = {"mode": mode}
+        if "custom_body" in cfg:
+            result["custom_body"] = cfg["custom_body"]
+        return result
 
 
 def _mock_429():
@@ -430,8 +463,12 @@ def register_api_key_routes(app):
         return JSONResponse(content=masked)
 
     @app.get("/validate-key")
-    async def validate_api_key(key: str = Query(...)):
-        result = validate_key(key)
+    async def validate_api_key(api_key: str = Query(...)):
+        result = validate_key(key=api_key)
+        if result["valid"]:
+            key_record = get_key_record(api_key)
+            if key_record:
+                result["api_key_id"] = key_record["id"]
         return JSONResponse(content=result)
 
     @app.get("/api-key-status")
@@ -450,18 +487,35 @@ def register_api_key_routes(app):
     async def set_mock_config(body: MockConfigBody):
         with mock_config_lock:
             mock_config.clear()
-            mock_config.update(body.endpoints)
+            mock_attempt_counters.clear()
+            for ep, cfg in body.endpoints.items():
+                # Backward compat: { "mode": "429" } → { "responses": ["429"] }
+                if "mode" in cfg and "responses" not in cfg:
+                    cfg["responses"] = [cfg["mode"]]
+                mock_config[ep] = cfg
         return JSONResponse(content={"ok": True, "endpoints": dict(mock_config)})
 
     @app.get("/mock-config")
     async def get_mock_config():
         with mock_config_lock:
-            return JSONResponse(content={"endpoints": dict(mock_config)})
+            normalized = {}
+            for ep, cfg in mock_config.items():
+                if "responses" not in cfg and "mode" in cfg:
+                    normalized[ep] = {"responses": [cfg["mode"]]}
+                else:
+                    normalized[ep] = cfg
+            return JSONResponse(
+                content={
+                    "endpoints": normalized,
+                    "counters": dict(mock_attempt_counters),
+                }
+            )
 
     @app.delete("/mock-config")
     async def reset_mock_config():
         with mock_config_lock:
             mock_config.clear()
+            mock_attempt_counters.clear()
         return JSONResponse(content={"ok": True, "endpoints": {}})
 
     # --- Mock EOPP endpoints with configurable responses (Task 3) ---
@@ -651,7 +705,13 @@ def register_usage_routes(app):
         return JSONResponse(content={"ok": True})
 
     @app.get("/usage-log")
-    async def get_usage_log(api_key_id: Optional[int] = Query(None)):
+    async def get_usage_log(
+        api_key_id: Optional[int] = Query(None), api_key: Optional[str] = Query(None)
+    ):
+        if api_key and api_key_id is None:
+            key_record = get_key_record(api_key)
+            if key_record:
+                api_key_id = key_record["id"]
         records = list_usages(api_key_id)
         return JSONResponse(content=records)
 
@@ -685,6 +745,18 @@ def register_admin_routes(app):
         if body.token == ADMIN_TOKEN:
             return JSONResponse(content={"ok": True})
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    @app.get("/admin/streams")
+    async def admin_streams():
+        return JSONResponse(content=get_connected_streams())
+
+    @app.get("/admin/test-stats")
+    async def admin_test_stats():
+        return JSONResponse(content=get_test_stats())
+
+    @app.post("/admin/benchmark")
+    async def admin_benchmark():
+        return JSONResponse(content=run_benchmark_cached())
 
 
 def register_frontend_routes(app):

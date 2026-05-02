@@ -18,6 +18,10 @@ interface InjectorState {
   usageLogId: number | null;
   queueItems: QueueItemState[] | null;
   queueIndex: number | null;
+  isFullscreen: boolean;
+  authKey: string;
+  authLoading: boolean;
+  authError: string;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) => void;
@@ -35,7 +39,12 @@ interface InjectorState {
   setQueueItems: (items: QueueItemState[] | null) => void;
   setQueueIndex: (idx: number | null) => void;
   updateQueueItemStatus: (idx: number, status: QueueItemState['status'], error?: string) => void;
+  toggleFullscreen: () => void;
   reset: () => void;
+  setAuthKey: (key: string) => void;
+  clearAuthKey: () => void;
+  setAuthLoading: (loading: boolean) => void;
+  setAuthError: (error: string) => void;
 }
 
 const defaultCollapsed: Record<CollapsibleSection, boolean> = {
@@ -62,6 +71,10 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   usageLogId: null,
   queueItems: null,
   queueIndex: null,
+  isFullscreen: false,
+  authKey: localStorage.getItem('injector_auth_key') || '',
+  authLoading: false,
+  authError: '',
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) => set((state) => ({ config: { ...state.config, [key]: value } })),
@@ -98,5 +111,16 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
     const updated = state.queueItems.map((item, i) => i === idx ? { ...item, status, error } : item);
     return { queueItems: updated, queueIndex: idx + 1 < updated.length ? idx + 1 : null };
   }),
+  toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
   reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null, usageLogId: null, queueItems: null, queueIndex: null }),
+  setAuthKey: (key) => {
+    localStorage.setItem('injector_auth_key', key);
+    set({ authKey: key, authError: '' });
+  },
+  clearAuthKey: () => {
+    localStorage.removeItem('injector_auth_key');
+    set({ authKey: '', authError: '' });
+  },
+  setAuthLoading: (loading) => set({ authLoading: loading, authError: '' }),
+  setAuthError: (error) => set({ authError: error, authLoading: false }),
 }));

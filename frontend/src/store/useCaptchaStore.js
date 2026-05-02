@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-const STORAGE_KEY = 'captcha_api_key'
+const STORAGE_KEY = 'kiosk_api_key'
 
 function loadApiKey() {
   const fromStorage = localStorage.getItem(STORAGE_KEY)
@@ -24,6 +24,11 @@ const useCaptchaStore = create((set) => ({
   setApiKey: (key) => {
     localStorage.setItem(STORAGE_KEY, key)
     set({ apiKey: key })
+  },
+
+  clearApiKey: () => {
+    localStorage.removeItem(STORAGE_KEY)
+    set({ apiKey: '' })
   },
 
   addCaptcha: (captcha) =>

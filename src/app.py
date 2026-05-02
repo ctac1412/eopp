@@ -29,7 +29,10 @@ def create_app(
         if write_mode:
             t = threading.Thread(target=send_write_cases, daemon=True)
             t.start()
-        webbrowser.open(f"https://127.0.0.1:{PORT}")
+        from src import constants
+
+        protocol = "https" if constants.use_ssl else "http"
+        webbrowser.open(f"{protocol}://127.0.0.1:{PORT}")
         yield
         with lock:
             for entry in pending.values():

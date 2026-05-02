@@ -8,7 +8,17 @@ function CaptchaGrid() {
   const unsolved = queue.filter((q) => !q.solved)
   const active = unsolved[0] || null
 
-  if (!active) return null
+  if (!active) {
+    return (
+      <div className="captcha-idle">
+        <div className="captcha-idle-spinner" />
+        <div className="captcha-idle-text">
+          <span className="captcha-idle-text-main">Ожидание запросов...</span>
+          <span className="captcha-idle-text-sub">Подключено к серверу, новые капчи появятся автоматически</span>
+        </div>
+      </div>
+    )
+  }
 
   const imgKeys = Object.keys(active.images)
   const top3 = active.top3

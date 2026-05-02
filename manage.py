@@ -68,6 +68,8 @@ def main(
     if not no_ssl:
         certfile, keyfile = ensure_self_signed_cert()
 
+    src.constants.use_ssl = not no_ssl
+
     typer.echo("=" * 56)
     typer.echo("  EOPP Captcha Solver Server — Configuration")
     typer.echo("=" * 56)

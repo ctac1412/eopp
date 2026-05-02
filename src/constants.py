@@ -19,10 +19,13 @@ if not ADMIN_TOKEN:
 ADMIN_TOKEN = str(ADMIN_TOKEN)
 PROTECTED_PATHS = (
     "/api-keys",
-    "/usage-log",
+    "/admin/streams",
+    "/admin/test-stats",
+    "/admin/benchmark",
 )
 
 write_mode = False
+use_ssl = True
 override_captcha_timeout = None
 
 _TEST_API_KEY = None
@@ -33,9 +36,9 @@ def get_test_api_key():
     if _TEST_API_KEY is not None:
         return _TEST_API_KEY
 
-    from src.api_keys import get_key_record, create_key
+    from src.api_keys import get_key_by_label, create_key
 
-    existing = get_key_record("__test_key__")
+    existing = get_key_by_label("__test_key__")
     if existing:
         _TEST_API_KEY = existing["key"]
         return _TEST_API_KEY

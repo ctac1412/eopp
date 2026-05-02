@@ -59,16 +59,12 @@ def init_db():
         pass
 
     # Инициализация админского токена, если его нет
-    existing = conn.execute(
-        "SELECT id FROM api_keys WHERE key = ?", (ADMIN_TOKEN,)
-    ).fetchone()
-    if not existing:
-        now = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            "INSERT INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",
-            (ADMIN_TOKEN, "admin", now),
-        )
-        conn.commit()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR IGNORE INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",
+        (ADMIN_TOKEN, "admin", now),
+    )
+    conn.commit()
 
     conn.close()
 
@@ -196,6 +192,13 @@ def increment_usage(key: str) -> bool:
 def get_key_record(key: str) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return _row_to_dict(row) if row else None
+
+
+def get_key_by_label(label: str) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM api_keys WHERE label = ?", (label,)).fetchone()
     conn.close()
     return _row_to_dict(row) if row else None
 

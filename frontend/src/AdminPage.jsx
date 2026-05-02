@@ -14,6 +14,7 @@ function AdminPage() {
   const [authInput, setAuthInput] = useState('')
   const [authError, setAuthError] = useState(null)
   const [authLoading, setAuthLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('keys')
   const [keys, setKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -27,6 +28,19 @@ function AdminPage() {
   const [historyLoading, setHistoryLoading] = useState({})
   const [expandedLogs, setExpandedLogs] = useState({})
   const intervalRef = useRef(null)
+
+  // Streams
+  const [streams, setStreams] = useState([])
+  const [streamsLoading, setStreamsLoading] = useState(false)
+
+  // Test stats
+  const [testStats, setTestStats] = useState(null)
+  const [testStatsLoading, setTestStatsLoading] = useState(false)
+
+  // Benchmark
+  const [benchmark, setBenchmark] = useState(null)
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false)
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false)
 
   const fetchKeys = useCallback(async (token) => {
     const t = token || adminToken
@@ -44,6 +58,59 @@ function AdminPage() {
     }
   }, [adminToken])
 
+  const fetchStreams = useCallback(async (token) => {
+    const t = token || adminToken
+    if (!t) return
+    setStreamsLoading(true)
+    try {
+      const res = await fetch('/admin/streams', { headers: adminHeadersJson(t) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setStreams(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setStreams([])
+    } finally {
+      setStreamsLoading(false)
+    }
+  }, [adminToken])
+
+  const fetchTestStats = useCallback(async (token) => {
+    const t = token || adminToken
+    if (!t) return
+    setTestStatsLoading(true)
+    try {
+      const res = await fetch('/admin/test-stats', { headers: adminHeadersJson(t) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setTestStats(data)
+    } catch (err) {
+      setTestStats(null)
+    } finally {
+      setTestStatsLoading(false)
+    }
+  }, [adminToken])
+
+  const runBenchmark = useCallback(async (token) => {
+    const t = token || adminToken
+    if (!t) return
+    setBenchmarkRunning(true)
+    setBenchmarkLoading(true)
+    try {
+      const res = await fetch('/admin/benchmark', {
+        method: 'POST',
+        headers: adminHeaders(t),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setBenchmark(data)
+    } catch (err) {
+      setBenchmark({ error: err.message })
+    } finally {
+      setBenchmarkLoading(false)
+      setBenchmarkRunning(false)
+    }
+  }, [adminToken])
+
   useEffect(() => {
     if (adminToken) {
       fetchKeys(adminToken)
@@ -55,6 +122,20 @@ function AdminPage() {
     intervalRef.current = setInterval(() => fetchKeys(adminToken), 5000)
     return () => clearInterval(intervalRef.current)
   }, [adminToken, fetchKeys])
+
+  useEffect(() => {
+    if (activeTab === 'streams' && adminToken) {
+      fetchStreams(adminToken)
+      const id = setInterval(() => fetchStreams(adminToken), 3000)
+      return () => clearInterval(id)
+    }
+  }, [activeTab, adminToken, fetchStreams])
+
+  useEffect(() => {
+    if (activeTab === 'teststats' && adminToken) {
+      fetchTestStats(adminToken)
+    }
+  }, [activeTab, adminToken, fetchTestStats])
 
   const doAuth = async () => {
     setAuthError(null)
@@ -268,17 +349,137 @@ function AdminPage() {
     )
   }
 
+  const tabs = [
+    { id: 'keys', label: 'API Keys' },
+    { id: 'streams', label: 'Стримы' },
+    { id: 'teststats', label: 'Тесткейсы' },
+    { id: 'benchmark', label: 'Бенчмарк' },
+  ]
+
+  const renderStreamsTab = () => (
+    <div>
+      <h2 style={{ fontSize: '16px', marginBottom: '12px', fontWeight: 600 }}>Подключённые SSE-клиенты</h2>
+      {streamsLoading && streams.length === 0 && <div className="admin-loading">Загрузка…</div>}
+      {streams.length === 0 && !streamsLoading && (
+        <div className="admin-empty">Нет активных подключений</div>
+      )}
+      {streams.length > 0 && (
+        <div className="admin-table-wrapper">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>API Key ID</th>
+                <th>Label</th>
+                <th>IP</th>
+                <th>Подключён</th>
+                <th>Длительность</th>
+              </tr>
+            </thead>
+            <tbody>
+              {streams.map((s, idx) => {
+                const elapsed = s.connected_at ? Math.floor((Date.now() / 1000 - s.connected_at)) : 0
+                const durationStr = elapsed >= 3600 ? `${Math.floor(elapsed / 3600)}ч ${Math.floor((elapsed % 3600) / 60)}м`
+                  : elapsed >= 60 ? `${Math.floor(elapsed / 60)}м ${elapsed % 60}с`
+                  : `${elapsed}с`
+                return (
+                  <tr key={idx}>
+                    <td className="admin-id">{s.api_key_id ?? '—'}</td>
+                    <td className="admin-label">{s.api_key_label || '—'}</td>
+                    <td>{s.ip || '—'}</td>
+                    <td className="admin-date">{s.connected_at_iso ? formatDate(s.connected_at_iso) : '—'}</td>
+                    <td>{durationStr}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderTestStatsTab = () => (
+    <div>
+      <h2 style={{ fontSize: '16px', marginBottom: '12px', fontWeight: 600 }}>Статистика тестовых кейсов</h2>
+      {testStatsLoading && !testStats && <div className="admin-loading">Загрузка…</div>}
+      {testStats && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', maxWidth: '400px' }}>
+          <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a' }}>
+            <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Помеченные (valid/)</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#4ade80' }}>{testStats.labeled_count}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a' }}>
+            <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Без пометки (no_valid/)</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#f59e0b' }}>{testStats.unlabeled_count}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderBenchmarkTab = () => (
+    <div>
+      <h2 style={{ fontSize: '16px', marginBottom: '12px', fontWeight: 600 }}>Бенчмарк решателя капч</h2>
+      <button
+        className="admin-btn-primary"
+        onClick={() => runBenchmark(adminToken)}
+        disabled={benchmarkRunning}
+        style={{ marginBottom: '16px' }}
+      >
+        {benchmarkRunning ? 'Выполняется…' : 'Запустить бенчмарк'}
+      </button>
+      {benchmarkLoading && !benchmark && <div className="admin-loading">Загрузка…</div>}
+      {benchmark && (
+        <div>
+          {benchmark.error ? (
+            <div style={{ padding: '12px', background: '#2a1a1a', borderRadius: '8px', border: '1px solid #4a2a2a', color: '#f87171', whiteSpace: 'pre-wrap', fontSize: '13px' }}>
+              Ошибка: {benchmark.error}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a' }}>
+                <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Всего тестов</div>
+                <div style={{ fontSize: '28px', fontWeight: 700 }}>{benchmark.total}</div>
+              </div>
+              <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a' }}>
+                <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Пройдено</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#4ade80' }}>{benchmark.passed}</div>
+              </div>
+              <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a' }}>
+                <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>Покрытие</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: benchmark.coverage_percent >= 90 ? '#4ade80' : benchmark.coverage_percent >= 70 ? '#f59e0b' : '#f87171' }}>
+                  {benchmark.coverage_percent}%
+                </div>
+              </div>
+            </div>
+          )}
+          {benchmark.last_run_timestamp && (
+            <div style={{ fontSize: '12px', color: '#666' }}>Последний запуск: {formatDate(benchmark.last_run_timestamp)}</div>
+          )}
+          {benchmark.best_config && (
+            <div style={{ marginTop: '12px', padding: '12px', background: '#1a1a2e', borderRadius: '8px', border: '1px solid #2a2a4a', fontSize: '13px', fontFamily: 'monospace' }}>
+              <div style={{ color: '#888', marginBottom: '4px' }}>Лучший конфиг:</div>
+              <div>edge_trim={benchmark.best_config.edge_trim}  W_DISC={benchmark.best_config.W_DISC}  W_SSIM={benchmark.best_config.W_SSIM}  W_COH={benchmark.best_config.W_COH}  W_SOBEL={benchmark.best_config.W_SOBEL}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="admin-page">
       <div className="admin-header">
-        <h1>API Keys</h1>
+        <h1>Админ-панель</h1>
         <div className="admin-header-right">
-          <button
-            className="admin-btn-primary"
-            onClick={() => setShowCreate(true)}
-          >
-            + Новый ключ
-          </button>
+          {activeTab === 'keys' && (
+            <button
+              className="admin-btn-primary"
+              onClick={() => setShowCreate(true)}
+            >
+              + Новый ключ
+            </button>
+          )}
           <button
             className="admin-btn-secondary"
             onClick={handleLogout}
@@ -290,200 +491,230 @@ function AdminPage() {
         </div>
       </div>
 
+      <div className="admin-tabs" style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '8px 16px',
+              background: activeTab === tab.id ? '#3b82f6' : 'transparent',
+              color: activeTab === tab.id ? '#fff' : '#888',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: activeTab === tab.id ? 600 : 400,
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {error && <div className="admin-error">{error}</div>}
 
-      {newKey && (
-        <div className="admin-new-key">
-          <div className="admin-new-key-title">Ключ создан!</div>
-          <p className="admin-new-key-hint">Этот ключ отображается только один раз. Скопируйте и сохраните.</p>
-          <div className="admin-new-key-value">
-            <input
-              type="text"
-              readOnly
-              value={newKey.key}
-              className="admin-key-input"
-            />
-            <button
-              className="admin-btn-copy"
-              onClick={() => copyToClipboard(newKey.key)}
-            >
-              Копировать
-            </button>
+      {activeTab === 'keys' && (
+        <>
+          {newKey && (
+            <div className="admin-new-key">
+              <div className="admin-new-key-title">Ключ создан!</div>
+              <p className="admin-new-key-hint">Этот ключ отображается только один раз. Скопируйте и сохраните.</p>
+              <div className="admin-new-key-value">
+                <input
+                  type="text"
+                  readOnly
+                  value={newKey.key}
+                  className="admin-key-input"
+                />
+                <button
+                  className="admin-btn-copy"
+                  onClick={() => copyToClipboard(newKey.key)}
+                >
+                  Копировать
+                </button>
+              </div>
+              <button
+                className="admin-btn-secondary"
+                onClick={() => setNewKey(null)}
+              >
+                Закрыть
+              </button>
+            </div>
+          )}
+
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Label</th>
+                  <th>ID</th>
+                  <th>Ключ</th>
+                  <th>Создан</th>
+                  <th>Использование</th>
+                  <th>Активен</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && keys.length === 0 ? (
+                  <tr><td colSpan={8} className="admin-loading">Загрузка…</td></tr>
+                ) : keys.length === 0 ? (
+                  <tr><td colSpan={8} className="admin-empty">Нет ключей</td></tr>
+                ) : (
+                  keys.map((k) => {
+                    const isExpanded = expandedHistory[k.id] !== undefined
+                    const historyData = expandedHistory[k.id]
+                    return (
+                      <React.Fragment key={k.id}>
+                        <tr>
+                          <td className="admin-label">{k.label || '—'}</td>
+                          <td className="admin-id">{String(k.id)}</td>
+                          <td>
+                            <span
+                              className="admin-key-masked"
+                              onClick={() => copyToClipboard(k.key)}
+                              title="Нажмите, чтобы скопировать"
+                            >
+                              {k.masked_key || '—'}
+                            </span>
+                          </td>
+                          <td className="admin-date">{formatDate(k.created_at)}</td>
+                          <td className="admin-usage">
+                            {k.usage_count ?? 0}
+                            {k.max_uses != null ? ` / ${k.max_uses}` : ''}
+                          </td>
+                          <td>
+                            <button
+                              className={'admin-toggle ' + (k.active ? 'admin-toggle-on' : 'admin-toggle-off')}
+                              onClick={() => handleToggleActive(k)}
+                              title={k.active ? 'Деактивировать' : 'Активировать'}
+                            >
+                              <span className="admin-toggle-dot" />
+                            </button>
+                          </td>
+                          <td className="admin-actions">
+                            <button className="admin-btn-sm admin-btn-edit" onClick={() => openEdit(k)}>
+                              Изменить
+                            </button>
+                            <button className="admin-btn-sm admin-btn-reset" onClick={() => handleResetUsage(k.id)}>
+                              Сбросить
+                            </button>
+                            <button className="admin-btn-sm admin-btn-del" onClick={() => setConfirmDelete(k.id)}>
+                              Удалить
+                            </button>
+                          </td>
+                          <td>
+                            <button
+                              className={'admin-btn-sm ' + (isExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                              onClick={() => toggleHistory(k.id)}
+                            >
+                              {isExpanded ? 'Свернуть' : 'История'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={8} className="admin-history-cell">
+                              <div className="admin-history-wrapper">
+                                {historyLoading[k.id] && <div className="admin-history-loading">Загрузка…</div>}
+                                {historyData === null && <div className="admin-history-error">Ошибка загрузки</div>}
+                                {historyData && historyData.length === 0 && <div className="admin-history-empty">Нет записей</div>}
+                                {historyData && historyData.length > 0 && (
+                                  <table className="admin-history-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Время</th>
+                                        <th>Reservation ID</th>
+                                        <th>Captcha ID</th>
+                                        <th>Статус</th>
+                                        <th>Этап</th>
+                                        <th>Ошибка</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {historyData.map((entry) => {
+                                        const isPluginExpanded = expandedLogs[entry.id]
+                                        const pluginData = entry.logs
+                                        return (
+                                          <React.Fragment key={entry.id}>
+                                            <tr>
+                                              <td className="admin-history-time">{formatDate(entry.created_at)}</td>
+                                              <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
+                                              <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
+                                              <td>
+                                                <span className={
+                                                  'admin-status-badge ' +
+                                                  (entry.status === 'confirmed' ? 'admin-status-confirmed' :
+                                                   entry.status === 'pending' ? 'admin-status-pending' :
+                                                   'admin-status-failed')
+                                                }>
+                                                  {entry.status === 'confirmed' ? 'Подтверждено' :
+                                                   entry.status === 'pending' ? 'Ожидание' :
+                                                   'Ошибка'}
+                                                </span>
+                                              </td>
+                                              <td className="admin-history-stage">
+                                                {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
+                                              </td>
+                                              <td className="admin-history-error-msg">
+                                                {entry.status === 'failed' && entry.error_message
+                                                  ? (entry.error_message.length > 100
+                                                    ? entry.error_message.slice(0, 100) + '…'
+                                                    : entry.error_message)
+                                                  : '—'}
+                                              </td>
+                                              <td className="admin-history-slot-date">
+                                                {entry.slot_date || '—'}
+                                              </td>
+                                              <td>
+                                                {pluginData && pluginData.length > 0 && (
+                                                  <button
+                                                    className={'admin-btn-sm ' + (isPluginExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                                                    onClick={() => togglePluginLogs(entry.id)}
+                                                  >
+                                                    {isPluginExpanded ? 'Свернуть логи' : 'Логи'}
+                                                  </button>
+                                                )}
+                                              </td>
+                                            </tr>
+                                            {isPluginExpanded && pluginData && pluginData.length > 0 && (
+                                              <tr>
+                                                <td colSpan={8} className="admin-plugin-logs-cell">
+                                                  <div className="admin-plugin-logs-wrapper">
+                                                    <div className="admin-plugin-logs-body">
+                                                      {pluginData.map((line, idx) => (
+                                                        <div key={idx} className="admin-plugin-log-line">{line}</div>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                            )}
+                                          </React.Fragment>
+                                        )
+                                      })}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-          <button
-            className="admin-btn-secondary"
-            onClick={() => setNewKey(null)}
-          >
-            Закрыть
-          </button>
-        </div>
+        </>
       )}
 
-      <div className="admin-table-wrapper">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>ID</th>
-              <th>Ключ</th>
-              <th>Создан</th>
-              <th>Использование</th>
-              <th>Активен</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && keys.length === 0 ? (
-              <tr><td colSpan={8} className="admin-loading">Загрузка…</td></tr>
-            ) : keys.length === 0 ? (
-              <tr><td colSpan={8} className="admin-empty">Нет ключей</td></tr>
-            ) : (
-              keys.map((k) => {
-                const isExpanded = expandedHistory[k.id] !== undefined
-                const historyData = expandedHistory[k.id]
-                return (
-                  <React.Fragment key={k.id}>
-                    <tr>
-                      <td className="admin-label">{k.label || '—'}</td>
-                      <td className="admin-id">{String(k.id)}</td>
-                      <td>
-                        <span
-                          className="admin-key-masked"
-                          onClick={() => copyToClipboard(k.key)}
-                          title="Нажмите, чтобы скопировать"
-                        >
-                          {k.masked_key || '—'}
-                        </span>
-                      </td>
-                      <td className="admin-date">{formatDate(k.created_at)}</td>
-                      <td className="admin-usage">
-                        {k.usage_count ?? 0}
-                        {k.max_uses != null ? ` / ${k.max_uses}` : ''}
-                      </td>
-                      <td>
-                        <button
-                          className={'admin-toggle ' + (k.active ? 'admin-toggle-on' : 'admin-toggle-off')}
-                          onClick={() => handleToggleActive(k)}
-                          title={k.active ? 'Деактивировать' : 'Активировать'}
-                        >
-                          <span className="admin-toggle-dot" />
-                        </button>
-                      </td>
-                      <td className="admin-actions">
-                        <button className="admin-btn-sm admin-btn-edit" onClick={() => openEdit(k)}>
-                          Изменить
-                        </button>
-                        <button className="admin-btn-sm admin-btn-reset" onClick={() => handleResetUsage(k.id)}>
-                          Сбросить
-                        </button>
-                        <button className="admin-btn-sm admin-btn-del" onClick={() => setConfirmDelete(k.id)}>
-                          Удалить
-                        </button>
-                      </td>
-                      <td>
-                        <button
-                          className={'admin-btn-sm ' + (isExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
-                          onClick={() => toggleHistory(k.id)}
-                        >
-                          {isExpanded ? 'Свернуть' : 'История'}
-                        </button>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={8} className="admin-history-cell">
-                          <div className="admin-history-wrapper">
-                            {historyLoading[k.id] && <div className="admin-history-loading">Загрузка…</div>}
-                            {historyData === null && <div className="admin-history-error">Ошибка загрузки</div>}
-                            {historyData && historyData.length === 0 && <div className="admin-history-empty">Нет записей</div>}
-                            {historyData && historyData.length > 0 && (
-                              <table className="admin-history-table">
-                                <thead>
-                                  <tr>
-                                    <th>Время</th>
-                                    <th>Reservation ID</th>
-                                    <th>Captcha ID</th>
-                                    <th>Статус</th>
-                                    <th>Этап</th>
-                                    <th>Ошибка</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {historyData.map((entry) => {
-                                    const isPluginExpanded = expandedLogs[entry.id]
-                                    const pluginData = entry.logs
-                                    return (
-                                      <React.Fragment key={entry.id}>
-                                        <tr>
-                                          <td className="admin-history-time">{formatDate(entry.created_at)}</td>
-                                          <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
-                                          <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
-                                          <td>
-                                            <span className={
-                                              'admin-status-badge ' +
-                                              (entry.status === 'confirmed' ? 'admin-status-confirmed' :
-                                               entry.status === 'pending' ? 'admin-status-pending' :
-                                               'admin-status-failed')
-                                            }>
-                                              {entry.status === 'confirmed' ? 'Подтверждено' :
-                                               entry.status === 'pending' ? 'Ожидание' :
-                                               'Ошибка'}
-                                            </span>
-                                          </td>
-                                          <td className="admin-history-stage">
-                                            {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
-                                          </td>
-                                          <td className="admin-history-error-msg">
-                                            {entry.status === 'failed' && entry.error_message
-                                              ? (entry.error_message.length > 100
-                                                ? entry.error_message.slice(0, 100) + '…'
-                                                : entry.error_message)
-                                              : '—'}
-                                          </td>
-                                          <td className="admin-history-slot-date">
-                                            {entry.slot_date || '—'}
-                                          </td>
-                                          <td>
-                                            {pluginData && pluginData.length > 0 && (
-                                              <button
-                                                className={'admin-btn-sm ' + (isPluginExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
-                                                onClick={() => togglePluginLogs(entry.id)}
-                                              >
-                                                {isPluginExpanded ? 'Свернуть логи' : 'Логи'}
-                                              </button>
-                                            )}
-                                          </td>
-                                        </tr>
-                                        {isPluginExpanded && pluginData && pluginData.length > 0 && (
-                                          <tr>
-                                            <td colSpan={8} className="admin-plugin-logs-cell">
-                                              <div className="admin-plugin-logs-wrapper">
-                                                <div className="admin-plugin-logs-body">
-                                                  {pluginData.map((line, idx) => (
-                                                    <div key={idx} className="admin-plugin-log-line">{line}</div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        )}
-                                      </React.Fragment>
-                                    )
-                                  })}
-                                </tbody>
-                              </table>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      {activeTab === 'streams' && renderStreamsTab()}
+      {activeTab === 'teststats' && renderTestStatsTab()}
+      {activeTab === 'benchmark' && renderBenchmarkTab()}
 
       {showCreate && (
         <div className="admin-modal-overlay" onClick={() => setShowCreate(false)}>
