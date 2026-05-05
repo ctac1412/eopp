@@ -1,40 +1,14 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import useCaptchaStore from "../store/useCaptchaStore";
 
 function maskKey(key) {
-  if (!key || key.length === 0) return "вЂўвЂўвЂўвЂўвЂўвЂў";
+  if (!key || key.length === 0) return "••••••";
   if (key.length <= 8) {
     if (key.length === 1) return key[0];
-    return key[0] + "вЂў".repeat(key.length - 2) + key[key.length - 1];
+    return key[0] + "•".repeat(key.length - 2) + key[key.length - 1];
   }
-  return key.slice(0, 4) + "вЂўвЂўвЂўвЂўвЂўвЂў" + key.slice(-4);
-}
-
-const LOCALHOST_ORIGINS = ["localhost", "127.0.0.1"];
-
-function isLocalhost() {
-  return LOCALHOST_ORIGINS.includes(window.location.hostname);
-}
-
-function StatusBar() {
-  const queue = useCaptchaStore((s) => s.queue);
-  const unsolved = queue.filter((q) => !q.solved);
-  const isActive = unsolved.length > 0;
-  const activeId = isActive ? unsolved[0].id : null;
-  const sseError = useCaptchaStore((s) => s.sseError);
-  const [loading, setLoading] = useState(false);
-  const apiKey = useCaptchaStore((s) => s.apiimport React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import useCaptchaStore from "../store/useCaptchaStore";
-
-function maskKey(key) {
-  if (!key || key.length === 0) return "вЂўвЂўвЂўвЂўвЂўвЂў";
-  if (key.length <= 8) {
-    if (key.length === 1) return key[0];
-    return key[0] + "вЂў".repeat(key.length - 2) + key[key.length - 1];
-  }
-  return key.slice(0, 4) + "вЂўвЂўвЂўвЂўвЂўвЂў" + key.slice(-4);
+  return key.slice(0, 4) + "••••••" + key.slice(-4);
 }
 
 const LOCALHOST_ORIGINS = ["localhost", "127.0.0.1"];
@@ -131,8 +105,8 @@ function StatusBar() {
         />
         <div className="status-text">
           {isActive
-            ? `РђРєС‚РёРІРЅР°СЏ: <strong>${activeId}</strong>`
-            : "РћР¶РёРґР°РЅРёРµ Р·Р°РїСЂРѕСЃРѕРІвЂ¦"}
+            ? `Активная: <strong>${activeId}</strong>`
+            : "Ожидание запросов…"}
         </div>
         {localMode && <span className="local-badge">LOCAL</span>}
         {sseError && <span className="status-error">{sseError}</span>}
@@ -144,13 +118,13 @@ function StatusBar() {
               className="test-link-btn"
               onClick={() => openTestPage("/test-injector/edit")}
             >
-              РўРµСЃС‚: РЎРѕР·РґР°РЅРёРµ
+              Тест: Создание
             </button>
             <button
               className="test-link-btn"
               onClick={() => openTestPage("/test-injector/reschedule")}
             >
-              РўРµСЃС‚: РџРµСЂРµРЅРѕСЃ
+              Тест: Перенос
             </button>
           </div>
         )}
@@ -165,13 +139,13 @@ function StatusBar() {
                   className="api-key-badge__confirm"
                   onClick={handleClearKey}
                 >
-                  РћРљ
+                  ОК
                 </button>
                 <button
                   className="api-key-badge__cancel"
                   onClick={() => setShowChange(false)}
                 >
-                  РћС‚РјРµРЅР°
+                  Отмена
                 </button>
               </div>
             ) : (
@@ -179,7 +153,7 @@ function StatusBar() {
                 className="api-key-badge__btn"
                 onClick={() => setShowChange(true)}
               >
-                РЎРјРµРЅРёС‚СЊ
+                Сменить
               </button>
             )}
           </div>
@@ -199,7 +173,7 @@ function StatusBar() {
           onClick={() => setShowTestInput(true)}
           disabled={loading}
         >
-          {loading ? "Р—Р°РїСѓСЃРє..." : "РўРµСЃС‚РѕРІС‹Р№ Р·Р°РїСѓСЃРє"}
+          {loading ? "Запуск..." : "Тестовый запуск"}
         </button>
         {testReservationId && !showTestInput && (
           <button
@@ -208,7 +182,7 @@ function StatusBar() {
             disabled={loading}
             style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
           >
-            {loading ? "..." : `в–¶ ${testReservationId}`}
+            {loading ? "..." : `▶ ${testReservationId}`}
           </button>
         )}
         {isAdmin && (
@@ -222,4 +196,3 @@ function StatusBar() {
 }
 
 export default React.memo(StatusBar);
-
