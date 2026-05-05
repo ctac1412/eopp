@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
-import { useInjectorStore } from '@/store';
-import { main } from '@/api/pipeline';
+import { useCallback } from "react";
+import { useInjectorStore } from "@/store";
+import { main } from "@/api/pipeline";
 
 export function useInjector() {
   const setStatus = useInjectorStore((s) => s.setStatus);
@@ -11,19 +11,19 @@ export function useInjector() {
 
   const run = useCallback(async () => {
     const config = useInjectorStore.getState().config;
-    setStatus('running');
+    setStatus("running");
     setError(null);
     setResult(null);
     clearLogs();
     setStage(null);
     try {
       await main(config);
-      setStatus('done');
+      setStatus("done");
       setStage(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
-      setStatus('error');
+      setStatus("error");
       setStage(null);
     }
   }, [setStatus, setError, setResult, clearLogs, setStage]);

@@ -1,8 +1,8 @@
 import json
-import sqlite3
 import os
 import secrets
-from datetime import datetime, timezone
+import sqlite3
+from datetime import UTC, datetime
 
 from src.constants import ADMIN_TOKEN, PROJECT_DIR
 
@@ -64,7 +64,7 @@ def init_db():
         pass
 
     # Инициализация админского токена, если его нет
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT OR IGNORE INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",
         (ADMIN_TOKEN, "admin", now),
@@ -76,16 +76,14 @@ def init_db():
 
 def create_key(label: str, max_uses: int | None = None) -> dict:
     conn = get_connection()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     key = secrets.token_hex(16)
     cursor = conn.execute(
         "INSERT INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, ?, 1)",
         (key, label, now, max_uses),
     )
     conn.commit()
-    row = conn.execute(
-        "SELECT * FROM api_keys WHERE id = ?", (cursor.lastrowid,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (cursor.lastrowid,)).fetchone()
     conn.close()
     return _row_to_dict(row)
 
@@ -186,9 +184,7 @@ def increment_usage(key: str) -> bool:
     if not row:
         conn.close()
         return False
-    conn.execute(
-        "UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (key,)
-    )
+    conn.execute("UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (key,))
     conn.commit()
     conn.close()
     return True
@@ -210,9 +206,7 @@ def get_key_by_label(label: str) -> dict | None:
 
 def get_usage_log_entry(usage_log_id: int) -> dict | None:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
     conn.close()
     if not row:
         return None
@@ -225,10 +219,8 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "error_message": row["error_message"],
         "error_stage": row["error_stage"],
         "slot_date": row["slot_date"],
-        "logs": json.loads(row["logs"]) if row['logs'] else None,
-        "config_json": json.loads(row["config_json"])
-        if row['config_json']
-        else None,
+        "logs": json.loads(row["logs"]) if row["logs"] else None,
+        "config_json": json.loads(row["config_json"]) if row["config_json"] else None,
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
     }
@@ -263,7 +255,7 @@ def log_usage(
     if not row:
         conn.close()
         raise ValueError(f"API key not found: {api_key[:8]}...")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     config_str = json.dumps(config_json) if config_json else None
     cursor = conn.execute(
         "INSERT INTO usage_log (api_key_id, reservation_id, captcha_id, status, created_at, config_json) VALUES (?, ?, ?, 'pending', ?, ?)",
@@ -282,13 +274,11 @@ def confirm_usage(
     captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
     if not row:
         conn.close()
         return False
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     logs_json = json.dumps(logs) if logs else None
     if captcha_id and captcha_id != "unknown":
         conn.execute(
@@ -318,9 +308,7 @@ def fail_usage(
     captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
     if not row:
         conn.close()
         return False
@@ -370,17 +358,13 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "api_key_id": r["api_key_id"],
                 "reservation_id": r["reservation_id"],
                 "captcha_id": captcha_id,
-                "captcha_id_short": captcha_id[:16]
-                if len(captcha_id) > 16
-                else captcha_id,
+                "captcha_id_short": captcha_id[:16] if len(captcha_id) > 16 else captcha_id,
                 "status": r["status"],
                 "error_message": r["error_message"],
                 "error_stage": r["error_stage"],
                 "slot_date": r["slot_date"],
                 "logs": logs,
-                "config_json": json.loads(r["config_json"])
-                if r["config_json"]
-                else None,
+                "config_json": json.loads(r["config_json"]) if r["config_json"] else None,
                 "created_at": r["created_at"],
                 "confirmed_at": r["confirmed_at"],
                 "label": r["label"],

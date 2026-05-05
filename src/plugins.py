@@ -3,14 +3,13 @@
 import json
 import os
 import shutil
-import zipfile
 import time
-from typing import Optional
+import zipfile
 
 from src.constants import PLUGINS_DIR
 
 # In-memory cache of plugin metadata
-_plugins_cache: Optional[list[dict]] = None
+_plugins_cache: list[dict] | None = None
 
 
 def _ensure_plugins_dir():
@@ -21,11 +20,11 @@ def _get_version_dir(version: str) -> str:
     return os.path.join(PLUGINS_DIR, version)
 
 
-def _load_metadata(version: str) -> Optional[dict]:
+def _load_metadata(version: str) -> dict | None:
     meta_path = os.path.join(_get_version_dir(version), "metadata.json")
     if not os.path.exists(meta_path):
         return None
-    with open(meta_path, "r") as f:
+    with open(meta_path) as f:
         return json.load(f)
 
 
@@ -74,7 +73,7 @@ def get_versions() -> list[dict]:
     return versions
 
 
-def get_latest_version() -> Optional[dict]:
+def get_latest_version() -> dict | None:
     """Return the latest plugin version info."""
     versions = get_versions()
     if not versions:
@@ -109,9 +108,7 @@ def upload_plugin(
     version_dir = _get_version_dir(version)
 
     if os.path.exists(version_dir) and not overwrite:
-        raise ValueError(
-            f"Version {version} already exists. Use overwrite=True to replace."
-        )
+        raise ValueError(f"Version {version} already exists. Use overwrite=True to replace.")
 
     if os.path.exists(version_dir):
         shutil.rmtree(version_dir)

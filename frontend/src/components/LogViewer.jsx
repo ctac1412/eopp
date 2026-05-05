@@ -1,8 +1,8 @@
-import React from 'react'
-import useCaptchaStore from '../store/useCaptchaStore'
+import React from "react";
+import useCaptchaStore from "../store/useCaptchaStore";
 
 function LogViewer() {
-  const logs = useCaptchaStore((s) => s.logs)
+  const logs = useCaptchaStore((s) => s.logs);
 
   return (
     <div className="section-gap">
@@ -15,7 +15,7 @@ function LogViewer() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
-export default React.memo(LogViewer)
+export default React.memo(LogViewer);

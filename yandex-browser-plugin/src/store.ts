@@ -1,9 +1,23 @@
-import { create } from 'zustand';
-import type { InjectorConfig, PipelineStage, QueueItemState } from '@/types';
+import { create } from "zustand";
+import type { InjectorConfig, PipelineStage, QueueItemState } from "@/types";
 
-export type InjectorStatus = 'idle' | 'running' | 'scheduling' | 'done' | 'error';
+export type InjectorStatus =
+  | "idle"
+  | "running"
+  | "scheduling"
+  | "done"
+  | "error";
 
-type CollapsibleSection = 'slotRetry' | 'slotCoordination' | 'retryGetAvailableSlots' | 'retryGenerateCaptcha' | 'retryValidateCaptcha' | 'retrySubmitReschedule' | 'retrySubmitCreate' | 'retryMode' | 'mockResponses';
+type CollapsibleSection =
+  | "slotRetry"
+  | "slotCoordination"
+  | "retryGetAvailableSlots"
+  | "retryGenerateCaptcha"
+  | "retryValidateCaptcha"
+  | "retrySubmitReschedule"
+  | "retrySubmitCreate"
+  | "retryMode"
+  | "mockResponses";
 
 interface InjectorState {
   config: InjectorConfig;
@@ -21,7 +35,7 @@ interface InjectorState {
   captchaValidated: boolean | null;
   queueItems: QueueItemState[] | null;
   queueIndex: number | null;
-  role: 'master' | 'slave' | null;
+  role: "master" | "slave" | null;
   consumerId: number | null;
   totalConsumers: number | null;
   isFullscreen: boolean;
@@ -30,8 +44,15 @@ interface InjectorState {
   authError: string;
 
   setConfig: (config: InjectorConfig) => void;
-  updateField: <K extends keyof InjectorConfig>(key: K, value: InjectorConfig[K]) => void;
-  updateRetryEndpoint: <E extends keyof InjectorConfig['retryPerEndpoint']>(endpoint: E, field: keyof InjectorConfig['retryPerEndpoint'][E], value: InjectorConfig['retryPerEndpoint'][E][typeof field]) => void;
+  updateField: <K extends keyof InjectorConfig>(
+    key: K,
+    value: InjectorConfig[K],
+  ) => void;
+  updateRetryEndpoint: <E extends keyof InjectorConfig["retryPerEndpoint"]>(
+    endpoint: E,
+    field: keyof InjectorConfig["retryPerEndpoint"][E],
+    value: InjectorConfig["retryPerEndpoint"][E][typeof field],
+  ) => void;
   setStatus: (status: InjectorStatus) => void;
   setError: (error: string | null) => void;
   setResult: (result: unknown) => void;
@@ -47,8 +68,12 @@ interface InjectorState {
   setCaptchaValidated: (val: boolean | null) => void;
   setQueueItems: (items: QueueItemState[] | null) => void;
   setQueueIndex: (idx: number | null) => void;
-  updateQueueItemStatus: (idx: number, status: QueueItemState['status'], error?: string) => void;
-  setRole: (role: 'master' | 'slave' | null) => void;
+  updateQueueItemStatus: (
+    idx: number,
+    status: QueueItemState["status"],
+    error?: string,
+  ) => void;
+  setRole: (role: "master" | "slave" | null) => void;
   setConsumerId: (id: number | null) => void;
   setTotalConsumers: (n: number | null) => void;
   toggleFullscreen: () => void;
@@ -72,7 +97,7 @@ const defaultCollapsed: Record<CollapsibleSection, boolean> = {
 
 export const useInjectorStore = create<InjectorState>((set, get) => ({
   config: {} as InjectorConfig,
-  status: 'idle',
+  status: "idle",
   error: null,
   result: null,
   scheduleTime: null,
@@ -90,62 +115,84 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   consumerId: null,
   totalConsumers: null,
   isFullscreen: (() => {
-    const saved = localStorage.getItem('injector_fullscreen');
-    return saved === null ? true : saved === 'true';
+    const saved = localStorage.getItem("injector_fullscreen");
+    return saved === null ? true : saved === "true";
   })(),
   authKey: (() => {
-    const api = localStorage.getItem('injector_api_key');
+    const api = localStorage.getItem("injector_api_key");
     if (api) return api;
-    const auth = localStorage.getItem('injector_auth_key');
+    const auth = localStorage.getItem("injector_auth_key");
     if (auth) {
-      localStorage.setItem('injector_api_key', auth);
-      localStorage.removeItem('injector_auth_key');
+      localStorage.setItem("injector_api_key", auth);
+      localStorage.removeItem("injector_auth_key");
       return auth;
     }
-    return '';
+    return "";
   })(),
   authLoading: false,
-  authError: '',
+  authError: "",
 
   setConfig: (config) => set({ config }),
-  updateField: (key, value) => set((state) => {
-    const newConfig = { ...state.config, [key]: value };
-    if (newConfig.reservationId) {
-      const { mode: _, ...toSave } = newConfig;
-      try { localStorage.setItem(`injector_config_${newConfig.reservationId}`, JSON.stringify(toSave)); } catch {}
-    }
-    return { config: newConfig };
-  }),
-  updateRetryEndpoint: (endpoint, field, value) => set((state) => {
-    const newConfig: InjectorConfig = {
-      ...state.config,
-      retryPerEndpoint: {
-        ...state.config.retryPerEndpoint,
-        [endpoint]: {
-          ...state.config.retryPerEndpoint[endpoint],
-          [field]: value,
+  updateField: (key, value) =>
+    set((state) => {
+      const newConfig = { ...state.config, [key]: value };
+      if (newConfig.reservationId) {
+        const { mode: _, ...toSave } = newConfig;
+        try {
+          localStorage.setItem(
+            `injector_config_${newConfig.reservationId}`,
+            JSON.stringify(toSave),
+          );
+        } catch {}
+      }
+      return { config: newConfig };
+    }),
+  updateRetryEndpoint: (endpoint, field, value) =>
+    set((state) => {
+      const newConfig: InjectorConfig = {
+        ...state.config,
+        retryPerEndpoint: {
+          ...state.config.retryPerEndpoint,
+          [endpoint]: {
+            ...state.config.retryPerEndpoint[endpoint],
+            [field]: value,
+          },
         },
-      },
-    };
-    if (newConfig.reservationId) {
-      const { mode: _, ...toSave } = newConfig;
-      try { localStorage.setItem(`injector_config_${newConfig.reservationId}`, JSON.stringify(toSave)); } catch {}
-    }
-    return { config: newConfig };
-  }),
+      };
+      if (newConfig.reservationId) {
+        const { mode: _, ...toSave } = newConfig;
+        try {
+          localStorage.setItem(
+            `injector_config_${newConfig.reservationId}`,
+            JSON.stringify(toSave),
+          );
+        } catch {}
+      }
+      return { config: newConfig };
+    }),
   setStatus: (status) => set({ status }),
   setError: (error) => set({ error }),
   setResult: (result) => set({ result }),
-  startSchedule: (time, config) => set({ status: 'scheduling', scheduleTime: time, scheduledConfig: config }),
-  cancelSchedule: () => set({ status: 'idle', scheduleTime: null, scheduledConfig: null }),
-  addLog: (msg) => set((state) => ({
-    logs: [...state.logs, { ts: new Date().toISOString().slice(11, 21), msg }],
-  })),
+  startSchedule: (time, config) =>
+    set({ status: "scheduling", scheduleTime: time, scheduledConfig: config }),
+  cancelSchedule: () =>
+    set({ status: "idle", scheduleTime: null, scheduledConfig: null }),
+  addLog: (msg) =>
+    set((state) => ({
+      logs: [
+        ...state.logs,
+        { ts: new Date().toISOString().slice(11, 21), msg },
+      ],
+    })),
   clearLogs: () => set({ logs: [] }),
   setStage: (stage) => set({ currentStage: stage }),
-  toggleSection: (section) => set((state) => ({
-    collapsedSections: { ...state.collapsedSections, [section]: !state.collapsedSections[section] },
-  })),
+  toggleSection: (section) =>
+    set((state) => ({
+      collapsedSections: {
+        ...state.collapsedSections,
+        [section]: !state.collapsedSections[section],
+      },
+    })),
   setUsageLogId: (id) => set({ usageLogId: id }),
   setCaptchaId: (id) => set({ captchaId: id }),
   setSolvedVariantIndex: (idx) => set({ solvedVariantIndex: idx }),
@@ -155,25 +202,50 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   setRole: (role) => set({ role }),
   setConsumerId: (id) => set({ consumerId: id }),
   setTotalConsumers: (n) => set({ totalConsumers: n }),
-  updateQueueItemStatus: (idx, status, error) => set((state) => {
-    if (!state.queueItems) return { queueIndex: null };
-    const updated = state.queueItems.map((item, i) => i === idx ? { ...item, status, error } : item);
-    return { queueItems: updated, queueIndex: idx + 1 < updated.length ? idx + 1 : null };
-  }),
-  toggleFullscreen: () => set((state) => {
-    const next = !state.isFullscreen;
-    localStorage.setItem('injector_fullscreen', String(next));
-    return { isFullscreen: next };
-  }),
-  reset: () => set({ status: 'idle', error: null, result: null, scheduleTime: null, scheduledConfig: null, logs: [], currentStage: null, usageLogId: null, captchaId: null, solvedVariantIndex: null, captchaValidated: null, queueItems: null, queueIndex: null, role: null, consumerId: null, totalConsumers: null }),
+  updateQueueItemStatus: (idx, status, error) =>
+    set((state) => {
+      if (!state.queueItems) return { queueIndex: null };
+      const updated = state.queueItems.map((item, i) =>
+        i === idx ? { ...item, status, error } : item,
+      );
+      return {
+        queueItems: updated,
+        queueIndex: idx + 1 < updated.length ? idx + 1 : null,
+      };
+    }),
+  toggleFullscreen: () =>
+    set((state) => {
+      const next = !state.isFullscreen;
+      localStorage.setItem("injector_fullscreen", String(next));
+      return { isFullscreen: next };
+    }),
+  reset: () =>
+    set({
+      status: "idle",
+      error: null,
+      result: null,
+      scheduleTime: null,
+      scheduledConfig: null,
+      logs: [],
+      currentStage: null,
+      usageLogId: null,
+      captchaId: null,
+      solvedVariantIndex: null,
+      captchaValidated: null,
+      queueItems: null,
+      queueIndex: null,
+      role: null,
+      consumerId: null,
+      totalConsumers: null,
+    }),
   setAuthKey: (key) => {
-    localStorage.setItem('injector_api_key', key);
-    set({ authKey: key, authError: '' });
+    localStorage.setItem("injector_api_key", key);
+    set({ authKey: key, authError: "" });
   },
   clearAuthKey: () => {
-    localStorage.removeItem('injector_api_key');
-    set({ authKey: '', authError: '' });
+    localStorage.removeItem("injector_api_key");
+    set({ authKey: "", authError: "" });
   },
-  setAuthLoading: (loading) => set({ authLoading: loading, authError: '' }),
+  setAuthLoading: (loading) => set({ authLoading: loading, authError: "" }),
   setAuthError: (error) => set({ authError: error, authLoading: false }),
 }));

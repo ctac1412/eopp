@@ -1,5 +1,5 @@
-import React from 'react';
-import { useInjectorStore } from '@/store';
+import React from "react";
+import { useInjectorStore } from "@/store";
 
 const LiveLog = React.memo(function LiveLog() {
   const logs = useInjectorStore((s) => s.logs);

@@ -7,12 +7,23 @@ export interface RetryConfig {
   retry400DelayMs: number;
 }
 
-export type EndpointName = 'getAvailableSlots' | 'generateCaptcha' | 'validateCaptcha' | 'submitReschedule' | 'submitCreate';
+export type EndpointName =
+  | "getAvailableSlots"
+  | "generateCaptcha"
+  | "validateCaptcha"
+  | "submitReschedule"
+  | "submitCreate";
 
 export interface QueueItemState {
   slotId: string;
   slotTime: string;
-  status: 'pending' | 'solving' | 'validating' | 'submitting' | 'done' | 'failed';
+  status:
+    | "pending"
+    | "solving"
+    | "validating"
+    | "submitting"
+    | "done"
+    | "failed";
   error?: string;
 }
 
@@ -23,7 +34,7 @@ export interface InjectorConfig {
   reservationId: string;
   transportType: 1 | 2;
   slotDate: string;
-  mode: 'reschedule' | 'create';
+  mode: "reschedule" | "create";
   preferredTime: string | null;
   autoSolve: boolean;
   apiKey: string;
@@ -33,18 +44,23 @@ export interface InjectorConfig {
   slotRetryDelayMs: number;
   retryPerEndpoint: {
     getAvailableSlots: RetryConfig;
-    generateCaptcha:   RetryConfig;
-    validateCaptcha:   RetryConfig;
-    submitReschedule:  RetryConfig;
-    submitCreate:      RetryConfig;
+    generateCaptcha: RetryConfig;
+    validateCaptcha: RetryConfig;
+    submitReschedule: RetryConfig;
+    submitCreate: RetryConfig;
   };
-  retryMode: 'sequential' | 'queue';
+  retryMode: "sequential" | "queue";
   queueSize: number;
   maxRetries?: number;
   retryDelayMs?: number;
 }
 
-export type PipelineStage = 'slots' | 'captcha' | 'solving' | 'validating' | 'submitting';
+export type PipelineStage =
+  | "slots"
+  | "captcha"
+  | "solving"
+  | "validating"
+  | "submitting";
 
 export interface Slot {
   id: string;
@@ -89,7 +105,7 @@ export interface Facility {
 export interface PageInfo {
   reservationId: string;
   isLocalhost?: boolean;
-  pageType?: 'edit' | 'reschedule';
+  pageType?: "edit" | "reschedule";
 }
 
 export interface SlotDict {

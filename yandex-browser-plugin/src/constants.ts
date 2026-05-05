@@ -1,38 +1,55 @@
-import { Facility, PageInfo, InjectorConfig, RetryConfig, EndpointName } from '@/types';
+import {
+  Facility,
+  PageInfo,
+  InjectorConfig,
+  RetryConfig,
+  EndpointName,
+} from "@/types";
 
 export const FACILITIES: Facility[] = [
-  { id: '1dae5b1c-e2b3-44a4-848f-df8ce2ddde42', name: 'АПП Забайкальск' },
-  { id: '93c9939a-2182-4e78-98b4-0cf314b09cfa', name: 'АПП Тагиркент-Казмаляр' },
-  { id: 'cbde069a-7e18-4ca6-9b38-f790348d6c24', name: 'АПП Бугристое' },
-  { id: '1fffb312-4ebe-4ad2-a356-0b8f04587c11', name: 'АПП Верхний Ларс' },
-  { id: 'ab6edb80-5f8f-4bf9-bf9a-a925271d9df8', name: 'АПП Чернышевское' },
+  { id: "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42", name: "АПП Забайкальск" },
+  {
+    id: "93c9939a-2182-4e78-98b4-0cf314b09cfa",
+    name: "АПП Тагиркент-Казмаляр",
+  },
+  { id: "cbde069a-7e18-4ca6-9b38-f790348d6c24", name: "АПП Бугристое" },
+  { id: "1fffb312-4ebe-4ad2-a356-0b8f04587c11", name: "АПП Верхний Ларс" },
+  { id: "ab6edb80-5f8f-4bf9-bf9a-a925271d9df8", name: "АПП Чернышевское" },
 ];
 
 export const TZ_OFFSET = 3;
-export const CAPTCHA_SERVER = 'https://china.alabai.netcraze.pro';
-export const EOPP_API_BASE = 'https://eopp.epd-portal.ru/reservations-api/v1';
+export const CAPTCHA_SERVER = "https://china.alabai.netcraze.pro";
+export const EOPP_API_BASE = "https://eopp.epd-portal.ru/reservations-api/v1";
 
 export function shouldInject(pageUrl: string): PageInfo | null {
-  const match = pageUrl.match(/\/reservations\/reservation\/([a-f0-9-]{36})\/(edit|reschedule)/);
+  const match = pageUrl.match(
+    /\/reservations\/reservation\/([a-f0-9-]{36})\/(edit|reschedule)/,
+  );
   if (match) {
-    return { reservationId: match[1], pageType: match[2] as 'edit' | 'reschedule' };
+    return {
+      reservationId: match[1],
+      pageType: match[2] as "edit" | "reschedule",
+    };
   }
   const testMatch = pageUrl.match(/\/test-injector\/(edit|reschedule)/);
   if (testMatch) {
     return {
-      reservationId: '00000000-0000-0000-0000-000000000000',
+      reservationId: "00000000-0000-0000-0000-000000000000",
       isLocalhost: true,
-      pageType: testMatch[1] as 'edit' | 'reschedule',
+      pageType: testMatch[1] as "edit" | "reschedule",
     };
   }
   if (
-    pageUrl.startsWith('http://localhost:8765') ||
-    pageUrl.startsWith('http://127.0.0.1:8765') ||
-    pageUrl.startsWith('https://localhost:8765') ||
-    pageUrl.startsWith('https://127.0.0.1:8765') ||
-    pageUrl.startsWith('https://china.alabai.netcraze.pro/')
+    pageUrl.startsWith("http://localhost:8765") ||
+    pageUrl.startsWith("http://127.0.0.1:8765") ||
+    pageUrl.startsWith("https://localhost:8765") ||
+    pageUrl.startsWith("https://127.0.0.1:8765") ||
+    pageUrl.startsWith("https://china.alabai.netcraze.pro/")
   ) {
-    return { reservationId: '00000000-0000-0000-0000-000000000000', isLocalhost: true };
+    return {
+      reservationId: "00000000-0000-0000-0000-000000000000",
+      isLocalhost: true,
+    };
   }
   return null;
 }
@@ -40,18 +57,38 @@ export function shouldInject(pageUrl: string): PageInfo | null {
 function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return d.toISOString().split("T")[0];
 }
 
 function defaultRetryConfig(): RetryConfig {
-  return { enabled: true, maxRetries: 5, delayMs: 3000, retry400Enabled: false, retry400MaxRetries: 0, retry400DelayMs: 0 };
+  return {
+    enabled: true,
+    maxRetries: 5,
+    delayMs: 3000,
+    retry400Enabled: false,
+    retry400MaxRetries: 0,
+    retry400DelayMs: 0,
+  };
 }
 
 function defaultSlotsRetryConfig(): RetryConfig {
-  return { enabled: true, maxRetries: 5, delayMs: 3000, retry400Enabled: true, retry400MaxRetries: 15, retry400DelayMs: 1000 };
+  return {
+    enabled: true,
+    maxRetries: 5,
+    delayMs: 3000,
+    retry400Enabled: true,
+    retry400MaxRetries: 15,
+    retry400DelayMs: 1000,
+  };
 }
 
-export function createDefaultConfig(reservationId: string, facilityId: string, vehicleId: string, transportType: 1 | 2, mode: 'reschedule' | 'create' = 'reschedule'): InjectorConfig {
+export function createDefaultConfig(
+  reservationId: string,
+  facilityId: string,
+  vehicleId: string,
+  transportType: 1 | 2,
+  mode: "reschedule" | "create" = "reschedule",
+): InjectorConfig {
   return {
     runUpTo: 4,
     facilityId,
@@ -68,38 +105,53 @@ export function createDefaultConfig(reservationId: string, facilityId: string, v
     slotRetryDelayMs: 500,
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),
-      generateCaptcha:   defaultRetryConfig(),
-      validateCaptcha:   defaultRetryConfig(),
-      submitReschedule:  defaultRetryConfig(),
-      submitCreate:      defaultRetryConfig(),
+      generateCaptcha: defaultRetryConfig(),
+      validateCaptcha: defaultRetryConfig(),
+      submitReschedule: defaultRetryConfig(),
+      submitCreate: defaultRetryConfig(),
     },
-    retryMode: 'sequential',
+    retryMode: "sequential",
     queueSize: 3,
-    apiKey: '',
+    apiKey: "",
     maxRetries: 5,
     retryDelayMs: 3000,
   };
 }
 
-export function getDefaultSlotDate(mode: 'reschedule' | 'create'): string {
-  return mode === 'reschedule' ? addDays(1) : addDays(13);
+export function getDefaultSlotDate(mode: "reschedule" | "create"): string {
+  return mode === "reschedule" ? addDays(1) : addDays(13);
 }
 
-export function loadSavedConfig(reservationId: string): Partial<InjectorConfig> | null {
+export function loadSavedConfig(
+  reservationId: string,
+): Partial<InjectorConfig> | null {
   try {
     const raw = localStorage.getItem(`injector_config_${reservationId}`);
     if (!raw) return null;
     return JSON.parse(raw);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
-export function saveConfig(reservationId: string, config: InjectorConfig): void {
+export function saveConfig(
+  reservationId: string,
+  config: InjectorConfig,
+): void {
   try {
-    localStorage.setItem(`injector_config_${reservationId}`, JSON.stringify(config));
-  } catch { /* quota exceeded, ignore */ }
+    localStorage.setItem(
+      `injector_config_${reservationId}`,
+      JSON.stringify(config),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
 }
 
-export function getEndpointRetry(config: InjectorConfig, endpoint: EndpointName): RetryConfig {
+export function getEndpointRetry(
+  config: InjectorConfig,
+  endpoint: EndpointName,
+): RetryConfig {
   if (config.retryPerEndpoint && config.retryPerEndpoint[endpoint]) {
     return config.retryPerEndpoint[endpoint];
   }

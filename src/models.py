@@ -1,26 +1,26 @@
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SolveRequest(BaseModel):
     captcha_id: str
     variantIndex: int
-    api_key: Optional[str] = None
-    usage_log_id: Optional[int] = None
+    api_key: str | None = None
+    usage_log_id: int | None = None
 
 
 class SolveCaptchaBody(BaseModel):
     api_key: str
     auto_solve: bool = False
-    captcha_id: Optional[str] = None
-    reservation_id: Optional[str] = None
-    usage_log_id: Optional[int] = None
-    type: Optional[int] = None
-    token: Optional[str] = None
-    silhouette: Optional[str] = None
-    puzzle: Optional[dict[str, Any]] = None
-    valid_index: Optional[int] = None
+    captcha_id: str | None = None
+    reservation_id: str | None = None
+    usage_log_id: int | None = None
+    type: int | None = None
+    token: str | None = None
+    silhouette: str | None = None
+    puzzle: dict[str, Any] | None = None
+    valid_index: int | None = None
 
 
 class BroadcastBody(BaseModel):
@@ -29,13 +29,13 @@ class BroadcastBody(BaseModel):
 
 class CreateApiKeyBody(BaseModel):
     label: str = ""
-    max_uses: Optional[int] = None
+    max_uses: int | None = None
 
 
 class UpdateApiKeyBody(BaseModel):
-    label: Optional[str] = None
-    max_uses: Optional[int] = None
-    active: Optional[bool] = None
+    label: str | None = None
+    max_uses: int | None = None
+    active: bool | None = None
 
 
 class ConfirmUsageBody(BaseModel):
@@ -61,8 +61,8 @@ class FailUsageBody(BaseModel):
 class GenerateCaptchaBody(BaseModel):
     facilityId: str
     timeSlotData: str
-    reservationId: Optional[str] = None
-    encryptedTso: Optional[str] = None
+    reservationId: str | None = None
+    encryptedTso: str | None = None
 
 
 class AdminAuthBody(BaseModel):
@@ -78,14 +78,14 @@ class ApiKeyStatusQuery(BaseModel):
 
 
 class UsageLogQuery(BaseModel):
-    api_key_id: Optional[int] = None
+    api_key_id: int | None = None
 
 
 class RegisterUsageBody(BaseModel):
     api_key: str
     reservation_id: str
-    captcha_id: Optional[str] = None
-    config_json: Optional[dict[str, Any]] = None
+    captcha_id: str | None = None
+    config_json: dict[str, Any] | None = None
 
 
 class MockConfigBody(BaseModel):
@@ -111,5 +111,5 @@ class UploadPluginBody(BaseModel):
     version: str
     manifest: dict[str, Any]
     zip_file: str
-    note: Optional[str] = None
-    overwrite: Optional[bool] = False
+    note: str | None = None
+    overwrite: bool | None = False

@@ -160,7 +160,7 @@
 }
 
 .injector-modal-auth-key {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 12px;
   color: #27ae60;
   margin-right: 8px;
@@ -175,7 +175,9 @@
   border-radius: 4px;
   cursor: pointer;
   margin-right: 8px;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .injector-modal-logout-btn:hover {
@@ -257,7 +259,7 @@
   padding: 10px 12px;
   font-size: 14px;
   outline: none;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   transition: border-color 0.15s;
 }
 
@@ -299,7 +301,7 @@
   margin-top: 16px;
   font-size: 13px;
   color: #888;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
 }
 
 .injector-auth-gate-logout {
@@ -310,7 +312,9 @@
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .injector-auth-gate-logout:hover {
@@ -482,7 +486,7 @@
 }
 
 .injector-form-text {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 12px;
 }
 
@@ -493,7 +497,7 @@
   border: 1px solid #333;
   border-radius: 6px;
   padding: 7px 10px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 12px;
   word-break: break-all;
   user-select: all;
@@ -501,7 +505,7 @@
 
 .injector-form-number {
   max-width: 120px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 12px;
 }
 
@@ -526,7 +530,7 @@
   border: 1px solid #444;
   border-radius: 8px;
   padding: 12px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 13px;
   resize: vertical;
   box-sizing: border-box;
@@ -578,7 +582,7 @@
 }
 
 .injector-modal-clock {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 13px;
   color: #888;
   margin-right: 12px;
@@ -592,7 +596,9 @@
   border-radius: 4px;
   background: #2a2a2a;
   border: 1px solid #444;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -627,10 +633,12 @@
   border: 1px solid #444;
   border-radius: 4px;
   padding: 4px 10px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 
@@ -667,7 +675,9 @@
   line-height: 1;
   padding: 0 8px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   flex-shrink: 0;
 }
 
@@ -685,7 +695,7 @@
   border-radius: 6px 0 0 6px;
   border-right: none;
   padding: 8px 10px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 13px;
   outline: none;
 }
@@ -723,7 +733,7 @@
 
 .injector-modal-status {
   font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   min-height: 18px;
 }
 
@@ -764,7 +774,7 @@
 }
 
 .injector-progress-step:not(:last-child)::after {
-  content: '';
+  content: "";
   flex: 1;
   height: 2px;
   background: #333;
@@ -821,8 +831,13 @@
 }
 
 @keyframes injector-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .injector-live-log {
@@ -853,7 +868,7 @@
 }
 
 .injector-log-line {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 11px;
   color: #999;
   line-height: 1.6;
@@ -873,7 +888,9 @@
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   line-height: 1;
 }
 
@@ -890,7 +907,7 @@
 }
 
 .injector-api-key-value {
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 13px;
   color: #27ae60;
   word-break: break-all;
@@ -905,7 +922,9 @@
   padding: 3px 10px;
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -923,7 +942,9 @@
   padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
   white-space: nowrap;
 }
 

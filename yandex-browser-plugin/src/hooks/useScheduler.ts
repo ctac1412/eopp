@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { useInjectorStore } from '@/store';
-import { useInjector } from './useInjector';
+import { useEffect, useRef, useState } from "react";
+import { useInjectorStore } from "@/store";
+import { useInjector } from "./useInjector";
 
 function formatCountdown(remaining: number): string {
   const h = Math.floor(remaining / 3600);
@@ -8,7 +8,7 @@ function formatCountdown(remaining: number): string {
   const s = remaining % 60;
   const cs = Math.floor((s % 1) * 100);
   const sInt = Math.floor(s);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sInt).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sInt).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
 }
 
 export function useScheduler() {
@@ -22,7 +22,11 @@ export function useScheduler() {
   const [countdown, setCountdown] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status !== 'scheduling' || scheduleTime === null || scheduledConfig === null) {
+    if (
+      status !== "scheduling" ||
+      scheduleTime === null ||
+      scheduledConfig === null
+    ) {
       setCountdown(null);
       return;
     }
@@ -32,9 +36,14 @@ export function useScheduler() {
 
     function tick() {
       const now = new Date();
-      const currentUtcSec = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds() + now.getUTCMilliseconds() / 1000;
+      const currentUtcSec =
+        now.getUTCHours() * 3600 +
+        now.getUTCMinutes() * 60 +
+        now.getUTCSeconds() +
+        now.getUTCMilliseconds() / 1000;
 
-      const remaining = ((targetTime - currentUtcSec + 86400) % 86400 + 86400) % 86400;
+      const remaining =
+        (((targetTime - currentUtcSec + 86400) % 86400) + 86400) % 86400;
 
       if (remaining < 1) {
         if (timerRef.current) clearTimeout(timerRef.current);

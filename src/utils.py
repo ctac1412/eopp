@@ -1,25 +1,24 @@
-import json
+import asyncio
 import base64
+import glob
 import hashlib
+import http.client
+import io
+import json
+import os
 import random
+import ssl
 import threading
 import time
-import io
-import os
-import sys
-import glob
-import asyncio
-import ssl
-import http.client
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
 from src.constants import (
+    ADMIN_TOKEN,
+    NO_VALID_DIR,
     PORT,
     VALID_DIR,
-    NO_VALID_DIR,
-    ADMIN_TOKEN,
 )
 
 pending = {}
@@ -31,7 +30,7 @@ counter_lock = threading.Lock()
 source_files = {}
 _benchmark_cache: dict | None = None
 
-from captcha_solver import solve_captcha
+from captcha_solver import solve_captcha  # noqa: E402
 
 
 def captcha_hash(data):
@@ -69,13 +68,11 @@ def assemble_captchas(tiles, variants, valid_index=None):
             draw = ImageDraw.Draw(canvas)
             text = "100%"
             try:
-                font = ImageFont.truetype(
-                    "/System/Library/Fonts/Helvetica-Bold.ttc", 80
-                )
-            except (OSError, IOError):
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica-Bold.ttc", 80)
+            except OSError:
                 try:
                     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 80)
-                except (OSError, IOError):
+                except OSError:
                     font = ImageFont.load_default()
             bbox = draw.textbbox((0, 0), text, font=font)
             text_w = bbox[2] - bbox[0]
@@ -121,9 +118,7 @@ def push_sse(msg, api_key_id=None):
                     v.remove(q)
 
 
-def register_sse_connection(
-    api_key_id: int | None, ip: str
-) -> tuple[asyncio.Queue, bool]:
+def register_sse_connection(api_key_id: int | None, ip: str) -> tuple[asyncio.Queue, bool]:
     q: asyncio.Queue = asyncio.Queue()
     displaced = False
     with lock:
@@ -164,11 +159,11 @@ def get_connected_streams() -> list[dict]:
                     "api_key_label": key_info["label"] if key_info else None,
                     "ip": c["ip"],
                     "connected_at": c["connected_at"],
-                    "connected_at_iso": datetime.fromtimestamp(
-                        c["connected_at"], tz=timezone.utc
-                    ).isoformat()
-                    if c["connected_at"]
-                    else None,
+                    "connected_at_iso": (
+                        datetime.fromtimestamp(c["connected_at"], tz=UTC).isoformat()
+                        if c["connected_at"]
+                        else None
+                    ),
                 }
             )
     return result
@@ -190,12 +185,13 @@ def get_test_stats() -> dict:
 
 def _run_benchmark_sync():
     import numpy as np
+
     from captcha_solver import (
-        prepare_clean_tiles,
-        calculate_seam_discontinuity,
         calculate_content_coherence,
+        calculate_seam_discontinuity,
         calculate_seam_ssim,
         calculate_sobel_continuity,
+        prepare_clean_tiles,
     )
 
     test_files = sorted(glob.glob(os.path.join(VALID_DIR, "*.json")))
@@ -241,9 +237,7 @@ def _run_benchmark_sync():
                             coh = metrics[et, :, 1]
                             ssim_v = metrics[et, :, 2]
                             sobel = metrics[et, :, 3]
-                            scores = (
-                                disc * wd + (1 - ssim_v) * ws - coh * wc + sobel * wb
-                            )
+                            scores = disc * wd + (1 - ssim_v) * ws - coh * wc + sobel * wb
                             best_v = int(np.argmin(scores))
                             if best_v == expected:
                                 correct += 1
@@ -279,17 +273,13 @@ def run_benchmark_cached() -> dict:
         _benchmark_cache = {
             **bench_data,
             "_cached_at": now,
-            "last_run_timestamp": datetime.fromtimestamp(
-                now, tz=timezone.utc
-            ).isoformat(),
+            "last_run_timestamp": datetime.fromtimestamp(now, tz=UTC).isoformat(),
         }
         return {k: v for k, v in _benchmark_cache.items() if not k.startswith("_")}
     except Exception as e:
         return {
             "error": str(e),
-            "last_run_timestamp": datetime.fromtimestamp(
-                now, tz=timezone.utc
-            ).isoformat(),
+            "last_run_timestamp": datetime.fromtimestamp(now, tz=UTC).isoformat(),
         }
 
 
@@ -332,12 +322,10 @@ def send_test_cases():
     time.sleep(2)
 
     for filepath in files:
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             body = f.read()
         print(f"Sending test: {os.path.basename(filepath)}")
-        t = threading.Thread(
-            target=_send_captcha, args=(body, ADMIN_TOKEN), daemon=True
-        )
+        t = threading.Thread(target=_send_captcha, args=(body, ADMIN_TOKEN), daemon=True)
         t.start()
         time.sleep(1)
 
@@ -352,7 +340,7 @@ def send_write_cases():
     time.sleep(2)
 
     for filepath in files:
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             body = f.read()
         data = json.loads(body)
         captcha_id = captcha_hash(data)
@@ -388,7 +376,7 @@ def _send_captcha(body, admin_token, api_key=None):
     #     auto_solve: bool = False
     #     captcha_id: Optional[str] = None
     #     reservation_id: Optional[str] = None
-    #     type: Optional[int] = None
+    # type: Optional[int] = None
     #     token: Optional[str] = None
     #     silhouette: Optional[str] = None
     #     puzzle: Optional[dict[str, Any]] = None
@@ -429,12 +417,10 @@ def send_test_cases_with_key(api_key=None):
     time.sleep(2)
 
     for filepath in files:
-        with open(filepath, "r") as f:
+        with open(filepath) as f:
             body = f.read()
         print(f"Sending test: {os.path.basename(filepath)}")
-        t = threading.Thread(
-            target=_send_captcha, args=(body, ADMIN_TOKEN, api_key), daemon=True
-        )
+        t = threading.Thread(target=_send_captcha, args=(body, ADMIN_TOKEN, api_key), daemon=True)
         t.start()
         time.sleep(1)
 
@@ -448,15 +434,13 @@ def send_one_test_captcha(api_key=None, reservation_id=None):
 
     time.sleep(1)
     filepath = random.choice(files)
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")
     _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id)
 
 
-def _send_captcha_with_reservation(
-    body, admin_token, api_key=None, reservation_id=None
-):
+def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None):
     try:
         if api_key is None:
             from src.constants import get_test_api_key

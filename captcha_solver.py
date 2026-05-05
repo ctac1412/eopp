@@ -18,12 +18,13 @@ Captcha Solver - Puzzle Tile Matcher
     python captcha_solver.py <путь_к_файлу.json>
 """
 
-import json
 import base64
-import sys
-from PIL import Image
 import io
+import json
+import sys
+
 import numpy as np
+from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 
 EDGE_TRIM = 1
@@ -35,7 +36,7 @@ W_SOBEL = 0.5
 
 def load_captcha_data(filepath):
     """Load captcha data from JSON file"""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         return json.load(f)
 
 
@@ -140,9 +141,7 @@ def calculate_seam_discontinuity(variant, images_dict, edge_trim=3):
         right_edge = right[:, -edge_width:, :]
         left_edge = left[:, :edge_width, :]
 
-        diff = np.mean(
-            np.abs(right_edge.astype(np.float64) - left_edge.astype(np.float64))
-        )
+        diff = np.mean(np.abs(right_edge.astype(np.float64) - left_edge.astype(np.float64)))
         total += diff
 
     return total
@@ -242,7 +241,6 @@ def solve_captcha(data, edge_trim=EDGE_TRIM):
         Tuple of (best_variant_index, tile_order, results)
     """
 
-
     tiles = data["puzzle"]["tiles"]
     variants = data["puzzle"]["variantsCapture"]
 
@@ -288,7 +286,7 @@ def solve_captcha(data, edge_trim=EDGE_TRIM):
             best_variant = i
 
     results.sort(key=lambda x: x["score"])
-    print(f"\nTop 3 variants:")
+    print("\nTop 3 variants:")
     for rank, res in enumerate(results[:3], 1):
         print(f"  {rank}. Variant {res['variant']:2d}: score = {res['score']:8.2f}")
 

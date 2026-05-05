@@ -1,25 +1,27 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { resolve } from "path";
 
-const isDevBuild = process.env.DEV_BUILD === 'true';
+const isDevBuild = process.env.DEV_BUILD === "true";
 
 export default defineConfig({
   plugins: [react()],
   define: {
-    'process.env.NODE_ENV': JSON.stringify(isDevBuild ? 'development' : 'production'),
+    "process.env.NODE_ENV": JSON.stringify(
+      isDevBuild ? "development" : "production",
+    ),
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/index.tsx'),
-      formats: ['iife'],
-      name: 'Injector',
-      fileName: () => 'content.js',
+      entry: resolve(__dirname, "src/index.tsx"),
+      formats: ["iife"],
+      name: "Injector",
+      fileName: () => "content.js",
     },
-    outDir: 'dist',
+    outDir: "dist",
     emptyOutDir: true,
-    target: 'chrome120',
-    minify: isDevBuild ? false : 'esbuild',
+    target: "chrome120",
+    minify: isDevBuild ? false : "esbuild",
     sourcemap: isDevBuild ? true : false,
     rollupOptions: {
       output: {
@@ -29,7 +31,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      "@": resolve(__dirname, "src"),
     },
   },
 });

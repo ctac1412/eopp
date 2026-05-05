@@ -6,16 +6,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.constants import (
-    PORT,
     CAPTCHA_TIMEOUT,
+    PORT,
 )
+from src.routes import admin_auth_middleware_factory, register_all_routes
 from src.utils import (
-    pending,
     lock,
+    pending,
     send_test_cases,
     send_write_cases,
 )
-from src.routes import register_all_routes, admin_auth_middleware_factory
 
 
 def create_app(

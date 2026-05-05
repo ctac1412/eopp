@@ -3,18 +3,16 @@
 import os
 import tempfile
 
-from fastapi import Query
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from src.constants import ADMIN_TOKEN
 from src.models import UploadPluginBody
 from src.plugins import (
-    get_versions,
-    get_latest_version,
-    upload_plugin,
-    delete_version,
     _build_zip,
     _get_version_dir,
+    delete_version,
+    get_latest_version,
+    get_versions,
+    upload_plugin,
 )
 
 
@@ -42,14 +40,10 @@ def register_plugin_routes(app):
         """
         latest = get_latest_version()
         if latest is None:
-            return JSONResponse(
-                status_code=404, content={"error": "No plugin versions available"}
-            )
+            return JSONResponse(status_code=404, content={"error": "No plugin versions available"})
 
         manifest = latest.get("manifest", {})
-        downloads = [
-            f"https://china.alabai.netcraze.pro/plugins/{latest['version']}/download"
-        ]
+        downloads = [f"https://china.alabai.netcraze.pro/plugins/{latest['version']}/download"]
 
         return JSONResponse(
             content={
@@ -83,9 +77,7 @@ def register_plugin_routes(app):
         """Get the manifest.json for a specific version."""
         manifest_path = os.path.join(_get_version_dir(version), "manifest.json")
         if not os.path.isfile(manifest_path):
-            return JSONResponse(
-                status_code=404, content={"error": "Manifest not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Manifest not found"})
         return FileResponse(manifest_path, media_type="application/json")
 
     @app.post("/plugins/upload")
@@ -124,9 +116,7 @@ def register_plugin_routes(app):
         except ValueError as e:
             return JSONResponse(status_code=400, content={"error": str(e)})
         except Exception as e:
-            return JSONResponse(
-                status_code=500, content={"error": f"Upload failed: {e}"}
-            )
+            return JSONResponse(status_code=500, content={"error": f"Upload failed: {e}"})
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)

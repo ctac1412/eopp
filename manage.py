@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-import sys
 import os
+import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import typer
 
-from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, PORT, TEST_DIR, VALID_DIR
 from src.app import create_app
+from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, PORT, TEST_DIR, VALID_DIR
 
 app = typer.Typer(help="Captcha Solver Server")
 
@@ -62,6 +62,7 @@ def main(
 ):
     """Start the captcha solver server."""
     import uvicorn
+
     import src.utils
 
     certfile, keyfile = None, None
@@ -75,9 +76,7 @@ def main(
     typer.echo("=" * 56)
     typer.echo(f"  Host            : {host}")
     typer.echo(f"  Port            : {port}")
-    typer.echo(
-        f"  Protocol        : {'HTTP (no SSL)' if no_ssl else 'HTTPS (self-signed)'}"
-    )
+    typer.echo(f"  Protocol        : {'HTTP (no SSL)' if no_ssl else 'HTTPS (self-signed)'}")
     if not no_ssl:
         typer.echo(f"  Cert            : {certfile}")
         typer.echo(f"  Key             : {keyfile}")
@@ -95,9 +94,7 @@ def main(
     )
     typer.echo(f"  Solver edge_trim: {captcha_solver.EDGE_TRIM}")
 
-    frontend_dist = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "frontend", "dist"
-    )
+    frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
     typer.echo(
         f"  Frontend dist   : {'built' if os.path.isdir(frontend_dist) else 'NOT BUILT — run make build-frontend'}"
     )
@@ -116,9 +113,7 @@ def main(
         typer.echo(f"▶ Loading test cases from {TEST_DIR} ...")
 
     if write:
-        typer.echo(
-            f"▶ LABELING MODE — loading unlabelled cases from {src.utils.NO_VALID_DIR} ..."
-        )
+        typer.echo(f"▶ LABELING MODE — loading unlabelled cases from {src.utils.NO_VALID_DIR} ...")
 
     fastapi_app = create_app(use_tests=test, write_mode=write)
     uvicorn_kwargs = {

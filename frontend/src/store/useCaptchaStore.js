@@ -1,17 +1,17 @@
-import { create } from 'zustand'
+import { create } from "zustand";
 
-const STORAGE_KEY = 'kiosk_api_key'
+const STORAGE_KEY = "kiosk_api_key";
 
 function loadApiKey() {
-  const fromStorage = localStorage.getItem(STORAGE_KEY)
-  if (fromStorage) return fromStorage
-  const params = new URLSearchParams(window.location.search)
-  const fromUrl = params.get('api_key')
+  const fromStorage = localStorage.getItem(STORAGE_KEY);
+  if (fromStorage) return fromStorage;
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get("api_key");
   if (fromUrl) {
-    localStorage.setItem(STORAGE_KEY, fromUrl)
-    return fromUrl
+    localStorage.setItem(STORAGE_KEY, fromUrl);
+    return fromUrl;
   }
-  return ''
+  return "";
 }
 
 const useCaptchaStore = create((set) => ({
@@ -23,13 +23,13 @@ const useCaptchaStore = create((set) => ({
   sseError: null,
 
   setApiKey: (key) => {
-    localStorage.setItem(STORAGE_KEY, key)
-    set({ apiKey: key })
+    localStorage.setItem(STORAGE_KEY, key);
+    set({ apiKey: key });
   },
 
   clearApiKey: () => {
-    localStorage.removeItem(STORAGE_KEY)
-    set({ apiKey: '' })
+    localStorage.removeItem(STORAGE_KEY);
+    set({ apiKey: "" });
   },
 
   setSseError: (err) => set({ sseError: err }),
@@ -39,7 +39,12 @@ const useCaptchaStore = create((set) => ({
       selectedCard: null,
       queue: [
         ...state.queue,
-        { ...captcha, solved: false, createdAt: captcha.created_at * 1000, timeout: captcha.timeout || 10 },
+        {
+          ...captcha,
+          solved: false,
+          createdAt: captcha.created_at * 1000,
+          timeout: captcha.timeout || 10,
+        },
       ],
     })),
 
@@ -47,7 +52,7 @@ const useCaptchaStore = create((set) => ({
     set((state) => ({
       selectedCard: null,
       queue: state.queue.map((q) =>
-        q.id === captchaId ? { ...q, solved: true } : q
+        q.id === captchaId ? { ...q, solved: true } : q,
       ),
     })),
 
@@ -59,22 +64,23 @@ const useCaptchaStore = create((set) => ({
   addLog: (msg, cls) =>
     set((state) => ({
       logs: [
-        { time: new Date().toLocaleTimeString(), msg, cls: cls || 'action' },
+        { time: new Date().toLocaleTimeString(), msg, cls: cls || "action" },
         ...state.logs,
       ],
     })),
 
-  setSelectedCard: (captchaId, cardIndex) => set({ selectedCard: cardIndex, selectedCaptchaId: captchaId }),
+  setSelectedCard: (captchaId, cardIndex) =>
+    set({ selectedCard: cardIndex, selectedCaptchaId: captchaId }),
 
   getActiveCaptcha: () => {
-    const state = useCaptchaStore.getState()
-    return state.queue.find((q) => !q.solved) || null
+    const state = useCaptchaStore.getState();
+    return state.queue.find((q) => !q.solved) || null;
   },
 
   getUnsolvedCount: () => {
-    const state = useCaptchaStore.getState()
-    return state.queue.filter((q) => !q.solved).length
+    const state = useCaptchaStore.getState();
+    return state.queue.filter((q) => !q.solved).length;
   },
-}))
+}));
 
-export default useCaptchaStore
+export default useCaptchaStore;

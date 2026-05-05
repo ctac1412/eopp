@@ -1,23 +1,32 @@
-import type { InjectorConfig, Slot, SlotsResponse, CaptchaResponse, CaptchaValidationResponse, SolvedAnswer } from '@/types';
-import { httpRequest, retryOn429 } from './client';
-import { sendMessageToBackground } from './background';
-import { log } from '@/logger';
-import { useInjectorStore } from '@/store';
+import type {
+  InjectorConfig,
+  Slot,
+  SlotsResponse,
+  CaptchaResponse,
+  CaptchaValidationResponse,
+  SolvedAnswer,
+} from "@/types";
+import { httpRequest, retryOn429 } from "./client";
+import { sendMessageToBackground } from "./background";
+import { log } from "@/logger";
+import { useInjectorStore } from "@/store";
 
-export async function getAvailableSlots(config: InjectorConfig): Promise<SlotsResponse> {
-  log('Этап 1: получение свободных слотов');
-  useInjectorStore.getState().setStage('slots');
+export async function getAvailableSlots(
+  config: InjectorConfig,
+): Promise<SlotsResponse> {
+  log("Этап 1: получение свободных слотов");
+  useInjectorStore.getState().setStage("slots");
 
-  const isCreateReservation = config.mode === 'create';
+  const isCreateReservation = config.mode === "create";
   // const transportType = config.transportType;
   const transportType = 1;
   let url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${config.facilityId}&vehicleId=${config.vehicleId}&date=${config.slotDate}&transportType=${transportType}&isCreateReservation=${isCreateReservation}`;
-  if (config.mode !== 'create') {
+  if (config.mode !== "create") {
     url += `&reservationId=${config.reservationId}`;
   }
 
-  const response = await httpRequest('GET', url, undefined, {
-    'FacilityMode': 'false',
+  const response = await httpRequest("GET", url, undefined, {
+    FacilityMode: "false",
   });
 
   const slotsResponse = response as SlotsResponse;
@@ -25,9 +34,12 @@ export async function getAvailableSlots(config: InjectorConfig): Promise<SlotsRe
   return slotsResponse;
 }
 
-export async function generateCaptcha(config: InjectorConfig, slot: { time: string }): Promise<CaptchaResponse> {
-  log('Этап 2: генерация капчи');
-  useInjectorStore.getState().setStage('captcha');
+export async function generateCaptcha(
+  config: InjectorConfig,
+  slot: { time: string },
+): Promise<CaptchaResponse> {
+  log("Этап 2: генерация капчи");
+  useInjectorStore.getState().setStage("captcha");
 
   const payload = {
     facilityId: config.facilityId,
@@ -36,16 +48,26 @@ export async function generateCaptcha(config: InjectorConfig, slot: { time: stri
     encryptedTso: null,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/captcha', payload, {
-    'FacilityMode': 'false',
-  });
-  log('Капча сгенерирована');
+  const response = await httpRequest(
+    "POST",
+    "/reservations-api/v1/captcha",
+    payload,
+    {
+      FacilityMode: "false",
+    },
+  );
+  log("Капча сгенерирована");
   return response as CaptchaResponse;
 }
 
-export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: boolean, apiKey: string, reservationId:string ): Promise<SolvedAnswer> {
-  log('Этап 3: запрос к нашему серверу /solve-captcha');
-  useInjectorStore.getState().setStage('solving');
+export async function solveCaptcha(
+  captchaData: CaptchaResponse,
+  autoSolve: boolean,
+  apiKey: string,
+  reservationId: string,
+): Promise<SolvedAnswer> {
+  log("Этап 3: запрос к нашему серверу /solve-captcha");
+  useInjectorStore.getState().setStage("solving");
 
   const storeState = useInjectorStore.getState();
   const payload: Record<string, unknown> = {
@@ -62,11 +84,13 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
     payload.usage_log_id = storeState.usageLogId;
   }
 
-  const response = await sendMessageToBackground('solveCaptcha', payload);
+  const response = await sendMessageToBackground("solveCaptcha", payload);
   const solved = response as SolvedAnswer | null;
 
   if (!solved) {
-    throw new Error('Сервер вернул null — капча не решена (таймаут или ошибка)');
+    throw new Error(
+      "Сервер вернул null — капча не решена (таймаут или ошибка)",
+    );
   }
 
   if (solved.usage_log_id != null) {
@@ -76,7 +100,7 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
     useInjectorStore.getState().setCaptchaId(solved.captcha_id);
   }
   useInjectorStore.getState().setSolvedVariantIndex(solved.variantIndex);
-  log('Капча решена');
+  log("Капча решена");
   return solved;
 }
 
@@ -84,10 +108,10 @@ export async function validateCaptcha(
   config: InjectorConfig,
   captchaData: CaptchaResponse,
   slot: { time: string },
-  solvedAnswer: SolvedAnswer
+  solvedAnswer: SolvedAnswer,
 ): Promise<CaptchaValidationResponse> {
-  log('Этап 4: валидация капчи');
-  useInjectorStore.getState().setStage('validating');
+  log("Этап 4: валидация капчи");
+  useInjectorStore.getState().setStage("validating");
 
   const payload = {
     captchaToken: captchaData.token,
@@ -98,25 +122,30 @@ export async function validateCaptcha(
     encryptedTso: null,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/captcha-validate', payload, {
-    'FacilityMode': 'false',
-  });
+  const response = await httpRequest(
+    "POST",
+    "/reservations-api/v1/captcha-validate",
+    payload,
+    {
+      FacilityMode: "false",
+    },
+  );
   useInjectorStore.getState().setCaptchaValidated(true);
-  log('Капча валидирована');
+  log("Капча валидирована");
   return response as CaptchaValidationResponse;
 }
 
 export async function submitReschedule(
   config: InjectorConfig,
   slot: { slotCaption: string; intervalIndex: number },
-  captchaValidation: CaptchaValidationResponse
+  captchaValidation: CaptchaValidationResponse,
 ): Promise<unknown> {
-  log('Этап 5: перенос брони (Reschedule)');
-  useInjectorStore.getState().setStage('submitting');
+  log("Этап 5: перенос брони (Reschedule)");
+  useInjectorStore.getState().setStage("submitting");
 
   const payload = {
     reservationRequestId: config.reservationId,
-    timeslot: `${config.slotDate.split('-').slice(1).reverse().join('.')}, ${slot.slotCaption}`,
+    timeslot: `${config.slotDate.split("-").slice(1).reverse().join(".")}, ${slot.slotCaption}`,
     date: config.slotDate,
     // transportType: config.transportType,
     transportType: 1,
@@ -126,15 +155,23 @@ export async function submitReschedule(
     encryptedTso: null,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/Reschedule', payload);
-  const resp = response as { title?: string; eoppStatus?: number; isSuccess?: boolean };
+  const response = await httpRequest(
+    "POST",
+    "/reservations-api/v1/Reschedule",
+    payload,
+  );
+  const resp = response as {
+    title?: string;
+    eoppStatus?: number;
+    isSuccess?: boolean;
+  };
 
-  if (resp.title === 'RescheduleSuccess' && resp.eoppStatus === 20118) {
-    log('Бронь успешно перенесена (RescheduleSuccess)');
+  if (resp.title === "RescheduleSuccess" && resp.eoppStatus === 20118) {
+    log("Бронь успешно перенесена (RescheduleSuccess)");
   } else if (resp.isSuccess) {
-    log('Бронь перенесена');
+    log("Бронь перенесена");
   } else {
-    log('Ответ Reschedule', response);
+    log("Ответ Reschedule", response);
   }
   return response;
 }
@@ -142,10 +179,10 @@ export async function submitReschedule(
 export async function submitCreate(
   config: InjectorConfig,
   slot: { intervalIndex: number },
-  captchaValidation: CaptchaValidationResponse
+  captchaValidation: CaptchaValidationResponse,
 ): Promise<unknown> {
-  log('Этап 5: создание брони (SubmitDraft)');
-  useInjectorStore.getState().setStage('submitting');
+  log("Этап 5: создание брони (SubmitDraft)");
+  useInjectorStore.getState().setStage("submitting");
 
   const payload = {
     arrivalDatePlan: config.slotDate,
@@ -160,17 +197,26 @@ export async function submitCreate(
     // transportType: config.transportType,
   };
 
-  const response = await httpRequest('POST', '/reservations-api/v1/SubmitDraft', payload, {
-    'FacilityMode': 'false',
-  });
-  const resp = response as { title?: string; eoppStatus?: number; isSuccess?: boolean };
+  const response = await httpRequest(
+    "POST",
+    "/reservations-api/v1/SubmitDraft",
+    payload,
+    {
+      FacilityMode: "false",
+    },
+  );
+  const resp = response as {
+    title?: string;
+    eoppStatus?: number;
+    isSuccess?: boolean;
+  };
 
-  if (resp.title === 'SubmitReservationSuccess' && resp.eoppStatus === 20117) {
-    log('Бронь успешно создана (SubmitReservationSuccess)');
+  if (resp.title === "SubmitReservationSuccess" && resp.eoppStatus === 20117) {
+    log("Бронь успешно создана (SubmitReservationSuccess)");
   } else if (resp.isSuccess) {
-    log('Бронь создана');
+    log("Бронь создана");
   } else {
-    log('Ответ SubmitDraft', response);
+    log("Ответ SubmitDraft", response);
   }
   return response;
 }

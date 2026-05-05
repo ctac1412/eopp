@@ -30,3 +30,23 @@ build-extension-dev:
 
 install-extension:
 	cd yandex-browser-plugin && npm install
+
+install-formatters:
+	uv pip install black ruff
+	cd frontend && npm install
+
+format: format-py format-js
+
+format-py:
+	uv run black .
+	uv run ruff check --fix .
+
+format-js:
+	cd frontend && npm run format
+
+format:check-py:
+	uv run black --check .
+	uv run ruff check .
+
+format:check-js:
+	cd frontend && npm run format:check

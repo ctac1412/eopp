@@ -7,17 +7,18 @@
 Результат: таблица и лучший конфиг для продакшена.
 """
 
-import json
 import glob
+import json
 import os
+
 import numpy as np
 
 from captcha_solver import (
-    prepare_clean_tiles,
-    calculate_seam_discontinuity,
     calculate_content_coherence,
+    calculate_seam_discontinuity,
     calculate_seam_ssim,
     calculate_sobel_continuity,
+    prepare_clean_tiles,
 )
 
 TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_cases")
@@ -65,9 +66,7 @@ def test_bench():
                             coh = metrics[et, :, 1]
                             ssim_v = metrics[et, :, 2]
                             sobel = metrics[et, :, 3]
-                            scores = (
-                                disc * wd + (1 - ssim_v) * ws - coh * wc + sobel * wb
-                            )
+                            scores = disc * wd + (1 - ssim_v) * ws - coh * wc + sobel * wb
                             best_v = int(np.argmin(scores))
                             if best_v == expected:
                                 correct += 1
@@ -83,7 +82,7 @@ def test_bench():
     print(f"  BENCH — {total} тестов")
     print("=" * 55)
     print()
-    print(f"  ЛУЧШИЙ КОНФИГ:")
+    print("  ЛУЧШИЙ КОНФИГ:")
     print(f"    edge_trim = {et}")
     print(f"    W_DISC  = {wd}")
     print(f"    W_SSIM  = {ws}")
@@ -92,7 +91,7 @@ def test_bench():
     print()
     print(f"  Результат: {best_correct}/{total} ({pct:.0f}%)")
     print()
-    print(f"  Для продакшена пропиши в captcha_solver.py:")
+    print("  Для продакшена пропиши в captcha_solver.py:")
     print(f"    edge_trim={et}  W_DISC={wd}  W_SSIM={ws}  W_COH={wc}  W_SOBEL={wb}")
     print("=" * 55)
 

@@ -1,28 +1,28 @@
-const CAPTCHA_SERVER = 'https://china.alabai.netcraze.pro';
+const CAPTCHA_SERVER = "https://china.alabai.netcraze.pro";
 
 chrome.runtime.onConnect.addListener((port) => {
   let responded = false;
 
   port.onMessage.addListener(async (msg) => {
-    const serverUrl = (msg.serverUrl || CAPTCHA_SERVER).replace(/\/+$/, '');
+    const serverUrl = (msg.serverUrl || CAPTCHA_SERVER).replace(/\/+$/, "");
     try {
       let res;
 
-      if (msg.action === 'solveCaptcha') {
+      if (msg.action === "solveCaptcha") {
         res = await fetch(`${serverUrl}/solve-captcha`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify(msg.payload),
         });
-      } else if (msg.action === 'confirmUsage') {
+      } else if (msg.action === "confirmUsage") {
         res = await fetch(`${serverUrl}/confirm-usage`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             usage_log_id: msg.payload.usageLogId,
@@ -33,12 +33,12 @@ chrome.runtime.onConnect.addListener((port) => {
             valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
-      } else if (msg.action === 'failUsage') {
+      } else if (msg.action === "failUsage") {
         res = await fetch(`${serverUrl}/fail-usage`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             usage_log_id: msg.payload.usageLogId,
@@ -51,19 +51,22 @@ chrome.runtime.onConnect.addListener((port) => {
             valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
-      } else if (msg.action === 'apiKeyStatus') {
-        res = await fetch(`${serverUrl}/api-key-status?key=${encodeURIComponent(msg.payload.apiKey)}`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json, text/plain, */*',
+      } else if (msg.action === "apiKeyStatus") {
+        res = await fetch(
+          `${serverUrl}/api-key-status?key=${encodeURIComponent(msg.payload.apiKey)}`,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json, text/plain, */*",
+            },
           },
-        });
-      } else if (msg.action === 'registerUsage') {
+        );
+      } else if (msg.action === "registerUsage") {
         res = await fetch(`${serverUrl}/register-usage`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             api_key: msg.payload.apiKey,
@@ -71,17 +74,20 @@ chrome.runtime.onConnect.addListener((port) => {
             config_json: msg.payload.configJson,
           }),
         });
-      } else if (msg.action === 'pollSlotsGroup') {
-        res = await fetch(`${serverUrl}/slots-group?group_id=${encodeURIComponent(msg.payload.groupId)}&consumer_id=${msg.payload.consumerId}`, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json, text/plain, */*' },
-        });
-      } else if (msg.action === 'heartbeatSlotsGroup') {
+      } else if (msg.action === "pollSlotsGroup") {
+        res = await fetch(
+          `${serverUrl}/slots-group?group_id=${encodeURIComponent(msg.payload.groupId)}&consumer_id=${msg.payload.consumerId}`,
+          {
+            method: "GET",
+            headers: { Accept: "application/json, text/plain, */*" },
+          },
+        );
+      } else if (msg.action === "heartbeatSlotsGroup") {
         res = await fetch(`${serverUrl}/slots-group`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Accept': 'application/json, text/plain, */*',
-            'Content-Type': 'application/json',
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             group_id: msg.payload.groupId,
@@ -90,7 +96,6 @@ chrome.runtime.onConnect.addListener((port) => {
             slots: msg.payload.slots || [],
           }),
         });
-
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;
@@ -100,7 +105,10 @@ chrome.runtime.onConnect.addListener((port) => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        port.postMessage({ ok: false, error: { status: res.status, body: errorText } });
+        port.postMessage({
+          ok: false,
+          error: { status: res.status, body: errorText },
+        });
       } else {
         const json = await res.json();
         port.postMessage({ ok: true, data: json });
@@ -114,7 +122,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onDisconnect.addListener(() => {
     if (!responded) {
-      console.warn('[background] Port disconnected before response');
+      console.warn("[background] Port disconnected before response");
     }
   });
 });

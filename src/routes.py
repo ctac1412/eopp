@@ -1,74 +1,65 @@
+import asyncio
 import json
 import os
 import random
-import time
 import threading
-import asyncio
+import time
 import uuid as uuid_module
-from typing import Optional
 
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.constants import (
-    ADMIN_TOKEN,
-    PROTECTED_PATHS,
-    VALID_DIR,
-    NO_VALID_DIR,
-    CAPTCHA_TIMEOUT,
-    write_mode,
-    override_captcha_timeout,
-)
-from src.models import (
-    SolveRequest,
-    SolveCaptchaBody,
-    CreateApiKeyBody,
-    UpdateApiKeyBody,
-    ConfirmUsageBody,
-    FailUsageBody,
-    RegisterUsageBody,
-    AdminAuthBody,
-    GenerateCaptchaBody,
-    ValidateKeyQuery,
-    ApiKeyStatusQuery,
-    UsageLogQuery,
-    MockConfigBody,
-    SlotDict,
-    SlotsGroupBody,
-    UploadPluginBody,
-)
-from src.utils import (
-    source_files,
-    pending,
-    sse_queues,
-    lock,
-    assemble_captchas,
-    get_top3_from_solver,
-    push_sse,
-    next_result_id,
-    captcha_hash,
-    register_sse_connection,
-    unregister_sse_connection,
-    get_connected_streams,
-    get_test_stats,
-    run_benchmark_cached,
-)
 from captcha_solver import solve_captcha
 from src.api_keys import (
+    confirm_usage,
     create_key,
-    list_keys,
-    update_key,
     delete_key,
-    reset_usage,
-    validate_key,
+    fail_usage,
     get_key_record,
     get_usage_log_entry,
-    log_usage,
-    confirm_usage,
-    fail_usage,
+    list_keys,
     list_usages,
+    log_usage,
+    reset_usage,
+    update_key,
+    validate_key,
 )
-
+from src.constants import (
+    ADMIN_TOKEN,
+    CAPTCHA_TIMEOUT,
+    NO_VALID_DIR,
+    PROTECTED_PATHS,
+    VALID_DIR,
+    write_mode,
+)
+from src.models import (
+    AdminAuthBody,
+    ConfirmUsageBody,
+    CreateApiKeyBody,
+    FailUsageBody,
+    GenerateCaptchaBody,
+    MockConfigBody,
+    RegisterUsageBody,
+    SlotsGroupBody,
+    SolveCaptchaBody,
+    SolveRequest,
+    UpdateApiKeyBody,
+)
+from src.utils import (
+    assemble_captchas,
+    captcha_hash,
+    get_connected_streams,
+    get_test_stats,
+    get_top3_from_solver,
+    lock,
+    next_result_id,
+    pending,
+    push_sse,
+    register_sse_connection,
+    run_benchmark_cached,
+    source_files,
+    unregister_sse_connection,
+)
 
 # --- Mock config store (Task 3/4) ---
 mock_config: dict[str, dict] = {}
@@ -103,9 +94,7 @@ def register_sse_routes(app):
     async def sse_stream(request: Request, api_key: str = Query(...)):
         key_record = get_key_record(api_key)
         if not key_record:
-            return JSONResponse(
-                status_code=401, content={"error": "Invalid or missing API key"}
-            )
+            return JSONResponse(status_code=401, content={"error": "Invalid or missing API key"})
         api_key_id = key_record["id"]
         client_ip = request.client.host if request.client else "unknown"
 
@@ -133,7 +122,7 @@ def register_sse_routes(app):
                     try:
                         item = await asyncio.wait_for(q.get(), timeout=15.0)
                         yield item
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         yield ": keepalive\n\n"
             except GeneratorExit:
                 pass
@@ -198,9 +187,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             )
 
         if auto_solve:
-            best_variant, tile_order, results = await asyncio.to_thread(
-                solve_captcha, data
-            )
+            best_variant, tile_order, results = await asyncio.to_thread(solve_captcha, data)
             print(
                 f"[{captcha_id}] Auto-solve: variant {best_variant}, "
                 f"score={results[0]['score']:.2f}"
@@ -216,9 +203,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         event = threading.Event()
 
-        generated = await asyncio.to_thread(
-            assemble_captchas, tiles, variants, valid_index
-        )
+        generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
         top3 = await asyncio.to_thread(get_top3_from_solver, data)
 
         entry = {
@@ -313,7 +298,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
             if write_mode and entry.get("source_file"):
                 source_path = entry["source_file"]
-                with open(source_path, "r") as f:
+                with open(source_path) as f:
                     source_data = json.load(f)
                 source_data["valid_index"] = variant_index
                 new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
@@ -358,9 +343,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         if api_key:
             key_record = get_key_record(api_key)
             if not key_record:
-                return JSONResponse(
-                    status_code=403, content={"error": "Invalid API key"}
-                )
+                return JSONResponse(status_code=403, content={"error": "Invalid API key"})
 
         t = threading.Thread(
             target=send_one_test_captcha,
@@ -417,13 +400,9 @@ def _mock_400(body: dict):
 
 
 def _load_random_captcha():
-    files = [
-        os.path.join(VALID_DIR, f) for f in os.listdir(VALID_DIR) if f.endswith(".json")
-    ]
+    files = [os.path.join(VALID_DIR, f) for f in os.listdir(VALID_DIR) if f.endswith(".json")]
     if not files:
-        return JSONResponse(
-            status_code=500, content={"error": "No test captcha files found"}
-        )
+        return JSONResponse(status_code=500, content={"error": "No test captcha files found"})
     filepath = random.choice(files)
     with open(filepath) as f:
         return json.load(f)
@@ -692,8 +671,7 @@ def register_api_key_routes(app):
             return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
             content={
-                "successToken": "mock-success-token-"
-                + (body.get("captchaToken", "") or "")[:10],
+                "successToken": "mock-success-token-" + (body.get("captchaToken", "") or "")[:10],
             }
         )
 
@@ -710,9 +688,7 @@ def register_api_key_routes(app):
         if cfg and cfg.get("mode") == "429":
             return _mock_429()
         if cfg and cfg.get("mode") == "400":
-            return _mock_400(
-                cfg.get("custom_body", {"title": "SlotsError", "eoppStatus": 40003})
-            )
+            return _mock_400(cfg.get("custom_body", {"title": "SlotsError", "eoppStatus": 40003}))
         if cfg and cfg.get("mode") == "all_occupied":
             return JSONResponse(
                 content={
@@ -742,9 +718,7 @@ def register_api_key_routes(app):
                 }
             )
         if cfg and cfg.get("mode") == "custom":
-            return JSONResponse(
-                status_code=200, content=cfg.get("custom_body", {"slots": []})
-            )
+            return JSONResponse(status_code=200, content=cfg.get("custom_body", {"slots": []}))
         return JSONResponse(
             content={
                 "slots": [
@@ -775,20 +749,16 @@ def register_api_key_routes(app):
 
     @app.post("/reservations-api/v1/Reschedule")
     async def mock_reschedule(request: Request):
-        body = await request.json()
+        await request.json()
         cfg = _get_mock_response("/reservations-api/v1/Reschedule")
         if cfg and cfg.get("mode") == "429":
             return _mock_429()
         if cfg and cfg.get("mode") == "400":
             return _mock_400(
-                cfg.get(
-                    "custom_body", {"title": "RescheduleError", "eoppStatus": 40004}
-                )
+                cfg.get("custom_body", {"title": "RescheduleError", "eoppStatus": 40004})
             )
         if cfg and cfg.get("mode") == "all_slots_occupied":
-            return _mock_400(
-                {"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001}
-            )
+            return _mock_400({"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001})
         if cfg and cfg.get("mode") == "custom":
             return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
@@ -801,20 +771,16 @@ def register_api_key_routes(app):
 
     @app.post("/reservations-api/v1/SubmitDraft")
     async def mock_submit_draft(request: Request):
-        body = await request.json()
+        await request.json()
         cfg = _get_mock_response("/reservations-api/v1/SubmitDraft")
         if cfg and cfg.get("mode") == "429":
             return _mock_429()
         if cfg and cfg.get("mode") == "400":
             return _mock_400(
-                cfg.get(
-                    "custom_body", {"title": "SubmitDraftError", "eoppStatus": 40005}
-                )
+                cfg.get("custom_body", {"title": "SubmitDraftError", "eoppStatus": 40005})
             )
         if cfg and cfg.get("mode") == "all_slots_occupied":
-            return _mock_400(
-                {"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001}
-            )
+            return _mock_400({"title": "AllSlotsOccupiedOnInterval", "eoppStatus": 40001})
         if cfg and cfg.get("mode") == "custom":
             return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
@@ -837,7 +803,7 @@ def register_usage_routes(app):
         if os.path.exists(valid_file):
             return
         try:
-            with open(no_valid_file, "r") as f:
+            with open(no_valid_file) as f:
                 source_data = json.load(f)
             source_data["valid_index"] = variant_index
             with open(valid_file, "w") as f:
@@ -856,18 +822,12 @@ def register_usage_routes(app):
             return JSONResponse(status_code=403, content={"error": "Invalid API key"})
         log_entry = get_usage_log_entry(body.usage_log_id)
         if not log_entry or log_entry["api_key_id"] != key_record["id"]:
-            return JSONResponse(
-                status_code=404, content={"error": "Usage log entry not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Usage log entry not found"})
         if body.captcha_id and body.valid_variant_index is not None:
             move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
-        ok = confirm_usage(
-            body.usage_log_id, body.slot_date, body.logs, body.captcha_id
-        )
+        ok = confirm_usage(body.usage_log_id, body.slot_date, body.logs, body.captcha_id)
         if not ok:
-            return JSONResponse(
-                status_code=404, content={"error": "Usage log entry not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Usage log entry not found"})
         return JSONResponse(content={"ok": True})
 
     @app.delete("/usage-log/{usage_log_id}")
@@ -876,15 +836,13 @@ def register_usage_routes(app):
 
         ok = _delete_usage_log(usage_log_id)
         if not ok:
-            return JSONResponse(
-                status_code=404, content={"error": "Usage log entry not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Usage log entry not found"})
         return JSONResponse(content={"ok": True})
 
     @app.get("/usage-log")
     async def get_usage_log(
-        api_key_id: Optional[int] = Query(None),
-        api_key: Optional[str] = Query(None),
+        api_key_id: int | None = Query(None),
+        api_key: str | None = Query(None),
         hide_test: bool = Query(False),
     ):
         if api_key and api_key_id is None:
@@ -897,9 +855,7 @@ def register_usage_routes(app):
                 r
                 for r in records
                 if r.get("reservation_id")
-                and not r["reservation_id"].startswith(
-                    "00000000-0000-0000-0000-000000000000"
-                )
+                and not r["reservation_id"].startswith("00000000-0000-0000-0000-000000000000")
             ]
         return JSONResponse(content=records)
 
@@ -910,9 +866,7 @@ def register_usage_routes(app):
             return JSONResponse(status_code=403, content={"error": "Invalid API key"})
         log_entry = get_usage_log_entry(body.usage_log_id)
         if not log_entry or log_entry["api_key_id"] != key_record["id"]:
-            return JSONResponse(
-                status_code=404, content={"error": "Usage log entry not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Usage log entry not found"})
         if body.captcha_id and body.valid_variant_index is not None:
             move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
         ok = fail_usage(
@@ -924,9 +878,7 @@ def register_usage_routes(app):
             body.captcha_id,
         )
         if not ok:
-            return JSONResponse(
-                status_code=404, content={"error": "Usage log entry not found"}
-            )
+            return JSONResponse(status_code=404, content={"error": "Usage log entry not found"})
         return JSONResponse(content={"ok": True})
 
 
@@ -951,8 +903,9 @@ def register_admin_routes(app):
 
 
 def register_frontend_routes(app):
-    from src.constants import FRONTEND_DIST
     from fastapi.responses import FileResponse
+
+    from src.constants import FRONTEND_DIST
 
     if os.path.isdir(FRONTEND_DIST):
 
@@ -964,6 +917,7 @@ def register_frontend_routes(app):
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
             return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+
     else:
 
         @app.get("/{full_path:path}")
@@ -1093,9 +1047,7 @@ def register_slots_routes(app):
             _clean_expired_groups()
             group = slots_groups.get(body.group_id)
             if not group:
-                return JSONResponse(
-                    status_code=404, content={"error": "Group not found"}
-                )
+                return JSONResponse(status_code=404, content={"error": "Group not found"})
 
             consumer = None
             for c in group["consumers"]:
@@ -1103,14 +1055,10 @@ def register_slots_routes(app):
                     consumer = c
                     break
             if not consumer:
-                return JSONResponse(
-                    status_code=404, content={"error": "Consumer not found"}
-                )
+                return JSONResponse(status_code=404, content={"error": "Consumer not found"})
 
             if consumer["api_key"] != body.api_key:
-                return JSONResponse(
-                    status_code=403, content={"error": "API key mismatch"}
-                )
+                return JSONResponse(status_code=403, content={"error": "API key mismatch"})
 
             consumer["last_ping"] = time.time()
             group["expires_at"] = time.time() + SLOTS_GROUP_TTL
@@ -1132,11 +1080,6 @@ def register_slots_routes(app):
 
                 group["slots"] = body.slots
                 variants = generate_8_variants(body.slots)
-                active_consumers = [
-                    c
-                    for c in group["consumers"]
-                    if _is_consumer_alive(group, c["consumer_id"])
-                ]
                 for c in group["consumers"]:
                     variant_idx = c["consumer_id"] % MAX_VARIANTS
                     c["my_slots"] = variants[variant_idx]
@@ -1149,9 +1092,7 @@ def register_slots_routes(app):
                 my_slots = consumer.get("my_slots", [])
                 total = len(group["consumers"])
 
-        return JSONResponse(
-            content={"ok": True, "my_slots": my_slots, "total_consumers": total}
-        )
+        return JSONResponse(content={"ok": True, "my_slots": my_slots, "total_consumers": total})
 
     @app.get("/slots-group")
     async def slots_group_get(
@@ -1162,9 +1103,7 @@ def register_slots_routes(app):
             _clean_expired_groups()
             group = slots_groups.get(group_id)
             if not group:
-                return JSONResponse(
-                    status_code=404, content={"error": "Group not found"}
-                )
+                return JSONResponse(status_code=404, content={"error": "Group not found"})
 
             consumer = None
             for c in group["consumers"]:
@@ -1172,9 +1111,7 @@ def register_slots_routes(app):
                     consumer = c
                     break
             if not consumer:
-                return JSONResponse(
-                    status_code=404, content={"error": "Consumer not found"}
-                )
+                return JSONResponse(status_code=404, content={"error": "Consumer not found"})
 
             consumer["last_ping"] = time.time()
             group["expires_at"] = time.time() + SLOTS_GROUP_TTL
