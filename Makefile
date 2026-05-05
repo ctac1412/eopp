@@ -4,10 +4,10 @@ bench:
 run: build-frontend build-extension
 	uv run python manage.py --host 0.0.0.0
 
-run-http: build-frontend build-extension-dev
+run-http: build-frontend
 	uv run python manage.py --host 0.0.0.0 --no-ssl
 
-run-test: build-frontend build-extension
+run-test: build-frontend
 	uv run python manage.py --test
 
 run-write: build-frontend build-extension

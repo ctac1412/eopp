@@ -73,7 +73,7 @@ export function createDefaultConfig(reservationId: string, facilityId: string, v
 }
 
 export function getDefaultSlotDate(mode: 'reschedule' | 'create'): string {
-  return mode === 'reschedule' ? addDays(1) : addDays(14);
+  return mode === 'reschedule' ? addDays(1) : addDays(13);
 }
 
 export function getEndpointRetry(config: InjectorConfig, endpoint: EndpointName): RetryConfig {
