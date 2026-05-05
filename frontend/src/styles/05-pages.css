@@ -1,0 +1,501 @@
+/* ========================================
+   PAGES — Page-specific styles
+   ======================================== */
+
+/* ─────────────────────────────────────
+   ADMIN PAGE
+   ───────────────────────────────────── */
+
+.admin-page {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-12);
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+}
+
+.admin-header__title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.admin-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.admin-error {
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  margin-bottom: var(--space-4);
+}
+
+/* ── Legacy Aliases ── */
+.admin-page {
+}
+
+.admin-header h1 {
+}
+
+.admin-header-right {
+}
+
+.admin-error {
+}
+
+/* ─────────────────────────────────────
+   ADMIN AUTH
+   ───────────────────────────────────── */
+
+.admin-auth-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.admin-auth-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-10) var(--space-12);
+  width: 360px;
+  text-align: center;
+}
+
+.admin-auth-box h2 {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+.admin-auth-desc {
+  font-size: var(--text-md);
+  color: var(--text-dim);
+  margin-bottom: var(--space-6);
+}
+
+.admin-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.admin-auth-error {
+  color: var(--error-light);
+  font-size: var(--text-md);
+}
+
+/* ─────────────────────────────────────
+   NEW KEY BANNER
+   ───────────────────────────────────── */
+
+.admin-new-key {
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+.admin-new-key__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--success-light);
+  margin-bottom: var(--space-1);
+}
+
+.admin-new-key__hint {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  margin-bottom: var(--space-4);
+}
+
+.admin-new-key__value {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+/* ── Legacy Aliases ── */
+.admin-new-key {
+}
+
+.admin-new-key-title {
+}
+
+.admin-new-key-hint {
+}
+
+.admin-new-key-value {
+}
+
+/* ─────────────────────────────────────
+   ADMIN TABLE CELLS
+   ───────────────────────────────────── */
+
+.admin-label {
+  color: var(--text);
+  font-weight: var(--font-medium);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-id {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.admin-date {
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.admin-usage {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.admin-comment {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Price/Paid columns */
+.admin-history-price {
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  color: var(--primary-hover);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.admin-history-paid {
+  font-size: var(--text-sm);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.admin-history-paid::before {
+  content: "✓";
+  color: var(--success);
+  font-weight: var(--font-bold);
+}
+
+/* ── Legacy Aliases ── */
+.admin-label { }
+.admin-id { }
+.admin-date { }
+.admin-usage { }
+.admin-comment { }
+.admin-history-price { }
+.admin-history-paid { }
+
+/* ─────────────────────────────────────
+   ADMIN TABLE ACTIONS
+   ───────────────────────────────────── */
+
+.admin-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.admin-btn-edit {
+  background: var(--info-bg);
+  color: var(--info-light);
+}
+
+.admin-btn-edit:hover {
+  background: rgba(59, 130, 246, 0.25);
+}
+
+.admin-btn-reset {
+  background: var(--warning-bg);
+  color: var(--warning-light);
+}
+
+.admin-btn-reset:hover {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+.admin-btn-del {
+  background: var(--error-bg);
+  color: var(--error-light);
+}
+
+.admin-btn-del:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.admin-btn-history {
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--primary-hover);
+}
+
+.admin-btn-history:hover {
+  background: rgba(139, 92, 246, 0.25);
+}
+
+.admin-btn-history--open {
+  background: rgba(139, 92, 246, 0.25);
+  color: #c4b5fd;
+}
+
+.admin-btn-history--open:hover {
+  background: rgba(139, 92, 246, 0.35);
+}
+
+/* ── Legacy Aliases ── */
+.admin-actions {
+}
+
+.admin-btn-edit { }
+.admin-btn-reset { }
+.admin-btn-del { }
+.admin-btn-history { }
+.admin-btn-history-open { }
+
+/* ─────────────────────────────────────
+   HISTORY DETAIL ROW
+   ───────────────────────────────────── */
+
+.admin-history-cell {
+  padding: 0 !important;
+  background: rgba(15, 17, 23, 0.5);
+}
+
+.admin-history-wrapper {
+  padding: var(--space-4) var(--space-5);
+}
+
+.admin-history-loading,
+.admin-history-error,
+.admin-history-empty {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  padding: var(--space-4) 0;
+}
+
+.admin-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.admin-history-table th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-weight: var(--font-semibold);
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-history-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  color: var(--text-dim);
+  vertical-align: middle;
+  font-size: var(--text-sm);
+}
+
+.admin-history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-history-table tbody tr:hover {
+  background: rgba(39, 41, 61, 0.12);
+}
+
+.admin-history-time {
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.admin-history-resid {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.admin-history-cid {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+.admin-history-stage {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+}
+
+.admin-history-error-msg {
+  font-size: var(--text-xs);
+  color: var(--error-light);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-history-id {
+  color: var(--text-dim);
+  font-size: var(--text-md);
+  font-family: var(--font-mono);
+  text-align: center;
+  width: 50px;
+}
+
+.admin-history-slot-date {
+  font-size: var(--text-md);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* History toolbar */
+.admin-history-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* ── Legacy Aliases ── */
+.admin-history-cell { }
+.admin-history-wrapper { }
+.admin-history-loading { }
+.admin-history-error { }
+.admin-history-empty { }
+.admin-history-table { }
+.admin-history-time { }
+.admin-history-resid { }
+.admin-history-cid { }
+.admin-history-stage { }
+.admin-history-error-msg { }
+.admin-history-id { }
+.admin-history-slot-date { }
+.admin-history-toolbar { }
+
+/* ─────────────────────────────────────
+   PLUGIN LOGS
+   ───────────────────────────────────── */
+
+.admin-plugin-logs-cell {
+  padding: 0 !important;
+  background: rgba(10, 11, 16, 0.5);
+}
+
+.admin-plugin-logs-wrapper {
+  padding: var(--space-3) var(--space-5);
+}
+
+.admin-plugin-logs-body {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.admin-plugin-log-line {
+  color: var(--text-dim);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  padding: var(--space-1) 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.admin-plugin-log-line:last-child {
+  border-bottom: none;
+}
+
+/* ─────────────────────────────────────
+   WITHDRAWALS MODAL
+   ───────────────────────────────────── */
+
+.admin-withdrawals-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-5);
+}
+
+.admin-withdrawal-form {
+  margin-top: var(--space-6);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.admin-withdrawal-form h4 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text);
+  margin-bottom: var(--space-4);
+}
+
+/* ─────────────────────────────────────
+   TEST LINKS
+   ───────────────────────────────────── */
+
+.test-links {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ─────────────────────────────────────
+   INVOICE (дублирование для specificity)
+   ───────────────────────────────────── */
+
+.admin-invoice-summary {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-invoice-summary-title {
+  font-size: var(--text-md);
+  color: var(--text-dim);
+}
+
+.admin-invoice-summary-count {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-bold);
+  color: var(--primary-hover);
+  font-family: var(--font-mono);
+}

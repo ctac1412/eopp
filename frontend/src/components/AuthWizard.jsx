@@ -35,15 +35,15 @@ function AuthWizard({ onAuthenticated }) {
   };
 
   return (
-    <div className="auth-wizard-overlay">
-      <div className="auth-wizard-card">
-        <div className="auth-wizard-title">EOPP Captcha Solver</div>
-        <div className="auth-wizard-subtitle">
+    <div className="auth-wizard">
+      <div className="auth-wizard__card">
+        <div className="auth-wizard__title">EOPP Captcha Solver</div>
+        <div className="auth-wizard__subtitle">
           Введите API ключ киоска для начала работы
         </div>
-        <form className="auth-wizard-form" onSubmit={handleSubmit}>
+        <form className="auth-wizard__form" onSubmit={handleSubmit}>
           <input
-            className="auth-wizard-input"
+            className="auth-wizard__input"
             type="text"
             placeholder="API ключ"
             value={key}
@@ -53,8 +53,8 @@ function AuthWizard({ onAuthenticated }) {
             }}
             autoFocus
           />
-          {error && <div className="auth-wizard-error">{error}</div>}
-          <button className="auth-wizard-btn" type="submit" disabled={loading}>
+          {error && <div className="auth-wizard__error">{error}</div>}
+          <button className="auth-wizard__btn" type="submit" disabled={loading}>
             {loading ? "Проверка..." : "Подключиться"}
           </button>
         </form>

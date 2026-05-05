@@ -1,0 +1,431 @@
+/* ========================================
+   LAYOUT — Header, Status Bar, Tabs, Grid, Sections
+   ======================================== */
+
+/* ─────────────────────────────────────
+   HEADER
+   ───────────────────────────────────── */
+
+.header {
+  background: linear-gradient(135deg, #1a1b2e 0%, #16213e 100%);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.header__title {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.5px;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 2px;
+}
+
+.header__subtitle {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+/* ─────────────────────────────────────
+   STATUS BAR
+   ───────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.status-bar__left,
+.status-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.status-bar__left {
+  gap: var(--space-2);
+}
+
+/* Status dot */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.status-dot--idle {
+  background: var(--text-dim);
+  box-shadow: none;
+  animation: none;
+}
+
+.status-dot--error {
+  background: var(--error);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  animation: pulse-error 1s infinite;
+}
+
+@keyframes pulse-error {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Status text */
+.status-text {
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+}
+
+.status-text strong {
+  color: var(--text);
+  font-weight: var(--font-semibold);
+}
+
+/* Status error text */
+.status-error {
+  font-size: var(--text-xs);
+  color: var(--error-light);
+  font-weight: var(--font-medium);
+  margin-left: var(--space-2);
+}
+
+/* ── Legacy Aliases ── */
+.status-bar {
+}
+.status-right { }
+.status-left { }
+.status-dot { }
+.status-dot.idle { }
+.status-dot.error { }
+.sse-error-text { }
+.status-text { }
+
+/* ─────────────────────────────────────
+   TABS
+   ───────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+
+.tab {
+  flex: 1;
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+  transition: all var(--transition-slow);
+  font-family: var(--font-sans);
+  position: relative;
+}
+
+.tab:hover {
+  color: var(--text-muted);
+  background: rgba(39, 41, 61, 0.3);
+}
+
+.tab--active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.12), rgba(167, 139, 250, 0.12));
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+.tab--active:hover {
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.18), rgba(167, 139, 250, 0.18));
+}
+
+/* Admin tabs (with custom colors) */
+.admin-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-6);
+}
+
+.admin-tabs .tab {
+  padding: var(--space-3) var(--space-5);
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.admin-tabs .tab--active {
+  background: var(--info);
+  color: #fff;
+  box-shadow: none;
+}
+
+/* ── Legacy Aliases ── */
+.captcha-tabs {
+}
+
+.captcha-tab {
+}
+
+.captcha-tab-active {
+}
+
+/* ─────────────────────────────────────
+   CAPTCHA GRID
+   ───────────────────────────────────── */
+
+.captcha-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-3);
+}
+
+.captcha-grid-wrapper {
+  flex: 1;
+  min-height: 300px;
+}
+
+/* ── Legacy Aliases ── */
+.grid {
+}
+
+/* ─────────────────────────────────────
+   SECTIONS
+   ───────────────────────────────────── */
+
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.section__title {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text);
+}
+
+.section__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+/* ── Legacy Aliases ── */
+.active-section {
+}
+
+.active-header {
+}
+
+.active-title {
+}
+
+.active-header-right {
+}
+
+/* ─────────────────────────────────────
+   TOP 3 CHIPS
+   ───────────────────────────────────── */
+
+.top3-chips {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* ── Legacy Aliases ── */
+.top3-chips {
+}
+
+/* ─────────────────────────────────────
+   CAPTCHA IDLE STATE
+   ───────────────────────────────────── */
+
+.captcha-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-6);
+  gap: var(--space-8);
+  min-height: 260px;
+}
+
+.captcha-idle__spinner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.captcha-idle__text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.captcha-idle__main {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.captcha-idle__sub {
+  font-size: var(--text-md);
+  color: var(--text-faint);
+}
+
+/* ── Legacy Aliases ── */
+.captcha-idle {
+}
+
+.captcha-idle-spinner {
+}
+
+.captcha-idle-text {
+}
+
+.captcha-idle-text-main {
+}
+
+.captcha-idle-text-sub {
+}
+
+/* ─────────────────────────────────────
+   CONTENT AREAS
+   ───────────────────────────────────── */
+
+.captcha-content-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
+}
+
+.section-gap {
+  margin-top: var(--space-5);
+}
+
+/* ── Legacy Aliases ── */
+.captcha-content-area {
+}
+
+.section-gap {
+}
+
+/* ─────────────────────────────────────
+   BACK LINK
+   ───────────────────────────────────── */
+
+.back-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: var(--text-md);
+  font-weight: var(--font-medium);
+  transition: opacity var(--transition-slow);
+}
+
+.back-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+/* ─────────────────────────────────────
+   CONFIG HEADER
+   ───────────────────────────────────── */
+
+.config-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.config-header h2 {
+  margin-bottom: 0;
+}
+
+.config-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Legacy Aliases ── */
+.config-header {
+}
+
+.config-actions {
+}
+
+/* ─────────────────────────────────────
+   SCRIPT CODE BLOCK
+   ───────────────────────────────────── */
+
+.script-code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  max-height: 75vh;
+  overflow: auto;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre;
+  margin: 0;
+}
+
+.script-loading {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-10);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--text-md);
+}
+
+/* ── Legacy Aliases ── */
+.script-code {
+}
+
+.script-loading {
+}

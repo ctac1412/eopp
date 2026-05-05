@@ -22,7 +22,7 @@ function CountdownTimer({ createdAt, timeout }) {
   const isUrgent = seconds <= 3;
 
   return (
-    <div className={"countdown " + (isUrgent ? "urgent" : "")}>{seconds}s</div>
+    <div className={"countdown " + (isUrgent ? " countdown--urgent" : "")}>{seconds}s</div>
   );
 }
 

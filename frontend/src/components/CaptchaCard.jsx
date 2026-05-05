@@ -42,19 +42,19 @@ function CaptchaCard({ entry, index }) {
 
   return (
     <div
-      className={"card" + (isSelected ? " selected" : "")}
+      className={"card" + (isSelected ? " card--selected" : "")}
       data-index={index}
       onClick={handleClick}
     >
       {rank >= 0 && (
-        <div className={"badge badge-" + (rank + 1)}>TOP {rank + 1}</div>
+        <div className={"badge badge--position badge--" + (rank + 1)}>TOP {rank + 1}</div>
       )}
       <img
-        className="captcha-img"
+        className="card__image"
         src={"data:image/png;base64," + entry.images[index]}
         alt={`Variant ${index}`}
       />
-      <div className="card-label">#{index}</div>
+      <div className="card__label">#{index}</div>
     </div>
   );
 }

@@ -1,32 +1,17 @@
 import React, { useState, useEffect, useCallback } from "react";
-import useCaptchaStore from "../store/useCaptchaStore";
+import { HistoryTable } from "./history/HistoryTable";
+import { EditModal } from "./history/EditModal";
 
-function StatusBadge({ status }) {
-  const clsMap = {
-    confirmed: "admin-status-confirmed",
-    pending: "admin-status-pending",
-    failed: "admin-status-failed",
-  };
-  const labelMap = {
-    confirmed: "Подтверждено",
-    pending: "Ожидание",
-    failed: "Ошибка",
-  };
-  return (
-    <span className={`admin-status-badge ${clsMap[status] || ""}`}>
-      {labelMap[status] || status}
-    </span>
-  );
-}
-
-function UsageHistory() {
-  const apiKey = useCaptchaStore((s) => s.apiKey);
+function UsageHistory({ apiKey, adminToken }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedLogs, setExpandedLogs] = useState({});
   const [expandedConfig, setExpandedConfig] = useState({});
   const [expandedErrors, setExpandedErrors] = useState({});
+  const [selectedLogs, setSelectedLogs] = useState({});
+  const [editModal, setEditModal] = useState(null);
+  const [editForm, setEditForm] = useState({ price: "", paid: false });
 
   const toggleLogs = (id) => {
     setExpandedLogs((p) => ({ ...p, [id]: !p[id] }));
@@ -38,6 +23,46 @@ function UsageHistory() {
 
   const toggleError = (id) => {
     setExpandedErrors((p) => ({ ...p, [id]: !p[id] }));
+  };
+
+  const toggleSelection = (id) => {
+    if (id === "selectall") {
+      setSelectedLogs(Object.fromEntries(records.map((r) => [r.id, true])));
+    } else if (id === "deselectall") {
+      setSelectedLogs({});
+    } else {
+      setSelectedLogs((p) => ({ ...p, [id]: !p[id] }));
+    }
+  };
+
+  const openEditLog = (log) => {
+    setEditForm({
+      price: log.price != null ? String(log.price) : "",
+      paid: log.paid || false,
+    });
+    setEditModal(log);
+  };
+
+  const handleEditLog = async (e) => {
+    e.preventDefault();
+    if (!editModal || !adminToken) return;
+    try {
+      const body = {};
+      if (editForm.price !== "") {
+        body.price = parseInt(editForm.price, 10);
+      }
+      body.paid = editForm.paid;
+      const res = await fetch(`/admin/usage-log/${editModal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setEditModal(null);
+      fetchLogs();
+    } catch (err) {
+      alert(`Ошибка: ${err.message}`);
+    }
   };
 
   const fetchLogs = useCallback(async () => {
@@ -83,156 +108,28 @@ function UsageHistory() {
   if (error) {
     return <div className="admin-history-error">{error}</div>;
   }
-  if (records.length === 0) {
-    return <div className="admin-history-empty">История пуста</div>;
-  }
 
   return (
-    <div className="admin-table-wrapper">
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Время</th>
-            <th>Статус</th>
-            <th>Дата слота</th>
-            <th>Reservation ID</th>
-            <th>Капча</th>
-            <th>Ошибка</th>
-            <th>Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map((r) => {
-            const isLogsExpanded = expandedLogs[r.id];
-            const isConfigExpanded = expandedConfig[r.id];
-            const isErrorExpanded = expandedErrors[r.id];
-            const hasLogs = r.logs && r.logs.length > 0;
-            const hasConfig = r.config_json != null;
-            const hasError = r.error_message != null && r.error_message !== "";
-            const errorTruncated =
-              hasError && !isErrorExpanded
-                ? r.error_message.length > 100
-                  ? r.error_message.slice(0, 100) + "…"
-                  : r.error_message
-                : null;
-
-            return (
-              <React.Fragment key={r.id}>
-                <tr>
-                  <td className="admin-history-id">{r.id}</td>
-                  <td className="admin-date">
-                    {new Date(r.created_at).toLocaleString("ru-RU", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
-                  </td>
-                  <td>
-                    <StatusBadge status={r.status} />
-                  </td>
-                  <td className="admin-history-slot-date">
-                    {r.slot_date || "—"}
-                  </td>
-                  <td className="admin-history-resid">{r.reservation_id}</td>
-                  <td className="admin-history-cid">
-                    {r.captcha_id_short || r.captcha_id || "—"}
-                  </td>
-                  <td className="admin-history-error-msg">
-                    {hasError ? (
-                      isErrorExpanded ? (
-                        <span
-                          style={{
-                            cursor: "pointer",
-                            color: "#f87171",
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-all",
-                            overflow: "visible",
-                            maxWidth: "none",
-                          }}
-                          onClick={() => toggleError(r.id)}
-                        >
-                          {r.error_message}
-                        </span>
-                      ) : (
-                        <span
-                          style={{ cursor: "pointer", color: "#f87171" }}
-                          onClick={() => toggleError(r.id)}
-                          title="Нажмите, чтобы развернуть"
-                        >
-                          {errorTruncated}
-                        </span>
-                      )
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    <div
-                      style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}
-                    >
-                      {hasConfig && (
-                        <button
-                          className={`admin-btn-sm ${isConfigExpanded ? "admin-btn-history-open" : "admin-btn-history"}`}
-                          onClick={() => toggleConfig(r.id)}
-                        >
-                          {isConfigExpanded ? "Свернуть конфиг" : "Конфиг"}
-                        </button>
-                      )}
-                      {hasLogs && (
-                        <button
-                          className={`admin-btn-sm ${isLogsExpanded ? "admin-btn-history-open" : "admin-btn-history"}`}
-                          onClick={() => toggleLogs(r.id)}
-                        >
-                          {isLogsExpanded ? "Свернуть логи" : "Логи"}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-                {isConfigExpanded && hasConfig && (
-                  <tr>
-                    <td colSpan={8} className="admin-plugin-logs-cell">
-                      <div className="admin-plugin-logs-wrapper">
-                        <div className="admin-plugin-logs-body">
-                          <pre
-                            style={{
-                              margin: 0,
-                              fontSize: "11px",
-                              lineHeight: "1.6",
-                              whiteSpace: "pre-wrap",
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            {JSON.stringify(r.config_json, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {isLogsExpanded && hasLogs && (
-                  <tr>
-                    <td colSpan={8} className="admin-plugin-logs-cell">
-                      <div className="admin-plugin-logs-wrapper">
-                        <div className="admin-plugin-logs-body">
-                          {r.logs.map((line, i) => (
-                            <div key={i} className="admin-plugin-log-line">
-                              {line}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+    <div>
+      <HistoryTable
+        records={records}
+        selectedLogs={selectedLogs}
+        expandedLogs={expandedLogs}
+        expandedConfig={expandedConfig}
+        expandedErrors={expandedErrors}
+        onToggleSelection={toggleSelection}
+        onToggleLogs={toggleLogs}
+        onToggleConfig={toggleConfig}
+        onToggleError={toggleError}
+        onOpenEdit={openEditLog}
+      />
+      <EditModal
+        show={!!editModal}
+        form={editForm}
+        setForm={setEditForm}
+        onSubmit={handleEditLog}
+        onClose={() => setEditModal(null)}
+      />
     </div>
   );
 }

@@ -15,7 +15,7 @@ import os
 
 PORT = 8765
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEST_DIR = os.path.join(PROJECT_DIR, "tests", "test_cases")
+TEST_DIR = os.path.join(PROJECT_DIR, "data", "captcha_examples")
 VALID_DIR = os.path.join(TEST_DIR, "valid")
 NO_VALID_DIR = os.path.join(TEST_DIR, "no_valid")
 CAPTCHA_TIMEOUT = 10
