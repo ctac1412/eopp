@@ -1,3 +1,23 @@
+/**
+ * EOPP Captcha Solver - Zustand Store (Глобальное состояние)
+ *
+ * Хранит:
+ * - apiKey: API ключ (из localStorage или URL параметра)
+ * - queue: очередь активных капч для решения
+ * - selectedCard: выбранный вариант капчи (index)
+ * - selectedCaptchaId: ID текущей капчи
+ * - logs: массив логов событий
+ * - sseError: ошибка SSE подключения
+ *
+ * Методы:
+ * - setApiKey / clearApiKey - управление ключом
+ * - addCaptcha / markSolved / removeCaptcha - управление очередью
+ * - addLog - добавление лога
+ * - setSelectedCard - выбор варианта
+ * - getActiveCaptcha / getUnsolvedCount - геттеры
+ *
+ * Используется: всеми компонентами для доступа к состоянию
+ */
 import { create } from "zustand";
 
 const STORAGE_KEY = "kiosk_api_key";

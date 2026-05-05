@@ -1,3 +1,19 @@
+/**
+ * EOPP Captcha Solver - SSE Hook (Server-Sent Events)
+ *
+ * Подключается к /stream?api_key=... и слушает события:
+ * - new_captcha: новая капча для решения -> addCaptcha
+ * - captcha_solved: капча решена -> markSolved
+ * - captcha_timeout: таймаут -> removeCaptcha
+ * - disconnected: другое подключение активно -> setSseError
+ *
+ * Особенности:
+ * - Автоматическое переподключение при ошибках (до 10 попыток)
+ * - Звуковое уведомление при новой капче
+ * - Логирование всех событий
+ *
+ * Использует: useCaptchaStore (addCaptcha, markSolved, removeCaptcha, addLog, setSseError)
+ */
 import { useEffect } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
 import { playNewCaptchaSound } from "../utils/sounds";

@@ -21,7 +21,8 @@ from src.constants import (
     CAPTCHA_TIMEOUT,
     PORT,
 )
-from src.routes import admin_auth_middleware_factory, register_all_routes
+from src.routes import register_all_routes
+from src.routes.admin import admin_auth_middleware_factory
 from src.utils import (
     lock,
     pending,

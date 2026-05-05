@@ -1,3 +1,15 @@
+/**
+ * EOPP Captcha Solver - Главное приложение React
+ *
+ * Основные функции:
+ * - Проверка авторизации (API ключ из localStorage)
+ * - SSE подписка на новые капчи (useSSE хук)
+ * - Переключение табов: "Капчи" / "История"
+ * - Рендер CaptchaGrid с вариантами или UsageHistory
+ *
+ * Роуты: / (главная страница)
+ * Зависимости: useSSE, useCaptchaStore, StatusBar, CaptchaGrid, LogViewer, AuthWizard, UsageHistory
+ */
 import React, { useState, useEffect, useCallback } from "react";
 import useSSE from "./hooks/useSSE";
 import useCaptchaStore from "./store/useCaptchaStore";

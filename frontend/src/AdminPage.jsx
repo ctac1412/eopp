@@ -1,3 +1,24 @@
+/**
+ * EOPP Captcha Solver - Admin Page (Панель администрирования)
+ *
+ * Основные функции:
+ * - Авторизация админа через ADMIN_TOKEN
+ * - Управление API ключами (CRUD)
+ * - Просмотр активных SSE соединений (/admin/streams)
+ * - Статистика по тестовым кейсам (/admin/test-stats)
+ * - Запуск бенчмарка (/admin/benchmark)
+ * - Управление мок-конфигом (/mock-config)
+ *
+ * Вкладки:
+ * - keys: управление API ключами
+ * - streams: активные SSE подключения
+ * - test-stats: статистика тестов
+ * - benchmark: результаты бенчмарка
+ * - mock: настройка мок-ответов EOPP API
+ *
+ * Роут: /admin
+ * Защита: требует X-Admin-Token в заголовках
+ */
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 

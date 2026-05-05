@@ -1,3 +1,18 @@
+/**
+ * EOPP Captcha Solver - CaptchaGrid (Сетка вариантов капчи)
+ *
+ * Основные функции:
+ * - Получает активную нерешённую капчу из очереди (queue)
+ * - Рендерит варианты в виде сетки (CaptchaCard для каждого)
+ * - Показывает countdown таймер (CountdownTimer)
+ * - Сортирует варианты: top3 рекомендуемые -> остальные
+ *
+ * States:
+ * - idle: нет активных капч (показывает "Ожидание запросов...")
+ * - active: есть капча -> рендерит варианты
+ *
+ * Использует: useCaptchaStore (queue), CaptchaCard, CountdownTimer
+ */
 import React from "react";
 import CaptchaCard from "./CaptchaCard";
 import CountdownTimer from "./CountdownTimer";

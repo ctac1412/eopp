@@ -1,3 +1,21 @@
+/**
+ * EOPP Browser Extension - Pipeline Runner
+ *
+ * Основной модуль автоматизации бронирований. Выполняет 5-стадийный pipeline:
+ * 1. getAvailableSlots - получение доступных слотов
+ * 2. generateCaptcha - генерация капчи
+ * 3. solveCaptcha - решение капчи (через background -> server)
+ * 4. validateCaptcha - валидация решения
+ * 5. submitReschedule / submitCreate - создание/перенос брони
+ *
+ * Особенности:
+ * - Retry логика (429, 400 ошибки)
+ * - Slots Group координация между клиентами
+ * - Логирование каждой стадии
+ * - Поддержка mode: create/reschedule
+ *
+ * Зависимости: stages.ts, client.ts, background.ts
+ */
 import type {
   InjectorConfig,
   Slot,

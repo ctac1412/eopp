@@ -1,3 +1,16 @@
+/**
+ * EOPP Browser Extension - TypeScript Types
+ *
+ * Основные типы:
+ * - RetryConfig: конфигурация повторов при ошибках
+ * - EndpointName: названия эндпоинтов EOPP API
+ * - QueueItemState: статус элемента очереди слотов
+ * - InjectorConfig: конфигурация инжектора (АПП, vehicleId, mode, retry и т.д.)
+ * - PipelineStage: стадия pipeline
+ * - SlotsResponse, CaptchaResponse, SolvedAnswer: ответы API
+ *
+ * Используется: во всех модулях расширения для типизации
+ */
 export interface RetryConfig {
   enabled: boolean;
   maxRetries: number;

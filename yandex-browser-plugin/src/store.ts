@@ -1,3 +1,25 @@
+/**
+ * EOPP Browser Extension - Zustand Store (Глобальное состояние)
+ *
+ * Хранит:
+ * - config: текущая конфигурация инжектора
+ * - status: статус (idle/running/scheduling/done/error)
+ * - error: сообщение об ошибке
+ * - result: результат выполнения pipeline
+ * - scheduleTime / scheduledConfig: запланированный запуск
+ * - logs: массив логов выполнения
+ * - currentStage: текущая стадия pipeline
+ * - queue: очередь запланированных запусков
+ * - showModal: видимость модального окна
+ *
+ * Методы:
+ * - setConfig, setStatus, setError, setResult - сеттеры
+ * - addLog - добавление лога
+ * - startPipeline - запуск pipeline
+ * - scheduleRun - планирование запуска
+ *
+ * Используется: всеми компонентами расширения
+ */
 import { create } from "zustand";
 import type { InjectorConfig, PipelineStage, QueueItemState } from "@/types";
 
