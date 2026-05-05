@@ -55,6 +55,17 @@ body {
   animation: pulse 2s infinite;
 }
 .status-dot.idle { background: #71717a; box-shadow: none; animation: none; }
+.status-dot.error { background: #ef4444; box-shadow: 0 0 8px #ef444480; animation: pulse-error 1s infinite; }
+@keyframes pulse-error {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.sse-error-text {
+  font-size: 11px;
+  color: #f87171;
+  font-weight: 500;
+  margin-left: 8px;
+}
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -157,6 +168,7 @@ body {
   border-radius: 8px;
   padding: 10px;
   max-height: 140px;
+  min-height: 140px;
   overflow-y: auto;
   font-size: 11px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -171,6 +183,16 @@ body {
 #log div .action { color: #a1a1aa; }
 #log div .success { color: #4ade80; }
 #log div .error { color: #ef4444; }
+
+.captcha-content-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 440px;
+}
+.captcha-grid-wrapper {
+  flex: 1;
+  min-height: 300px;
+}
 
 .section-gap { margin-top: 14px; }
 
@@ -301,6 +323,20 @@ body {
 .test-run-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.test-res-input {
+  background: #0f1117;
+  border: 1px solid #27293d;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #e4e4e7;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  width: 180px;
+  outline: none;
+}
+.test-res-input:focus {
+  border-color: #818cf8;
 }
 
 /* ── Admin link ── */
@@ -809,9 +845,18 @@ body {
 .admin-plugin-log-line:last-child {
   border-bottom: none;
 }
+.admin-history-id {
+  color: #71717a;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  text-align: center;
+  width: 50px;
+}
+
 .admin-history-slot-date {
-  font-size: 10px;
+  font-size: 12px;
   color: #a1a1aa;
+  font-family: 'SF Mono', 'Fira Code', monospace;
   white-space: nowrap;
 }
 
@@ -1011,6 +1056,7 @@ body {
   justify-content: center;
   padding: 60px 20px;
   gap: 24px;
+  min-height: 260px;
 }
 .captcha-idle-spinner {
   width: 48px;
@@ -1042,4 +1088,71 @@ body {
 .captcha-idle-text-sub {
   font-size: 12px;
   color: #52525b;
+}
+
+/* ── LOCAL badge ── */
+.local-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fbbf24;
+  background: #f59e0b18;
+  border: 1px solid #f59e0b40;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 4px;
+}
+
+/* ── Test links ── */
+.test-links {
+  display: flex;
+  gap: 6px;
+}
+.test-link-btn {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 0 10px #f59e0b30;
+}
+.test-link-btn:hover {
+  opacity: 0.85;
+}
+.test-link-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Admin history toolbar ── */
+.admin-history-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* ── Operation type badges ── */
+.admin-history-op-type {
+  font-size: 10px;
+  font-weight: 600;
+}
+.admin-op-create {
+  background: #22c55e20;
+  color: #4ade80;
+  border: 1px solid #22c55e40;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.admin-op-reschedule {
+  background: #3b82f620;
+  color: #60a5fa;
+  border: 1px solid #3b82f640;
+  border-radius: 4px;
+  padding: 2px 6px;
 }

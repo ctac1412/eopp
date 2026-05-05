@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useInjectorStore } from '@/store';
 import { parseTime, mskToUtcSeconds } from '@/hooks/useClock';
 import { useInjector } from '@/hooks/useInjector';
@@ -11,7 +11,7 @@ const Scheduler = React.memo(function Scheduler() {
   const config = useInjectorStore((s) => s.config);
   const authKey = useInjectorStore((s) => s.authKey);
   const { run } = useInjector();
-  const { countdown } = useScheduler();
+  useScheduler();
 
   const [timeInput, setTimeInput] = useState('12:00:01.0');
   const [statusMessage, setStatusMessage] = useState('');
@@ -65,16 +65,8 @@ const Scheduler = React.memo(function Scheduler() {
     setTimeInput(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${d}`);
   }, []);
 
-  const countdownDisplay = useMemo(() => {
-    if (status !== 'scheduling' || !countdown) return '';
-    return `Запуск через ${countdown}`;
-  }, [status, countdown]);
-
   return (
     <div className="injector-schedule-sticky">
-      {countdownDisplay && (
-        <div className="injector-modal-status injector-modal-status-waiting">{countdownDisplay}</div>
-      )}
       {statusMessage && (
         <div className={`injector-modal-status ${statusClass}`}>{statusMessage}</div>
       )}
@@ -84,16 +76,24 @@ const Scheduler = React.memo(function Scheduler() {
         <span className="injector-time-tag injector-time-tag-now" onClick={handleNowPlus10}>Сейчас+10с</span>
       </div>
       <div className="injector-schedule-row">
-        <input
-          id="schedule-time-input"
-          type="text"
-          className="injector-schedule-input"
-          value={timeInput}
-          onChange={(e) => setTimeInput(e.target.value)}
-          maxLength={12}
-          placeholder="ЧЧ:ММ:СС.d МСК"
-        />
-        <button className="injector-modal-btn injector-modal-btn-cancel" onClick={handleCancel}>Отменить</button>
+        <div className="injector-schedule-time-wrapper">
+          <input
+            id="schedule-time-input"
+            type="text"
+            className="injector-schedule-input"
+            value={timeInput}
+            onChange={(e) => setTimeInput(e.target.value)}
+            maxLength={12}
+            placeholder="ЧЧ:ММ:СС.d"
+          />
+          <button
+            className="injector-schedule-cancel-icon"
+            onClick={handleCancel}
+            title="Отменить расписание"
+          >
+            ×
+          </button>
+        </div>
         <button className="injector-modal-btn injector-modal-btn-schedule" onClick={handleSchedule}>Запланировать</button>
         <button className="injector-modal-btn injector-modal-btn-run" onClick={handleRun}>Запустить сейчас</button>
       </div>

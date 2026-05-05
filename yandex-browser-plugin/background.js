@@ -29,6 +29,8 @@ chrome.runtime.onConnect.addListener((port) => {
             api_key: msg.payload.apiKey,
             slot_date: msg.payload.slotDate,
             logs: msg.payload.logs,
+            captcha_id: msg.payload.captchaId,
+            valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
       } else if (msg.action === 'failUsage') {
@@ -45,6 +47,8 @@ chrome.runtime.onConnect.addListener((port) => {
             error_stage: msg.payload.errorStage,
             slot_date: msg.payload.slotDate,
             logs: msg.payload.logs,
+            captcha_id: msg.payload.captchaId,
+            valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
       } else if (msg.action === 'apiKeyStatus') {
@@ -53,6 +57,38 @@ chrome.runtime.onConnect.addListener((port) => {
           headers: {
             'Accept': 'application/json, text/plain, */*',
           },
+        });
+      } else if (msg.action === 'registerUsage') {
+        res = await fetch(`${serverUrl}/register-usage`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            api_key: msg.payload.apiKey,
+            reservation_id: msg.payload.reservationId,
+            config_json: msg.payload.configJson,
+          }),
+        });
+      } else if (msg.action === 'pollSlotsGroup') {
+        res = await fetch(`${serverUrl}/slots-group?group_id=${encodeURIComponent(msg.payload.groupId)}&consumer_id=${msg.payload.consumerId}`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json, text/plain, */*' },
+        });
+      } else if (msg.action === 'heartbeatSlotsGroup') {
+        res = await fetch(`${serverUrl}/slots-group`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            group_id: msg.payload.groupId,
+            consumer_id: msg.payload.consumerId,
+            api_key: msg.payload.apiKey,
+            slots: msg.payload.slots || [],
+          }),
         });
 
       } else {

@@ -47,6 +47,7 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
   log('Этап 3: запрос к нашему серверу /solve-captcha');
   useInjectorStore.getState().setStage('solving');
 
+  const storeState = useInjectorStore.getState();
   const payload: Record<string, unknown> = {
     ...captchaData,
     auto_solve: autoSolve,
@@ -56,6 +57,9 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
   }
   if (reservationId) {
     payload.reservation_id = reservationId;
+  }
+  if (storeState.usageLogId != null) {
+    payload.usage_log_id = storeState.usageLogId;
   }
 
   const response = await sendMessageToBackground('solveCaptcha', payload);
@@ -68,6 +72,10 @@ export async function solveCaptcha(captchaData: CaptchaResponse, autoSolve: bool
   if (solved.usage_log_id != null) {
     useInjectorStore.getState().setUsageLogId(solved.usage_log_id);
   }
+  if (solved.captcha_id) {
+    useInjectorStore.getState().setCaptchaId(solved.captcha_id);
+  }
+  useInjectorStore.getState().setSolvedVariantIndex(solved.variantIndex);
   log('Капча решена');
   return solved;
 }
@@ -93,6 +101,7 @@ export async function validateCaptcha(
   const response = await httpRequest('POST', '/reservations-api/v1/captcha-validate', payload, {
     'FacilityMode': 'false',
   });
+  useInjectorStore.getState().setCaptchaValidated(true);
   log('Капча валидирована');
   return response as CaptchaValidationResponse;
 }

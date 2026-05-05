@@ -1,4 +1,4 @@
-import type { InjectorConfig, Slot, SlotsResponse, CaptchaResponse, SolvedAnswer, EndpointName, QueueItemState, RetryConfig } from '@/types';
+import type { InjectorConfig, Slot, SlotsResponse, CaptchaResponse, SolvedAnswer, EndpointName, QueueItemState, RetryConfig, SlotsGroupAssignment, SlotDict } from '@/types';
 import { httpRequest, retryOn429, retryWith429And400 } from './client';
 import {
   getAvailableSlots,
@@ -8,12 +8,13 @@ import {
   submitReschedule,
   submitCreate,
 } from './stages';
-import { confirmUsage, failUsage } from './background';
-import { log } from '@/logger';
+import { confirmUsage, failUsage, registerUsage, pollSlotsGroup, heartbeatSlotsGroup } from './background';
+import { log, setUsageIdPrefix } from '@/logger';
 import { useInjectorStore } from '@/store';
 import { getEndpointRetry } from '@/constants';
 
 const usedSlotIds = new Set<string>();
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 export function resetUsedSlots(): void {
   usedSlotIds.clear();
@@ -178,8 +179,11 @@ export async function runFromStage2(slotsResponse: SlotsResponse): Promise<unkno
   const usageLogId = useInjectorStore.getState().usageLogId;
   if (usageLogId != null && config.apiKey) {
     const logs = useInjectorStore.getState().logs.map((l) => `${l.ts} ${l.msg}`);
+    const captchaId = useInjectorStore.getState().captchaId;
+    const validated = useInjectorStore.getState().captchaValidated;
+    const variantIndex = useInjectorStore.getState().solvedVariantIndex;
     try {
-      await confirmUsage(usageLogId, config.apiKey, config.slotDate, logs);
+      await confirmUsage(usageLogId, config.apiKey, config.slotDate, logs, captchaId ?? undefined, validated && variantIndex != null ? variantIndex : undefined);
     } catch {
       // fire-and-forget, silently swallow
     }
@@ -311,8 +315,11 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
       const usageLogId = useInjectorStore.getState().usageLogId;
       if (usageLogId != null && config.apiKey) {
         const logs = useInjectorStore.getState().logs.map((l) => `${l.ts} ${l.msg}`);
+        const captchaId = useInjectorStore.getState().captchaId;
+        const validated = useInjectorStore.getState().captchaValidated;
+        const variantIndex = useInjectorStore.getState().solvedVariantIndex;
         try {
-          await confirmUsage(usageLogId, config.apiKey, config.slotDate, logs);
+          await confirmUsage(usageLogId, config.apiKey, config.slotDate, logs, captchaId ?? undefined, validated && variantIndex != null ? variantIndex : undefined);
         } catch {
           // fire-and-forget
         }
@@ -337,21 +344,152 @@ async function runQueueMode(slotsResponse: SlotsResponse): Promise<unknown | nul
   throw new Error('Все капчи в очереди провалились');
 }
 
+export function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+function startHeartbeat(groupId: string, consumerId: number, apiKey: string) {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(async () => {
+    try {
+      await heartbeatSlotsGroup(groupId, consumerId, apiKey);
+    } catch {
+      // heartbeat failed, ignore
+    }
+  }, 1000);
+}
+
+async function waitForSlots(groupId: string, consumerId: number, apiKey: string, config: InjectorConfig): Promise<SlotDict[]> {
+  const maxWaitMs = 30000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const status = await pollSlotsGroup(groupId, consumerId);
+
+      if (status.slots_loaded) {
+        useInjectorStore.getState().setTotalConsumers(status.total_consumers);
+        return status.my_slots;
+      }
+
+      if (status.you_are_master) {
+        log('Мастер не отвечает, стал новым мастером');
+        useInjectorStore.getState().setRole('master');
+
+        startHeartbeat(groupId, consumerId, apiKey);
+
+        const slotsResponse = await retrySlotsWithConfig(
+          () => getAvailableSlots(config),
+          config
+        );
+        const submitResult = await heartbeatSlotsGroup(groupId, consumerId, apiKey, slotsResponse.slots);
+        return submitResult.my_slots || slotsResponse.slots;
+      }
+    } catch {
+      // polling error, ignore
+    }
+
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  throw new Error('Таймаут ожидания слотов от мастера');
+}
+
 export async function main(config: InjectorConfig): Promise<void> {
   useInjectorStore.getState().setConfig(config);
+  useInjectorStore.getState().setCaptchaId(null);
+  useInjectorStore.getState().setSolvedVariantIndex(null);
+  useInjectorStore.getState().setCaptchaValidated(null);
+  setUsageIdPrefix(null);
   resetUsedSlots();
+  stopHeartbeat();
   log('=== Старт скрипта (runUpTo: ' + config.runUpTo + ', mode: ' + config.retryMode + ') ===');
 
   try {
-    const slotsResponse = await retrySlotsWithConfig(
-      () => getAvailableSlots(config),
-      config
-    );
-    log('Этап 1 (слоты) завершён успешно');
+    let usageLogId: number | null = null;
+    let assignment: SlotsGroupAssignment | null = null;
+
+    if (!config.apiKey) {
+      throw new Error('apiKey обязателен');
+    }
+    const regResult = await registerUsage(config.apiKey, config.reservationId, config);
+    if (typeof regResult === 'object' && regResult !== null && 'group_id' in regResult) {
+      assignment = regResult as SlotsGroupAssignment;
+      usageLogId = assignment.usage_log_id;
+    } else {
+      usageLogId = regResult as number;
+    }
+    useInjectorStore.getState().setUsageLogId(usageLogId);
+    setUsageIdPrefix(usageLogId);
+    log('Usage log зарегистрирован');
+
+    let mySlots: SlotDict[] = [];
+
+    if (!config.enableSlotCoordination) {
+      log('Координация слотов отключена, фетчу сам');
+      const slotsResponse = await retrySlotsWithConfig(
+        () => getAvailableSlots(config),
+        config
+      );
+      mySlots = slotsResponse.slots;
+    } else if (assignment && assignment.group_id) {
+      const { group_id, consumer_id, is_master, slots_loaded } = assignment;
+
+      if (is_master) {
+        log('Роль: МАСТЕР — фетчим слоты');
+        useInjectorStore.getState().setRole('master');
+        useInjectorStore.getState().setConsumerId(consumer_id);
+
+        startHeartbeat(group_id, consumer_id, config.apiKey);
+
+        const slotsResponse = await retrySlotsWithConfig(
+          () => getAvailableSlots(config),
+          config
+        );
+        log(`Получено ${slotsResponse.slots?.length || 0} слотов`);
+
+        const submitResult = await heartbeatSlotsGroup(group_id, consumer_id, config.apiKey, slotsResponse.slots);
+        mySlots = submitResult.my_slots || slotsResponse.slots;
+        log(`Получено ${mySlots.length} слотов для мастера`);
+
+        if (submitResult.total_consumers) {
+          useInjectorStore.getState().setTotalConsumers(submitResult.total_consumers);
+        }
+      } else if (slots_loaded && assignment.my_slots && assignment.my_slots.length > 0) {
+        log(`Роль: СЛЕЙВ #${consumer_id} — слоты уже загружены`);
+        useInjectorStore.getState().setRole('slave');
+        useInjectorStore.getState().setConsumerId(consumer_id);
+        mySlots = assignment.my_slots;
+        log(`Получено ${mySlots.length} слотов для слейва`);
+
+        const totalConsumers = assignment.my_slots ? 1 : 1;
+        useInjectorStore.getState().setTotalConsumers(totalConsumers);
+      } else {
+        log(`Роль: СЛЕЙВ #${consumer_id} — жду слоты`);
+        useInjectorStore.getState().setRole('slave');
+        useInjectorStore.getState().setConsumerId(consumer_id);
+
+        mySlots = await waitForSlots(group_id, consumer_id, config.apiKey, config);
+        log(`Получено ${mySlots.length} слотов`);
+      }
+    } else {
+      log('Координация слотов отключена, фетчу сам');
+      const slotsResponse = await retrySlotsWithConfig(
+        () => getAvailableSlots(config),
+        config
+      );
+      mySlots = slotsResponse.slots;
+    }
+
+    log(`Этап 1 (слоты) завершён успешно, ${mySlots.length} слотов`);
+
+    const slotsResponse = { slots: mySlots };
 
     if (config.retryMode === 'queue') {
       let slotRetryCount = 0;
-
       while (slotRetryCount <= config.maxSlotRetries) {
         try {
           const result = await runQueueMode(slotsResponse);
@@ -364,54 +502,53 @@ export async function main(config: InjectorConfig): Promise<void> {
         } catch (err) {
           const error = err as { body?: string };
           const isAllSlotsOccupied = error.body && error.body.includes('AllSlotsOccupiedOnInterval');
-
           if (isAllSlotsOccupied && config.retryOnAllSlotsOccupied && slotRetryCount < config.maxSlotRetries) {
             slotRetryCount++;
             log(`AllSlotsOccupiedOnInterval — пробуем другую очередь слотов (попытка ${slotRetryCount}/${config.maxSlotRetries})`);
             await new Promise((r) => setTimeout(r, config.slotRetryDelayMs));
             continue;
           }
-
           log('=== ОШИБКА ===', err);
           throw err;
         }
       }
-
       log('=== Скрипт завершён (queue mode, превышено количество попыток выбора слотов) ===');
+      throw new Error('Превышено количество попыток выбора слотов');
     } else {
       let slotRetryCount = 0;
-
       while (slotRetryCount <= config.maxSlotRetries) {
         try {
           const result = await runFromStage2(slotsResponse);
           if (result !== null) {
             log('=== Скрипт завершён успешно (sequential mode) ===', result);
           } else {
-            log('=== Скрипт завершён (sequential mode, runUpTo остановка на этапе ' + (config.runUpTo) + ') ===');
+            log('=== Скрипт завершён (sequential mode, runUpTo остановка на этапе ' + config.runUpTo + ') ===');
           }
           return;
         } catch (err) {
           const error = err as { body?: string };
           const isAllSlotsOccupied = error.body && error.body.includes('AllSlotsOccupiedOnInterval');
-
           if (isAllSlotsOccupied && config.retryOnAllSlotsOccupied && slotRetryCount < config.maxSlotRetries) {
             slotRetryCount++;
             log(`AllSlotsOccupiedOnInterval — пробуем другой слот (попытка ${slotRetryCount}/${config.maxSlotRetries})`);
             await new Promise((r) => setTimeout(r, config.slotRetryDelayMs));
             continue;
           }
-
           log('=== ОШИБКА ===', err);
           throw err;
         }
       }
-
       log('=== Скрипт завершён (sequential mode, превышено количество попыток выбора слота) ===');
+      throw new Error('Превышено количество попыток выбора слотов');
     }
   } catch (err) {
+    stopHeartbeat();
     const usageLogId = useInjectorStore.getState().usageLogId;
     if (usageLogId != null && config.apiKey) {
       const logs = useInjectorStore.getState().logs.map((l) => `${l.ts} ${l.msg}`);
+      const captchaId = useInjectorStore.getState().captchaId;
+      const validated = useInjectorStore.getState().captchaValidated;
+      const variantIndex = useInjectorStore.getState().solvedVariantIndex;
       try {
         await failUsage(
           usageLogId,
@@ -419,10 +556,12 @@ export async function main(config: InjectorConfig): Promise<void> {
           serializeError(err),
           getErrorStage(),
           config.slotDate,
-          logs
+          logs,
+          captchaId ?? undefined,
+          validated && variantIndex != null ? variantIndex : undefined
         );
       } catch {
-        // fire-and-forget, silently swallow
+        // fire-and-forget
       }
     }
     log('=== ОШИБКА ===', err);

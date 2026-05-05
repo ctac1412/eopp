@@ -57,6 +57,11 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN config_json TEXT")
+        conn.commit()
+    except Exception:
+        pass
 
     # Инициализация админского токена, если его нет
     now = datetime.now(timezone.utc).isoformat()
@@ -220,9 +225,22 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "error_message": row["error_message"],
         "error_stage": row["error_stage"],
         "slot_date": row["slot_date"],
+        "logs": json.loads(row["logs"]) if row['logs'] else None,
+        "config_json": json.loads(row["config_json"])
+        if row['config_json']
+        else None,
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
     }
+
+
+def delete_usage_log(usage_log_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM usage_log WHERE id = ?", (usage_log_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict:
@@ -237,16 +255,19 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
     }
 
 
-def log_usage(api_key: str, reservation_id: str, captcha_id: str) -> int:
+def log_usage(
+    api_key: str, reservation_id: str, captcha_id: str, config_json: dict | None = None
+) -> int:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (api_key,)).fetchone()
     if not row:
         conn.close()
         raise ValueError(f"API key not found: {api_key[:8]}...")
     now = datetime.now(timezone.utc).isoformat()
+    config_str = json.dumps(config_json) if config_json else None
     cursor = conn.execute(
-        "INSERT INTO usage_log (api_key_id, reservation_id, captcha_id, status, created_at) VALUES (?, ?, ?, 'pending', ?)",
-        (row["id"], reservation_id, captcha_id, now),
+        "INSERT INTO usage_log (api_key_id, reservation_id, captcha_id, status, created_at, config_json) VALUES (?, ?, ?, 'pending', ?, ?)",
+        (row["id"], reservation_id, captcha_id, now, config_str),
     )
     conn.commit()
     usage_log_id = cursor.lastrowid
@@ -255,7 +276,10 @@ def log_usage(api_key: str, reservation_id: str, captcha_id: str) -> int:
 
 
 def confirm_usage(
-    usage_log_id: int, slot_date: str | None = None, logs: list[str] | None = None
+    usage_log_id: int,
+    slot_date: str | None = None,
+    logs: list[str] | None = None,
+    captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
     row = conn.execute(
@@ -266,10 +290,16 @@ def confirm_usage(
         return False
     now = datetime.now(timezone.utc).isoformat()
     logs_json = json.dumps(logs) if logs else None
-    conn.execute(
-        "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
-        (now, slot_date, logs_json, usage_log_id),
-    )
+    if captcha_id and captcha_id != "unknown":
+        conn.execute(
+            "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ?, captcha_id = ? WHERE id = ?",
+            (now, slot_date, logs_json, captcha_id, usage_log_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
+            (now, slot_date, logs_json, usage_log_id),
+        )
     conn.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
         (row["api_key_id"],),
@@ -285,6 +315,7 @@ def fail_usage(
     error_stage: str,
     slot_date: str | None = None,
     logs: list[str] | None = None,
+    captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
     row = conn.execute(
@@ -294,10 +325,23 @@ def fail_usage(
         conn.close()
         return False
     logs_json = json.dumps(logs) if logs else None
-    conn.execute(
-        "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ? WHERE id = ?",
-        (error_message, error_stage, slot_date, logs_json, usage_log_id),
-    )
+    if captcha_id and captcha_id != "unknown":
+        conn.execute(
+            "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ?, captcha_id = ? WHERE id = ?",
+            (
+                error_message,
+                error_stage,
+                slot_date,
+                logs_json,
+                captcha_id,
+                usage_log_id,
+            ),
+        )
+    else:
+        conn.execute(
+            "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ? WHERE id = ?",
+            (error_message, error_stage, slot_date, logs_json, usage_log_id),
+        )
     conn.commit()
     conn.close()
     return True
@@ -334,6 +378,9 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "error_stage": r["error_stage"],
                 "slot_date": r["slot_date"],
                 "logs": logs,
+                "config_json": json.loads(r["config_json"])
+                if r["config_json"]
+                else None,
                 "created_at": r["created_at"],
                 "confirmed_at": r["confirmed_at"],
                 "label": r["label"],

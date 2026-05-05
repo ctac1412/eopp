@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useInjectorStore } from '@/store';
 import { useInjector } from './useInjector';
 
-function formatCountdown(totalSeconds: number, ms: number): string {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  const d = Math.floor(ms / 100);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${d}`;
+function formatCountdown(remaining: number): string {
+  const h = Math.floor(remaining / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = remaining % 60;
+  const cs = Math.floor((s % 1) * 100);
+  const sInt = Math.floor(s);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sInt).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
 export function useScheduler() {
@@ -43,10 +44,9 @@ export function useScheduler() {
         return;
       }
 
-      setCountdown(formatCountdown(remaining, now.getUTCMilliseconds()));
+      setCountdown(formatCountdown(remaining));
 
-      const msUntilNextSecond = 1000 - now.getUTCMilliseconds();
-      timerRef.current = window.setTimeout(tick, msUntilNextSecond);
+      timerRef.current = window.setTimeout(tick, 50);
     }
 
     tick();

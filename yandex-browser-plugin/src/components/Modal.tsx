@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import ConfigForm from './ConfigForm';
 import Scheduler from './Scheduler';
 import StatusBar from './StatusBar';
@@ -12,24 +12,12 @@ interface Props {
   onClose: () => void;
 }
 
-const maskKey = (key: string) => {
-  if (key.length <= 2) return '••••';
-  return key[0] + '•'.repeat(key.length - 2) + key[key.length - 1];
-};
-
 const Modal = React.memo(function Modal({ onClose }: Props) {
   const mskTime = useClock();
   const isFullscreen = useInjectorStore((s) => s.isFullscreen);
   const toggleFullscreen = useInjectorStore((s) => s.toggleFullscreen);
   const authKey = useInjectorStore((s) => s.authKey);
-  const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
-  const updateField = useInjectorStore((s) => s.updateField);
   const isAuthenticated = authKey !== '';
-
-  const handleLogout = useCallback(() => {
-    clearAuthKey();
-    updateField('apiKey', '');
-  }, [clearAuthKey, updateField]);
 
   return (
     <div className="injector-modal-overlay" onClick={onClose}>
@@ -56,12 +44,6 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
             <StatusBar />
           </div>
           <div className="injector-header-right">
-            {isAuthenticated && (
-              <>
-                <span className="injector-modal-auth-key">Ключ: {maskKey(authKey)}</span>
-                <button className="injector-modal-logout-btn" onClick={handleLogout}>Выйти</button>
-              </>
-            )}
             <span className="injector-modal-clock">МСК: {mskTime}</span>
             <button className="injector-modal-fullscreen-btn" onClick={toggleFullscreen} title="Полноэкранный режим">
               {isFullscreen ? '⛶' : '⛶'}
@@ -73,11 +55,15 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
         <div className="injector-modal-body">
           {!isAuthenticated && <AuthGate onClose={onClose} />}
           {isAuthenticated && (
-            <>
-              <ConfigForm />
-              <LiveLog />
-              <Scheduler />
-            </>
+            <div className="injector-main-grid">
+              <div className="injector-left-panel">
+                <ConfigForm />
+                <Scheduler />
+              </div>
+              <div className="injector-log-sidebar">
+                <LiveLog />
+              </div>
+            </div>
           )}
         </div>
       </div>

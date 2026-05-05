@@ -15,6 +15,7 @@ class SolveCaptchaBody(BaseModel):
     auto_solve: bool = False
     captcha_id: Optional[str] = None
     reservation_id: Optional[str] = None
+    usage_log_id: Optional[int] = None
     type: Optional[int] = None
     token: Optional[str] = None
     silhouette: Optional[str] = None
@@ -42,6 +43,8 @@ class ConfirmUsageBody(BaseModel):
     api_key: str
     slot_date: str | None = None
     logs: list[str] | None = None
+    captcha_id: str | None = None
+    valid_variant_index: int | None = None
 
 
 class FailUsageBody(BaseModel):
@@ -51,6 +54,8 @@ class FailUsageBody(BaseModel):
     error_stage: str = "other"
     slot_date: str | None = None
     logs: list[str] | None = None
+    captcha_id: str | None = None
+    valid_variant_index: int | None = None
 
 
 class GenerateCaptchaBody(BaseModel):
@@ -76,5 +81,35 @@ class UsageLogQuery(BaseModel):
     api_key_id: Optional[int] = None
 
 
+class RegisterUsageBody(BaseModel):
+    api_key: str
+    reservation_id: str
+    captcha_id: Optional[str] = None
+    config_json: Optional[dict[str, Any]] = None
+
+
 class MockConfigBody(BaseModel):
     endpoints: dict[str, dict[str, Any]] = {}
+
+
+class SlotDict(BaseModel):
+    id: str
+    time: str
+    count: int
+    slotCaption: str
+    intervalIndex: int
+
+
+class SlotsGroupBody(BaseModel):
+    group_id: str
+    consumer_id: int
+    api_key: str
+    slots: list[SlotDict] = []
+
+
+class UploadPluginBody(BaseModel):
+    version: str
+    manifest: dict[str, Any]
+    zip_file: str
+    note: Optional[str] = None
+    overwrite: Optional[bool] = False

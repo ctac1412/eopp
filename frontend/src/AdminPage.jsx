@@ -26,7 +26,9 @@ function AdminPage() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [expandedHistory, setExpandedHistory] = useState({})
   const [historyLoading, setHistoryLoading] = useState({})
+  const [historyHideTest, setHistoryHideTest] = useState({})
   const [expandedLogs, setExpandedLogs] = useState({})
+  const [expandedConfig, setExpandedConfig] = useState({})
   const intervalRef = useRef(null)
 
   // Streams
@@ -165,6 +167,7 @@ function AdminPage() {
     setKeys([])
     setExpandedHistory({})
     setExpandedLogs({})
+    setExpandedConfig({})
   }
 
   const handleCreate = async (e) => {
@@ -263,11 +266,11 @@ function AdminPage() {
     setShowEdit(keyObj.id)
   }
 
-  const fetchUsageHistory = async (keyId) => {
-    if (expandedHistory[keyId]) return
+  const fetchUsageHistory = async (keyId, hideTest = false) => {
+    if (expandedHistory[keyId] && !hideTest) return
     setHistoryLoading(p => ({ ...p, [keyId]: true }))
     try {
-      const res = await fetch(`/usage-log?api_key_id=${keyId}`, {
+      const res = await fetch(`/usage-log?api_key_id=${keyId}&hide_test=${hideTest}`, {
         headers: adminHeadersJson(adminToken),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -284,12 +287,29 @@ function AdminPage() {
     if (expandedHistory[keyId] !== undefined) {
       setExpandedHistory(p => { const n = { ...p }; delete n[keyId]; return n })
     } else {
-      fetchUsageHistory(keyId)
+      fetchUsageHistory(keyId, false)
+    }
+  }
+
+  const handleDeleteUsage = async (keyId, usageId) => {
+    try {
+      const res = await fetch(`/usage-log/${usageId}`, {
+        method: 'DELETE',
+        headers: adminHeadersJson(adminToken),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      fetchUsageHistory(keyId, historyHideTest[keyId])
+    } catch (err) {
+      setError(err.message)
     }
   }
 
   const togglePluginLogs = (usageLogId) => {
     setExpandedLogs(p => ({ ...p, [usageLogId]: !p[usageLogId] }))
+  }
+
+  const toggleConfig = (usageLogId) => {
+    setExpandedConfig(p => ({ ...p, [usageLogId]: !p[usageLogId] }))
   }
 
   const copyToClipboard = (text) => {
@@ -618,6 +638,18 @@ function AdminPage() {
                           <tr>
                             <td colSpan={8} className="admin-history-cell">
                               <div className="admin-history-wrapper">
+                                <div className="admin-history-toolbar">
+                                  <button
+                                    className={'admin-btn-sm ' + (historyHideTest[k.id] ? 'admin-btn-history-open' : 'admin-btn-history')}
+                                    onClick={() => {
+                                      const next = !historyHideTest[k.id]
+                                      setHistoryHideTest(p => ({ ...p, [k.id]: next }))
+                                      fetchUsageHistory(k.id, next)
+                                    }}
+                                  >
+                                    {historyHideTest[k.id] ? 'Показать тестовые' : 'Убрать тестовые'}
+                                  </button>
+                                </div>
                                 {historyLoading[k.id] && <div className="admin-history-loading">Загрузка…</div>}
                                 {historyData === null && <div className="admin-history-error">Ошибка загрузки</div>}
                                 {historyData && historyData.length === 0 && <div className="admin-history-empty">Нет записей</div>}
@@ -625,76 +657,114 @@ function AdminPage() {
                                   <table className="admin-history-table">
                                     <thead>
                                       <tr>
+                                        <th>ID</th>
                                         <th>Время</th>
+                                        <th>Тип</th>
                                         <th>Reservation ID</th>
                                         <th>Captcha ID</th>
                                         <th>Статус</th>
-                                        <th>Этап</th>
+                                        <th>Слот</th>
                                         <th>Ошибка</th>
+                                        <th>Действия</th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {historyData.map((entry) => {
-                                        const isPluginExpanded = expandedLogs[entry.id]
-                                        const pluginData = entry.logs
-                                        return (
-                                          <React.Fragment key={entry.id}>
-                                            <tr>
-                                              <td className="admin-history-time">{formatDate(entry.created_at)}</td>
-                                              <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
-                                              <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
-                                              <td>
-                                                <span className={
-                                                  'admin-status-badge ' +
-                                                  (entry.status === 'confirmed' ? 'admin-status-confirmed' :
-                                                   entry.status === 'pending' ? 'admin-status-pending' :
-                                                   'admin-status-failed')
-                                                }>
-                                                  {entry.status === 'confirmed' ? 'Подтверждено' :
-                                                   entry.status === 'pending' ? 'Ожидание' :
-                                                   'Ошибка'}
-                                                </span>
-                                              </td>
-                                              <td className="admin-history-stage">
-                                                {entry.status === 'failed' ? (entry.error_stage || '—') : '—'}
-                                              </td>
-                                              <td className="admin-history-error-msg">
-                                                {entry.status === 'failed' && entry.error_message
-                                                  ? (entry.error_message.length > 100
-                                                    ? entry.error_message.slice(0, 100) + '…'
-                                                    : entry.error_message)
-                                                  : '—'}
-                                              </td>
-                                              <td className="admin-history-slot-date">
-                                                {entry.slot_date || '—'}
-                                              </td>
-                                              <td>
-                                                {pluginData && pluginData.length > 0 && (
-                                                  <button
-                                                    className={'admin-btn-sm ' + (isPluginExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
-                                                    onClick={() => togglePluginLogs(entry.id)}
-                                                  >
-                                                    {isPluginExpanded ? 'Свернуть логи' : 'Логи'}
-                                                  </button>
-                                                )}
-                                              </td>
-                                            </tr>
-                                            {isPluginExpanded && pluginData && pluginData.length > 0 && (
+                                        {historyData.map((entry) => {
+                                          const isPluginExpanded = expandedLogs[entry.id]
+                                          const isConfigExpanded = expandedConfig[entry.id]
+                                          const pluginData = entry.logs
+                                          const configData = entry.config_json
+                                          const opType = configData && configData.mode === 'create' ? 'Создание' : 'Перенос'
+                                          return (
+                                            <React.Fragment key={entry.id}>
                                               <tr>
-                                                <td colSpan={8} className="admin-plugin-logs-cell">
-                                                  <div className="admin-plugin-logs-wrapper">
-                                                    <div className="admin-plugin-logs-body">
-                                                      {pluginData.map((line, idx) => (
-                                                        <div key={idx} className="admin-plugin-log-line">{line}</div>
-                                                      ))}
-                                                    </div>
+                                                <td className="admin-id">{entry.id}</td>
+                                                <td className="admin-history-time">{formatDate(entry.created_at)}</td>
+                                                <td className="admin-history-op-type">
+                                                  {opType ? (
+                                                    <span className={opType === 'Создание' ? 'admin-op-create' : 'admin-op-reschedule'}>{opType}</span>
+                                                  ) : '—'}
+                                                </td>
+                                                <td className="admin-history-resid">{entry.reservation_id || '—'}</td>
+                                                <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || '—'}</td>
+                                                <td>
+                                                  <span className={
+                                                    'admin-status-badge ' +
+                                                    (entry.status === 'confirmed' ? 'admin-status-confirmed' :
+                                                     entry.status === 'pending' ? 'admin-status-pending' :
+                                                     'admin-status-failed')
+                                                  }>
+                                                    {entry.status === 'confirmed' ? 'Подтверждено' :
+                                                     entry.status === 'pending' ? 'Ожидание' :
+                                                     'Ошибка'}
+                                                  </span>
+                                                </td>
+                                                <td className="admin-history-slot-date">
+                                                  {entry.slot_date || '—'}
+                                                </td>
+                                                <td className="admin-history-error-msg">
+                                                  {entry.status === 'failed' && entry.error_message
+                                                    ? (entry.error_message.length > 100
+                                                      ? entry.error_message.slice(0, 100) + '…'
+                                                      : entry.error_message)
+                                                    : '—'}
+                                                </td>
+                                                <td>
+                                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                                    <button
+                                                      className="admin-btn-sm admin-btn-del"
+                                                      onClick={() => handleDeleteUsage(k.id, entry.id)}
+                                                    >
+                                                      Удалить
+                                                    </button>
+                                                    {configData && (
+                                                      <button
+                                                        className={'admin-btn-sm ' + (isConfigExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                                                        onClick={() => toggleConfig(entry.id)}
+                                                      >
+                                                        {isConfigExpanded ? 'Свернуть конфиг' : 'Конфиг'}
+                                                      </button>
+                                                    )}
+                                                    {pluginData && pluginData.length > 0 && (
+                                                      <button
+                                                        className={'admin-btn-sm ' + (isPluginExpanded ? 'admin-btn-history-open' : 'admin-btn-history')}
+                                                        onClick={() => togglePluginLogs(entry.id)}
+                                                      >
+                                                        {isPluginExpanded ? 'Свернуть логи' : 'Логи'}
+                                                      </button>
+                                                    )}
                                                   </div>
                                                 </td>
                                               </tr>
-                                            )}
-                                          </React.Fragment>
-                                        )
-                                      })}
+                                              {isConfigExpanded && configData && (
+                                                <tr>
+                                                  <td colSpan={9} className="admin-plugin-logs-cell">
+                                                    <div className="admin-plugin-logs-wrapper">
+                                                      <div className="admin-plugin-logs-body">
+                                                        <pre style={{ margin: 0, fontSize: '11px', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                                          {JSON.stringify(configData, null, 2)}
+                                                        </pre>
+                                                      </div>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                              {isPluginExpanded && pluginData && pluginData.length > 0 && (
+                                                <tr>
+                                                  <td colSpan={9} className="admin-plugin-logs-cell">
+                                                    <div className="admin-plugin-logs-wrapper">
+                                                      <div className="admin-plugin-logs-body">
+                                                        {pluginData.map((line, idx) => (
+                                                          <div key={idx} className="admin-plugin-log-line">{line}</div>
+                                                        ))}
+                                                      </div>
+                                                    </div>
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          )
+                                        })}
                                     </tbody>
                                   </table>
                                 )}

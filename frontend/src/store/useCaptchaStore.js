@@ -20,6 +20,7 @@ const useCaptchaStore = create((set) => ({
   selectedCard: null,
   selectedCaptchaId: null,
   apiKey: loadApiKey(),
+  sseError: null,
 
   setApiKey: (key) => {
     localStorage.setItem(STORAGE_KEY, key)
@@ -30,6 +31,8 @@ const useCaptchaStore = create((set) => ({
     localStorage.removeItem(STORAGE_KEY)
     set({ apiKey: '' })
   },
+
+  setSseError: (err) => set({ sseError: err }),
 
   addCaptcha: (captcha) =>
     set((state) => ({

@@ -10,11 +10,13 @@ function CaptchaGrid() {
 
   if (!active) {
     return (
-      <div className="captcha-idle">
-        <div className="captcha-idle-spinner" />
-        <div className="captcha-idle-text">
-          <span className="captcha-idle-text-main">Ожидание запросов...</span>
-          <span className="captcha-idle-text-sub">Подключено к серверу, новые капчи появятся автоматически</span>
+      <div className="captcha-grid-wrapper">
+        <div className="captcha-idle">
+          <div className="captcha-idle-spinner" />
+          <div className="captcha-idle-text">
+            <span className="captcha-idle-text-main">Ожидание запросов...</span>
+            <span className="captcha-idle-text-sub">Подключено к серверу, новые капчи появятся автоматически</span>
+          </div>
         </div>
       </div>
     )
@@ -33,26 +35,28 @@ function CaptchaGrid() {
   })
 
   return (
-    <div className="active-section" id="activeSection">
-      <div className="active-header">
-        <div className="active-title">
-          Капча {active.id} — выберите вариант
-        </div>
-        <div className="active-header-right">
-          <CountdownTimer createdAt={active.createdAt} timeout={active.timeout} />
-          <div className="top3-chips">
-            {top3.map((t, i) => (
-              <span className={'chip chip-' + (i + 1)} key={i}>
-                #{i + 1} = {t}
-              </span>
-            ))}
+    <div className="captcha-grid-wrapper">
+      <div className="active-section" id="activeSection">
+        <div className="active-header">
+          <div className="active-title">
+            Капча {active.id} — выберите вариант
+          </div>
+          <div className="active-header-right">
+            <CountdownTimer createdAt={active.createdAt} timeout={active.timeout} />
+            <div className="top3-chips">
+              {top3.map((t, i) => (
+                <span className={'chip chip-' + (i + 1)} key={i}>
+                  #{i + 1} = {t}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-      <div className="grid">
-        {ordered.map((key) => (
-          <CaptchaCard key={active.id + '-' + key} entry={active} index={key} />
-        ))}
+        <div className="grid">
+          {ordered.map((key) => (
+            <CaptchaCard key={active.id + '-' + key} entry={active} index={key} />
+          ))}
+        </div>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from '@/App';
 import { useInjectorStore } from '@/store';
 import type { InjectorConfig, PageInfo } from '@/types';
-import { shouldInject, createDefaultConfig, getDefaultSlotDate } from '@/constants';
+import { shouldInject, createDefaultConfig, getDefaultSlotDate, loadSavedConfig } from '@/constants';
 import cssContent from '@/content.css?inline';
 
 function injectButton(info: PageInfo): void {
@@ -49,12 +49,20 @@ function injectButton(info: PageInfo): void {
 
     const savedApiKey = localStorage.getItem('injector_api_key') || '';
 
+    const mode: 'reschedule' | 'create' = actualInfo.pageType === 'edit' ? 'create' : 'reschedule';
+
     const defaultConfig: InjectorConfig = createDefaultConfig(
       actualInfo.reservationId,
       params.facilityId,
       params.vehicleId,
-      params.transportType
+      params.transportType,
+      mode
     );
+    const savedConfig = loadSavedConfig(actualInfo.reservationId);
+    if (savedConfig) {
+      Object.assign(defaultConfig, savedConfig);
+    }
+    defaultConfig.mode = mode;
     defaultConfig.apiKey = savedApiKey;
 
     useInjectorStore.setState({ config: defaultConfig });
