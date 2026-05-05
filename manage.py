@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+"""
+EOPP Captcha Solver Server - CLI Entry Point.
+
+Точка входа для запуска Python-сервера решателя капч. Использует typer для CLI,
+генерирует self-signed SSL сертификат, запускает uvicorn.
+
+Использование:
+    python manage.py --host 0.0.0.0          # HTTPS режим
+    python manage.py --host 0.0.0.0 --no-ssl # HTTP режим
+    python manage.py --test                  # тестовый режим
+    python manage.py --write                 # режим разметки капч
+
+Переменные окружения:
+    ADMIN_TOKEN - токен для админских операций (по умолчанию: 13243546)
+"""
+
 import os
 import sys
 from pathlib import Path

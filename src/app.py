@@ -1,3 +1,15 @@
+"""
+EOPP Captcha Solver - FastAPI Application Factory.
+
+Создание и конфигурация FastAPI приложения. Настраивает:
+- CORS для всех origins
+- Admin auth middleware
+- Lifespan контекст для тестов/разметки
+- Регистрацию всех роутов
+
+Используется manage.py для создания приложения и запуска uvicorn.
+"""
+
 import threading
 import webbrowser
 from contextlib import asynccontextmanager

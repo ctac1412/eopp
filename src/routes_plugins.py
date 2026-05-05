@@ -1,4 +1,16 @@
-"""Plugin management routes — upload, list, download, and delete plugin versions."""
+"""
+EOPP Captcha Solver - Plugin Management Routes.
+
+API для управления версиями браузерного расширения:
+- POST /plugins/upload - загрузка новой версии плагина
+- GET /plugins - список всех версий
+- GET /plugins/latest - скачать latest версию
+- GET /plugins/{version} - скачать конкретную версию
+- DELETE /plugins/{version} - удалить версию
+
+Использует src.plugins для физического хранения архивов.
+Хранилище: data/plugins/
+"""
 
 import os
 import tempfile

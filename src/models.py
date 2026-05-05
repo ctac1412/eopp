@@ -1,3 +1,16 @@
+"""
+EOPP Captcha Solver - Pydantic Models.
+
+Pydantic-модели для валидации запросов API:
+- SolveRequest, SolveCaptchaBody - работа с капчей
+- CreateApiKeyBody, UpdateApiKeyBody - управление API ключами
+- ConfirmUsageBody, FailUsageBody - логирование использования
+- MockConfigBody - настройка мок-ответов
+- SlotsGroupBody - координация слотов между клиентами
+
+Используются в routes.py для валидации входящих данных.
+"""
+
 from typing import Any
 
 from pydantic import BaseModel

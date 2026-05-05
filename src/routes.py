@@ -1,3 +1,19 @@
+"""
+EOPP Captcha Solver - API Routes.
+
+Все API эндпоинты сервера:
+- SSE поток (/stream) - push новых капчей
+- Решение капч (/solve-captcha, /solve)
+- API ключи (/api-keys, /validate-key, /register-usage)
+- Логи использования (/usage-log, /confirm-usage, /fail-usage)
+- Slots Groups (/slots-group) - координация слотов между клиентами
+- Mock EOPP API - мок эндпоинтов для тестирования
+- Админ (/admin/auth, /admin/streams, /admin/benchmark)
+
+Регистрирует все роуты через register_all_routes().
+Использует models для валидации, api_keys для авторизации, utils для логики.
+"""
+
 import asyncio
 import json
 import os

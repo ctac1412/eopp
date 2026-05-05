@@ -1,3 +1,25 @@
+"""
+EOPP Captcha Solver - Utilities.
+
+Утилиты общего назначения:
+- captcha_hash - вычисление хеша капчи
+- assemble_captchas - сборка изображений вариантов из тайлов
+- get_top3_from_solver - получение top-3 вариантов от решателя
+- push_sse - отправка SSE событий клиентам
+- register_sse_connection - управление SSE подключениями
+- get_connected_streams - мониторинг активных соединений
+- get_test_stats - статистика по тестовым кейсам
+- run_benchmark_cached - запуск бенчмарка (с кешированием)
+- send_test_cases, send_write_cases - отправка тестовых капч
+
+Глобальное состояние:
+- pending - ожидающие решения капчи
+- sse_queues - очереди SSE событий
+- sse_connections - активные SSE соединения
+
+Используется routes.py для операций с капчами и администрирования.
+"""
+
 import asyncio
 import base64
 import glob

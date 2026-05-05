@@ -1,3 +1,20 @@
+"""
+EOPP Captcha Solver - API Keys Database.
+
+SQLite база данных для управления API ключами и логирования использования.
+Таблицы:
+- api_keys: ключи с лимитами использования (max_uses)
+- usage_log: история использования ключей
+
+Функции:
+- create_key, list_keys, update_key, delete_key - CRUD для ключей
+- validate_key - проверка валидности и лимитов
+- log_usage, confirm_usage, fail_usage - управление логами использования
+
+Используется routes.py для авторизации и трекинга использования.
+База: data/api_keys.db
+"""
+
 import json
 import os
 import secrets

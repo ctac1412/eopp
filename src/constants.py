@@ -1,3 +1,16 @@
+"""
+EOPP Captcha Solver - Constants and Configuration.
+
+Константы проекта:
+- PORT - порт сервера (по умолчанию: 8765)
+- TEST_DIR, VALID_DIR, NO_VALID_DIR - пути к тестовым данным
+- CAPTCHA_TIMEOUT - таймаут ожидания решения капчи (10 сек)
+- ADMIN_TOKEN - токен для админских операций
+- PROTECTED_PATHS - пути требующие авторизации
+
+Используется во всех модулях для доступа к конфигурации.
+"""
+
 import os
 
 PORT = 8765
