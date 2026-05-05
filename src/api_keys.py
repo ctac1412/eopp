@@ -46,7 +46,8 @@ def init_db():
             created_at TEXT NOT NULL,
             usage_count INTEGER NOT NULL DEFAULT 0,
             max_uses INTEGER,
-            active INTEGER NOT NULL DEFAULT 1
+            active INTEGER NOT NULL DEFAULT 1,
+            comment TEXT
         )
     """)
     conn.execute("""
@@ -61,7 +62,29 @@ def init_db():
             slot_date TEXT,
             created_at TEXT NOT NULL,
             confirmed_at TEXT,
+            price INTEGER,
+            paid INTEGER
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tariffs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            api_key_id INTEGER UNIQUE NOT NULL,
+            price_create INTEGER NOT NULL,
+            price_reschedule INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS withdrawals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            percent INTEGER NOT NULL,
+            requisites TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
     """)
     try:
@@ -76,6 +99,46 @@ def init_db():
         pass
     try:
         conn.execute("ALTER TABLE usage_log ADD COLUMN config_json TEXT")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN price INTEGER")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN paid INTEGER")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN comment TEXT")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN logs TEXT")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN config_json TEXT")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN price INTEGER")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE usage_log ADD COLUMN paid INTEGER")
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE api_keys ADD COLUMN comment TEXT")
         conn.commit()
     except Exception:
         pass
@@ -124,6 +187,7 @@ def update_key(
     label: str = None,
     max_uses: int | None = None,
     active: bool | None = None,
+    comment: str = None,
 ) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -135,10 +199,11 @@ def update_key(
     label = label if label is not None else current["label"]
     max_uses = max_uses if max_uses is not None else current["max_uses"]
     active = active if active is not None else current["active"]
+    comment = comment if comment is not None else current["comment"]
 
     conn.execute(
-        "UPDATE api_keys SET label = ?, max_uses = ?, active = ? WHERE id = ?",
-        (label, max_uses, 1 if active else 0, key_id),
+        "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ? WHERE id = ?",
+        (label, max_uses, 1 if active else 0, comment, key_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -240,6 +305,8 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "config_json": json.loads(row["config_json"]) if row["config_json"] else None,
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
+        "price": row["price"],
+        "paid": bool(row["paid"]) if row["paid"] is not None else None,
     }
 
 
@@ -261,7 +328,46 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
         "usage_count": row["usage_count"],
         "max_uses": row["max_uses"],
         "active": bool(row["active"]),
+        "comment": row["comment"],
     }
+
+
+def _row_to_dict_with_optional(row: sqlite3.Row, include_optional: bool = False) -> dict:
+    result = {
+        "id": row["id"],
+        "key": row["key"],
+        "label": row["label"],
+        "created_at": row["created_at"],
+        "usage_count": row["usage_count"],
+        "max_uses": row["max_uses"],
+        "active": bool(row["active"]),
+        "comment": row["comment"],
+    }
+    if include_optional:
+        if "price" in row.keys():
+            result["price"] = row["price"]
+        if "paid" in row.keys():
+            result["paid"] = row["paid"]
+    return result
+
+
+def _row_to_dict_with_optional(row: sqlite3.Row, include_optional: bool = False) -> dict:
+    result = {
+        "id": row["id"],
+        "key": row["key"],
+        "label": row["label"],
+        "created_at": row["created_at"],
+        "usage_count": row["usage_count"],
+        "max_uses": row["max_uses"],
+        "active": bool(row["active"]),
+        "comment": row["comment"],
+    }
+    if include_optional:
+        if "price" in row.keys():
+            result["price"] = row["price"]
+        if "paid" in row.keys():
+            result["paid"] = row["paid"]
+    return result
 
 
 def log_usage(
@@ -307,6 +413,19 @@ def confirm_usage(
             "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
             (now, slot_date, logs_json, usage_log_id),
         )
+    config_json = json.loads(row["config_json"]) if row["config_json"] else None
+    mode = config_json.get("mode", "create") if config_json else "create"
+    tariff = get_tariff(row["api_key_id"])
+    price = 0
+    if tariff:
+        if mode == "reschedule":
+            price = tariff["price_reschedule"]
+        else:
+            price = tariff["price_create"]
+    conn.execute(
+        "UPDATE usage_log SET price = ? WHERE id = ?",
+        (price, usage_log_id),
+    )
     conn.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
         (row["api_key_id"],),
@@ -385,9 +504,206 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "created_at": r["created_at"],
                 "confirmed_at": r["confirmed_at"],
                 "label": r["label"],
+                "price": r["price"],
+                "paid": bool(r["paid"]) if r["paid"] is not None else None,
             }
         )
     return result
+
+
+def get_tariff(api_key_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM tariffs WHERE api_key_id = ?", (api_key_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "api_key_id": row["api_key_id"],
+        "price_create": row["price_create"],
+        "price_reschedule": row["price_reschedule"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def create_tariff(api_key_id: int, price_create: int, price_reschedule: int) -> dict:
+    conn = get_connection()
+    now = datetime.now(UTC).isoformat()
+    cursor = conn.execute(
+        "INSERT INTO tariffs (api_key_id, price_create, price_reschedule, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (api_key_id, price_create, price_reschedule, now, now),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM tariffs WHERE api_key_id = ?", (api_key_id,)).fetchone()
+    conn.close()
+    return {
+        "id": row["id"],
+        "api_key_id": row["api_key_id"],
+        "price_create": row["price_create"],
+        "price_reschedule": row["price_reschedule"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def update_tariff(api_key_id: int, price_create: int | None = None, price_reschedule: int | None = None) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM tariffs WHERE api_key_id = ?", (api_key_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    now = datetime.now(UTC).isoformat()
+    price_create = price_create if price_create is not None else row["price_create"]
+    price_reschedule = price_reschedule if price_reschedule is not None else row["price_reschedule"]
+    conn.execute(
+        "UPDATE tariffs SET price_create = ?, price_reschedule = ?, updated_at = ? WHERE api_key_id = ?",
+        (price_create, price_reschedule, now, api_key_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM tariffs WHERE api_key_id = ?", (api_key_id,)).fetchone()
+    conn.close()
+    return {
+        "id": row["id"],
+        "api_key_id": row["api_key_id"],
+        "price_create": row["price_create"],
+        "price_reschedule": row["price_reschedule"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def delete_tariff(api_key_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM tariffs WHERE api_key_id = ?", (api_key_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def list_withdrawals() -> list[dict]:
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM withdrawals ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "percent": row["percent"],
+            "requisites": row["requisites"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    ]
+
+
+def get_withdrawal(withdrawal_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM withdrawals WHERE id = ?", (withdrawal_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "percent": row["percent"],
+        "requisites": row["requisites"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def create_withdrawal(name: str, percent: int, requisites: str) -> dict:
+    conn = get_connection()
+    now = datetime.now(UTC).isoformat()
+    cursor = conn.execute(
+        "INSERT INTO withdrawals (name, percent, requisites, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        (name, percent, requisites, now, now),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM withdrawals WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    conn.close()
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "percent": row["percent"],
+        "requisites": row["requisites"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def update_withdrawal(
+    withdrawal_id: int, name: str | None = None, percent: int | None = None, requisites: str | None = None
+) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM withdrawals WHERE id = ?", (withdrawal_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    now = datetime.now(UTC).isoformat()
+    name = name if name is not None else row["name"]
+    percent = percent if percent is not None else row["percent"]
+    requisites = requisites if requisites is not None else row["requisites"]
+    conn.execute(
+        "UPDATE withdrawals SET name = ?, percent = ?, requisites = ?, updated_at = ? WHERE id = ?",
+        (name, percent, requisites, now, withdrawal_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM withdrawals WHERE id = ?", (withdrawal_id,)).fetchone()
+    conn.close()
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "percent": row["percent"],
+        "requisites": row["requisites"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def delete_withdrawal(withdrawal_id: int) -> bool:
+    conn = get_connection()
+    cursor = conn.execute("DELETE FROM withdrawals WHERE id = ?", (withdrawal_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+
+def update_usage_log(usage_log_id: int, price: int | None = None, paid: bool | None = None) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    price = price if price is not None else row["price"]
+    paid = paid if paid is not None else row["paid"]
+    conn.execute(
+        "UPDATE usage_log SET price = ?, paid = ? WHERE id = ?",
+        (price, 1 if paid else 0 if paid is False else None, usage_log_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
+    conn.close()
+    return {
+        "id": row["id"],
+        "api_key_id": row["api_key_id"],
+        "reservation_id": row["reservation_id"],
+        "captcha_id": row["captcha_id"],
+        "status": row["status"],
+        "error_message": row["error_message"],
+        "error_stage": row["error_stage"],
+        "slot_date": row["slot_date"],
+        "logs": json.loads(row["logs"]) if row["logs"] else None,
+        "config_json": json.loads(row["config_json"]) if row["config_json"] else None,
+        "created_at": row["created_at"],
+        "confirmed_at": row["confirmed_at"],
+        "price": row["price"],
+        "paid": bool(row["paid"]) if row["paid"] is not None else None,
+    }
 
 
 init_db()

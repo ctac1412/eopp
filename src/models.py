@@ -49,6 +49,12 @@ class UpdateApiKeyBody(BaseModel):
     label: str | None = None
     max_uses: int | None = None
     active: bool | None = None
+    comment: str | None = None
+
+
+class UpdateUsageLogBody(BaseModel):
+    price: int | None = None
+    paid: bool | None = None
 
 
 class ConfirmUsageBody(BaseModel):
@@ -126,3 +132,20 @@ class UploadPluginBody(BaseModel):
     zip_file: str
     note: str | None = None
     overwrite: bool | None = False
+
+
+class TariffBody(BaseModel):
+    price_create: int
+    price_reschedule: int
+
+
+class WithdrawalBody(BaseModel):
+    name: str
+    percent: int
+    requisites: str
+
+
+class GenerateInvoiceBody(BaseModel):
+    api_key_id: int
+    usage_log_ids: list[int]
+    withdrawal_id: int

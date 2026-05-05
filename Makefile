@@ -44,9 +44,9 @@ format-py:
 format-js:
 	cd frontend && npm run format
 
-format:check-py:
+format-check-py:
 	uv run black --check .
 	uv run ruff check .
 
-format:check-js:
+format-check-js:
 	cd frontend && npm run format:check

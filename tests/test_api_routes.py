@@ -398,5 +398,211 @@ class TestSlots:
         assert response.status_code == 403
 
 
+# === Tariff Tests ===
+class TestTariffs:
+    """Тесты Tariff эндпоинтов."""
+
+    def test_get_tariff_not_found(self, client, admin_token, api_key):
+        """Получение несуществующего тарифа."""
+        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
+        response = client.get(
+            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
+        )
+        assert response.status_code == 404
+
+    def test_create_tariff(self, client, admin_token, api_key):
+        """Создание тарифа."""
+        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
+        response = client.put(
+            f"/admin/tariffs/{key_data['id']}",
+            headers={"X-Admin-Token": admin_token},
+            json={"price_create": 100, "price_reschedule": 50},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["price_create"] == 100
+        assert data["price_reschedule"] == 50
+
+    def test_update_tariff(self, client, admin_token, api_key):
+        """Обновление тарифа."""
+        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
+        client.put(
+            f"/admin/tariffs/{key_data['id']}",
+            headers={"X-Admin-Token": admin_token},
+            json={"price_create": 100, "price_reschedule": 50},
+        )
+        response = client.put(
+            f"/admin/tariffs/{key_data['id']}",
+            headers={"X-Admin-Token": admin_token},
+            json={"price_create": 200, "price_reschedule": 50},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["price_create"] == 200
+        assert data["price_reschedule"] == 50
+
+    def test_delete_tariff(self, client, admin_token, api_key):
+        """Удаление тарифа."""
+        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
+        client.put(
+            f"/admin/tariffs/{key_data['id']}",
+            headers={"X-Admin-Token": admin_token},
+            json={"price_create": 100, "price_reschedule": 50},
+        )
+        response = client.delete(
+            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
+        )
+        assert response.status_code == 200
+        get_response = client.get(
+            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
+        )
+        assert get_response.status_code == 404
+
+
+# === Withdrawal Tests ===
+class TestWithdrawals:
+    """Тесты Withdrawal эндпоинтов."""
+
+    def test_list_withdrawals_empty(self, client, admin_token):
+        """Пустой список выводов."""
+        response = client.get("/admin/withdrawals", headers={"X-Admin-Token": admin_token})
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_create_withdrawal(self, client, admin_token):
+        """Создание вывода."""
+        response = client.post(
+            "/admin/withdrawals",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Test", "percent": 10, "requisites": "123456"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Test"
+        assert data["percent"] == 10
+
+    def test_update_withdrawal(self, client, admin_token):
+        """Обновление вывода."""
+        create = client.post(
+            "/admin/withdrawals",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Test", "percent": 10, "requisites": "123456"},
+        )
+        wid = create.json()["id"]
+        response = client.put(
+            f"/admin/withdrawals/{wid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Updated", "percent": 15, "requisites": "789012"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Updated"
+        assert data["percent"] == 15
+
+    def test_delete_withdrawal(self, client, admin_token):
+        """Удаление вывода."""
+        create = client.post(
+            "/admin/withdrawals",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Test", "percent": 10, "requisites": "123456"},
+        )
+        wid = create.json()["id"]
+        response = client.delete(
+            f"/admin/withdrawals/{wid}", headers={"X-Admin-Token": admin_token}
+        )
+        assert response.status_code == 200
+        get_response = client.get("/admin/withdrawals", headers={"X-Admin-Token": admin_token})
+        assert len(get_response.json()) == 0
+
+
+# === Update API Key Tests ===
+class TestUpdateApiKey:
+    """Тесты обновления API ключей."""
+
+    def test_update_api_key_comment(self, client, admin_token):
+        """Обновление комментария."""
+        create = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "comment_test"},
+        )
+        kid = create.json()["id"]
+        response = client.patch(
+            f"/admin/api-keys/{kid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"comment": "Test comment"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["comment"] == "Test comment"
+
+
+# === Update Usage Log Tests ===
+class TestUpdateUsageLog:
+    """Тесты обновления логов использования."""
+
+    def test_update_usage_log_price(self, client, api_key, admin_token):
+        """Обновление цены."""
+        reg = client.post(
+            "/register-usage",
+            json={"api_key": api_key, "reservation_id": "res-price"},
+        )
+        uid = reg.json()["usage_log_id"]
+        response = client.patch(
+            f"/admin/usage-log/{uid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"price": 500},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["price"] == 500
+
+    def test_update_usage_log_paid(self, client, api_key, admin_token):
+        """Обновление флага оплаты."""
+        reg = client.post(
+            "/register-usage",
+            json={"api_key": api_key, "reservation_id": "res-paid"},
+        )
+        uid = reg.json()["usage_log_id"]
+        response = client.patch(
+            f"/admin/usage-log/{uid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"paid": True},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["paid"] is True
+
+
+# === Generate Invoice Tests ===
+class TestGenerateInvoice:
+    """Тесты генерации счётов."""
+
+    def test_generate_invoice_missing_data(self, client, admin_token):
+        """Генерация счёта с отсутствующими данными."""
+        response = client.post(
+            "/admin/generate-invoice",
+            headers={"X-Admin-Token": admin_token},
+            json={"api_key_id": 999, "usage_log_ids": [], "withdrawal_id": 999},
+        )
+        assert response.status_code in [404, 400, 500]
+
+    def test_generate_invoice_no_logs(self, client, admin_token, api_key):
+        """Генерация счёта без логов."""
+        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
+        create_w = client.post(
+            "/admin/withdrawals",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Test", "percent": 10, "requisites": "123456"},
+        )
+        wid = create_w.json()["id"]
+        response = client.post(
+            "/admin/generate-invoice",
+            headers={"X-Admin-Token": admin_token},
+            json={"api_key_id": key_data["id"], "usage_log_ids": [], "withdrawal_id": wid},
+        )
+        assert response.status_code in [400, 500]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
