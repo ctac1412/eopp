@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { InjectorConfig } from '@/types';
 import { useInjectorStore } from '@/store';
 import { getServerUrl } from '@/api/background';
-import { FACILITIES, getDefaultSlotDate } from '@/constants';
+import { FACILITIES, getDefaultSlotDate, createDefaultConfig } from '@/constants';
 
 const MOCK_ENDPOINTS: { path: string; label: string; extraModes: MockMode[] }[] = [
   { path: '/reservations-api/v1/timeslot/AvailableSlots', label: 'GET /AvailableSlots', extraModes: ['all_occupied'] },
@@ -141,11 +141,19 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({ endpoint }: { en
   );
 });
 
+const maskKey = (key: string) => {
+  if (key.length <= 2) return '••••';
+  return key[0] + '•'.repeat(key.length - 2) + key[key.length - 1];
+};
+
 const ConfigForm = React.memo(function ConfigForm() {
   const config = useInjectorStore((s) => s.config);
   const updateField = useInjectorStore((s) => s.updateField);
+  const setConfig = useInjectorStore((s) => s.setConfig);
   const collapsed = useInjectorStore((s) => s.collapsedSections);
   const toggleSection = useInjectorStore((s) => s.toggleSection);
+  const authKey = useInjectorStore((s) => s.authKey);
+  const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
   const [mockConfig, setMockConfig] = useState<Record<string, MockMode[]>>({});
   const [mockLoading, setMockLoading] = useState(false);
   const [mockSending, setMockSending] = useState(false);
@@ -245,6 +253,14 @@ const ConfigForm = React.memo(function ConfigForm() {
       });
   };
 
+  const resetToDefaults = () => {
+    if (!confirm('Сбросить все настройки к значениям по умолчанию?')) return;
+    localStorage.removeItem(`injector_config_${config.reservationId}`);
+    const fresh = createDefaultConfig(config.reservationId, config.facilityId, config.vehicleId, config.transportType);
+    fresh.apiKey = config.apiKey;
+    setConfig(fresh);
+  };
+
   const resetMockConfig = () => {
     if (!isLocalhost) return;
     setMockSending(true);
@@ -264,7 +280,16 @@ const ConfigForm = React.memo(function ConfigForm() {
   return (
     <div className="injector-config-form">
       <div className="injector-form-section injector-fullscreen-wide" style={{ gridColumn: '1 / -1' }}>
-        <h3 className="injector-section-title">Общие настройки</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <h3 className="injector-section-title" style={{ marginBottom: 0 }}>Общие настройки</h3>
+          <button
+            className="injector-reset-icon-btn"
+            onClick={resetToDefaults}
+            title="Сбросить настройки"
+          >
+            ↺
+          </button>
+        </div>
         <div className="injector-form-row injector-form-row-3">
           <label className="injector-form-label">
             Режим
@@ -302,6 +327,28 @@ const ConfigForm = React.memo(function ConfigForm() {
             />
             Авто-решение капчи
           </label>
+          <label className="injector-form-label injector-checkbox-label">
+            <input
+              id="enableSlotCoordination-checkbox"
+              type="checkbox"
+              checked={config.enableSlotCoordination}
+              onChange={(e) => handleChange('enableSlotCoordination', e.target.checked)}
+            />
+            Координация слотов
+          </label>
+        </div>
+      </div>
+
+      <div className="injector-form-section">
+        <h3 className="injector-section-title">API ключ</h3>
+        <div className="injector-api-key-display">
+          <span className="injector-api-key-value">{authKey ? maskKey(authKey) : '—'}</span>
+          <button
+            className="injector-api-key-logout-btn"
+            onClick={() => { clearAuthKey(); updateField('apiKey', ''); }}
+          >
+            Выйти
+          </button>
         </div>
       </div>
 
@@ -502,15 +549,15 @@ const ConfigForm = React.memo(function ConfigForm() {
                 <div style={{ padding: '8px', color: '#999' }}>Загрузка...</div>
               ) : (
                 <>
-                  {MOCK_ENDPOINTS.map((ep) => {
+                   {MOCK_ENDPOINTS.map((ep) => {
                     const responses = mockConfig[ep.path] || ['success'];
                     return (
                       <div key={ep.path} style={{ marginBottom: '10px' }}>
                         <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', display: 'flex', justifyContent: 'space', alignItems: 'center' }}>
                           <span>{ep.label}</span>
                           <button
+                            className="injector-mock-btn injector-mock-btn-add"
                             onClick={() => addMockAttempt(ep.path)}
-                            style={{ fontSize: '10px', background: 'none', border: '1px solid #555', color: '#aaa', cursor: 'pointer', padding: '1px 6px', borderRadius: '3px' }}
                           >
                             + попытка
                           </button>
@@ -538,8 +585,8 @@ const ConfigForm = React.memo(function ConfigForm() {
                               </select>
                               {responses.length > 1 && (
                                 <button
+                                  className="injector-mock-btn injector-mock-btn-remove"
                                   onClick={() => removeMockAttempt(ep.path, idx)}
-                                  style={{ fontSize: '14px', background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', padding: '0 4px' }}
                                   title="Удалить попытку"
                                 >
                                   ×
@@ -553,7 +600,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                   })}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
-                      className="injector-btn"
+                      className="injector-mock-btn injector-mock-btn-apply"
                       onClick={sendMockConfig}
                       disabled={mockSending}
                       style={{ flex: 1 }}
@@ -561,7 +608,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                       {mockSending ? 'Отправка...' : 'Применить'}
                     </button>
                     <button
-                      className="injector-btn"
+                      className="injector-mock-btn injector-mock-btn-reset"
                       onClick={resetMockConfig}
                       disabled={mockSending}
                       style={{ flex: 1 }}

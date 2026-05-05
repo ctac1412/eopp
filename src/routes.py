@@ -4,6 +4,7 @@ import random
 import time
 import threading
 import asyncio
+import uuid as uuid_module
 from typing import Optional
 
 from fastapi import Query, Request
@@ -25,12 +26,16 @@ from src.models import (
     UpdateApiKeyBody,
     ConfirmUsageBody,
     FailUsageBody,
+    RegisterUsageBody,
     AdminAuthBody,
     GenerateCaptchaBody,
     ValidateKeyQuery,
     ApiKeyStatusQuery,
     UsageLogQuery,
     MockConfigBody,
+    SlotDict,
+    SlotsGroupBody,
+    UploadPluginBody,
 )
 from src.utils import (
     source_files,
@@ -70,6 +75,14 @@ mock_config: dict[str, dict] = {}
 mock_config_lock = threading.Lock()
 mock_attempt_counters: dict[str, int] = {}
 
+# --- Slots coordination ---
+slots_groups: dict[str, dict] = {}
+slots_lock = asyncio.Lock()
+SLOTS_GROUP_TTL = 60
+SLOTS_MASTER_TIMEOUT = 1.5
+SLOTS_SLAVE_TIMEOUT = 0.4
+MAX_VARIANTS = 8
+
 
 def admin_auth_middleware_factory(app):
     @app.middleware("http")
@@ -96,7 +109,23 @@ def register_sse_routes(app):
         api_key_id = key_record["id"]
         client_ip = request.client.host if request.client else "unknown"
 
-        q = register_sse_connection(api_key_id, client_ip)
+        q, displaced = register_sse_connection(api_key_id, client_ip)
+
+        if displaced:
+            unregister_sse_connection(q, api_key_id)
+
+            async def reject_stream():
+                yield 'data: {"type": "disconnected", "message": "Другое подключение уже активно"}\n\n'
+
+            return StreamingResponse(
+                reject_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
         async def event_stream():
             try:
@@ -150,9 +179,12 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         captcha_id = captcha_hash(data)
         reservation_id = body.reservation_id or "unknown"
 
-        usage_log_id = log_usage(
-            api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id
-        )
+        if body.usage_log_id:
+            usage_log_id = body.usage_log_id
+        else:
+            usage_log_id = log_usage(
+                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id
+            )
 
         has_valid_index = "valid_index" in data
         target_dir = VALID_DIR if has_valid_index else NO_VALID_DIR
@@ -178,6 +210,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                     "variantIndex": best_variant,
                     "variantTiles": tile_order,
                     "usage_log_id": usage_log_id,
+                    "captcha_id": captcha_id,
                 }
             )
 
@@ -237,6 +270,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             pending.pop(captcha_id, None)
         if result:
             result["usage_log_id"] = entry["usage_log_id"]
+            result["captcha_id"] = captcha_id
         return JSONResponse(content=result)
 
     @app.post("/solve")
@@ -312,13 +346,14 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
     @app.post("/trigger-test")
     async def trigger_test(request: Request):
-        from src.utils import send_test_cases_with_key
+        from src.utils import send_one_test_captcha
 
         try:
             body = await request.json()
         except Exception:
             body = {}
         api_key = body.get("api_key")
+        reservation_id = body.get("reservation_id")
 
         if api_key:
             key_record = get_key_record(api_key)
@@ -328,8 +363,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 )
 
         t = threading.Thread(
-            target=send_test_cases_with_key,
-            kwargs={"api_key": api_key},
+            target=send_one_test_captcha,
+            kwargs={"api_key": api_key, "reservation_id": reservation_id},
             daemon=True,
         )
         t.start()
@@ -446,6 +481,111 @@ def register_api_key_routes(app):
         if delete_key(key_id):
             return JSONResponse(content={"ok": True})
         return JSONResponse(status_code=404, content={"error": "Key not found"})
+
+    @app.post("/register-usage")
+    async def register_usage(body: RegisterUsageBody):
+        validation = validate_key(body.api_key)
+        if not validation["valid"]:
+            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+        usage_log_id = log_usage(
+            api_key=body.api_key,
+            reservation_id=body.reservation_id,
+            captcha_id=body.captcha_id or "unknown",
+            config_json=body.config_json,
+        )
+
+        facility_id = None
+        slot_date = None
+        if body.config_json:
+            facility_id = body.config_json.get("facilityId")
+            slot_date = body.config_json.get("slotDate")
+
+        if facility_id and slot_date:
+            group_key = _get_group_key(facility_id, slot_date)
+            gid = str(uuid_module.uuid4())
+
+            async with slots_lock:
+                _clean_expired_groups()
+                found_key = None
+                for k, v in slots_groups.items():
+                    if v["group_key"] == group_key:
+                        found_key = k
+                        break
+
+                if found_key:
+                    group = slots_groups[found_key]
+                    group_id = found_key
+                    consumer_id = len(group["consumers"])
+                    is_master = False
+                    group["consumers"].append(
+                        {
+                            "consumer_id": consumer_id,
+                            "api_key": body.api_key,
+                            "usage_log_id": usage_log_id,
+                            "is_master": False,
+                            "my_slots": [],
+                            "last_ping": time.time(),
+                        }
+                    )
+                    slots_loaded = group["slots"] is not None
+                    if slots_loaded:
+                        variant_idx = consumer_id % MAX_VARIANTS
+                        my_slots = group["consumers"][-1].get("my_slots", [])
+                        if not my_slots and group["slots"]:
+                            variants = generate_8_variants(group["slots"])
+                            for i, c in enumerate(group["consumers"]):
+                                c["my_slots"] = variants[i % MAX_VARIANTS]
+                            my_slots = variants[variant_idx]
+                        result = {
+                            "usage_log_id": usage_log_id,
+                            "group_id": group_id,
+                            "consumer_id": consumer_id,
+                            "is_master": is_master,
+                            "slots_loaded": slots_loaded,
+                            "my_slots": my_slots,
+                        }
+                    else:
+                        result = {
+                            "usage_log_id": usage_log_id,
+                            "group_id": group_id,
+                            "consumer_id": consumer_id,
+                            "is_master": is_master,
+                            "slots_loaded": slots_loaded,
+                        }
+                else:
+                    group_id = gid
+                    slots_groups[gid] = {
+                        "group_id": gid,
+                        "group_key": group_key,
+                        "facility_id": facility_id,
+                        "date": slot_date,
+                        "slots": None,
+                        "slots_loaded": False,
+                        "consumers": [
+                            {
+                                "consumer_id": 0,
+                                "api_key": body.api_key,
+                                "usage_log_id": usage_log_id,
+                                "is_master": True,
+                                "my_slots": [],
+                                "last_ping": time.time(),
+                            }
+                        ],
+                        "master_consumer_id": 0,
+                        "created_at": time.time(),
+                        "expires_at": time.time() + SLOTS_GROUP_TTL,
+                    }
+                    result = {
+                        "usage_log_id": usage_log_id,
+                        "group_id": group_id,
+                        "consumer_id": 0,
+                        "is_master": True,
+                        "slots_loaded": False,
+                    }
+
+                return JSONResponse(content=result)
+
+        return JSONResponse(content={"usage_log_id": usage_log_id})
 
     @app.post("/api-keys/{key_id}/reset-usage")
     async def reset_api_key_usage(key_id: int):
@@ -687,6 +827,28 @@ def register_api_key_routes(app):
 
 
 def register_usage_routes(app):
+    def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
+        if not captcha_id:
+            return
+        no_valid_file = os.path.join(NO_VALID_DIR, f"{captcha_id}.json")
+        if not os.path.exists(no_valid_file):
+            return
+        valid_file = os.path.join(VALID_DIR, f"{captcha_id}.json")
+        if os.path.exists(valid_file):
+            return
+        try:
+            with open(no_valid_file, "r") as f:
+                source_data = json.load(f)
+            source_data["valid_index"] = variant_index
+            with open(valid_file, "w") as f:
+                json.dump(source_data, f, indent=2)
+            os.remove(no_valid_file)
+            print(
+                f"[captcha-valid] {captcha_id}.json moved to valid/ (variantIndex={variant_index})"
+            )
+        except Exception as e:
+            print(f"[captcha-valid] Failed to move {captcha_id}: {e}")
+
     @app.post("/confirm-usage")
     async def handle_confirm_usage(body: ConfirmUsageBody):
         key_record = get_key_record(body.api_key)
@@ -697,7 +859,22 @@ def register_usage_routes(app):
             return JSONResponse(
                 status_code=404, content={"error": "Usage log entry not found"}
             )
-        ok = confirm_usage(body.usage_log_id, body.slot_date, body.logs)
+        if body.captcha_id and body.valid_variant_index is not None:
+            move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
+        ok = confirm_usage(
+            body.usage_log_id, body.slot_date, body.logs, body.captcha_id
+        )
+        if not ok:
+            return JSONResponse(
+                status_code=404, content={"error": "Usage log entry not found"}
+            )
+        return JSONResponse(content={"ok": True})
+
+    @app.delete("/usage-log/{usage_log_id}")
+    async def delete_usage_log_entry(usage_log_id: int):
+        from src.api_keys import delete_usage_log as _delete_usage_log
+
+        ok = _delete_usage_log(usage_log_id)
         if not ok:
             return JSONResponse(
                 status_code=404, content={"error": "Usage log entry not found"}
@@ -706,13 +883,24 @@ def register_usage_routes(app):
 
     @app.get("/usage-log")
     async def get_usage_log(
-        api_key_id: Optional[int] = Query(None), api_key: Optional[str] = Query(None)
+        api_key_id: Optional[int] = Query(None),
+        api_key: Optional[str] = Query(None),
+        hide_test: bool = Query(False),
     ):
         if api_key and api_key_id is None:
             key_record = get_key_record(api_key)
             if key_record:
                 api_key_id = key_record["id"]
         records = list_usages(api_key_id)
+        if hide_test:
+            records = [
+                r
+                for r in records
+                if r.get("reservation_id")
+                and not r["reservation_id"].startswith(
+                    "00000000-0000-0000-0000-000000000000"
+                )
+            ]
         return JSONResponse(content=records)
 
     @app.post("/fail-usage")
@@ -725,12 +913,15 @@ def register_usage_routes(app):
             return JSONResponse(
                 status_code=404, content={"error": "Usage log entry not found"}
             )
+        if body.captcha_id and body.valid_variant_index is not None:
+            move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
         ok = fail_usage(
             body.usage_log_id,
             body.error_message,
             body.error_stage,
             body.slot_date,
             body.logs,
+            body.captcha_id,
         )
         if not ok:
             return JSONResponse(
@@ -786,10 +977,243 @@ def register_frontend_routes(app):
             )
 
 
+def register_test_pages(app):
+    from fastapi.responses import HTMLResponse
+
+    TEST_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>{title}</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f5f5f5; }}
+    .card {{ background: #fff; border-radius: 12px; padding: 40px 48px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }}
+    h1 {{ margin: 0 0 12px; font-size: 22px; }}
+    p {{ color: #666; margin: 0; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>{title}</h1>
+    <p>Тестовая страница для инжектора. Нажмите кнопку «Инжектор».</p>
+  </div>
+</body>
+</html>"""
+
+    @app.get("/test-injector/edit")
+    async def test_injector_edit():
+        return HTMLResponse(TEST_PAGE_HTML.format(title="Тест: Создание брони"))
+
+    @app.get("/test-injector/reschedule")
+    async def test_injector_reschedule():
+        return HTMLResponse(TEST_PAGE_HTML.format(title="Тест: Перенос брони"))
+
+
+def _get_group_key(facility_id: str, date: str) -> str:
+    return f"{facility_id}:{date}"
+
+
+def _clean_expired_groups() -> None:
+    now = time.time()
+    expired = [k for k, v in slots_groups.items() if v.get("expires_at", 0) < now]
+    for k in expired:
+        del slots_groups[k]
+
+
+def _is_consumer_alive(group: dict, consumer_id: int) -> bool:
+    for c in group["consumers"]:
+        if c["consumer_id"] == consumer_id:
+            last_ping = c.get("last_ping")
+            if last_ping is None:
+                return True
+            timeout = (
+                SLOTS_MASTER_TIMEOUT
+                if c["consumer_id"] == group["master_consumer_id"]
+                else SLOTS_SLAVE_TIMEOUT
+            )
+            return (time.time() - last_ping) < timeout
+    return False
+
+
+def generate_8_variants(all_slots: list[dict]) -> list[list[dict]]:
+    sorted_slots = sorted(all_slots, key=lambda s: (-s["count"], s["intervalIndex"]))
+    variants = []
+    for v in range(MAX_VARIANTS):
+        top3_indices = []
+        for step in range(3):
+            idx = v + step * 8
+            if idx < len(sorted_slots):
+                top3_indices.append(idx)
+        top3 = [sorted_slots[idx] for idx in top3_indices]
+        top3_ids = {s["id"] for s in top3}
+        rest = [s for s in sorted_slots if s["id"] not in top3_ids]
+        variants.append(top3 + rest)
+    return variants
+
+
+def _find_and_assign_new_master(group: dict, requesting_consumer_id: int) -> bool:
+    now = time.time()
+    master = None
+    for c in group["consumers"]:
+        if c["consumer_id"] == group["master_consumer_id"]:
+            master = c
+            break
+    if master is None:
+        return False
+    last_ping = master.get("last_ping", now)
+    if (now - last_ping) < SLOTS_MASTER_TIMEOUT:
+        return False
+    if group["slots"] is not None:
+        return False
+    for c in group["consumers"]:
+        if (
+            c["consumer_id"] == requesting_consumer_id
+            and c["consumer_id"] != group["master_consumer_id"]
+        ):
+            old_master_id = group["master_consumer_id"]
+            group["master_consumer_id"] = c["consumer_id"]
+            c["is_master"] = True
+            c["last_ping"] = now
+            for cc in group["consumers"]:
+                if cc["consumer_id"] == old_master_id:
+                    cc["is_master"] = False
+            group["expires_at"] = now + SLOTS_GROUP_TTL
+            return True
+    return False
+
+
+def register_slots_routes(app):
+    @app.post("/slots-group")
+    async def slots_group_post(body: SlotsGroupBody):
+        validation = validate_key(body.api_key)
+        if not validation["valid"]:
+            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+
+        async with slots_lock:
+            _clean_expired_groups()
+            group = slots_groups.get(body.group_id)
+            if not group:
+                return JSONResponse(
+                    status_code=404, content={"error": "Group not found"}
+                )
+
+            consumer = None
+            for c in group["consumers"]:
+                if c["consumer_id"] == body.consumer_id:
+                    consumer = c
+                    break
+            if not consumer:
+                return JSONResponse(
+                    status_code=404, content={"error": "Consumer not found"}
+                )
+
+            if consumer["api_key"] != body.api_key:
+                return JSONResponse(
+                    status_code=403, content={"error": "API key mismatch"}
+                )
+
+            consumer["last_ping"] = time.time()
+            group["expires_at"] = time.time() + SLOTS_GROUP_TTL
+
+            if body.slots:
+                if not consumer.get("is_master", False):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "Only master can submit slots"},
+                    )
+                if group["slots"] is not None:
+                    return JSONResponse(
+                        content={
+                            "ok": True,
+                            "my_slots": consumer.get("my_slots", []),
+                            "total_consumers": len(group["consumers"]),
+                        }
+                    )
+
+                group["slots"] = body.slots
+                variants = generate_8_variants(body.slots)
+                active_consumers = [
+                    c
+                    for c in group["consumers"]
+                    if _is_consumer_alive(group, c["consumer_id"])
+                ]
+                for c in group["consumers"]:
+                    variant_idx = c["consumer_id"] % MAX_VARIANTS
+                    c["my_slots"] = variants[variant_idx]
+                group["slots_loaded"] = True
+
+                my_slots = consumer["my_slots"]
+                total = len(group["consumers"])
+
+            else:
+                my_slots = consumer.get("my_slots", [])
+                total = len(group["consumers"])
+
+        return JSONResponse(
+            content={"ok": True, "my_slots": my_slots, "total_consumers": total}
+        )
+
+    @app.get("/slots-group")
+    async def slots_group_get(
+        group_id: str = Query(...),
+        consumer_id: int = Query(..., ge=0),
+    ):
+        async with slots_lock:
+            _clean_expired_groups()
+            group = slots_groups.get(group_id)
+            if not group:
+                return JSONResponse(
+                    status_code=404, content={"error": "Group not found"}
+                )
+
+            consumer = None
+            for c in group["consumers"]:
+                if c["consumer_id"] == consumer_id:
+                    consumer = c
+                    break
+            if not consumer:
+                return JSONResponse(
+                    status_code=404, content={"error": "Consumer not found"}
+                )
+
+            consumer["last_ping"] = time.time()
+            group["expires_at"] = time.time() + SLOTS_GROUP_TTL
+
+            is_master = consumer["consumer_id"] == group["master_consumer_id"]
+            master_alive = _is_consumer_alive(group, group["master_consumer_id"])
+            slots_loaded = group["slots"] is not None
+            my_slots = consumer.get("my_slots", [])
+            you_are_master = False
+
+            if not is_master and not master_alive and not slots_loaded:
+                if _find_and_assign_new_master(group, consumer_id):
+                    you_are_master = True
+                    is_master = True
+                    master_alive = True
+
+        return JSONResponse(
+            content={
+                "group_id": group_id,
+                "consumer_id": consumer_id,
+                "is_master": is_master,
+                "slots_loaded": slots_loaded,
+                "master_alive": master_alive,
+                "you_are_master": you_are_master,
+                "my_slots": my_slots,
+                "total_consumers": len(group["consumers"]),
+            }
+        )
+
+
 def register_all_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
     register_sse_routes(app)
     register_captcha_routes(app, captcha_timeout)
     register_api_key_routes(app)
     register_usage_routes(app)
+    register_slots_routes(app)
     register_admin_routes(app)
+    register_test_pages(app)
     register_frontend_routes(app)
+    from src.routes_plugins import register_plugin_routes
+
+    register_plugin_routes(app)

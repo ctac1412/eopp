@@ -8,6 +8,7 @@ VALID_DIR = os.path.join(TEST_DIR, "valid")
 NO_VALID_DIR = os.path.join(TEST_DIR, "no_valid")
 CAPTCHA_TIMEOUT = 10
 FRONTEND_DIST = os.path.join(PROJECT_DIR, "frontend", "dist")
+PLUGINS_DIR = os.path.join(PROJECT_DIR, "data", "plugins")
 
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN") or 13243546
 if not ADMIN_TOKEN:
@@ -22,6 +23,8 @@ PROTECTED_PATHS = (
     "/admin/streams",
     "/admin/test-stats",
     "/admin/benchmark",
+    "/plugins/upload",
+    "/plugins/",
 )
 
 write_mode = False

@@ -46,10 +46,10 @@ function App() {
         </button>
       </div>
       {activeTab === 'captchas' ? (
-        <>
+        <div className="captcha-content-area">
           <CaptchaGrid />
           <LogViewer />
-        </>
+        </div>
       ) : (
         <UsageHistory />
       )}

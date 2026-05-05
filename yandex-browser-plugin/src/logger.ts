@@ -1,5 +1,15 @@
 import { useInjectorStore } from '@/store';
 
+let usageLogIdPrefix: string = '';
+
+export function setUsageIdPrefix(id: number | null): void {
+  if (id != null) {
+    usageLogIdPrefix = `[id=${id}] `;
+  } else {
+    usageLogIdPrefix = '';
+  }
+}
+
 function safeStringify(data: unknown): string {
   if (data instanceof Error) {
     return `${data.name}: ${data.message}`;
@@ -17,6 +27,7 @@ function safeStringify(data: unknown): string {
 export function log(msg: string, data?: unknown): void {
   const ts = new Date().toISOString().slice(11, 21);
   const fullMsg = data !== undefined ? `${msg} ${safeStringify(data)}` : msg;
-  console.log(`[injector ${ts}] ${msg}`, data !== undefined ? data : '');
-  useInjectorStore.getState().addLog(fullMsg);
+  const prefixed = usageLogIdPrefix ? `${usageLogIdPrefix}${fullMsg}` : fullMsg;
+  console.log(`[injector ${ts}] ${prefixed}`, data !== undefined ? data : '');
+  useInjectorStore.getState().addLog(prefixed);
 }

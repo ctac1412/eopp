@@ -7,6 +7,7 @@
     "48": "icon.png",
     "128": "icon128.png"
   },
+  "update_url": "https://china.alabai.netcraze.pro/plugins/latest",
   "host_permissions": [
     "https://eopp.epd-portal.ru/*",
     "https://china.alabai.netcraze.pro/*",
@@ -21,9 +22,12 @@
     {
       "matches": [
         "https://eopp.epd-portal.ru/ru/reservations/reservation/*",
-        "https://china.alabai.netcraze.pro/*",
-        "http://localhost:8765/*",
-        "http://127.0.0.1:8765/*"
+        "https://china.alabai.netcraze.pro/*/edit",
+        "https://china.alabai.netcraze.pro/*/reschedule",
+        "http://localhost:8765/*/edit",
+        "http://localhost:8765/*/reschedule",
+        "http://127.0.0.1:8765/*/edit",
+        "http://127.0.0.1:8765/*/reschedule"
       ],
       "js": ["dist/content.js"],
       "css": ["content.css"],

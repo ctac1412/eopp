@@ -1,6 +1,7 @@
 import json
 import base64
 import hashlib
+import random
 import threading
 import time
 import io
@@ -120,19 +121,26 @@ def push_sse(msg, api_key_id=None):
                     v.remove(q)
 
 
-def register_sse_connection(api_key_id: int | None, ip: str) -> asyncio.Queue:
+def register_sse_connection(
+    api_key_id: int | None, ip: str
+) -> tuple[asyncio.Queue, bool]:
     q: asyncio.Queue = asyncio.Queue()
+    displaced = False
     with lock:
-        sse_queues.setdefault(api_key_id, []).append(q)
-        sse_connections.append(
-            {
-                "queue": q,
-                "api_key_id": api_key_id,
-                "ip": ip,
-                "connected_at": time.time(),
-            }
-        )
-    return q
+        existing = sse_queues.get(api_key_id, [])
+        if existing:
+            displaced = True
+        else:
+            sse_queues.setdefault(api_key_id, []).append(q)
+            sse_connections.append(
+                {
+                    "queue": q,
+                    "api_key_id": api_key_id,
+                    "ip": ip,
+                    "connected_at": time.time(),
+                }
+            )
+    return q, displaced
 
 
 def unregister_sse_connection(q: asyncio.Queue, api_key_id: int | None):
@@ -429,3 +437,40 @@ def send_test_cases_with_key(api_key=None):
         )
         t.start()
         time.sleep(1)
+
+
+def send_one_test_captcha(api_key=None, reservation_id=None):
+    pattern = os.path.join(VALID_DIR, "*.json")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"No test files found in {VALID_DIR}")
+        return
+
+    time.sleep(1)
+    filepath = random.choice(files)
+    with open(filepath, "r") as f:
+        body = f.read()
+    print(f"Sending single test: {os.path.basename(filepath)}")
+    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id)
+
+
+def _send_captcha_with_reservation(
+    body, admin_token, api_key=None, reservation_id=None
+):
+    try:
+        if api_key is None:
+            from src.constants import get_test_api_key
+
+            api_key = get_test_api_key()
+
+        data = json.loads(body)
+        data["api_key"] = api_key
+        data["reservation_id"] = reservation_id or "unknown"
+        wrapped_body = json.dumps(data)
+        _http_post(
+            path="/solve-captcha",
+            body=wrapped_body,
+            extra_headers={"X-Admin-Token": admin_token},
+        )
+    except Exception as e:
+        print(f"Error sending test captcha: {e}")

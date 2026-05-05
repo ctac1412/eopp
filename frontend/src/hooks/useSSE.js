@@ -10,6 +10,7 @@ function useSSE() {
   const markSolved = useCaptchaStore((s) => s.markSolved)
   const removeCaptcha = useCaptchaStore((s) => s.removeCaptcha)
   const addLog = useCaptchaStore((s) => s.addLog)
+  const setSseError = useCaptchaStore((s) => s.setSseError)
 
   useEffect(() => {
     let es
@@ -29,8 +30,20 @@ function useSSE() {
 
       es.onmessage = (e) => {
         if (closed) return
+        const wasRetrying = retryCount > 0
         retryCount = 0
+        if (wasRetrying) {
+          setSseError(null)
+        }
         const msg = JSON.parse(e.data)
+
+        if (msg.type === 'disconnected') {
+          setSseError(msg.message || 'Другое подключение к этому ключу активно. Закройте другую вкладку.')
+          addLog(`SSE: ${msg.message || 'Другое подключение активно'}`, 'error')
+          es.close()
+          closed = true
+          return
+        }
 
         if (msg.type === 'new_captcha') {
           if (sounded.has(msg.captcha_id)) return
@@ -70,8 +83,10 @@ function useSSE() {
         retryCount++
         if (retryCount > 10) {
           addLog('SSE: превышено количество попыток переподключения', 'error')
+          setSseError('SSE: не удалось подключиться')
           return
         }
+        setSseError('Соединение разорвано, переподключение...')
         const delay = Math.min(2000 * Math.pow(1.5, retryCount - 1), 30000)
         setTimeout(connect, delay)
       }
@@ -83,7 +98,7 @@ function useSSE() {
       closed = true
       if (es) es.close()
     }
-  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog])
+  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog, setSseError])
 }
 
 export default useSSE
