@@ -32,6 +32,6 @@ def register_all_routes(app, captcha_timeout):
     register_mock_routes(app)
     register_test_pages(app)
     register_frontend_routes(app)
-    from src.routes_plugins import register_plugin_routes
+    from src.routes.plugins import register_plugin_routes
 
     register_plugin_routes(app)
