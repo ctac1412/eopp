@@ -5,7 +5,7 @@ EOPP Captcha Solver - Admin Routes
 - POST /admin/auth - аутентификация админа
 - GET /admin/streams - список активных SSE соединений
 - GET /admin/test-stats - статистика по тестовым кейсам
-- GET /admin/benchmark - запуск бенчмарка решателя
+- POST /admin/benchmark - запуск бенчмарка решателя
 - GET /admin/tariffs/{api_key_id} - получить тариф по апи ключу
 - PUT /admin/tariffs/{api_key_id} - создать/обновить тариф
 - DELETE /admin/tariffs/{api_key_id} - удалить тариф
@@ -83,7 +83,7 @@ def register_admin_routes(app):
     async def admin_test_stats():
         return JSONResponse(content=get_test_stats())
 
-    @app.get("/admin/benchmark")
+    @app.post("/admin/benchmark")
     async def admin_benchmark():
         return JSONResponse(content=run_benchmark_cached())
 
