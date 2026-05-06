@@ -20,7 +20,7 @@ import os
 import random
 import threading
 from typing import Any
-
+import json 
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
@@ -129,6 +129,8 @@ def register_mock_routes(app):
         if cfg and cfg.get("mode") == "custom":
             return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         data = _load_random_captcha()
+        if data:
+            data = json.loads(data)
         if isinstance(data, dict) and "error" in data:
             return JSONResponse(status_code=500, content=data)
         return JSONResponse(content=data)

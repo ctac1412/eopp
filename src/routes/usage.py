@@ -80,11 +80,14 @@ def register_usage_routes(app):
 
         facility_id = None
         slot_date = None
+        enable_slot_coordination = None 
+        
         if body.config_json:
             facility_id = body.config_json.get("facilityId")
             slot_date = body.config_json.get("slotDate")
+            enable_slot_coordination = body.config_json.get('enableSlotCoordination')
 
-        if facility_id and slot_date:
+        if facility_id and slot_date and enable_slot_coordination:
             group_key = f"{facility_id}:{slot_date}"
             gid = str(uuid_module.uuid4())
 

@@ -90,7 +90,7 @@ export function createDefaultConfig(
   mode: "reschedule" | "create" = "reschedule",
 ): InjectorConfig {
   return {
-    runUpTo: 4,
+    runUpTo: 5,
     facilityId,
     vehicleId,
     reservationId,
@@ -99,9 +99,9 @@ export function createDefaultConfig(
     mode,
     preferredTime: null,
     autoSolve: false,
-    enableSlotCoordination: true,
+    enableSlotCoordination: false,
     retryOnAllSlotsOccupied: true,
-    maxSlotRetries: 24,
+    maxSlotRetries: 8,
     slotRetryDelayMs: 500,
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),
