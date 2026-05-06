@@ -29,6 +29,17 @@ export function UsageHistory({
   if (isError) return <div className="table__empty">Ошибка загрузки</div>;
   if (isEmpty) return <div className="table__empty">Нет записей</div>;
 
+  const allSelected = historyData.length > 0 && historyData.every((r) => selectedLogs[r.id]);
+  const onToggleSelectAll = (checked) => {
+    historyData.forEach((r) => {
+      if (checked && !selectedLogs[r.id]) {
+        onToggleSelect?.(r.id);
+      } else if (!checked && selectedLogs[r.id]) {
+        onToggleSelect?.(r.id);
+      }
+    });
+  };
+
   return (
     <SharedHistoryTable
       records={historyData}
@@ -43,7 +54,12 @@ export function UsageHistory({
       setEditingPriceId={setEditingPriceId}
       onPriceChange={onPriceChange}
       onTogglePaid={onTogglePaid}
-      columns={["id", "type", "time", "resid", "captcha", "status", "slot", "price", "paid", "error", "actions"]}
+      onGenerateInvoice={onGenerateInvoice}
+      selectedLogs={selectedLogs}
+      onToggleSelect={onToggleSelect}
+      onToggleSelectAll={onToggleSelectAll}
+      allSelected={allSelected}
+      columns={["checkbox", "id", "type", "time", "resid", "captcha", "status", "slot", "price", "paid", "error", "actions"]}
     />
   );
 }

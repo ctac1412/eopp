@@ -324,6 +324,7 @@ export function HistoryTable({
   setEditingPriceId,
   onPriceChange,
   onTogglePaid,
+  onGenerateInvoice,
 }) {
   const resolvedColumns = columns || PRESETS[preset].columns;
   const resolvedActions = { ...PRESETS[preset].actions, ...actions };
@@ -332,8 +333,18 @@ export function HistoryTable({
     return <div className="history-empty">Нет записей</div>;
   }
 
+  const selectedCount = Object.values(selectedLogs).filter(Boolean).length;
+
   return (
     <div className="history-container" data-preset={preset}>
+      {onGenerateInvoice && selectedCount > 0 && (
+        <div className="history-toolbar">
+          <span className="history-toolbar__info">Выбрано: {selectedCount}</span>
+          <button className="btn btn--primary btn--sm" onClick={onGenerateInvoice}>
+            Сформировать счёт
+          </button>
+        </div>
+      )}
       <div className="history-header">
         {resolvedColumns.map((col) => {
           if (col === "checkbox" && onToggleSelectAll != null) {

@@ -635,6 +635,20 @@
   margin-bottom: var(--space-3);
 }
 
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  background: rgba(15, 17, 23, 0.8);
+  border-bottom: 1px solid var(--border);
+}
+
+.history-toolbar__info {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
 /* ── Legacy Aliases ── */
 .admin-history-cell { }
 .admin-history-wrapper { }
