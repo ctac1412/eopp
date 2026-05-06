@@ -238,11 +238,15 @@ def _run_benchmark_sync():
         for et in range(5):
             et_val = et + 1
             for i, variant in enumerate(variants):
+                disc = calculate_seam_discontinuity(variant, images_dict, et_val)
+                coh = calculate_content_coherence(variant, images_dict, et_val)
+                ssim_v = calculate_seam_ssim(variant, images_dict, et_val)
+                sobel = calculate_sobel_continuity(variant, images_dict, et_val)
                 metrics[et, i] = [
-                    calculate_seam_discontinuity(variant, images_dict, et_val),
-                    calculate_content_coherence(variant, images_dict, et_val),
-                    calculate_seam_ssim(variant, images_dict, et_val),
-                    calculate_sobel_continuity(variant, images_dict, et_val),
+                    disc if not np.isnan(disc) else float("inf"),
+                    coh if not np.isnan(coh) else 0.0,
+                    ssim_v if not np.isnan(ssim_v) else 0.0,
+                    sobel if not np.isnan(sobel) else float("inf"),
                 ]
         all_data.append((os.path.basename(filepath), expected, nv, metrics))
 

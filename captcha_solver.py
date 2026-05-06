@@ -137,6 +137,9 @@ def calculate_seam_discontinuity(variant, images_dict, edge_trim=3):
         right = arrs[i][:, edge_trim:-edge_trim, :]
         left = arrs[i + 1][:, edge_trim:-edge_trim, :]
 
+        if right.size == 0 or left.size == 0:
+            return float("inf")
+
         edge_width = 8
         right_edge = right[:, -edge_width:, :]
         left_edge = left[:, :edge_width, :]
@@ -155,6 +158,9 @@ def calculate_content_coherence(variant, images_dict, edge_trim=3):
     for i in range(len(arrs) - 1):
         right = arrs[i][:, edge_trim:-edge_trim, :]
         left = arrs[i + 1][:, edge_trim:-edge_trim, :]
+
+        if right.size == 0 or left.size == 0:
+            return 0.0
 
         edge_width = 12
         right_region = right[:, -edge_width:, :]
@@ -180,6 +186,9 @@ def calculate_seam_ssim(variant, images_dict, edge_trim=3):
     for i in range(len(arrs) - 1):
         right = arrs[i][:, edge_trim:-edge_trim, :]
         left = arrs[i + 1][:, edge_trim:-edge_trim, :]
+
+        if right.size == 0 or left.size == 0:
+            continue
 
         edge_width = 16
         right_edge = right[:, -edge_width:, :]
@@ -207,6 +216,9 @@ def calculate_sobel_continuity(variant, images_dict, edge_trim=3):
     for i in range(len(arrs) - 1):
         right = arrs[i][:, edge_trim:-edge_trim, :].mean(axis=2).astype(np.float64)
         left = arrs[i + 1][:, edge_trim:-edge_trim, :].mean(axis=2).astype(np.float64)
+
+        if right.size == 0 or left.size == 0:
+            return float("inf")
 
         edge_width = 10
         right_edge = right[:, -edge_width:]
