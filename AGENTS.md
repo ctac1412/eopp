@@ -71,12 +71,14 @@
 |------|-----------|
 | `manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
 | `src/app.py` | FastAPI-приложение: создание app, lifespan, CORS, middleware |
-| `src/routes.py` | Все роуты: капчи, SSE, API ключи, usage log, mock EOPP, slots groups |
+| `src/routes.py` | Точка входа: регистрирует все роутеры из `src/routes/` |
+| `src/routes/*.py` | Роутеры по модулям: `captcha.py`, `sse.py`, `api_keys.py`, `usage.py`, `slots.py`, `mock.py`, `admin.py`, `plugins.py`, `frontend.py` |
 | `src/models.py` | Pydantic-модели для валидации запросов |
 | `src/constants.py` | Константы: порты, пути, токены, настройки |
 | `src/utils.py` | Утилиты: хеширование, сборка изображений, SSE push, тесты, benchmark |
-| `src/api_keys.py` | SQLite-база API ключей и логи использования |
-| `src/plugins.py` | Система плагинов: загрузка, хранение, управление |
+| `src/db/` | SQLite-слой: `api_keys.py`, `usage_log.py`, `tariffs.py`, `withdrawals.py`, `init.py`, `connection.py` |
+| `src/plugins.py` | Система плагинов: загрузка, хранение, версионирование |
+| `scripts/` | Скрипты: `bump_plugin_version.py`, `copy_plugin_to_plugins.py` |
 | `captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
 
 **Эндпоинты:**
@@ -104,8 +106,10 @@
 | `GET` | `/mock-config` | Получение текущей мок-конфигурации |
 | `GET` | `/admin/streams` | Список активных SSE-соединений |
 | `GET` | `/admin/test-stats` | Статистика по тестовым кейсам |
-| `GET` | `/admin/benchmark` | Запуск бенчмарка решателя |
+| `POST` | `/admin/benchmark` | Запуск бенчмарка решателя |
 | `POST` | `/admin/auth` | Аутентификация админа |
+| `GET/POST/PUT/DELETE` | `/admin/withdrawals` | CRUD способов вывода (с налогом и типом процента) |
+| `POST` | `/admin/generate-invoice` | Генерация PDF-счёта |
 | `GET` | `/*` | React SPA (файлы из `frontend/dist/`) |
 
 **Mock EOPP Endpoints** (для тестирования):
@@ -267,6 +271,7 @@ make run           # обычный режим (HTTPS)
 make run-http      # обычный режим (HTTP)
 make run-test      # с тестовыми капчами
 make run-write     # labeling mode
+make run-dev       # dev режим (HTTP :8766, своя БД)
 
 # Разработка фронтенда
 make dev-frontend  # Vite dev server
@@ -277,6 +282,11 @@ make build-frontend
 # Сборка расширения
 make build-extension
 make build-extension-dev
+
+# Плагины
+make build-plugin           # собрать плагин с повышением версии
+make build-plugin-no-bump   # собрать плагин без повышения версии
+make list-plugins           # список версий плагинов
 
 # Тесты / бенчмарк
 make bench
