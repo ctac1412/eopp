@@ -151,3 +151,7 @@ class GenerateInvoiceBody(BaseModel):
     api_key_id: int
     usage_log_ids: list[int]
     withdrawal_id: int
+    debt_amount: int = 0
+    percent_amount: int = 0
+    tax_amount: int = 0
+    total_amount: int = 0

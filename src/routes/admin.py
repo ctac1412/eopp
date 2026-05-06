@@ -181,6 +181,11 @@ def register_admin_routes(app):
         if not usage_logs:
             return JSONResponse(status_code=400, content={"error": "No valid usage logs provided"})
 
+        debt_amount = body.debt_amount or 0
+        percent_amount = body.percent_amount or 0
+        tax_amount = body.tax_amount or 0
+        total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
+
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm, topMargin=20 * mm, bottomMargin=20 * mm)
         elements = []
@@ -195,7 +200,7 @@ def register_admin_routes(app):
         info_data = [
             ["Номер счёта:", invoice_number],
             ["Дата:", now.strftime("%d.%m.%Y %H:%M")],
-            ["Плательщик:", api_key["label"]],
+            ["Плательщик:", api_key["label"] or f"Ключ #{api_key['id']}"],
             ["Получатель:", withdrawal["name"]],
             ["Реквизиты:", withdrawal["requisites"]],
         ]
@@ -213,13 +218,11 @@ def register_admin_routes(app):
         elements.append(Spacer(1, 15 * mm))
 
         table_data = [["№", "Дата", "Reservation ID", "Тип", "Цена"]]
-        total = 0
         for i, log in enumerate(usage_logs, 1):
             config = log.get("config_json") or {}
             mode = config.get("mode", "create")
             op_type = "Перенос" if mode == "reschedule" else "Создание"
             price = log.get("price") or 0
-            total += price
             table_data.append(
                 [
                     str(i),
@@ -230,10 +233,12 @@ def register_admin_routes(app):
                 ]
             )
 
-        table_data.append(["", "", "", "Итого:", f"{total} ₽"])
-        commission = total * withdrawal["percent"] / 100
-        table_data.append(["", "", "", f"Комиссия ({withdrawal['percent']}%):", f"{commission} ₽"])
-        table_data.append(["", "", "", "К оплате:", f"{total + commission} ₽"])
+        table_data.append(["", "", "", "Сумма долга:", f"{debt_amount} ₽"])
+        if percent_amount > 0:
+            table_data.append(["", "", "", f"Комиссия ({withdrawal['percent']}%):", f"{percent_amount} ₽"])
+        if tax_amount > 0:
+            table_data.append(["", "", "", f"Налог ({withdrawal.get('tax_percent', 0)}%):", f"{tax_amount} ₽"])
+        table_data.append(["", "", "", "ИТОГО:", f"{total_amount} ₽"])
 
         table = Table(table_data, colWidths=[10 * mm, 25 * mm, 50 * mm, 40 * mm, 30 * mm])
         table.setStyle(
@@ -247,7 +252,7 @@ def register_admin_routes(app):
                     ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
                     ("GRID", (0, 0), (-1, -1), 1, colors.black),
                     ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
-                    ("BACKGROUND", (-2, -3), (-1, -1), colors.lightgrey),
+                    ("BACKGROUND", (-2, -1), (-1, -1), colors.lightgrey),
                 ]
             )
         )
@@ -266,8 +271,9 @@ def register_admin_routes(app):
                 "ok": True,
                 "invoice_number": invoice_number,
                 "path": pdf_path,
-                "total": total,
-                "commission": commission,
-                "total_with_commission": total + commission,
+                "debt_amount": debt_amount,
+                "percent_amount": percent_amount,
+                "tax_amount": tax_amount,
+                "total_amount": total_amount,
             }
         )

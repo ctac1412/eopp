@@ -66,6 +66,7 @@ function AdminPage() {
   const [selectedUsageLogs, setSelectedUsageLogs] = useState({});
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ apiKeyId: null, withdrawalId: "" });
+  const [invoiceSelectedLogs, setInvoiceSelectedLogs] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
   const [historyLoading, setHistoryLoading] = useState({});
@@ -491,23 +492,25 @@ function AdminPage() {
     }
   };
 
-  const handleGenerateInvoice = async () => {
+  const handleGenerateInvoice = async (invoiceData) => {
     try {
-      const selectedIds = Object.entries(selectedUsageLogs)
-        .filter(([_, v]) => v)
-        .map(([k, _]) => parseInt(k, 10));
-      if (selectedIds.length === 0) {
-        setError("Выберите хотя бы одну запись");
-        return;
-      }
-      if (!invoiceForm.withdrawalId) {
+      if (!invoiceData.withdrawalId) {
         setError("Выберите получателя");
         return;
       }
+      if (!invoiceData.logs || invoiceData.logs.length === 0) {
+        setError("Нет записей для счёта");
+        return;
+      }
+
       const body = {
         api_key_id: invoiceForm.apiKeyId,
-        usage_log_ids: selectedIds,
-        withdrawal_id: parseInt(invoiceForm.withdrawalId, 10),
+        usage_log_ids: invoiceData.logs.map((l) => l.id),
+        withdrawal_id: parseInt(invoiceData.withdrawalId, 10),
+        debt_amount: invoiceData.debtAmount,
+        percent_amount: invoiceData.percentAmount,
+        tax_amount: invoiceData.taxAmount,
+        total_amount: invoiceData.totalAmount,
       };
       const res = await fetch("/admin/generate-invoice", {
         method: "POST",
@@ -516,9 +519,10 @@ function AdminPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      alert(`Счёт ${data.invoice_number} создан! Сумма: ${data.total_with_commission} ₽`);
+      alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
       setShowInvoiceModal(false);
       setSelectedUsageLogs({});
+      setInvoiceSelectedLogs([]);
     } catch (err) {
       setError(err.message);
     }
@@ -721,7 +725,17 @@ function AdminPage() {
           onToggleConfig={toggleConfig}
           onCloseNewKey={() => setNewKey(null)}
           onShowInvoiceModal={(keyId) => {
+            const selectedIds = Object.entries(selectedUsageLogs)
+              .filter(([_, v]) => v)
+              .map(([k, _]) => parseInt(k, 10));
+            const allLogs = expandedHistory[keyId] || [];
+            const selected = allLogs.filter((l) => selectedIds.includes(l.id));
+            if (selected.length === 0) {
+              setError("Выберите хотя бы одну запись");
+              return;
+            }
             setInvoiceForm({ apiKeyId: keyId, withdrawalId: "" });
+            setInvoiceSelectedLogs(selected);
             setShowInvoiceModal(true);
             fetchWithdrawals(adminToken);
           }}
@@ -785,7 +799,7 @@ function AdminPage() {
       <InvoiceModal
         show={showInvoiceModal}
         withdrawals={withdrawals}
-        selectedCount={Object.values(selectedUsageLogs).filter(Boolean).length}
+        selectedLogs={invoiceSelectedLogs}
         form={invoiceForm}
         setForm={setInvoiceForm}
         onGenerate={handleGenerateInvoice}

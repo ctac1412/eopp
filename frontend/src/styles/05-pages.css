@@ -933,7 +933,7 @@
 
 .admin-withdrawals-header {
   display: grid;
-  grid-template-columns: 50px 1fr 80px minmax(200px, 1fr) 110px 100px;
+  grid-template-columns: 50px 1fr 80px 60px 60px minmax(200px, 1fr) 110px 100px;
   padding: var(--space-3) var(--space-5);
   font-size: var(--text-xs);
   color: var(--text-faint);
@@ -950,7 +950,7 @@
 
 .admin-withdrawal-row {
   display: grid;
-  grid-template-columns: 50px 1fr 80px minmax(200px, 1fr) 110px 100px;
+  grid-template-columns: 50px 1fr 80px 60px 60px minmax(200px, 1fr) 110px 100px;
   padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid rgba(39, 41, 61, 0.12);
   align-items: center;
@@ -990,6 +990,18 @@
   text-align: center;
   font-family: var(--font-mono);
   color: var(--success);
+}
+
+.admin-withdrawal-cell--percent-type {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.admin-withdrawal-cell--tax {
+  text-align: center;
+  font-family: var(--font-mono);
+  color: var(--warning);
 }
 
 .admin-withdrawal-cell--date {
@@ -1054,4 +1066,147 @@
   font-weight: var(--font-bold);
   color: var(--primary-hover);
   font-family: var(--font-mono);
+}
+
+/* ─────────────────────────────────────
+   INVOICE MODAL
+   ───────────────────────────────────── */
+
+.invoice-requisites {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.invoice-requisites-title {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-1);
+}
+
+.invoice-requisites-value {
+  font-size: var(--text-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.invoice-logs-list {
+  margin-bottom: var(--space-4);
+}
+
+.invoice-logs-title {
+  font-size: var(--text-md);
+  font-weight: var(--font-semibold);
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+
+.invoice-logs-table {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.invoice-logs-header {
+  display: grid;
+  grid-template-columns: 40px 90px 1fr 80px 80px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: var(--font-semibold);
+  background: rgba(15, 17, 23, 0.6);
+  border-bottom: 1px solid var(--border);
+}
+
+.invoice-logs-row {
+  display: grid;
+  grid-template-columns: 40px 90px 1fr 80px 80px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+}
+
+.invoice-logs-row:last-child {
+  border-bottom: none;
+}
+
+.invoice-logs-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-logs-cell--num {
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.invoice-logs-cell--price {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--success);
+}
+
+.invoice-totals {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.invoice-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+}
+
+.invoice-total-row:last-child {
+  border-bottom: none;
+}
+
+.invoice-total-row--total {
+  border-bottom: none;
+  padding-top: var(--space-3);
+  font-weight: var(--font-bold);
+}
+
+.invoice-total-label {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+.invoice-total-input {
+  width: 100px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.invoice-total-currency {
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  margin-left: var(--space-2);
+}
+
+.invoice-total-value {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--primary-hover);
+  font-family: var(--font-mono);
+}
+
+.modal--lg {
+  max-width: 700px;
+  width: 90%;
 }
