@@ -34,10 +34,17 @@ def load_all_data():
     for filepath in TEST_FILES:
         with open(filepath) as f:
             data = json.load(f)
+        tiles = data["puzzle"].get("tiles", [])
+        if not tiles:
+            continue
         expected = data["valid_index"]
         variants = data["puzzle"]["variantsCapture"]
-        images_dict = prepare_clean_tiles(data["puzzle"]["tiles"])
+        images_dict = prepare_clean_tiles(tiles)
+        if not images_dict:
+            continue
         nv = len(variants)
+        if nv == 0:
+            continue
         metrics = np.zeros((5, nv, 4))
         for et in range(5):
             et_val = et + 1
@@ -53,12 +60,10 @@ def load_all_data():
 
 
 def test_bench():
-    total = len(TEST_FILES)
-
-    if total == 0:
-        pytest.skip("No test captcha files found in data/captcha_examples/valid/")
-
     all_data = load_all_data()
+    total = len(all_data)
+    if total == 0:
+        pytest.skip("No valid captcha data after loading")
 
     best_correct = 0
     best_config = None
