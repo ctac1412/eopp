@@ -260,12 +260,21 @@ def _run_benchmark_sync():
                             ssim_v = metrics[et, :, 2]
                             sobel = metrics[et, :, 3]
                             scores = disc * wd + (1 - ssim_v) * ws - coh * wc + sobel * wb
+                            scores = np.nan_to_num(scores, nan=np.inf)
                             best_v = int(np.argmin(scores))
                             if best_v == expected:
                                 correct += 1
                         if correct > best_correct:
                             best_correct = correct
                             best_config = (et + 1, wd, ws, wc, wb)
+
+    if best_config is None:
+        return {
+            "total": total,
+            "passed": 0,
+            "coverage_percent": 0,
+            "best_config": None,
+        }
 
     et, wd, ws, wc, wb = best_config
     pct = best_correct / total * 100
