@@ -27,8 +27,6 @@ function StatusBar() {
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const clearApiKey = useCaptchaStore((s) => s.clearApiKey);
   const [showChange, setShowChange] = useState(false);
-  const [showTestInput, setShowTestInput] = useState(false);
-  const [testReservationId, setTestReservationId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [apiLabel, setApiLabel] = useState(null);
 
@@ -75,7 +73,7 @@ function StatusBar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           api_key: apiKey,
-          reservation_id: testReservationId || undefined,
+          reservation_id: "00000000-0000-0000-0000-000000000000",
         }),
       });
     } finally {
@@ -158,38 +156,16 @@ function StatusBar() {
             )}
           </div>
         )}
-        {showTestInput && (
-          <input
-            className="input input--mono"
-            placeholder="Reservation ID"
-            value={testReservationId}
-            onChange={(e) => setTestReservationId(e.target.value)}
-            onBlur={() => setShowTestInput(false)}
-            autoFocus
-          />
-        )}
         <button
           className="btn btn--primary"
-          onClick={() => setShowTestInput(true)}
+          onClick={handleTestRun}
           disabled={loading}
         >
           {loading ? "Запуск..." : "Тестовый запуск"}
         </button>
-        {testReservationId && !showTestInput && (
-          <button
-            className="btn btn--primary"
-            onClick={handleTestRun}
-            disabled={loading}
-            style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)" }}
-          >
-            {loading ? "..." : `▶ ${testReservationId}`}
-          </button>
-        )}
-        {isAdmin && (
-          <Link to="/admin" className="btn btn--secondary">
-            Admin
-          </Link>
-        )}
+        <Link to="/admin" className="btn btn--secondary">
+          Admin
+        </Link>
       </div>
     </div>
   );

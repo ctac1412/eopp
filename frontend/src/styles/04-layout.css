@@ -160,23 +160,33 @@
   background: linear-gradient(135deg, rgba(129, 140, 248, 0.18), rgba(167, 139, 250, 0.18));
 }
 
-/* Admin tabs (with custom colors) */
+/* Admin tabs */
 .admin-tabs {
   display: flex;
-  gap: var(--space-1);
+  gap: 0;
   margin-bottom: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
 }
 
 .admin-tabs .tab {
   padding: var(--space-3) var(--space-5);
   background: transparent;
   color: var(--text-dim);
+  border: none;
+  flex: 1;
 }
 
 .admin-tabs .tab--active {
-  background: var(--info);
   color: #fff;
-  box-shadow: none;
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.12), rgba(167, 139, 250, 0.12));
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+.admin-tabs .tab--active:hover {
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.18), rgba(167, 139, 250, 0.18));
 }
 
 /* ── Legacy Aliases ── */

@@ -35,33 +35,10 @@ export function UsageHistory({
   if (isError) return <div className="table__empty">Ошибка загрузки</div>;
   if (isEmpty) return <div className="table__empty">Нет записей</div>;
 
-  const selectAll = (checked) => {
-    const logIds = historyData.map((entry) => entry.id);
-    const newSelection = {};
-    logIds.forEach((id) => {
-      newSelection[id] = checked;
-    });
-    Object.keys(selectedLogs).forEach((id) => {
-      if (!logIds.includes(parseInt(id, 10))) {
-        newSelection[id] = selectedLogs[id];
-      }
-    });
-    Object.keys(newSelection).forEach((k) => {
-      if (!newSelection[k]) delete newSelection[k];
-    });
-    Object.keys(selectedLogs).forEach((k) => {
-      if (historyData.find((e) => e.id === parseInt(k, 10))) {
-        newSelection[k] = selectedLogs[k];
-      }
-    });
-    return newSelection;
-  };
-
-  const checkedCount = historyData.filter((e) => selectedLogs[e.id]).length;
   const allChecked = historyData.length > 0 && historyData.every((e) => selectedLogs[e.id]);
 
   return (
-    <div className="admin-history-wrapper">
+    <>
       <div className="admin-history-toolbar">
         <button
           className={`btn btn--sm ${hideTest ? "btn--active" : "btn--ghost"}`}
@@ -75,7 +52,7 @@ export function UsageHistory({
           </button>
         )}
       </div>
-      <table className="admin-history-table">
+      <table className="table">
         <thead>
           <tr>
             <th>
@@ -122,18 +99,18 @@ export function UsageHistory({
                     />
                   </td>
                   <td className="table__cell--id">{entry.id}</td>
-                  <td className="admin-history-time">{formatDate(entry.created_at)}</td>
-                  <td className="admin-history-op-type">
+                  <td className="table__cell--date">{formatDate(entry.created_at)}</td>
+                  <td>
                     {opType ? (
-                      <span className={opType === "Создание" ? "admin-op-create" : "admin-op-reschedule"}>
+                      <span className={`badge ${opType === "Создание" ? "badge--success" : "badge--info"}`}>
                         {opType}
                       </span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="admin-history-resid">{entry.reservation_id || "—"}</td>
-                  <td className="admin-history-cid">{entry.captcha_id_short || entry.captcha_id || "—"}</td>
+                  <td className="table__cell--id">{entry.reservation_id || "—"}</td>
+                  <td className="table__cell--id">{entry.captcha_id_short || entry.captcha_id || "—"}</td>
                   <td>
                     <span className={`badge badge--${
                       entry.status === "confirmed" ? "success" :
@@ -142,25 +119,25 @@ export function UsageHistory({
                       {entry.status === "confirmed" ? "Подтверждено" : entry.status === "pending" ? "Ожидание" : "Ошибка"}
                     </span>
                   </td>
-                  <td className="admin-history-slot-date">{entry.slot_date || "—"}</td>
+                  <td className="table__cell--date">{entry.slot_date || "—"}</td>
                   <td className="admin-history-error-msg">
                     {entry.status === "failed" && entry.error_message
                       ? entry.error_message.length > 100 ? entry.error_message.slice(0, 100) + "…" : entry.error_message
                       : "—"}
                   </td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                       <button className="btn btn--sm btn--danger" onClick={() => onDelete(entry.id)}>
                         Удалить
                       </button>
                       {configData && (
                         <button className={`btn btn--sm ${isConfigExpanded ? "btn--active" : "btn--ghost"}`} onClick={() => onToggleConfig(entry.id)}>
-                          {isConfigExpanded ? "Свернуть конфиг" : "Конфиг"}
+                          {isConfigExpanded ? "Свернуть" : "Конфиг"}
                         </button>
                       )}
                       {pluginData && pluginData.length > 0 && (
                         <button className={`btn btn--sm ${isPluginExpanded ? "btn--active" : "btn--ghost"}`} onClick={() => onToggleLogs(entry.id)}>
-                          {isPluginExpanded ? "Свернуть логи" : "Логи"}
+                          {isPluginExpanded ? "Свернуть" : "Логи"}
                         </button>
                       )}
                     </div>
@@ -168,26 +145,22 @@ export function UsageHistory({
                 </tr>
                 {isConfigExpanded && configData && (
                   <tr>
-                    <td colSpan={9} className="admin-plugin-logs-cell">
-                      <div className="admin-plugin-logs-wrapper">
-                        <div className="admin-plugin-logs-body">
-                          <pre style={{ margin: 0, fontSize: "11px", lineHeight: "1.6", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-                            {JSON.stringify(configData, null, 2)}
-                          </pre>
-                        </div>
+                    <td colSpan={10} className="admin-plugin-logs-cell">
+                      <div className="admin-plugin-logs-body">
+                        <pre style={{ margin: 0, fontSize: "11px", lineHeight: "1.6", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                          {JSON.stringify(configData, null, 2)}
+                        </pre>
                       </div>
                     </td>
                   </tr>
                 )}
                 {isPluginExpanded && pluginData && pluginData.length > 0 && (
                   <tr>
-                    <td colSpan={9} className="admin-plugin-logs-cell">
-                      <div className="admin-plugin-logs-wrapper">
-                        <div className="admin-plugin-logs-body">
-                          {pluginData.map((line, idx) => (
-                            <div key={idx} className="admin-plugin-log-line">{line}</div>
-                          ))}
-                        </div>
+                    <td colSpan={10} className="admin-plugin-logs-cell">
+                      <div className="admin-plugin-logs-body">
+                        {pluginData.map((line, idx) => (
+                          <div key={idx} className="admin-plugin-log-line">{line}</div>
+                        ))}
                       </div>
                     </td>
                   </tr>
@@ -197,6 +170,6 @@ export function UsageHistory({
           })}
         </tbody>
       </table>
-    </div>
+    </>
   );
 }

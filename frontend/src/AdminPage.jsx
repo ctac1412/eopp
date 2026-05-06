@@ -19,9 +19,9 @@ import {
   StreamsTab,
   TestStatsTab,
   BenchmarkTab,
+  WithdrawalsTab,
   KeyFormModal,
   DeleteConfirmModal,
-  WithdrawalModal,
   InvoiceModal,
 } from "./components/admin";
 
@@ -57,7 +57,6 @@ function AdminPage() {
     priceReschedule: "",
   });
   const [tariffs, setTariffs] = useState({});
-  const [showWithdrawals, setShowWithdrawals] = useState(false);
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalForm, setWithdrawalForm] = useState({ id: null, name: "", percent: "", requisites: "" });
   const [selectedUsageLogs, setSelectedUsageLogs] = useState({});
@@ -230,6 +229,12 @@ function AdminPage() {
     }
   }, [adminToken, activeTab, fetchTestStats]);
 
+  useEffect(() => {
+    if (adminToken && activeTab === "withdrawals") {
+      fetchWithdrawals(adminToken);
+    }
+  }, [adminToken, activeTab, fetchWithdrawals]);
+
   const doAuth = async () => {
     setAuthError(null);
     setAuthLoading(true);
@@ -373,8 +378,8 @@ function AdminPage() {
       maxUses: keyObj.max_uses ?? "",
       active: keyObj.active,
       comment: keyObj.comment || "",
-      priceCreate: "",
-      priceReschedule: "",
+      priceCreate: "1000",
+      priceReschedule: "7000",
     });
     setShowEdit(keyObj.id);
     if (tariffs[keyObj.id]) {
@@ -559,6 +564,7 @@ function AdminPage() {
     { id: "streams", label: "Стримы" },
     { id: "teststats", label: "Тесткейсы" },
     { id: "benchmark", label: "Бенчмарк" },
+    { id: "withdrawals", label: "Withdrawals" },
   ];
 
   if (!adminToken) {
@@ -579,20 +585,9 @@ function AdminPage() {
         <h1>Админ-панель</h1>
         <div className="admin-header__right">
           {activeTab === "keys" && (
-            <>
-              <button className="btn btn--primary" onClick={() => setShowCreate(true)}>
-                + Новый ключ
-              </button>
-              <button
-                className="btn btn--secondary"
-                onClick={() => {
-                  setShowWithdrawals(true);
-                  fetchWithdrawals(adminToken);
-                }}
-              >
-                Withdrawals
-              </button>
-            </>
+            <button className="btn btn--primary" onClick={() => setShowCreate(true)}>
+              + Новый ключ
+            </button>
           )}
           <button className="btn btn--secondary" onClick={handleLogout} style={{ fontSize: "11px", padding: "5px 10px" }}>
             Выйти
@@ -628,10 +623,7 @@ function AdminPage() {
           expandedLogs={expandedLogs}
           expandedConfig={expandedConfig}
           selectedUsageLogs={selectedUsageLogs}
-          onCreateKey={handleCreate}
           onEditKey={openEdit}
-          onDeleteKey={(id) => setConfirmDelete(id)}
-          onResetUsage={handleResetUsage}
           onToggleActive={handleToggleActive}
           onToggleHistory={toggleHistory}
           onFetchUsageHistory={fetchUsageHistory}
@@ -639,7 +631,6 @@ function AdminPage() {
           onToggleUsageLogSelection={toggleUsageLogSelection}
           onTogglePluginLogs={togglePluginLogs}
           onToggleConfig={toggleConfig}
-          onCopyKey={() => {}}
           onCloseNewKey={() => setNewKey(null)}
           onShowInvoiceModal={(keyId) => {
             setInvoiceForm({ apiKeyId: keyId, withdrawalId: "" });
@@ -667,6 +658,17 @@ function AdminPage() {
         />
       )}
 
+      {activeTab === "withdrawals" && (
+        <WithdrawalsTab
+          withdrawals={withdrawals}
+          form={withdrawalForm}
+          setForm={setWithdrawalForm}
+          onCreate={handleCreateWithdrawal}
+          onUpdate={handleUpdateWithdrawal}
+          onDelete={handleDeleteWithdrawal}
+        />
+      )}
+
       <KeyFormModal
         show={showCreate}
         mode="create"
@@ -683,23 +685,14 @@ function AdminPage() {
         setForm={setEditForm}
         onSubmit={handleEdit}
         onClose={() => setShowEdit(null)}
+        onResetUsage={() => { if (showEdit) handleResetUsage(showEdit); }}
+        onDeleteKey={() => { if (showEdit) { setShowEdit(null); setConfirmDelete(showEdit); } }}
       />
 
       <DeleteConfirmModal
         show={!!confirmDelete}
         onConfirm={() => handleDelete(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
-      />
-
-      <WithdrawalModal
-        show={showWithdrawals}
-        withdrawals={withdrawals}
-        form={withdrawalForm}
-        setForm={setWithdrawalForm}
-        onCreate={handleCreateWithdrawal}
-        onUpdate={handleUpdateWithdrawal}
-        onDelete={handleDeleteWithdrawal}
-        onClose={() => setShowWithdrawals(false)}
       />
 
       <InvoiceModal

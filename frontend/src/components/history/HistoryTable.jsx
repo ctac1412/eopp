@@ -3,11 +3,9 @@ import { StatusBadge } from "./StatusBadge";
 
 export function HistoryTable({
   records,
-  selectedLogs,
   expandedLogs,
   expandedConfig,
   expandedErrors,
-  onToggleSelection,
   onToggleLogs,
   onToggleConfig,
   onToggleError,
@@ -17,23 +15,11 @@ export function HistoryTable({
     return <div className="table__empty">История пуста</div>;
   }
 
-  const allSelected = Object.keys(selectedLogs).length === records.length;
-
   return (
     <div className="table-wrapper">
       <table className="table">
         <thead>
           <tr>
-            <th>
-              <input
-                type="checkbox"
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  onToggleSelection(checked ? "selectall" : "deselectall");
-                }}
-                checked={allSelected}
-              />
-            </th>
             <th>ID</th>
             <th>Время</th>
             <th>Статус</th>
@@ -63,14 +49,7 @@ export function HistoryTable({
 
             return (
               <React.Fragment key={r.id}>
-                <tr onClick={() => onOpenEdit(r)} style={{ cursor: "pointer" }}>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={!!selectedLogs[r.id]}
-                      onChange={() => onToggleSelection(r.id)}
-                    />
-                  </td>
+                <tr onClick={onOpenEdit ? () => onOpenEdit(r) : undefined} style={onOpenEdit ? { cursor: "pointer" } : undefined}>
                   <td className="table__cell--id">{r.id}</td>
                   <td className="table__cell--date">
                     {new Date(r.created_at).toLocaleString("ru-RU", {
@@ -95,7 +74,13 @@ export function HistoryTable({
                     {r.price != null ? `${r.price} ₽` : "—"}
                   </td>
                   <td className="admin-history-paid">
-                    {r.paid != null ? (r.paid ? "✓" : "—") : "—"}
+                    {r.paid === true ? (
+                      <span className="badge badge--success">Оплачен</span>
+                    ) : r.paid === false ? (
+                      <span className="badge badge--warning">Не оплачен</span>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="admin-history-error-msg">
                     {hasError ? (

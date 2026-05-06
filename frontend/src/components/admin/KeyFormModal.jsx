@@ -1,6 +1,6 @@
 import React from "react";
 
-export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose }) {
+export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onResetUsage, onDeleteKey }) {
   if (!show) return null;
 
   const handleSubmit = (e) => {
@@ -10,7 +10,7 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose }) {
 
   return (
     <div className="modal__overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal ${mode === "edit" ? "modal--lg" : ""}`} onClick={(e) => e.stopPropagation()}>
         <h3>{mode === "create" ? "Создать новый ключ" : "Редактировать ключ"}</h3>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -58,16 +58,16 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose }) {
             />
           </div>
           {mode === "edit" && (
-            <div className="admin-tariff-section">
-              <div className="admin-tariff-title">Тариф</div>
-              <div className="admin-tariff-inputs">
+            <div className="tariff-section">
+              <div className="tariff-section__title">Тариф</div>
+              <div className="tariff-section__inputs">
                 <div className="form-group">
                   <label className="form-label">Запись (₽)</label>
                   <input
                     type="number"
                     value={form.priceCreate}
                     onChange={(e) => setForm((p) => ({ ...p, priceCreate: e.target.value }))}
-                    placeholder="0"
+                    placeholder="1000"
                     className="input"
                     min="0"
                   />
@@ -78,7 +78,7 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose }) {
                     type="number"
                     value={form.priceReschedule}
                     onChange={(e) => setForm((p) => ({ ...p, priceReschedule: e.target.value }))}
-                    placeholder="0"
+                    placeholder="7000"
                     className="input"
                     min="0"
                   />
@@ -87,6 +87,17 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose }) {
             </div>
           )}
           <div className="modal__footer">
+            {mode === "edit" && (
+              <>
+                <button type="button" className="btn btn--ghost" onClick={() => onResetUsage()}>
+                  Сбросить использование
+                </button>
+                <button type="button" className="btn btn--danger" onClick={() => onDeleteKey()}>
+                  Удалить ключ
+                </button>
+              </>
+            )}
+            <div style={{ flex: 1 }} />
             <button
               type="button"
               className="btn btn--secondary"

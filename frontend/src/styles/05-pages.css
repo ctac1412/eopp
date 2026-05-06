@@ -282,13 +282,39 @@
    HISTORY DETAIL ROW
    ───────────────────────────────────── */
 
+.admin-key-row {
+  cursor: pointer;
+}
+
+.admin-key-row:hover {
+  background: rgba(129, 140, 248, 0.06) !important;
+}
+
+.admin-key-row:hover td {
+  color: var(--text);
+}
+
 .admin-history-cell {
   padding: 0 !important;
   background: rgba(15, 17, 23, 0.5);
+  display: block;
+  width: 100%;
 }
 
 .admin-history-wrapper {
-  padding: var(--space-4) var(--space-5);
+  display: contents;
+}
+
+.admin-history-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: rgba(15, 17, 23, 0.5);
+}
+
+.admin-keys-table-wrapper {
+  overflow-x: visible !important;
 }
 
 .admin-history-loading,
@@ -412,10 +438,6 @@
   background: rgba(10, 11, 16, 0.5);
 }
 
-.admin-plugin-logs-wrapper {
-  padding: var(--space-3) var(--space-5);
-}
-
 .admin-plugin-logs-body {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -426,6 +448,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.6;
+  margin: var(--space-3) var(--space-5);
 }
 
 .admin-plugin-log-line {

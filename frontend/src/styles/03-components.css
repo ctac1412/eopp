@@ -72,16 +72,17 @@
   opacity: 0.8;
 }
 
-/* Ghost — прозрачный */
+/* Ghost — прозрачный с акцентным цветом */
 .btn--ghost {
   background: transparent;
-  color: var(--text-muted);
-  border: none;
+  color: var(--primary-hover);
+  border: 1px solid var(--border);
 }
 
 .btn--ghost:hover:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text);
+  border-color: var(--primary);
 }
 
 /* Sizes */
@@ -544,6 +545,7 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .modal__close {
