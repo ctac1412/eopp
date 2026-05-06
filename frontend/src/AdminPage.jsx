@@ -61,7 +61,7 @@ function AdminPage() {
     priceReschedule: "",
   });
   const [withdrawals, setWithdrawals] = useState([]);
-  const [withdrawalForm, setWithdrawalForm] = useState({ id: null, name: "", percent: "", requisites: "" });
+  const [withdrawalForm, setWithdrawalForm] = useState({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [selectedUsageLogs, setSelectedUsageLogs] = useState({});
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -435,6 +435,8 @@ function AdminPage() {
       const body = {
         name: withdrawalForm.name,
         percent: parseInt(withdrawalForm.percent, 10),
+        tax_percent: parseInt(withdrawalForm.tax_percent, 10),
+        percent_type: withdrawalForm.percent_type,
         requisites: withdrawalForm.requisites,
       };
       const res = await fetch("/admin/withdrawals", {
@@ -443,7 +445,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" });
+      setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
       setShowWithdrawalModal(false);
       fetchWithdrawals(adminToken);
     } catch (err) {
@@ -458,6 +460,8 @@ function AdminPage() {
       const body = {
         name: withdrawalForm.name,
         percent: parseInt(withdrawalForm.percent, 10),
+        tax_percent: parseInt(withdrawalForm.tax_percent, 10),
+        percent_type: withdrawalForm.percent_type,
         requisites: withdrawalForm.requisites,
       };
       const res = await fetch(`/admin/withdrawals/${withdrawalForm.id}`, {
@@ -466,7 +470,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" });
+      setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
       setShowWithdrawalModal(false);
       fetchWithdrawals(adminToken);
     } catch (err) {
@@ -669,7 +673,7 @@ function AdminPage() {
             </button>
           )}
           {activeTab === "withdrawals" && (
-            <button className="btn btn--primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" }); setShowWithdrawalModal(true); }}>
+            <button className="btn btn--primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" }); setShowWithdrawalModal(true); }}>
               + Новый способ вывода
             </button>
           )}
@@ -747,7 +751,7 @@ function AdminPage() {
       {activeTab === "withdrawals" && (
         <WithdrawalsTab
           withdrawals={withdrawals}
-          onEdit={(w) => { setWithdrawalForm({ id: w.id, name: w.name, percent: String(w.percent), requisites: w.requisites }); setShowWithdrawalModal(true); }}
+          onEdit={(w) => { setWithdrawalForm({ id: w.id, name: w.name, percent: String(w.percent), tax_percent: String(w.tax_percent || 0), percent_type: w.percent_type || "included", requisites: w.requisites }); setShowWithdrawalModal(true); }}
           onDelete={handleDeleteWithdrawal}
         />
       )}

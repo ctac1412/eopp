@@ -68,6 +68,8 @@ def init_db():
     _add_column(conn, "usage_log", "price", "INTEGER")
     _add_column(conn, "usage_log", "paid", "INTEGER")
     _add_column(conn, "api_keys", "comment", "TEXT")
+    _add_column(conn, "withdrawals", "tax_percent", "INTEGER DEFAULT 0")
+    _add_column(conn, "withdrawals", "percent_type", "TEXT DEFAULT 'included'")
 
     now = datetime.now(UTC).isoformat()
     conn.execute(

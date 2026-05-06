@@ -143,6 +143,8 @@ class WithdrawalBody(BaseModel):
     name: str
     percent: int
     requisites: str
+    tax_percent: int = 0
+    percent_type: str = "included"
 
 
 class GenerateInvoiceBody(BaseModel):

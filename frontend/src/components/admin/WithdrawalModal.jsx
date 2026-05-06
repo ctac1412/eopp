@@ -36,6 +36,30 @@ export function WithdrawalModal({ show, form, setForm, onSubmit, onClose }) {
             />
           </div>
           <div className="form-group">
+            <label className="form-label">Тип процента</label>
+            <select
+              value={form.percent_type || "included"}
+              onChange={(e) => setForm((p) => ({ ...p, percent_type: e.target.value }))}
+              className="input select"
+              required
+            >
+              <option value="included">Включён</option>
+              <option value="excluded">Не включён</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Налог (%)</label>
+            <input
+              type="number"
+              value={form.tax_percent || 0}
+              onChange={(e) => setForm((p) => ({ ...p, tax_percent: e.target.value }))}
+              className="input"
+              min="0"
+              max="100"
+              required
+            />
+          </div>
+          <div className="form-group">
             <label className="form-label">Реквизиты</label>
             <input
               type="text"

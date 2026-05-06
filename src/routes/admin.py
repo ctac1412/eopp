@@ -116,12 +116,12 @@ def register_admin_routes(app):
 
     @app.post("/admin/withdrawals")
     async def create_admin_withdrawal(body: WithdrawalBody):
-        withdrawal = db_create_withdrawal(body.name, body.percent, body.requisites)
+        withdrawal = db_create_withdrawal(body.name, body.percent, body.requisites, body.tax_percent, body.percent_type)
         return JSONResponse(content=withdrawal)
 
     @app.put("/admin/withdrawals/{id}")
     async def update_admin_withdrawal(id: int, body: WithdrawalBody):
-        withdrawal = db_update_withdrawal(id, body.name, body.percent, body.requisites)
+        withdrawal = db_update_withdrawal(id, body.name, body.percent, body.requisites, body.tax_percent, body.percent_type)
         if not withdrawal:
             return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
         return JSONResponse(content=withdrawal)

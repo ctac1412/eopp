@@ -12,6 +12,8 @@ export function WithdrawalsTab({ withdrawals, onEdit, onDelete }) {
           <div className="admin-withdrawals-header__id">ID</div>
           <div className="admin-withdrawals-header__name">Название</div>
           <div className="admin-withdrawals-header__percent">Процент</div>
+          <div className="admin-withdrawals-header__percent-type">Тип</div>
+          <div className="admin-withdrawals-header__tax">Налог</div>
           <div className="admin-withdrawals-header__requisites">Реквизиты</div>
           <div className="admin-withdrawals-header__date">Создан</div>
           <div className="admin-withdrawals-header__actions">Действия</div>
@@ -23,6 +25,8 @@ export function WithdrawalsTab({ withdrawals, onEdit, onDelete }) {
               <div className="admin-withdrawal-cell admin-withdrawal-cell--id">{w.id}</div>
               <div className="admin-withdrawal-cell admin-withdrawal-cell--name">{w.name}</div>
               <div className="admin-withdrawal-cell admin-withdrawal-cell--percent">{w.percent}%</div>
+              <div className="admin-withdrawal-cell admin-withdrawal-cell--percent-type">{w.percent_type === "included" ? "Вкл" : "Не вкл"}</div>
+              <div className="admin-withdrawal-cell admin-withdrawal-cell--tax">{w.tax_percent || 0}%</div>
               <div className="admin-withdrawal-cell admin-withdrawal-cell--requisites">{w.requisites}</div>
               <div className="admin-withdrawal-cell admin-withdrawal-cell--date">{new Date(w.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
               <div className="admin-withdrawal-cell admin-withdrawal-cell--actions">
