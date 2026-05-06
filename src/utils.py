@@ -169,7 +169,7 @@ def unregister_sse_connection(q: asyncio.Queue, api_key_id: int | None):
 
 
 def get_connected_streams() -> list[dict]:
-    from src.api_keys import get_key_by_id
+    from src.db import get_key_by_id
 
     with lock:
         result = []

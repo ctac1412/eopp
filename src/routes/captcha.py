@@ -24,7 +24,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
-from src.api_keys import (
+from src.db import (
     get_key_record,
     get_usage_log_entry,
     log_usage,

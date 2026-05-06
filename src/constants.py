@@ -51,7 +51,7 @@ def get_test_api_key():
     if _TEST_API_KEY is not None:
         return _TEST_API_KEY
 
-    from src.api_keys import create_key, get_key_by_label
+    from src.db import create_key, get_key_by_label
 
     existing = get_key_by_label("__test_key__")
     if existing:

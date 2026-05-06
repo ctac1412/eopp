@@ -7,7 +7,7 @@
    ───────────────────────────────────── */
 
 .admin-page {
-  max-width: var(--container-max);
+  max-width: 1400px;
   margin: 0 auto;
   padding: var(--space-6) var(--space-4) var(--space-12);
 }
@@ -268,30 +268,211 @@
   background: rgba(139, 92, 246, 0.35);
 }
 
-/* ── Legacy Aliases ── */
-.admin-actions {
-}
-
-.admin-btn-edit { }
-.admin-btn-reset { }
-.admin-btn-del { }
-.admin-btn-history { }
-.admin-btn-history-open { }
-
 /* ─────────────────────────────────────
-   HISTORY DETAIL ROW
+   API KEYS GRID TABLE
    ───────────────────────────────────── */
 
+.admin-keys-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  background: var(--surface);
+  width: 100%;
+}
+
+.admin-keys-header {
+  display: grid;
+  grid-template-columns: 50px 90px 80px 110px minmax(200px, 1fr) 80px 80px 80px 80px 40px 160px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 17, 23, 0.6);
+}
+
+.admin-keys-header__tariff-create {
+  text-align: center;
+  color: var(--success);
+}
+
+.admin-keys-header__tariff-reschedule {
+  text-align: center;
+  color: var(--info);
+}
+
+.admin-keys-header__debt {
+  text-align: center;
+  color: var(--error);
+}
+
+.admin-key-cell--tariff-create,
+.admin-key-cell--tariff-reschedule {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+}
+
+.admin-key-cell--tariff-create {
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.admin-key-cell--tariff-reschedule {
+  color: var(--info);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.admin-keys-list {
+  display: contents;
+}
+
 .admin-key-row {
-  cursor: pointer;
+  display: grid;
+  grid-template-columns: 50px 90px 80px 110px minmax(200px, 1fr) 80px 80px 80px 80px 40px 160px;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  align-items: center;
+  transition: background var(--transition);
+  background: var(--surface);
+}
+
+.admin-key-row:last-child {
+  border-bottom: none;
 }
 
 .admin-key-row:hover {
-  background: rgba(129, 140, 248, 0.06) !important;
+  background: rgba(129, 140, 248, 0.04);
+}
+
+.admin-key-cell {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-key-cell--label {
+  font-weight: var(--font-medium);
+  color: var(--text);
+}
+
+.admin-key-cell--id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.admin-key-cell--key {
+  cursor: pointer;
+}
+
+.admin-key-masked {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--primary);
+  transition: opacity var(--transition);
+}
+
+.admin-key-masked:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.admin-key-cell--date {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.admin-key-cell--comment {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.admin-key-cell--tariff {
+  text-align: center;
+}
+
+
+
+.admin-key-cell--usage {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.admin-key-cell--debt {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.admin-key-debt {
+  color: var(--error);
+  font-weight: var(--font-semibold);
+}
+
+.admin-key-debt--clear {
+  color: var(--success);
+}
+
+.history-cell--price-edit {
+  padding: 0;
+}
+
+.history-price-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px 4px;
+  text-align: center;
+  outline: none;
+}
+
+.history-price-input:focus {
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.3);
+}
+
+.admin-key-cell--active {
+  display: flex;
+  justify-content: center;
+}
+
+.admin-key-cell--actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.admin-journal-panel {
+  grid-column: 1 / -1;
+  padding: 0;
+  background: rgba(15, 17, 23, 0.5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+}
+
+.admin-journal-panel:last-child {
+  border-bottom: none;
+}
+
+/* ── Legacy Aliases ── */
+.admin-key-row {
 }
 
 .admin-key-row:hover td {
-  color: var(--text);
 }
 
 .admin-history-cell {
@@ -343,10 +524,18 @@
   border-bottom: 1px solid var(--border);
 }
 
+.admin-history-table .table__cell--id {
+  color: var(--text-dim);
+}
+
+.admin-history-table .table__cell--date {
+  color: var(--text-dim);
+}
+
 .admin-history-table td {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid rgba(39, 41, 61, 0.12);
-  color: var(--text-dim);
+  color: var(--text-muted);
   vertical-align: middle;
   font-size: var(--text-sm);
 }
@@ -362,13 +551,13 @@
 .admin-history-time {
   white-space: nowrap;
   font-size: var(--text-xs);
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .admin-history-resid {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .admin-history-cid {
@@ -406,6 +595,39 @@
   white-space: nowrap;
 }
 
+.table__cell--price {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--success);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.table__cell--status {
+  text-align: center;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: none;
+  box-shadow: none;
+}
+
+.status-dot--confirmed {
+  background: var(--success);
+}
+
+.status-dot--pending {
+  background: var(--warning);
+}
+
+.status-dot--failed {
+  background: var(--error);
+}
+
 /* History toolbar */
 .admin-history-toolbar {
   display: flex;
@@ -436,6 +658,8 @@
 .admin-plugin-logs-cell {
   padding: 0 !important;
   background: rgba(10, 11, 16, 0.5);
+  display: block;
+  width: 100%;
 }
 
 .admin-plugin-logs-body {
@@ -464,15 +688,324 @@
 }
 
 /* ─────────────────────────────────────
-   WITHDRAWALS MODAL
+   SHARED HISTORY GRID TABLE
    ───────────────────────────────────── */
 
-.admin-withdrawals-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-5);
+.history-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  background: var(--surface);
+  width: 100%;
 }
+
+.history-header {
+  display: grid;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 17, 23, 0.6);
+}
+
+/* User preset: id, type, time, status, slot, resid, captcha, price, paid, error, actions */
+.history-container[data-preset="user"] .history-header,
+.history-container[data-preset="user"] .history-row {
+  grid-template-columns: 50px 70px 110px 40px 90px 140px 100px 70px 50px minmax(150px, 1fr) 120px;
+}
+
+/* Admin preset: checkbox, id, type, time, resid, captcha, status, slot, price, paid, error, actions */
+.history-container[data-preset="admin"] .history-header,
+.history-container[data-preset="admin"] .history-row {
+  grid-template-columns: 40px 50px 70px 110px 140px 100px 40px 90px 70px 50px minmax(150px, 1fr) 140px;
+}
+
+.history-list {
+  display: contents;
+}
+
+.history-row {
+  display: grid;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  align-items: center;
+  transition: background var(--transition);
+  background: var(--surface);
+}
+
+.history-row:last-child {
+  border-bottom: none;
+}
+
+.history-row:hover {
+  background: rgba(129, 140, 248, 0.04);
+}
+
+.history-cell {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-cell--checkbox {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.history-cell--id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.history-cell--type {
+  text-align: center;
+}
+
+.history-cell--time {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.history-cell--status {
+  text-align: center;
+}
+
+.history-cell--slot {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.history-cell--resid {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-cell--captcha {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.history-cell--price {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.history-cell--price--paid {
+  color: var(--success);
+}
+
+.history-cell--price--unpaid {
+  color: var(--error);
+}
+
+.history-cell--price--none {
+  color: var(--text-faint);
+}
+
+.history-cell--paid {
+  text-align: center;
+}
+
+.history-cell--error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-cell--actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.history-actions-group {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.history-error-expanded {
+  cursor: pointer;
+  color: #f87171;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.history-error-truncated {
+  cursor: pointer;
+  color: #f87171;
+}
+
+.history-expandable {
+  padding: 0;
+  background: rgba(10, 11, 16, 0.5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+}
+
+.history-expandable:last-child {
+  border-bottom: none;
+}
+
+.history-expandable-body {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  margin: var(--space-3) var(--space-5);
+}
+
+.history-expandable-pre {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.history-log-line {
+  color: var(--text-dim);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  padding: var(--space-1) 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.history-log-line:last-child {
+  border-bottom: none;
+}
+
+.history-empty {
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  padding: var(--space-4) 0;
+}
+
+.history-header-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-header__checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+[class^="history-header__"] {
+  text-align: center;
+}
+
+/* ─────────────────────────────────────
+   WITHDRAWALS GRID TABLE
+   ───────────────────────────────────── */
+
+.admin-withdrawals-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  background: var(--surface);
+  width: 100%;
+}
+
+.admin-withdrawals-header {
+  display: grid;
+  grid-template-columns: 50px 1fr 80px minmax(200px, 1fr) 110px 100px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 17, 23, 0.6);
+}
+
+.admin-withdrawals-list {
+  display: contents;
+}
+
+.admin-withdrawal-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 80px minmax(200px, 1fr) 110px 100px;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+  align-items: center;
+  transition: background var(--transition);
+  background: var(--surface);
+}
+
+.admin-withdrawal-row:last-child {
+  border-bottom: none;
+}
+
+.admin-withdrawal-row:hover {
+  background: rgba(129, 140, 248, 0.04);
+}
+
+.admin-withdrawal-cell {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-withdrawal-cell--id {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.admin-withdrawal-cell--name {
+  font-weight: var(--font-medium);
+  color: var(--text);
+}
+
+.admin-withdrawal-cell--percent {
+  text-align: center;
+  font-family: var(--font-mono);
+  color: var(--success);
+}
+
+.admin-withdrawal-cell--date {
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.admin-withdrawal-cell--actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* ─────────────────────────────────────
+   WITHDRAWALS FORM
+   ───────────────────────────────────── */
 
 .admin-withdrawal-form {
   margin-top: var(--space-6);

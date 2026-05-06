@@ -12,17 +12,18 @@
  * Защита: требует X-Admin-Token в заголовках
  */
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AdminAuth,
   ApiKeysTab,
   StreamsTab,
-  TestStatsTab,
-  BenchmarkTab,
+  TestBenchmarkTab,
   WithdrawalsTab,
+  WithdrawalModal,
   KeyFormModal,
   DeleteConfirmModal,
   InvoiceModal,
+  UsageLogEditModal,
 } from "./components/admin";
 
 function adminHeaders(token) {
@@ -34,13 +35,16 @@ function adminHeadersJson(token) {
 }
 
 function AdminPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("admin_token") || null,
   );
   const [authInput, setAuthInput] = useState("");
   const [authError, setAuthError] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("keys");
+  const [activeTab, setActiveTab] = useState(
+    () => searchParams.get("tab") || "keys"
+  );
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -56,9 +60,9 @@ function AdminPage() {
     priceCreate: "",
     priceReschedule: "",
   });
-  const [tariffs, setTariffs] = useState({});
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalForm, setWithdrawalForm] = useState({ id: null, name: "", percent: "", requisites: "" });
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [selectedUsageLogs, setSelectedUsageLogs] = useState({});
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ apiKeyId: null, withdrawalId: "" });
@@ -68,6 +72,9 @@ function AdminPage() {
   const [historyHideTest, setHistoryHideTest] = useState({});
   const [expandedLogs, setExpandedLogs] = useState({});
   const [expandedConfig, setExpandedConfig] = useState({});
+  const [showUsageLogEdit, setShowUsageLogEdit] = useState(null);
+  const [usageLogEditForm, setUsageLogEditForm] = useState({ price: "", paid: "" });
+  const [editingPriceId, setEditingPriceId] = useState(null);
   const intervalRef = useRef(null);
 
   // Streams
@@ -100,31 +107,6 @@ function AdminPage() {
       }
     },
     [adminToken],
-  );
-
-  const fetchTariffs = useCallback(
-    async (token) => {
-      const t = token || adminToken;
-      if (!t) return;
-      try {
-        const newTariffs = {};
-        for (const key of keys) {
-          try {
-            const res = await fetch(`/admin/tariffs/${key.id}`, {
-              headers: adminHeadersJson(t),
-            });
-            if (res.ok) {
-              const tariff = await res.json();
-              newTariffs[key.id] = tariff;
-            }
-          } catch {
-          }
-        }
-        setTariffs(newTariffs);
-      } catch (err) {
-      }
-    },
-    [adminToken, keys],
   );
 
   const fetchWithdrawals = useCallback(
@@ -218,13 +200,20 @@ function AdminPage() {
   }, []);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (adminToken && activeTab === "streams") {
       fetchStreams(adminToken);
     }
   }, [adminToken, activeTab, fetchStreams]);
 
   useEffect(() => {
-    if (adminToken && activeTab === "teststats") {
+    if (adminToken && activeTab === "testbench") {
       fetchTestStats(adminToken);
     }
   }, [adminToken, activeTab, fetchTestStats]);
@@ -373,41 +362,16 @@ function AdminPage() {
   };
 
   const openEdit = (keyObj) => {
+    const tariff = keyObj.tariff;
     setEditForm({
       label: keyObj.label || "",
       maxUses: keyObj.max_uses ?? "",
       active: keyObj.active,
       comment: keyObj.comment || "",
-      priceCreate: "1000",
-      priceReschedule: "7000",
+      priceCreate: tariff ? String(tariff.price_create) : "1000",
+      priceReschedule: tariff ? String(tariff.price_reschedule) : "7000",
     });
     setShowEdit(keyObj.id);
-    if (tariffs[keyObj.id]) {
-      setEditForm((prev) => ({
-        ...prev,
-        priceCreate: String(tariffs[keyObj.id].price_create),
-        priceReschedule: String(tariffs[keyObj.id].price_reschedule),
-      }));
-    } else {
-      fetch(`/admin/tariffs/${keyObj.id}`, {
-        headers: adminHeadersJson(adminToken),
-      })
-        .then((res) => {
-          if (res.ok) return res.json();
-          return null;
-        })
-        .then((tariff) => {
-          if (tariff) {
-            setEditForm((prev) => ({
-              ...prev,
-              priceCreate: String(tariff.price_create),
-              priceReschedule: String(tariff.price_reschedule),
-            }));
-            setTariffs((prev) => ({ ...prev, [keyObj.id]: tariff }));
-          }
-        })
-        .catch(() => {});
-    }
   };
 
   const fetchUsageHistory = async (keyId, hideTest = false) => {
@@ -452,7 +416,14 @@ function AdminPage() {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fetchUsageHistory(keyId, historyHideTest[keyId]);
+      setExpandedHistory((prev) => {
+        const updated = { ...prev };
+        const entries = updated[keyId];
+        if (entries) {
+          updated[keyId] = entries.filter((l) => l.id !== usageId);
+        }
+        return updated;
+      });
     } catch (err) {
       setError(err.message);
     }
@@ -473,6 +444,7 @@ function AdminPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" });
+      setShowWithdrawalModal(false);
       fetchWithdrawals(adminToken);
     } catch (err) {
       setError(err.message);
@@ -495,6 +467,7 @@ function AdminPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" });
+      setShowWithdrawalModal(false);
       fetchWithdrawals(adminToken);
     } catch (err) {
       setError(err.message);
@@ -559,12 +532,118 @@ function AdminPage() {
     setExpandedConfig((p) => ({ ...p, [usageLogId]: !p[usageLogId] }));
   };
 
+  const openUsageLogEdit = (entry) => {
+    setUsageLogEditForm({
+      price: entry.price ?? "",
+      paid: entry.paid === null || entry.paid === undefined ? "" : String(entry.paid),
+    });
+    setShowUsageLogEdit(entry);
+  };
+
+  const handleSaveUsageLog = async (e) => {
+    e.preventDefault();
+    if (!showUsageLogEdit) return;
+    try {
+      const body = {};
+      if (usageLogEditForm.price !== "") {
+        body.price = parseInt(usageLogEditForm.price, 10);
+      }
+      if (usageLogEditForm.paid !== "") {
+        body.paid = usageLogEditForm.paid === "true";
+      }
+      const res = await fetch(`/admin/usage-log/${showUsageLogEdit.id}`, {
+        method: "PATCH",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === showUsageLogEdit.id));
+      if (keyId) {
+        setExpandedHistory((prev) => {
+          const updated = { ...prev };
+          const entries = [...(updated[keyId] || [])];
+          const idx = entries.findIndex((l) => l.id === showUsageLogEdit.id);
+          if (idx !== -1) {
+            entries[idx] = { ...entries[idx], ...body };
+          }
+          updated[keyId] = entries;
+          return updated;
+        });
+      }
+      setShowUsageLogEdit(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleInlinePriceChange = async (logId, newPrice) => {
+    try {
+      const res = await fetch(`/admin/usage-log/${logId}`, {
+        method: "PATCH",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ price: newPrice }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === logId));
+      if (keyId) {
+        setExpandedHistory((prev) => {
+          const updated = { ...prev };
+          const entries = [...(updated[keyId] || [])];
+          const idx = entries.findIndex((l) => l.id === logId);
+          if (idx !== -1) {
+            entries[idx] = { ...entries[idx], price: newPrice };
+          }
+          updated[keyId] = entries;
+          return updated;
+        });
+      }
+      fetchKeys(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleInlineTogglePaid = async (logId) => {
+    const entry = Object.values(expandedHistory)
+      .flat()
+      .find((l) => l.id === logId);
+    if (!entry) return;
+
+    const nextPaid = entry.paid === true ? false : entry.paid === false ? null : true;
+    try {
+      const res = await fetch(`/admin/usage-log/${logId}`, {
+        method: "PATCH",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ paid: nextPaid }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === logId));
+      if (keyId) {
+        setExpandedHistory((prev) => {
+          const updated = { ...prev };
+          const entries = [...(updated[keyId] || [])];
+          const idx = entries.findIndex((l) => l.id === logId);
+          if (idx !== -1) {
+            entries[idx] = { ...entries[idx], paid: nextPaid };
+          }
+          updated[keyId] = entries;
+          return updated;
+        });
+      }
+      fetchKeys(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const tabs = [
     { id: "keys", label: "API Keys" },
     { id: "streams", label: "Стримы" },
-    { id: "teststats", label: "Тесткейсы" },
-    { id: "benchmark", label: "Бенчмарк" },
-    { id: "withdrawals", label: "Withdrawals" },
+    { id: "testbench", label: "Тесты и бенчмарк" },
+    { id: "withdrawals", label: "Способы вывода" },
   ];
 
   if (!adminToken) {
@@ -589,6 +668,11 @@ function AdminPage() {
               + Новый ключ
             </button>
           )}
+          {activeTab === "withdrawals" && (
+            <button className="btn btn--primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", requisites: "" }); setShowWithdrawalModal(true); }}>
+              + Новый способ вывода
+            </button>
+          )}
           <button className="btn btn--secondary" onClick={handleLogout} style={{ fontSize: "11px", padding: "5px 10px" }}>
             Выйти
           </button>
@@ -601,7 +685,7 @@ function AdminPage() {
           <button
             key={tab.id}
             className={`tab ${activeTab === tab.id ? "tab--active" : ""}`}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => { setActiveTab(tab.id); setSearchParams({ tab: tab.id }); }}
           >
             {tab.label}
           </button>
@@ -616,7 +700,6 @@ function AdminPage() {
           loading={loading}
           error={error}
           newKey={newKey}
-          tariffs={tariffs}
           expandedHistory={expandedHistory}
           historyLoading={historyLoading}
           historyHideTest={historyHideTest}
@@ -628,6 +711,7 @@ function AdminPage() {
           onToggleHistory={toggleHistory}
           onFetchUsageHistory={fetchUsageHistory}
           onDeleteUsage={handleDeleteUsage}
+          onEditUsageLog={openUsageLogEdit}
           onToggleUsageLogSelection={toggleUsageLogSelection}
           onTogglePluginLogs={togglePluginLogs}
           onToggleConfig={toggleConfig}
@@ -637,6 +721,10 @@ function AdminPage() {
             setShowInvoiceModal(true);
             fetchWithdrawals(adminToken);
           }}
+          editingPriceId={editingPriceId}
+          setEditingPriceId={setEditingPriceId}
+          onPriceChange={handleInlinePriceChange}
+          onTogglePaid={handleInlineTogglePaid}
         />
       )}
 
@@ -644,12 +732,10 @@ function AdminPage() {
         <StreamsTab streams={streams} streamsLoading={streamsLoading} />
       )}
 
-      {activeTab === "teststats" && (
-        <TestStatsTab testStats={testStats} testStatsLoading={testStatsLoading} />
-      )}
-
-      {activeTab === "benchmark" && (
-        <BenchmarkTab
+      {activeTab === "testbench" && (
+        <TestBenchmarkTab
+          testStats={testStats}
+          testStatsLoading={testStatsLoading}
           benchmark={benchmark}
           benchmarkLoading={benchmarkLoading}
           benchmarkRunning={benchmarkRunning}
@@ -661,10 +747,7 @@ function AdminPage() {
       {activeTab === "withdrawals" && (
         <WithdrawalsTab
           withdrawals={withdrawals}
-          form={withdrawalForm}
-          setForm={setWithdrawalForm}
-          onCreate={handleCreateWithdrawal}
-          onUpdate={handleUpdateWithdrawal}
+          onEdit={(w) => { setWithdrawalForm({ id: w.id, name: w.name, percent: String(w.percent), requisites: w.requisites }); setShowWithdrawalModal(true); }}
           onDelete={handleDeleteWithdrawal}
         />
       )}
@@ -703,6 +786,23 @@ function AdminPage() {
         setForm={setInvoiceForm}
         onGenerate={handleGenerateInvoice}
         onClose={() => setShowInvoiceModal(false)}
+      />
+
+      <UsageLogEditModal
+        show={!!showUsageLogEdit}
+        entry={showUsageLogEdit}
+        form={usageLogEditForm}
+        setForm={setUsageLogEditForm}
+        onSubmit={handleSaveUsageLog}
+        onClose={() => setShowUsageLogEdit(null)}
+      />
+
+      <WithdrawalModal
+        show={showWithdrawalModal}
+        form={withdrawalForm}
+        setForm={setWithdrawalForm}
+        onSubmit={withdrawalForm.id ? handleUpdateWithdrawal : handleCreateWithdrawal}
+        onClose={() => setShowWithdrawalModal(false)}
       />
     </div>
   );

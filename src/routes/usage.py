@@ -16,7 +16,7 @@ import time
 from fastapi import Query
 from fastapi.responses import JSONResponse
 
-from src.api_keys import (
+from src.db import (
     confirm_usage,
     fail_usage,
     get_key_record,
@@ -191,7 +191,7 @@ def register_usage_routes(app):
 
     @app.delete("/usage-log/{usage_log_id}")
     async def delete_usage_log_entry(usage_log_id: int):
-        from src.api_keys import delete_usage_log as _delete_usage_log
+        from src.db import delete_usage_log as _delete_usage_log
 
         ok = _delete_usage_log(usage_log_id)
         if not ok:

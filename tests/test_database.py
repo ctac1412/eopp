@@ -21,16 +21,17 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
     """Изолируем БД для каждого теста."""
-    import src.api_keys as api_keys_module
+    import src.db.connection as conn_module
+    import src.db.init as init_module
 
     test_db = tempfile.mktemp(suffix=".db")
-    monkeypatch.setattr(api_keys_module, "DB_PATH", test_db)
-    api_keys_module.init_db()
+    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
+    init_module.init_db()
 
     yield
 
     try:
-        api_keys_module.get_connection().close()
+        conn_module.get_connection().close()
     except:
         pass
     if os.path.exists(test_db):
@@ -45,7 +46,7 @@ class TestAPIKeysDB:
 
     def test_create_key(self):
         """Создание ключа."""
-        from src.api_keys import create_key
+        from src.db import create_key
 
         key = create_key(label="test", max_uses=10)
         assert key["label"] == "test"
@@ -55,7 +56,7 @@ class TestAPIKeysDB:
 
     def test_list_keys(self):
         """Список ключей."""
-        from src.api_keys import create_key, list_keys
+        from src.db import create_key, list_keys
 
         create_key(label="key1")
         create_key(label="key2")
@@ -64,7 +65,7 @@ class TestAPIKeysDB:
 
     def test_update_key(self):
         """Обновление ключа."""
-        from src.api_keys import create_key, update_key
+        from src.db import create_key, update_key
 
         key = create_key(label="original")
         updated = update_key(key["id"], label="updated", active=False)
@@ -73,7 +74,7 @@ class TestAPIKeysDB:
 
     def test_update_key_comment(self):
         """Обновление комментария."""
-        from src.api_keys import create_key, update_key
+        from src.db import create_key, update_key
 
         key = create_key(label="comment_test")
         updated = update_key(key["id"], comment="Test comment")
@@ -81,7 +82,7 @@ class TestAPIKeysDB:
 
     def test_delete_key(self):
         """Удаление ключа."""
-        from src.api_keys import create_key, delete_key, list_keys
+        from src.db import create_key, delete_key, list_keys
 
         key = create_key(label="to_delete")
         assert delete_key(key["id"]) is True
@@ -90,7 +91,7 @@ class TestAPIKeysDB:
 
     def test_get_key_by_id(self):
         """Получение ключа по ID."""
-        from src.api_keys import create_key, get_key_by_id
+        from src.db import create_key, get_key_by_id
 
         key = create_key(label="lookup")
         found = get_key_by_id(key["id"])
@@ -98,7 +99,7 @@ class TestAPIKeysDB:
 
     def test_get_key_by_id_not_found(self):
         """Получение несуществующего ключа."""
-        from src.api_keys import get_key_by_id
+        from src.db import get_key_by_id
 
         assert get_key_by_id(99999) is None
 
@@ -108,7 +109,7 @@ class TestValidateKey:
 
     def test_validate_valid_key(self):
         """Валидация валидного ключа."""
-        from src.api_keys import create_key, validate_key
+        from src.db import create_key, validate_key
 
         key = create_key(label="valid")
         result = validate_key(key["key"])
@@ -116,7 +117,7 @@ class TestValidateKey:
 
     def test_validate_invalid_key(self):
         """Валидация несуществующего ключа."""
-        from src.api_keys import validate_key
+        from src.db import validate_key
 
         result = validate_key("nonexistent")
         assert result["valid"] is False
@@ -124,7 +125,7 @@ class TestValidateKey:
 
     def test_validate_disabled_key(self):
         """Валидация отключенного ключа."""
-        from src.api_keys import create_key, update_key, validate_key
+        from src.db import create_key, update_key, validate_key
 
         key = create_key(label="disabled")
         update_key(key["id"], active=False)
@@ -134,11 +135,11 @@ class TestValidateKey:
 
     def test_validate_exhausted_key(self):
         """Валидация ключа с исчерпанным лимитом."""
-        from src.api_keys import create_key, update_key, validate_key
+        from src.db import create_key, update_key, validate_key
 
         key = create_key(label="exhausted", max_uses=1)
         update_key(key["id"])
-        from src.api_keys import get_connection
+        from src.db import get_connection
 
         conn = get_connection()
         conn.execute("UPDATE api_keys SET usage_count = 1 WHERE id = ?", (key["id"],))
@@ -154,7 +155,7 @@ class TestUsageLog:
 
     def test_log_usage(self):
         """Регистрация использования."""
-        from src.api_keys import create_key, log_usage
+        from src.db import create_key, log_usage
 
         key = create_key(label="usage_test")
         log_id = log_usage(key["key"], "res-123", "capt-123")
@@ -162,7 +163,7 @@ class TestUsageLog:
 
     def test_confirm_usage(self):
         """Подтверждение использования."""
-        from src.api_keys import confirm_usage, create_key, log_usage
+        from src.db import confirm_usage, create_key, log_usage
 
         key = create_key(label="confirm_test")
         log_id = log_usage(key["key"], "res-conf", "capt-conf")
@@ -170,7 +171,7 @@ class TestUsageLog:
 
     def test_confirm_usage_with_price(self):
         """Подтверждение с ценой из тарифа."""
-        from src.api_keys import (
+        from src.db import (
             confirm_usage,
             create_key,
             create_tariff,
@@ -189,7 +190,7 @@ class TestUsageLog:
 
     def test_confirm_usage_reschedule_price(self):
         """Подтверждение переноса с ценой."""
-        from src.api_keys import (
+        from src.db import (
             confirm_usage,
             create_key,
             create_tariff,
@@ -208,7 +209,7 @@ class TestUsageLog:
 
     def test_fail_usage(self):
         """Отметка ошибки."""
-        from src.api_keys import create_key, fail_usage, log_usage
+        from src.db import create_key, fail_usage, log_usage
 
         key = create_key(label="fail_test")
         log_id = log_usage(key["key"], "res-fail", "capt-fail")
@@ -218,7 +219,7 @@ class TestUsageLog:
 
     def test_update_usage_log(self):
         """Обновление лога."""
-        from src.api_keys import create_key, log_usage, update_usage_log
+        from src.db import create_key, log_usage, update_usage_log
 
         key = create_key(label="update_log")
         log_id = log_usage(key["key"], "res-update", "capt-update")
@@ -228,7 +229,7 @@ class TestUsageLog:
 
     def test_list_usages(self):
         """Список логов."""
-        from src.api_keys import create_key, list_usages, log_usage
+        from src.db import create_key, list_usages, log_usage
 
         key = create_key(label="list_test")
         log_usage(key["key"], "res-1", "capt-1")
@@ -242,7 +243,7 @@ class TestTariffs:
 
     def test_create_tariff(self):
         """Создание тарифа."""
-        from src.api_keys import create_key, create_tariff
+        from src.db import create_key, create_tariff
 
         key = create_key(label="tariff_test")
         tariff = create_tariff(key["id"], price_create=100, price_reschedule=50)
@@ -251,7 +252,7 @@ class TestTariffs:
 
     def test_get_tariff(self):
         """Получение тарифа."""
-        from src.api_keys import create_key, create_tariff, get_tariff
+        from src.db import create_key, create_tariff, get_tariff
 
         key = create_key(label="get_tariff")
         create_tariff(key["id"], price_create=200, price_reschedule=100)
@@ -260,14 +261,14 @@ class TestTariffs:
 
     def test_get_tariff_not_found(self):
         """Получение несуществующего тарифа."""
-        from src.api_keys import create_key, get_tariff
+        from src.db import create_key, get_tariff
 
         key = create_key(label="no_tariff")
         assert get_tariff(key["id"]) is None
 
     def test_update_tariff(self):
         """Обновление тарифа."""
-        from src.api_keys import create_key, create_tariff, update_tariff
+        from src.db import create_key, create_tariff, update_tariff
 
         key = create_key(label="update_tariff")
         create_tariff(key["id"], price_create=100, price_reschedule=50)
@@ -277,7 +278,7 @@ class TestTariffs:
 
     def test_delete_tariff(self):
         """Удаление тарифа."""
-        from src.api_keys import create_key, create_tariff, delete_tariff, get_tariff
+        from src.db import create_key, create_tariff, delete_tariff, get_tariff
 
         key = create_key(label="delete_tariff")
         create_tariff(key["id"], price_create=100, price_reschedule=50)
@@ -290,7 +291,7 @@ class TestWithdrawals:
 
     def test_create_withdrawal(self):
         """Создание вывода."""
-        from src.api_keys import create_withdrawal
+        from src.db import create_withdrawal
 
         w = create_withdrawal(name="Test", percent=10, requisites="123456")
         assert w["name"] == "Test"
@@ -298,7 +299,7 @@ class TestWithdrawals:
 
     def test_list_withdrawals(self):
         """Список выводов."""
-        from src.api_keys import create_withdrawal, list_withdrawals
+        from src.db import create_withdrawal, list_withdrawals
 
         create_withdrawal(name="W1", percent=5, requisites="r1")
         create_withdrawal(name="W2", percent=15, requisites="r2")
@@ -307,7 +308,7 @@ class TestWithdrawals:
 
     def test_get_withdrawal(self):
         """Получение вывода."""
-        from src.api_keys import create_withdrawal, get_withdrawal
+        from src.db import create_withdrawal, get_withdrawal
 
         w = create_withdrawal(name="GetTest", percent=20, requisites="get123")
         found = get_withdrawal(w["id"])
@@ -315,13 +316,13 @@ class TestWithdrawals:
 
     def test_get_withdrawal_not_found(self):
         """Получение несуществующего вывода."""
-        from src.api_keys import get_withdrawal
+        from src.db import get_withdrawal
 
         assert get_withdrawal(99999) is None
 
     def test_update_withdrawal(self):
         """Обновление вывода."""
-        from src.api_keys import create_withdrawal, update_withdrawal
+        from src.db import create_withdrawal, update_withdrawal
 
         w = create_withdrawal(name="Original", percent=10, requisites="orig")
         updated = update_withdrawal(w["id"], name="Updated", percent=25)
@@ -331,7 +332,7 @@ class TestWithdrawals:
 
     def test_delete_withdrawal(self):
         """Удаление вывода."""
-        from src.api_keys import create_withdrawal, delete_withdrawal, list_withdrawals
+        from src.db import create_withdrawal, delete_withdrawal, list_withdrawals
 
         w = create_withdrawal(name="ToDelete", percent=10, requisites="del")
         assert delete_withdrawal(w["id"]) is True
@@ -344,14 +345,14 @@ class TestAdminKey:
 
     def test_admin_key_exists(self):
         """Админский ключ существует."""
-        from src.api_keys import get_key_by_label
+        from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
         assert admin is not None
 
     def test_admin_key_active(self):
         """Админский ключ активен."""
-        from src.api_keys import get_key_by_label
+        from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
         assert admin["active"] is True
@@ -362,14 +363,14 @@ class TestEdgeCases:
 
     def test_empty_label(self):
         """Ключ с пустым лейблом."""
-        from src.api_keys import create_key
+        from src.db import create_key
 
         key = create_key(label="")
         assert key["label"] == ""
 
     def test_max_uses_none(self):
         """Ключ без лимита."""
-        from src.api_keys import create_key, validate_key
+        from src.db import create_key, validate_key
 
         key = create_key(label="unlimited", max_uses=None)
         result = validate_key(key["key"])
@@ -378,38 +379,38 @@ class TestEdgeCases:
 
     def test_usage_increment(self):
         """Инкремент счётчика использования."""
-        from src.api_keys import confirm_usage, create_key, increment_usage, log_usage
+        from src.db import confirm_usage, create_key, increment_usage, log_usage
 
         key = create_key(label="increment")
         log_id = log_usage(key["key"], "res-inc", "capt-inc")
         assert increment_usage(key["key"]) is True
         confirm_usage(log_id)
-        from src.api_keys import get_key_by_id
+        from src.db import get_key_by_id
 
         updated = get_key_by_id(key["id"])
         assert updated["usage_count"] >= 1
 
     def test_get_key_by_label_not_found(self):
         """Получение ключа по несуществующему лейблу."""
-        from src.api_keys import get_key_by_label
+        from src.db import get_key_by_label
 
         assert get_key_by_label("nonexistent_label") is None
 
     def test_delete_nonexistent_key(self):
         """Удаление несуществующего ключа."""
-        from src.api_keys import delete_key
+        from src.db import delete_key
 
         assert delete_key(99999) is False
 
     def test_confirm_nonexistent_usage(self):
         """Подтверждение несуществующего использования."""
-        from src.api_keys import confirm_usage
+        from src.db import confirm_usage
 
         assert confirm_usage(99999) is False
 
     def test_fail_nonexistent_usage(self):
         """Отметка несуществующего использования."""
-        from src.api_keys import fail_usage
+        from src.db import fail_usage
 
         assert (
             fail_usage(99999, error_message="Error", error_stage="test") is False

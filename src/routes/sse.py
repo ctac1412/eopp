@@ -18,7 +18,7 @@ import asyncio
 from fastapi import Query, Request
 from fastapi.responses import StreamingResponse
 
-from src.api_keys import get_key_record
+from src.db import get_key_record
 from src.utils import (
     register_sse_connection,
     unregister_sse_connection,

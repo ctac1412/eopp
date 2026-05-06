@@ -20,7 +20,7 @@ import { playNewCaptchaSound } from "../utils/sounds";
 
 const sounded = new Set();
 
-function useSSE() {
+function useSSE(enabled = true) {
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const addCaptcha = useCaptchaStore((s) => s.addCaptcha);
   const markSolved = useCaptchaStore((s) => s.markSolved);
@@ -29,6 +29,7 @@ function useSSE() {
   const setSseError = useCaptchaStore((s) => s.setSseError);
 
   useEffect(() => {
+    if (!enabled) return;
     let es;
     let closed = false;
     let retryCount = 0;
@@ -120,7 +121,7 @@ function useSSE() {
       closed = true;
       if (es) es.close();
     };
-  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog, setSseError]);
+  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog, setSseError, enabled]);
 }
 
 export default useSSE;

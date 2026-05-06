@@ -3,6 +3,7 @@ EOPP Captcha Solver - FastAPI Application Factory.
 
 Создание и конфигурация FastAPI приложения. Настраивает:
 - CORS для всех origins
+- Логирование всех запросов
 - Admin auth middleware
 - Lifespan контекст для тестов/разметки
 - Регистрацию всех роутов
@@ -10,17 +11,21 @@ EOPP Captcha Solver - FastAPI Application Factory.
 Используется manage.py для создания приложения и запуска uvicorn.
 """
 
+import logging
 import threading
+import time
 import webbrowser
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.constants import (
     CAPTCHA_TIMEOUT,
     PORT,
 )
+from src.db import init_db
 from src.routes import register_all_routes
 from src.routes.admin import admin_auth_middleware_factory
 from src.utils import (
@@ -30,10 +35,33 @@ from src.utils import (
     send_write_cases,
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("eopp")
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+
+        response = await call_next(request)
+
+        duration = (time.time() - start_time) * 1000
+        logger.info(
+            f"{request.method} {request.url.path} - {response.status_code} - {duration:.1f}ms"
+        )
+
+        return response
+
 
 def create_app(
     use_tests: bool = False, write_mode: bool = False, captcha_timeout=CAPTCHA_TIMEOUT
 ) -> FastAPI:
+    init_db()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if use_tests:
@@ -45,7 +73,6 @@ def create_app(
         from src import constants
 
         protocol = "https" if constants.use_ssl else "http"
-        webbrowser.open(f"{protocol}://127.0.0.1:{PORT}")
         yield
         with lock:
             for entry in pending.values():
@@ -64,6 +91,8 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.add_middleware(RequestLoggingMiddleware)
 
     admin_auth_middleware_factory(app)
     register_all_routes(app, captcha_timeout)

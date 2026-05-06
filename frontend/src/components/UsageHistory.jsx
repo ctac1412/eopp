@@ -53,11 +53,6 @@ function UsageHistory({ apiKey }) {
     fetchLogs();
   }, [fetchLogs]);
 
-  useEffect(() => {
-    const interval = setInterval(fetchLogs, 5000);
-    return () => clearInterval(interval);
-  }, [fetchLogs]);
-
   if (loading) {
     return <div className="admin-history-loading">Загрузка истории...</div>;
   }

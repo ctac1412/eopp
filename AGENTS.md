@@ -315,3 +315,63 @@ make bench
 - react, react-dom, zustand — UI/state
 - vite — сборка
 - typescript, @types/chrome — типы
+
+---
+
+## Dev/Prod Изоляция (Docker)
+
+Проект поддерживает изоляцию Dev и Prod контуров на одном ПК.
+
+### Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Windows (Docker Desktop)                │
+│                                                              │
+│  make run-dev ──► :8766 (HTTP) ──► data/api_keys_dev.db    │
+│                                                              │
+│  docker compose up ──► :8765 (HTTPS) ──► eopp_prod_data   │
+│                           (volume)                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Компоненты изоляции
+
+| Компонент | Dev | Prod |
+|-----------|-----|------|
+| **Порт** | 8766 (HTTP) | 8765 (HTTPS) |
+| **База данных** | `data/api_keys_dev.db` | Volume `eopp_eopp_prod_data` |
+| **Запуск** | `make run-dev` | `docker compose up -d` |
+
+### Файлы конфигурации
+
+| Файл | Назначение |
+|------|-----------|
+| `manage.py` | + `--db-path` аргумент для кастомной БД |
+| `src/api_keys.py` | Поддержка `EOPP_DB_PATH` env variable |
+| `Makefile` | + `run-dev` target |
+| `Dockerfile` | Multi-stage build для prod |
+| `docker-compose.yml` | Prod сервис с named volume |
+| `.dockerignore` | Исключения для Docker сборки |
+
+### Команды
+
+```bash
+# Dev-контур (локально, без Docker)
+make run-dev                  # HTTP :8766, своя БД
+
+# Prod-контур (Docker)
+docker compose up -d --build  # HTTPS :8765, volume
+docker compose down           # Остановить
+docker compose logs -f        # Логи
+
+# Бекап prod БД
+docker run --rm -v eopp_eopp_prod_data:/data -v $(pwd):/backup alpine tar czf /backup.tar.gz -C /data .
+```
+
+### Важные детали
+
+- **SSL**: Сертификат генерируется автоматически при старте контейнера
+- **Volume**: Данные prod сохраняются между перезапусками контейнера
+- **Изоляция**: Dev и Prod используют **разные БД** — изменения в dev не влияют на prod
+- **Фронтенд**: При сборке Docker автоматически включает `frontend/dist/`

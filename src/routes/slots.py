@@ -19,7 +19,7 @@ import time
 from fastapi import Query
 from fastapi.responses import JSONResponse
 
-from src.api_keys import validate_key
+from src.db import validate_key
 from src.models import SlotsGroupBody
 
 # Global state

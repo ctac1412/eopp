@@ -1,0 +1,11 @@
+services:
+  eopp-prod:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data
+      - ./certs:/app/certs:ro
+    environment:
+      - EOPP_DB_PATH=/app/data/api_keys.db
+    restart: unless-stopped

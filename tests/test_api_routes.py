@@ -18,23 +18,23 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
     """Изолируем БД для каждого теста - используем временный файл."""
-    import src.api_keys as api_keys_module
-    import src.api_keys as keys_module
+    import src.db.connection as conn_module
+    import src.db.init as init_module
 
     # Создаём уникальный temp файл
     test_db = tempfile.mktemp(suffix=".db")
     
     # Патчим путь к БД
-    monkeypatch.setattr(api_keys_module, "DB_PATH", test_db)
+    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
     
     # Переинициализируем БД
-    keys_module.init_db()
+    init_module.init_db()
 
     yield
 
     # cleanup
     try:
-        keys_module.get_connection().close()
+        conn_module.get_connection().close()
     except:
         pass
     if os.path.exists(test_db):

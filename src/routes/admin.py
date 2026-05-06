@@ -22,7 +22,22 @@ EOPP Captcha Solver - Admin Routes
 
 from fastapi.responses import JSONResponse
 
-from src import api_keys
+from src.db import (
+    get_tariff as db_get_tariff,
+    create_tariff as db_create_tariff,
+    update_tariff as db_update_tariff,
+    delete_tariff as db_delete_tariff,
+    list_withdrawals as db_list_withdrawals,
+    get_withdrawal as db_get_withdrawal,
+    create_withdrawal as db_create_withdrawal,
+    update_withdrawal as db_update_withdrawal,
+    delete_withdrawal as db_delete_withdrawal,
+    update_key as db_update_key,
+    update_usage_log as db_update_usage_log,
+    list_usages as db_list_usages,
+    get_key_by_id as db_get_key_by_id,
+    get_usage_log_entry as db_get_usage_log_entry,
+)
 from src.constants import ADMIN_TOKEN, PROTECTED_PATHS
 from src.models import (
     AdminAuthBody,
@@ -73,61 +88,61 @@ def register_admin_routes(app):
         return JSONResponse(content=run_benchmark_cached())
 
     @app.get("/admin/tariffs/{api_key_id}")
-    async def get_tariff(api_key_id: int):
-        tariff = api_keys.get_tariff(api_key_id)
+    async def get_admin_tariff(api_key_id: int):
+        tariff = db_get_tariff(api_key_id)
         if not tariff:
             return JSONResponse(status_code=404, content={"error": "Tariff not found"})
         return JSONResponse(content=tariff)
 
     @app.put("/admin/tariffs/{api_key_id}")
     async def create_update_tariff(api_key_id: int, body: TariffBody):
-        existing = api_keys.get_tariff(api_key_id)
+        existing = db_get_tariff(api_key_id)
         if existing:
-            tariff = api_keys.update_tariff(api_key_id, body.price_create, body.price_reschedule)
+            tariff = db_update_tariff(api_key_id, body.price_create, body.price_reschedule)
         else:
-            tariff = api_keys.create_tariff(api_key_id, body.price_create, body.price_reschedule)
+            tariff = db_create_tariff(api_key_id, body.price_create, body.price_reschedule)
         return JSONResponse(content=tariff)
 
     @app.delete("/admin/tariffs/{api_key_id}")
-    async def delete_tariff(api_key_id: int):
-        success = api_keys.delete_tariff(api_key_id)
+    async def delete_admin_tariff(api_key_id: int):
+        success = db_delete_tariff(api_key_id)
         if not success:
             return JSONResponse(status_code=404, content={"error": "Tariff not found"})
         return JSONResponse(content={"ok": True})
 
     @app.get("/admin/withdrawals")
-    async def list_withdrawals():
-        return JSONResponse(content=api_keys.list_withdrawals())
+    async def list_admin_withdrawals():
+        return JSONResponse(content=db_list_withdrawals())
 
     @app.post("/admin/withdrawals")
-    async def create_withdrawal(body: WithdrawalBody):
-        withdrawal = api_keys.create_withdrawal(body.name, body.percent, body.requisites)
+    async def create_admin_withdrawal(body: WithdrawalBody):
+        withdrawal = db_create_withdrawal(body.name, body.percent, body.requisites)
         return JSONResponse(content=withdrawal)
 
     @app.put("/admin/withdrawals/{id}")
-    async def update_withdrawal(id: int, body: WithdrawalBody):
-        withdrawal = api_keys.update_withdrawal(id, body.name, body.percent, body.requisites)
+    async def update_admin_withdrawal(id: int, body: WithdrawalBody):
+        withdrawal = db_update_withdrawal(id, body.name, body.percent, body.requisites)
         if not withdrawal:
             return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
         return JSONResponse(content=withdrawal)
 
     @app.delete("/admin/withdrawals/{id}")
-    async def delete_withdrawal(id: int):
-        success = api_keys.delete_withdrawal(id)
+    async def delete_admin_withdrawal(id: int):
+        success = db_delete_withdrawal(id)
         if not success:
             return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
         return JSONResponse(content={"ok": True})
 
     @app.patch("/admin/api-keys/{id}")
     async def update_api_key(id: int, body: UpdateApiKeyBody):
-        key = api_keys.update_key(id, comment=body.comment)
+        key = db_update_key(id, comment=body.comment)
         if not key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
         return JSONResponse(content=key)
 
     @app.patch("/admin/usage-log/{id}")
-    async def update_usage_log(id: int, body: UpdateUsageLogBody):
-        log = api_keys.update_usage_log(id, body.price, body.paid)
+    async def update_admin_usage_log(id: int, body: UpdateUsageLogBody):
+        log = db_update_usage_log(id, body.price, body.paid)
         if not log:
             return JSONResponse(status_code=404, content={"error": "Usage log not found"})
         return JSONResponse(content=log)
@@ -149,17 +164,17 @@ def register_admin_routes(app):
         import os
         from datetime import datetime
 
-        api_key = api_keys.get_key_by_id(body.api_key_id)
+        api_key = db_get_key_by_id(body.api_key_id)
         if not api_key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
 
-        withdrawal = api_keys.get_withdrawal(body.withdrawal_id)
+        withdrawal = db_get_withdrawal(body.withdrawal_id)
         if not withdrawal:
             return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
 
         usage_logs = []
         for log_id in body.usage_log_ids:
-            log = api_keys.get_usage_log_entry(log_id)
+            log = db_get_usage_log_entry(log_id)
             if log:
                 usage_logs.append(log)
 

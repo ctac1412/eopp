@@ -23,7 +23,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import typer
 
-from src.app import create_app
 from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, PORT, TEST_DIR, VALID_DIR
 
 app = typer.Typer(help="Captcha Solver Server")
@@ -75,11 +74,17 @@ def main(
     host: str = "127.0.0.1",
     port: int = PORT,
     no_ssl: bool = False,
+    db_path: str = None,
 ):
     """Start the captcha solver server."""
     import uvicorn
 
     import src.utils
+
+    if db_path:
+        os.environ["EOPP_DB_PATH"] = db_path
+
+    from src.app import create_app
 
     certfile, keyfile = None, None
     if not no_ssl:
@@ -102,6 +107,7 @@ def main(
     typer.echo(f"  Test dir        : {TEST_DIR}")
     typer.echo(f"  Valid dir       : {VALID_DIR}")
     typer.echo(f"  No-valid dir    : {NO_VALID_DIR}")
+    typer.echo(f"  DB path         : {os.environ.get('EOPP_DB_PATH', 'data/api_keys.db')}")
 
     import captcha_solver
 

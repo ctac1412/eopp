@@ -16,11 +16,13 @@ EOPP Captcha Solver - API Keys Routes
 from fastapi import Query
 from fastapi.responses import JSONResponse
 
-from src.api_keys import (
+from src.db import (
     create_key,
     delete_key,
     get_key_record,
+    get_tariff,
     list_keys,
+    list_usages,
     reset_usage,
     update_key,
     validate_key,
@@ -44,18 +46,21 @@ def register_api_key_routes(app):
         for k in keys:
             key_val = k["key"]
             masked_key = key_val[:4] + "••••" + key_val[-4:]
-            masked.append(
-                {
-                    "id": k["id"],
-                    "key": key_val,
-                    "masked_key": masked_key,
-                    "label": k["label"],
-                    "created_at": k["created_at"],
-                    "usage_count": k["usage_count"],
-                    "max_uses": k["max_uses"],
-                    "active": k["active"],
-                }
-            )
+            item = {
+                "id": k["id"],
+                "key": key_val,
+                "masked_key": masked_key,
+                "label": k["label"],
+                "created_at": k["created_at"],
+                "usage_count": k["usage_count"],
+                "max_uses": k["max_uses"],
+                "active": k["active"],
+                "comment": k.get("comment"),
+                "debt": k.get("debt", {"unpaid_count": 0, "no_price_count": 0, "unpaid_total": 0}),
+            }
+            if k.get("tariff"):
+                item["tariff"] = k["tariff"]
+            masked.append(item)
         return JSONResponse(content=masked)
 
     @app.put("/api-keys/{key_id}")
@@ -106,6 +111,10 @@ def register_api_key_routes(app):
             key_record = get_key_record(api_key)
             if key_record:
                 result["api_key_id"] = key_record["id"]
+                tariff = get_tariff(key_record["id"])
+                if tariff:
+                    result["price_create"] = tariff["price_create"]
+                    result["price_reschedule"] = tariff["price_reschedule"]
         return JSONResponse(content=result)
 
     @app.get("/api-key-status")
@@ -118,3 +127,26 @@ def register_api_key_routes(app):
                 "label": result.get("label", ""),
             }
         )
+
+    @app.get("/api-keys/{key_id}/debt")
+    async def get_key_debt(key_id: int):
+        records = list_usages(key_id)
+        unpaid_count = 0
+        no_price_count = 0
+        unpaid_total = 0
+
+        for r in records:
+            if r["status"] != "confirmed":
+                continue
+            if r["price"] is None:
+                no_price_count += 1
+                continue
+            if r["paid"] is not True:
+                unpaid_count += 1
+                unpaid_total += r["price"]
+
+        return JSONResponse(content={
+            "unpaid_count": unpaid_count,
+            "no_price_count": no_price_count,
+            "unpaid_total": unpaid_total,
+        })

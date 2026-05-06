@@ -29,6 +29,10 @@ function StatusBar() {
   const [showChange, setShowChange] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [apiLabel, setApiLabel] = useState(null);
+  const [apiRemaining, setApiRemaining] = useState(null);
+  const [apiMaxUses, setApiMaxUses] = useState(null);
+  const [apiPriceCreate, setApiPriceCreate] = useState(null);
+  const [apiPriceReschedule, setApiPriceReschedule] = useState(null);
 
   useEffect(() => {
     const token = localStorage.getItem("admin_token");
@@ -53,15 +57,27 @@ function StatusBar() {
   useEffect(() => {
     if (!apiKey) {
       setApiLabel(null);
+      setApiRemaining(null);
+      setApiMaxUses(null);
+      setApiPriceCreate(null);
+      setApiPriceReschedule(null);
       return;
     }
     fetch(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
       .then((r) => r.json())
       .then((data) => {
         setApiLabel(data.label || null);
+        setApiRemaining(data.remaining ?? null);
+        setApiMaxUses(data.max_uses ?? null);
+        setApiPriceCreate(data.price_create ?? null);
+        setApiPriceReschedule(data.price_reschedule ?? null);
       })
       .catch(() => {
         setApiLabel(null);
+        setApiRemaining(null);
+        setApiMaxUses(null);
+        setApiPriceCreate(null);
+        setApiPriceReschedule(null);
       });
   }, [apiKey]);
 
@@ -101,11 +117,11 @@ function StatusBar() {
             "status-dot" + (sseError ? " status-dot--error" : isActive ? "" : " status-dot--idle")
           }
         />
-        <div className="status-text">
-          {isActive
-            ? `Активная: <strong>${activeId}</strong>`
-            : "Ожидание запросов…"}
-        </div>
+        {isActive && (
+          <div className="status-text">
+            Активная: <strong>{activeId}</strong>
+          </div>
+        )}
         {localMode && <span className="local-badge">LOCAL</span>}
         {sseError && <span className="status-error">{sseError}</span>}
       </div>
@@ -126,11 +142,24 @@ function StatusBar() {
             </button>
           </div>
         )}
+        {apiPriceCreate != null && (
+          <span className="status-bar__tariff status-bar__tariff--create">{apiPriceCreate}₽</span>
+        )}
+        {apiPriceReschedule != null && (
+          <span className="status-bar__tariff status-bar__tariff--reschedule">{apiPriceReschedule}₽</span>
+        )}
         {apiKey && (
           <div className="api-key-badge">
             <span className="api-key-badge__text">
               {apiLabel || maskKey(apiKey)}
             </span>
+            {apiRemaining != null ? (
+              <span className="api-key-badge__limit">
+                {apiMaxUses != null ? `${apiRemaining}/${apiMaxUses}` : `${apiRemaining}`}
+              </span>
+            ) : (
+              <span className="api-key-badge__unlimited">Безлимит</span>
+            )}
             {showChange ? (
               <div className="api-key-badge__actions">
                 <button

@@ -34,7 +34,6 @@ export function ApiKeysTab({
   loading,
   error,
   newKey,
-  tariffs,
   expandedHistory,
   historyLoading,
   historyHideTest,
@@ -46,11 +45,16 @@ export function ApiKeysTab({
   onToggleHistory,
   onFetchUsageHistory,
   onDeleteUsage,
+  onEditUsageLog,
   onToggleUsageLogSelection,
   onTogglePluginLogs,
   onToggleConfig,
   onCloseNewKey,
   onShowInvoiceModal,
+  editingPriceId,
+  setEditingPriceId,
+  onPriceChange,
+  onTogglePaid,
 }) {
   if (loading && keys.length === 0) {
     return <div className="table__loading">Загрузка…</div>;
@@ -79,119 +83,113 @@ export function ApiKeysTab({
         </div>
       )}
 
-      <div className="table-wrapper admin-keys-table-wrapper">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>ID</th>
-              <th>Ключ</th>
-              <th>Создан</th>
-              <th>Комментарий</th>
-              <th>
-                <span style={{ display: "block", textAlign: "center" }}>Тариф</span>
-              </th>
-              <th>Использование</th>
-              <th>Активен</th>
-              <th>Действия</th>
-            </tr>
-            <tr>
-              <th colSpan={5} />
-              <th>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", fontSize: "11px", color: "#888" }}>
-                  <span>Запись</span>
-                  <span>Бронь</span>
-                </div>
-              </th>
-              <th colSpan={3} />
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => {
-              const isExpanded = expandedHistory[k.id] !== undefined;
-              const historyData = expandedHistory[k.id];
+      <div className="admin-keys-container">
+        <div className="admin-keys-header">
+          <div className="admin-keys-header__id">ID</div>
+          <div className="admin-keys-header__label">Label</div>
+          <div className="admin-keys-header__key">Ключ</div>
+          <div className="admin-keys-header__date">Создан</div>
+          <div className="admin-keys-header__comment">Комментарий</div>
+          <div className="admin-keys-header__tariff-create">Бронь</div>
+          <div className="admin-keys-header__tariff-reschedule">Перенос</div>
+          <div className="admin-keys-header__usage">Использование</div>
+          <div className="admin-keys-header__debt">Долг</div>
+          <div className="admin-keys-header__active">A</div>
+          <div className="admin-keys-header__actions">Действия</div>
+        </div>
 
-              return (
-                <React.Fragment key={k.id}>
-                  <tr
-                    className="admin-key-row"
-                    onClick={() => {
-                      if (isExpanded) {
-                        onEditKey(k);
-                      } else {
-                        onToggleHistory(k.id);
-                      }
-                    }}
-                  >
-                    <td className="table__cell--label">{k.label || "—"}</td>
-                    <td className="table__cell--id">{String(k.id)}</td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <span className="admin-key-masked" onClick={() => copyToClipboard(k.key)} title="Нажмите, чтобы скопировать">
-                        {k.masked_key || "—"}
+        <div className="admin-keys-list">
+          {keys.map((k) => {
+            const isExpanded = expandedHistory[k.id] !== undefined;
+            const historyData = expandedHistory[k.id];
+            const tariff = k.tariff;
+            const debt = k.debt || { unpaid_count: 0, no_price_count: 0, unpaid_total: 0 };
+            const hasDebt = debt.unpaid_count > 0 || debt.no_price_count > 0;
+
+            return (
+              <React.Fragment key={k.id}>
+                <div className="admin-key-row">
+                  <div className="admin-key-cell admin-key-cell--id">{String(k.id)}</div>
+                  <div className="admin-key-cell admin-key-cell--label">{k.label || "—"}</div>
+                  <div className="admin-key-cell admin-key-cell--key">
+                    <span className="admin-key-masked" onClick={() => copyToClipboard(k.key)} title="Нажмите, чтобы скопировать">
+                      ...{k.key.slice(-4)}
+                    </span>
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--date">{formatDate(k.created_at)}</div>
+                  <div className="admin-key-cell admin-key-cell--comment">{k.comment || "—"}</div>
+                  <div className="admin-key-cell admin-key-cell--tariff-create">
+                    {tariff ? `${tariff.price_create} ₽` : "—"}
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--tariff-reschedule">
+                    {tariff ? `${tariff.price_reschedule} ₽` : "—"}
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--usage">
+                    {k.usage_count ?? 0}{k.max_uses != null ? ` / ${k.max_uses}` : ""}
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--debt">
+                    {hasDebt ? (
+                      <span className="admin-key-debt" title={`${debt.unpaid_count} не оплачено, ${debt.no_price_count} без цены`}>
+                        {debt.unpaid_total} ₽
                       </span>
-                    </td>
-                    <td className="table__cell--date">{formatDate(k.created_at)}</td>
-                    <td className="admin-comment">{k.comment || "—"}</td>
-                    <td>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", textAlign: "center" }}>
-                        <span>{tariffs[k.id] ? `${tariffs[k.id].price_create} ₽` : "—"}</span>
-                        <span>{tariffs[k.id] ? `${tariffs[k.id].price_reschedule} ₽` : "—"}</span>
-                      </div>
-                    </td>
-                    <td className="table__cell--numeric">
-                      {k.usage_count ?? 0}{k.max_uses != null ? ` / ${k.max_uses}` : ""}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className={`toggle ${k.active ? "toggle--on" : ""}`}
-                        onClick={() => onToggleActive(k)}
-                        title={k.active ? "Деактивировать" : "Активировать"}
-                      >
-                        <span className="toggle__dot" />
-                      </button>
-                    </td>
-                    <td className="table__cell--actions" onClick={(e) => e.stopPropagation()}>
-                      <button className="btn btn--sm btn--ghost" onClick={() => onEditKey(k)}>Изменить</button>
-                      <button
-                        className={`btn btn--sm ${isExpanded ? "btn--active" : "btn--ghost"}`}
-                        onClick={() => onToggleHistory(k.id)}
-                      >
-                        {isExpanded ? "Свернуть" : "История"}
-                      </button>
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={9} className="admin-history-cell">
-                        <UsageHistory
-                          keyId={k.id}
-                          historyData={historyData}
-                          isLoading={historyLoading[k.id]}
-                          isEmpty={historyData === null}
-                          isError={historyData === null}
-                          hideTest={historyHideTest[k.id]}
-                          onToggleHideTest={() => {
-                            const next = !historyHideTest[k.id];
-                            onFetchUsageHistory(k.id, next);
-                          }}
-                          onRefresh={() => onFetchUsageHistory(k.id, historyHideTest[k.id])}
-                          onDelete={(usageId) => onDeleteUsage(k.id, usageId)}
-                          selectedLogs={selectedUsageLogs}
-                          onToggleSelect={(id) => onToggleUsageLogSelection(id)}
-                          expandedLogs={expandedLogs}
-                          expandedConfig={expandedConfig}
-                          onToggleLogs={(id) => onTogglePluginLogs(id)}
-                          onToggleConfig={(id) => onToggleConfig(id)}
-                          onGenerateInvoice={() => onShowInvoiceModal(k.id)}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                    ) : (
+                      <span className="admin-key-debt admin-key-debt--clear">0 ₽</span>
+                    )}
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--active">
+                    <button
+                      className={`toggle ${k.active ? "toggle--on" : ""}`}
+                      onClick={() => onToggleActive(k)}
+                      title={k.active ? "Деактивировать" : "Активировать"}
+                    >
+                      <span className="toggle__dot" />
+                    </button>
+                  </div>
+                  <div className="admin-key-cell admin-key-cell--actions">
+                    <button className="btn btn--sm btn--ghost" onClick={() => onEditKey(k)}>Изменить</button>
+                    <button
+                      className={`btn btn--sm ${isExpanded ? "btn--active" : "btn--ghost"}`}
+                      onClick={() => onToggleHistory(k.id)}
+                    >
+                      {isExpanded ? "Свернуть" : "Журнал"}
+                    </button>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="admin-journal-panel">
+                    <UsageHistory
+                      keyId={k.id}
+                      historyData={historyData}
+                      isLoading={historyLoading[k.id]}
+                      isEmpty={historyData === null}
+                      isError={historyData === null}
+                      hideTest={historyHideTest[k.id]}
+                      onToggleHideTest={() => {
+                        const next = !historyHideTest[k.id];
+                        onFetchUsageHistory(k.id, next);
+                      }}
+                      onRefresh={() => onFetchUsageHistory(k.id, historyHideTest[k.id])}
+                      onDelete={(usageId) => onDeleteUsage(k.id, usageId)}
+                      onEdit={(entry) => onEditUsageLog(entry)}
+                      selectedLogs={selectedUsageLogs}
+                      onToggleSelect={(id) => onToggleUsageLogSelection(id)}
+                      expandedLogs={expandedLogs}
+                      expandedConfig={expandedConfig}
+                      onToggleLogs={(id) => onTogglePluginLogs(id)}
+                      onToggleConfig={(id) => onToggleConfig(id)}
+                      onGenerateInvoice={() => onShowInvoiceModal(k.id)}
+                      editingPriceId={editingPriceId}
+                      setEditingPriceId={setEditingPriceId}
+                      onPriceChange={onPriceChange}
+                      onTogglePaid={onTogglePaid}
+                    />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
     </>
   );

@@ -13,6 +13,9 @@ run-test: build-frontend
 run-write: build-frontend build-extension
 	uv run python manage.py --write
 
+run-dev: build-frontend
+	uv run python manage.py --host 0.0.0.0 --no-ssl --db-path data/api_keys_dev.db --port 8766
+
 install-frontend:
 	cd frontend && npm install
 
@@ -50,3 +53,22 @@ format-check-py:
 
 format-check-js:
 	cd frontend && npm run format:check
+
+# Prod (Docker)
+build-prod:
+	docker compose build
+
+start-prod:
+	docker compose up -d
+
+stop-prod:
+	docker compose down
+
+restart-prod: stop-prod start-prod
+
+rebuild-prod:
+	docker compose up -d --build
+	docker compose logs -f
+
+logs-prod:
+	docker compose logs -f

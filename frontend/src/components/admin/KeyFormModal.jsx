@@ -62,7 +62,7 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
               <div className="tariff-section__title">Тариф</div>
               <div className="tariff-section__inputs">
                 <div className="form-group">
-                  <label className="form-label">Запись (₽)</label>
+                  <label className="form-label">Бронь (₽)</label>
                   <input
                     type="number"
                     value={form.priceCreate}
@@ -73,7 +73,7 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Бронь (₽)</label>
+                  <label className="form-label">Перенос (₽)</label>
                   <input
                     type="number"
                     value={form.priceReschedule}
