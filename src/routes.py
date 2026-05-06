@@ -27,7 +27,7 @@ from src.routes.frontend import register_frontend_routes, register_test_pages
 
 from src.constants import CAPTCHA_TIMEOUT
 
-from src.routes_plugins import register_plugin_routes
+from src.routes.plugins import register_plugin_routes
 
 
 def register_all_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):

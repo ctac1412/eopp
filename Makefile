@@ -72,3 +72,16 @@ rebuild-prod:
 
 logs-prod:
 	docker compose logs -f
+
+# Plugin versioning
+build-plugin: build-extension
+	@echo "Building plugin with version bump..."
+	@python scripts/bump_plugin_version.py
+
+build-plugin-no-bump: build-extension
+	@echo "Building plugin without version bump..."
+	@python scripts/copy_plugin_to_plugins.py
+
+list-plugins:
+	@echo "Plugin versions:"
+	@python -c "from src.plugins import get_versions; [print(f\"  {v['version']} - {v.get('note', '')}\") for v in get_versions()]"
