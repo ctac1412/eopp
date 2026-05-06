@@ -113,6 +113,8 @@ def prepare_clean_tiles(tiles):
     # Resize all tiles to the most common size (use median)
     heights = [v.shape[0] for v in cleaned.values()]
     widths = [v.shape[1] for v in cleaned.values()]
+    if not heights or not widths:
+        return cleaned
     target_h = int(np.median(heights))
     target_w = int(np.median(widths))
 
