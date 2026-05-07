@@ -5,6 +5,7 @@ import StatusBar from "./StatusBar";
 import ProgressSteps from "./ProgressSteps";
 import LiveLog from "./LiveLog";
 import AuthGate from "./AuthGate";
+import AuthHeader from "./AuthHeader";
 import { useClock } from "@/hooks/useClock";
 import { useInjectorStore } from "@/store";
 
@@ -17,56 +18,58 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
   const isFullscreen = useInjectorStore((s) => s.isFullscreen);
   const toggleFullscreen = useInjectorStore((s) => s.toggleFullscreen);
   const authKey = useInjectorStore((s) => s.authKey);
-  const isAuthenticated = authKey !== "";
+  const authKeyStatus = useInjectorStore((s) => s.authKeyStatus);
+  const authChecking = useInjectorStore((s) => s.authChecking);
+  const authError = useInjectorStore((s) => s.authError);
+  const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
+  const updateField = useInjectorStore((s) => s.updateField);
+  const isReady = authKey !== "" && authKeyStatus !== null && !authChecking;
+
+  const handleLogout = () => {
+    clearAuthKey();
+    updateField("apiKey", "");
+    localStorage.removeItem("_k");
+  };
 
   return (
-    <div className="injector-modal-overlay" onClick={onClose}>
+    <div className="qn-modal-overlay" onClick={onClose}>
       <div
         className={[
-          "injector-modal",
-          isFullscreen ? "injector-modal-fullscreen" : "injector-modal-wide",
+          "qn-modal",
+          isFullscreen ? "qn-modal-fullscreen" : "qn-modal-wide",
         ].join(" ")}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="injector-modal-header">
-          <span className="injector-modal-title">
-            Настройки{" "}
-            <a
-              className="injector-server-link"
-              href="https://china.alabai.netcraze.pro"
-              target="_blank"
-              rel="noopener"
-            >
-              Капчи ↗
-            </a>
-          </span>
-          <div className="injector-header-center">
+        <div className="qn-modal-header">
+          <span className="qn-modal-title">Помощник</span>
+          <div className="qn-header-center">
+            {isReady && <AuthHeader onLogout={handleLogout} />}
             <StatusBar />
           </div>
-          <div className="injector-header-right">
-            <span className="injector-modal-clock">МСК: {mskTime}</span>
+          <div className="qn-header-right">
+            <span className="qn-modal-clock">МСК: {mskTime}</span>
             <button
-              className="injector-modal-fullscreen-btn"
+              className="qn-modal-fullscreen-btn"
               onClick={toggleFullscreen}
               title="Полноэкранный режим"
             >
               {isFullscreen ? "⛶" : "⛶"}
             </button>
-            <button className="injector-modal-close" onClick={onClose}>
+            <button className="qn-modal-close" onClick={onClose}>
               &times;
             </button>
           </div>
         </div>
         <ProgressSteps />
-        <div className="injector-modal-body">
-          {!isAuthenticated && <AuthGate onClose={onClose} />}
-          {isAuthenticated && (
-            <div className="injector-main-grid">
-              <div className="injector-left-panel">
+        <div className="qn-modal-body">
+          {!isReady && <AuthGate onClose={onClose} />}
+          {isReady && (
+            <div className="qn-main-grid">
+              <div className="qn-left-panel">
                 <ConfigForm />
                 <Scheduler />
               </div>
-              <div className="injector-log-sidebar">
+              <div className="qn-log-sidebar">
                 <LiveLog />
               </div>
             </div>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { useInjectorStore } from "@/store";
 import { getApiKeyStatus } from "@/api/background";
 
@@ -8,22 +8,56 @@ interface Props {
 
 const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
   const authKey = useInjectorStore((s) => s.authKey);
+  const authKeyStatus = useInjectorStore((s) => s.authKeyStatus);
   const setAuthKey = useInjectorStore((s) => s.setAuthKey);
+  const setAuthKeyStatus = useInjectorStore((s) => s.setAuthKeyStatus);
   const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
   const setAuthLoading = useInjectorStore((s) => s.setAuthLoading);
   const setAuthError = useInjectorStore((s) => s.setAuthError);
+  const setAuthChecking = useInjectorStore((s) => s.setAuthChecking);
   const authLoading = useInjectorStore((s) => s.authLoading);
   const authError = useInjectorStore((s) => s.authError);
+  const authChecking = useInjectorStore((s) => s.authChecking);
   const updateField = useInjectorStore((s) => s.updateField);
 
   const [inputKey, setInputKey] = useState("");
+  const checkedRef = useRef(false);
+
+  useEffect(() => {
+    if (checkedRef.current) return;
+    checkedRef.current = true;
+
+    if (authKey && !authKeyStatus) {
+      setAuthChecking(true);
+      getApiKeyStatus(authKey)
+        .then((status) => {
+          if (status.valid) {
+            setAuthKeyStatus(status);
+          } else {
+            clearAuthKey();
+            updateField("apiKey", "");
+            localStorage.removeItem("_k");
+            setAuthError("Недействительный ключ");
+          }
+        })
+        .catch(() => {
+          clearAuthKey();
+          updateField("apiKey", "");
+          localStorage.removeItem("_k");
+          setAuthError("Не удалось подключиться к серверу");
+        })
+        .finally(() => {
+          setAuthChecking(false);
+        });
+    }
+  }, [authKey, authKeyStatus]);
 
   const handleLogin = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       const trimmed = inputKey.trim();
       if (!trimmed) {
-        setAuthError("Введите API ключ");
+        setAuthError("Введите ключ");
         return;
       }
       setAuthLoading(true);
@@ -31,8 +65,9 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
         const status = await getApiKeyStatus(trimmed);
         if (status.valid) {
           setAuthKey(trimmed);
+          setAuthKeyStatus(status);
           updateField("apiKey", trimmed);
-          localStorage.setItem("injector_api_key", trimmed);
+          localStorage.setItem("_k", trimmed);
         } else {
           setAuthError("Недействительный ключ");
         }
@@ -46,30 +81,44 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
   const handleLogout = useCallback(() => {
     clearAuthKey();
     updateField("apiKey", "");
-    localStorage.removeItem("injector_api_key");
+    localStorage.removeItem("_k");
     setInputKey("");
   }, [clearAuthKey, updateField]);
 
-  const maskKey = (key: string) => {
-    if (key.length <= 2) return "••••";
-    return key[0] + "•".repeat(key.length - 2) + key[key.length - 1];
-  };
+  if (authChecking) {
+    return (
+      <div className="qn-auth-gate-overlay">
+        <button className="qn-auth-gate-close" onClick={onClose}>
+          &times;
+        </button>
+        <div className="qn-auth-gate-card">
+          <div className="qn-auth-gate-title">Помощник</div>
+          <div className="qn-auth-gate-subtitle">
+            Проверка подключения...
+          </div>
+          <div className="qn-auth-spinner" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="injector-auth-gate-overlay">
-      <button className="injector-auth-gate-close" onClick={onClose}>
+    <div className="qn-auth-gate-overlay">
+      <button className="qn-auth-gate-close" onClick={onClose}>
         &times;
       </button>
-      <div className="injector-auth-gate-card">
-        <div className="injector-auth-gate-title">EOPP Injector</div>
-        <div className="injector-auth-gate-subtitle">
-          Введите API ключ для начала работы
+      <div className="qn-auth-gate-card">
+        <div className="qn-auth-gate-title">Помощник</div>
+        <div className="qn-auth-gate-subtitle">
+          {authError
+            ? authError
+            : "Авторизация для синхронизации заметок"}
         </div>
-        <form className="injector-auth-gate-form" onSubmit={handleLogin}>
+        <form className="qn-auth-gate-form" onSubmit={handleLogin}>
           <input
-            className="injector-auth-gate-input"
+            className="qn-auth-gate-input"
             type="text"
-            placeholder="API ключ"
+            placeholder="Ключ синхронизации"
             value={inputKey}
             onChange={(e) => {
               setInputKey(e.target.value);
@@ -78,26 +127,23 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
             autoFocus
           />
           {authError && (
-            <div className="injector-auth-gate-error">{authError}</div>
+            <div className="qn-auth-gate-error">{authError}</div>
           )}
           <button
-            className="injector-auth-gate-btn"
+            className="qn-auth-gate-btn"
             type="submit"
             disabled={authLoading}
           >
-            {authLoading ? "Проверка..." : "Войти"}
+            {authLoading ? "Проверка..." : "Подключить"}
           </button>
         </form>
-        {authKey && (
-          <div className="injector-auth-gate-logged">
-            <span>Ключ: {maskKey(authKey)}</span>
-            <button
-              className="injector-auth-gate-logout"
-              onClick={handleLogout}
-            >
-              Выйти
-            </button>
-          </div>
+        {authKey && !authError && (
+          <button
+            className="qn-auth-gate-logout"
+            onClick={handleLogout}
+          >
+            Сбросить ключ
+          </button>
         )}
       </div>
     </div>

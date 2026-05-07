@@ -9,7 +9,6 @@
  * - scheduleTime / scheduledConfig: запланированный запуск
  * - logs: массив логов выполнения
  * - currentStage: текущая стадия pipeline
- * - queue: очередь запланированных запусков
  * - showModal: видимость модального окна
  *
  * Методы:
@@ -21,7 +20,7 @@
  * Используется: всеми компонентами расширения
  */
 import { create } from "zustand";
-import type { InjectorConfig, PipelineStage, QueueItemState } from "@/types";
+import type { InjectorConfig, PipelineStage, ApiKeyStatusResponse } from "@/types";
 
 export type InjectorStatus =
   | "idle"
@@ -32,14 +31,13 @@ export type InjectorStatus =
 
 type CollapsibleSection =
   | "slotRetry"
-  | "slotCoordination"
   | "retryGetAvailableSlots"
   | "retryGenerateCaptcha"
   | "retryValidateCaptcha"
   | "retrySubmitReschedule"
   | "retrySubmitCreate"
-  | "retryMode"
-  | "mockResponses";
+  | "mockResponses"
+  | "reservationData";
 
 interface InjectorState {
   config: InjectorConfig;
@@ -55,15 +53,12 @@ interface InjectorState {
   captchaId: string | null;
   solvedVariantIndex: number | null;
   captchaValidated: boolean | null;
-  queueItems: QueueItemState[] | null;
-  queueIndex: number | null;
-  role: "master" | "slave" | null;
-  consumerId: number | null;
-  totalConsumers: number | null;
   isFullscreen: boolean;
   authKey: string;
+  authKeyStatus: ApiKeyStatusResponse | null;
   authLoading: boolean;
   authError: string;
+  authChecking: boolean;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(
@@ -88,16 +83,6 @@ interface InjectorState {
   setCaptchaId: (id: string | null) => void;
   setSolvedVariantIndex: (idx: number | null) => void;
   setCaptchaValidated: (val: boolean | null) => void;
-  setQueueItems: (items: QueueItemState[] | null) => void;
-  setQueueIndex: (idx: number | null) => void;
-  updateQueueItemStatus: (
-    idx: number,
-    status: QueueItemState["status"],
-    error?: string,
-  ) => void;
-  setRole: (role: "master" | "slave" | null) => void;
-  setConsumerId: (id: number | null) => void;
-  setTotalConsumers: (n: number | null) => void;
   toggleFullscreen: () => void;
   reset: () => void;
   setAuthKey: (key: string) => void;
@@ -113,8 +98,8 @@ const defaultCollapsed: Record<CollapsibleSection, boolean> = {
   retryValidateCaptcha: true,
   retrySubmitReschedule: true,
   retrySubmitCreate: true,
-  retryMode: true,
   mockResponses: true,
+  reservationData: true,
 };
 
 export const useInjectorStore = create<InjectorState>((set, get) => ({
@@ -131,28 +116,25 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   captchaId: null,
   solvedVariantIndex: null,
   captchaValidated: null,
-  queueItems: null,
-  queueIndex: null,
-  role: null,
-  consumerId: null,
-  totalConsumers: null,
   isFullscreen: (() => {
-    const saved = localStorage.getItem("injector_fullscreen");
+    const saved = localStorage.getItem("_fs");
     return saved === null ? true : saved === "true";
   })(),
   authKey: (() => {
-    const api = localStorage.getItem("injector_api_key");
+    const api = localStorage.getItem("_k");
     if (api) return api;
-    const auth = localStorage.getItem("injector_auth_key");
+    const auth = localStorage.getItem("_a");
     if (auth) {
-      localStorage.setItem("injector_api_key", auth);
-      localStorage.removeItem("injector_auth_key");
+      localStorage.setItem("_k", auth);
+      localStorage.removeItem("_a");
       return auth;
     }
     return "";
   })(),
+  authKeyStatus: null,
   authLoading: false,
   authError: "",
+  authChecking: false,
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) =>
@@ -162,7 +144,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
         const { mode: _, ...toSave } = newConfig;
         try {
           localStorage.setItem(
-            `injector_config_${newConfig.reservationId}`,
+            `_c_${newConfig.reservationId}`,
             JSON.stringify(toSave),
           );
         } catch {}
@@ -185,7 +167,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
         const { mode: _, ...toSave } = newConfig;
         try {
           localStorage.setItem(
-            `injector_config_${newConfig.reservationId}`,
+            `_c_${newConfig.reservationId}`,
             JSON.stringify(toSave),
           );
         } catch {}
@@ -219,26 +201,10 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   setCaptchaId: (id) => set({ captchaId: id }),
   setSolvedVariantIndex: (idx) => set({ solvedVariantIndex: idx }),
   setCaptchaValidated: (val) => set({ captchaValidated: val }),
-  setQueueItems: (items) => set({ queueItems: items }),
-  setQueueIndex: (idx) => set({ queueIndex: idx }),
-  setRole: (role) => set({ role }),
-  setConsumerId: (id) => set({ consumerId: id }),
-  setTotalConsumers: (n) => set({ totalConsumers: n }),
-  updateQueueItemStatus: (idx, status, error) =>
-    set((state) => {
-      if (!state.queueItems) return { queueIndex: null };
-      const updated = state.queueItems.map((item, i) =>
-        i === idx ? { ...item, status, error } : item,
-      );
-      return {
-        queueItems: updated,
-        queueIndex: idx + 1 < updated.length ? idx + 1 : null,
-      };
-    }),
   toggleFullscreen: () =>
     set((state) => {
       const next = !state.isFullscreen;
-      localStorage.setItem("injector_fullscreen", String(next));
+      localStorage.setItem("_fs", String(next));
       return { isFullscreen: next };
     }),
   reset: () =>
@@ -254,20 +220,17 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
       captchaId: null,
       solvedVariantIndex: null,
       captchaValidated: null,
-      queueItems: null,
-      queueIndex: null,
-      role: null,
-      consumerId: null,
-      totalConsumers: null,
     }),
   setAuthKey: (key) => {
-    localStorage.setItem("injector_api_key", key);
+    localStorage.setItem("_k", key);
     set({ authKey: key, authError: "" });
   },
+  setAuthKeyStatus: (status) => set({ authKeyStatus: status }),
   clearAuthKey: () => {
-    localStorage.removeItem("injector_api_key");
-    set({ authKey: "", authError: "" });
+    localStorage.removeItem("_k");
+    set({ authKey: "", authKeyStatus: null, authError: "" });
   },
   setAuthLoading: (loading) => set({ authLoading: loading, authError: "" }),
   setAuthError: (error) => set({ authError: error, authLoading: false }),
+  setAuthChecking: (checking) => set({ authChecking: checking }),
 }));

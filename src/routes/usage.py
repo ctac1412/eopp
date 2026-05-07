@@ -2,7 +2,7 @@
 EOPP Captcha Solver - Usage Routes
 
 Эндпоинты логирования использования API:
-- POST /register-usage - регистрация начала использования (создаёт Slots Group)
+- POST /register-usage - регистрация начала использования
 - POST /confirm-usage - подтверждение успешного использования
 - POST /fail-usage - отметка неудачного использования
 - GET /usage-log - история использования
@@ -11,7 +11,6 @@ EOPP Captcha Solver - Usage Routes
 
 import json
 import os
-import time
 
 from fastapi import Query
 from fastapi.responses import JSONResponse
@@ -29,20 +28,11 @@ from src.constants import (
     NO_VALID_DIR,
     VALID_DIR,
 )
-from src.routes.slots import SLOTS_GROUP_TTL
 from src.models import (
     ConfirmUsageBody,
     FailUsageBody,
     RegisterUsageBody,
 )
-from src.routes.slots import (
-    MAX_VARIANTS,
-    generate_8_variants,
-    slots_groups,
-    slots_lock,
-    _clean_expired_groups,
-)
-import uuid as uuid_module
 
 
 def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
@@ -71,106 +61,28 @@ def register_usage_routes(app):
         validation = validate_key(body.api_key)
         if not validation["valid"]:
             return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+        key_record = get_key_record(body.api_key)
+        if not key_record:
+            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+        api_key_id = key_record["id"]
+        from src.utils import sse_queues, lock
+        with lock:
+            queues = sse_queues.get(api_key_id, [])
+            has_active_stream = len(queues) > 0
+        if not has_active_stream:
+            return JSONResponse(
+                status_code=412,
+                content={
+                    "error": "no_stream",
+                    "message": "Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение."
+                }
+            )
         usage_log_id = log_usage(
             api_key=body.api_key,
             reservation_id=body.reservation_id,
             captcha_id=body.captcha_id or "unknown",
             config_json=body.config_json,
         )
-
-        facility_id = None
-        slot_date = None
-        enable_slot_coordination = None 
-        
-        if body.config_json:
-            facility_id = body.config_json.get("facilityId")
-            slot_date = body.config_json.get("slotDate")
-            enable_slot_coordination = body.config_json.get('enableSlotCoordination')
-
-        if facility_id and slot_date and enable_slot_coordination:
-            group_key = f"{facility_id}:{slot_date}"
-            gid = str(uuid_module.uuid4())
-
-            async with slots_lock:
-                _clean_expired_groups()
-                found_key = None
-                for k, v in slots_groups.items():
-                    if v["group_key"] == group_key:
-                        found_key = k
-                        break
-
-                if found_key:
-                    group = slots_groups[found_key]
-                    group_id = found_key
-                    consumer_id = len(group["consumers"])
-                    is_master = False
-                    group["consumers"].append(
-                        {
-                            "consumer_id": consumer_id,
-                            "api_key": body.api_key,
-                            "usage_log_id": usage_log_id,
-                            "is_master": False,
-                            "my_slots": [],
-                            "last_ping": time.time(),
-                        }
-                    )
-                    slots_loaded = group["slots"] is not None
-                    if slots_loaded:
-                        variant_idx = consumer_id % MAX_VARIANTS
-                        my_slots = group["consumers"][-1].get("my_slots", [])
-                        if not my_slots and group["slots"]:
-                            variants = generate_8_variants(group["slots"])
-                            for i, c in enumerate(group["consumers"]):
-                                c["my_slots"] = variants[i % MAX_VARIANTS]
-                            my_slots = variants[variant_idx]
-                        result = {
-                            "usage_log_id": usage_log_id,
-                            "group_id": group_id,
-                            "consumer_id": consumer_id,
-                            "is_master": is_master,
-                            "slots_loaded": slots_loaded,
-                            "my_slots": my_slots,
-                        }
-                    else:
-                        result = {
-                            "usage_log_id": usage_log_id,
-                            "group_id": group_id,
-                            "consumer_id": consumer_id,
-                            "is_master": is_master,
-                            "slots_loaded": slots_loaded,
-                        }
-                else:
-                    group_id = gid
-                    slots_groups[gid] = {
-                        "group_id": gid,
-                        "group_key": group_key,
-                        "facility_id": facility_id,
-                        "date": slot_date,
-                        "slots": None,
-                        "slots_loaded": False,
-                        "consumers": [
-                            {
-                                "consumer_id": 0,
-                                "api_key": body.api_key,
-                                "usage_log_id": usage_log_id,
-                                "is_master": True,
-                                "my_slots": [],
-                                "last_ping": time.time(),
-                            }
-                        ],
-                        "master_consumer_id": 0,
-                        "created_at": time.time(),
-                        "expires_at": time.time() + SLOTS_GROUP_TTL,
-                    }
-                    result = {
-                        "usage_log_id": usage_log_id,
-                        "group_id": group_id,
-                        "consumer_id": 0,
-                        "is_master": True,
-                        "slots_loaded": False,
-                    }
-
-                return JSONResponse(content=result)
 
         return JSONResponse(content={"usage_log_id": usage_log_id})
 

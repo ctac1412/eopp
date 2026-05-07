@@ -6,7 +6,6 @@ Pydantic-модели для валидации запросов API:
 - CreateApiKeyBody, UpdateApiKeyBody - управление API ключами
 - ConfirmUsageBody, FailUsageBody - логирование использования
 - MockConfigBody - настройка мок-ответов
-- SlotsGroupBody - координация слотов между клиентами
 
 Используются в routes.py для валидации входящих данных.
 """
@@ -109,29 +108,6 @@ class RegisterUsageBody(BaseModel):
 
 class MockConfigBody(BaseModel):
     endpoints: dict[str, dict[str, Any]] = {}
-
-
-class SlotDict(BaseModel):
-    id: str
-    time: str
-    count: int
-    slotCaption: str
-    intervalIndex: int
-
-
-class SlotsGroupBody(BaseModel):
-    group_id: str
-    consumer_id: int
-    api_key: str
-    slots: list[SlotDict] = []
-
-
-class UploadPluginBody(BaseModel):
-    version: str
-    manifest: dict[str, Any]
-    zip_file: str
-    note: str | None = None
-    overwrite: bool | None = False
 
 
 class TariffBody(BaseModel):

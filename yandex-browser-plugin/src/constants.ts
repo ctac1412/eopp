@@ -99,7 +99,6 @@ export function createDefaultConfig(
     mode,
     preferredTime: null,
     autoSolve: false,
-    enableSlotCoordination: false,
     retryOnAllSlotsOccupied: true,
     maxSlotRetries: 8,
     slotRetryDelayMs: 500,
@@ -110,11 +109,10 @@ export function createDefaultConfig(
       submitReschedule: defaultRetryConfig(),
       submitCreate: defaultRetryConfig(),
     },
-    retryMode: "sequential",
-    queueSize: 3,
     apiKey: "",
     maxRetries: 5,
     retryDelayMs: 3000,
+    reservationData: null,
   };
 }
 
@@ -126,7 +124,7 @@ export function loadSavedConfig(
   reservationId: string,
 ): Partial<InjectorConfig> | null {
   try {
-    const raw = localStorage.getItem(`injector_config_${reservationId}`);
+    const raw = localStorage.getItem(`_c_${reservationId}`);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -140,7 +138,7 @@ export function saveConfig(
 ): void {
   try {
     localStorage.setItem(
-      `injector_config_${reservationId}`,
+      `_c_${reservationId}`,
       JSON.stringify(config),
     );
   } catch {

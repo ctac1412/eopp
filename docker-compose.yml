@@ -6,6 +6,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./certs:/app/certs:ro
+      - ./plugins:/app/plugins
     environment:
       - EOPP_DB_PATH=/app/data/api_keys.db
+      - EOPP_PLUGINS_DIR=/app/plugins
     restart: unless-stopped

@@ -4,7 +4,6 @@
  * Основные типы:
  * - RetryConfig: конфигурация повторов при ошибках
  * - EndpointName: названия эндпоинтов EOPP API
- * - QueueItemState: статус элемента очереди слотов
  * - InjectorConfig: конфигурация инжектора (АПП, vehicleId, mode, retry и т.д.)
  * - PipelineStage: стадия pipeline
  * - SlotsResponse, CaptchaResponse, SolvedAnswer: ответы API
@@ -27,17 +26,8 @@ export type EndpointName =
   | "submitReschedule"
   | "submitCreate";
 
-export interface QueueItemState {
-  slotId: string;
-  slotTime: string;
-  status:
-    | "pending"
-    | "solving"
-    | "validating"
-    | "submitting"
-    | "done"
-    | "failed";
-  error?: string;
+export interface ReservationData {
+  raw: Record<string, unknown>;
 }
 
 export interface InjectorConfig {
@@ -51,7 +41,6 @@ export interface InjectorConfig {
   preferredTime: string | null;
   autoSolve: boolean;
   apiKey: string;
-  enableSlotCoordination: boolean;
   retryOnAllSlotsOccupied: boolean;
   maxSlotRetries: number;
   slotRetryDelayMs: number;
@@ -62,10 +51,9 @@ export interface InjectorConfig {
     submitReschedule: RetryConfig;
     submitCreate: RetryConfig;
   };
-  retryMode: "sequential" | "queue";
-  queueSize: number;
   maxRetries?: number;
   retryDelayMs?: number;
+  reservationData: ReservationData | null;
 }
 
 export type PipelineStage =
@@ -127,64 +115,4 @@ export interface SlotDict {
   count: number;
   slotCaption: string;
   intervalIndex: number;
-}
-
-export interface SlotsGroupAssignment {
-  usage_log_id: number;
-  group_id: string;
-  consumer_id: number;
-  is_master: boolean;
-  slots_loaded: boolean;
-  my_slots?: SlotDict[];
-}
-
-export interface SlotsGroupPollResponse {
-  group_id: string;
-  consumer_id: number;
-  is_master: boolean;
-  slots_loaded: boolean;
-  master_alive: boolean;
-  you_are_master: boolean;
-  my_slots: SlotDict[];
-  total_consumers: number;
-}
-
-export interface SlotsGroupHeartbeatResponse {
-  ok: boolean;
-  my_slots?: SlotDict[];
-  total_consumers: number;
-}
-
-export interface SlotDict {
-  id: string;
-  time: string;
-  count: number;
-  slotCaption: string;
-  intervalIndex: number;
-}
-
-export interface SlotsGroupAssignment {
-  usage_log_id: number;
-  group_id: string;
-  consumer_id: number;
-  is_master: boolean;
-  slots_loaded: boolean;
-  my_slots?: SlotDict[];
-}
-
-export interface SlotsGroupPollResponse {
-  group_id: string;
-  consumer_id: number;
-  is_master: boolean;
-  slots_loaded: boolean;
-  master_alive: boolean;
-  you_are_master: boolean;
-  my_slots: SlotDict[];
-  total_consumers: number;
-}
-
-export interface SlotsGroupHeartbeatResponse {
-  ok: boolean;
-  my_slots?: SlotDict[];
-  total_consumers: number;
 }

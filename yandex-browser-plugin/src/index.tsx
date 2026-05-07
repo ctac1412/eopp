@@ -12,8 +12,8 @@ import cssContent from "@/content.css?inline";
 
 function injectButton(info: PageInfo): void {
   const btn = document.createElement("button");
-  btn.textContent = "Инжектор";
-  btn.className = "custom-plugin-btn";
+  btn.textContent = "Помощник";
+  btn.className = "cp-btn";
 
   btn.addEventListener("click", async () => {
     const actualInfo = shouldInject(window.location.href);
@@ -23,6 +23,7 @@ function injectButton(info: PageInfo): void {
     }
 
     let params: { facilityId: string; vehicleId: string; transportType: 1 | 2 };
+    let reservationRaw: Record<string, unknown> | null = null;
 
     if (actualInfo.isLocalhost) {
       params = {
@@ -45,6 +46,7 @@ function injectButton(info: PageInfo): void {
         },
       );
       const json = await apiResponse.json();
+      reservationRaw = json;
       params = {
         facilityId: json.facilityId,
         vehicleId: json.vehicleData[0].vehicleId,
@@ -52,7 +54,7 @@ function injectButton(info: PageInfo): void {
       };
     }
 
-    const savedApiKey = localStorage.getItem("injector_api_key") || "";
+    const savedApiKey = localStorage.getItem("_k") || "";
 
     const mode: "reschedule" | "create" =
       actualInfo.pageType === "edit" ? "create" : "reschedule";
@@ -70,6 +72,7 @@ function injectButton(info: PageInfo): void {
     }
     defaultConfig.mode = mode;
     defaultConfig.apiKey = savedApiKey;
+    defaultConfig.reservationData = reservationRaw ? { raw: reservationRaw } : null;
 
     useInjectorStore.setState({ config: defaultConfig });
 

@@ -1,10 +1,6 @@
 import type {
   ApiKeyStatusResponse,
   InjectorConfig,
-  SlotsGroupAssignment,
-  SlotDict,
-  SlotsGroupPollResponse,
-  SlotsGroupHeartbeatResponse,
 } from "@/types";
 import { CAPTCHA_SERVER } from "@/constants";
 
@@ -106,41 +102,25 @@ export async function registerUsage(
   apiKey: string,
   reservationId: string,
   config?: InjectorConfig,
-): Promise<number | SlotsGroupAssignment> {
-  const response = await sendMessageToBackground("registerUsage", {
-    apiKey,
-    reservationId,
-    configJson: config ? sanitizeConfig(config) : undefined,
-  });
-  const data = response as { usage_log_id?: number; group_id?: string };
-  if (data.group_id !== undefined) {
-    return data as SlotsGroupAssignment;
+): Promise<number> {
+  try {
+    const response = await sendMessageToBackground("registerUsage", {
+      apiKey,
+      reservationId,
+      configJson: config ? sanitizeConfig(config) : undefined,
+    });
+    const data = response as { usage_log_id?: number };
+    return data.usage_log_id as number;
+  } catch (err) {
+    const error = err as { status?: number; body?: string };
+    if (error.status === 412) {
+      try {
+        const parsed = JSON.parse(error.body || "{}");
+        throw new Error(parsed.message || "Требуется активное SSE-подключение");
+      } catch {
+        throw new Error("Откройте страницу с капчами и авторизуйтесь");
+      }
+    }
+    throw err;
   }
-  return data.usage_log_id as number;
-}
-
-export async function pollSlotsGroup(
-  groupId: string,
-  consumerId: number,
-): Promise<SlotsGroupPollResponse> {
-  const response = await sendMessageToBackground("pollSlotsGroup", {
-    groupId,
-    consumerId,
-  });
-  return response as SlotsGroupPollResponse;
-}
-
-export async function heartbeatSlotsGroup(
-  groupId: string,
-  consumerId: number,
-  apiKey: string,
-  slots?: SlotDict[],
-): Promise<SlotsGroupHeartbeatResponse> {
-  const response = await sendMessageToBackground("heartbeatSlotsGroup", {
-    groupId,
-    consumerId,
-    apiKey,
-    slots: slots || [],
-  });
-  return response as SlotsGroupHeartbeatResponse;
 }

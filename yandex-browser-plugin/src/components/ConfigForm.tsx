@@ -41,11 +41,11 @@ const MOCK_ENDPOINTS: {
 ];
 
 const MODE_LABELS: Record<string, string> = {
-  success: "Success (default)",
-  "429": "429 Rate Limit",
-  "400": "400 Bad Request",
-  all_occupied: "All slots occupied",
-  all_slots_occupied: "AllSlotsOccupiedOnInterval",
+  success: "Успех",
+  "429": "429 Лимит",
+  "400": "400 Ошибка",
+  all_occupied: "Все слоты заняты",
+  all_slots_occupied: "Все слоты заняты (интервал)",
 };
 
 type MockMode =
@@ -70,8 +70,8 @@ const ENDPOINT_LABELS: Record<
   getAvailableSlots: "Получение слотов",
   generateCaptcha: "Генерация капчи",
   validateCaptcha: "Валидация капчи",
-  submitReschedule: "Перезапись (Reschedule)",
-  submitCreate: "Создание (SubmitDraft)",
+  submitReschedule: "Перезапись",
+  submitCreate: "Создание",
 };
 
 const ENDPOINT_SECTIONS: Record<
@@ -103,20 +103,20 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
   const isSlots = endpoint === "getAvailableSlots";
 
   return (
-    <div className="injector-form-section">
+    <div className="qn-form-section">
       <h3
-        className="injector-section-title injector-collapsible"
+        className="qn-section-title qn-collapsible"
         onClick={() => toggleSection(sectionKey)}
         style={{ cursor: "pointer", userSelect: "none" }}
       >
-        <span className="injector-collapse-icon">
+        <span className="qn-collapse-icon">
           {collapsed[sectionKey] ? "▶" : "▼"}
         </span>{" "}
         Ретрай: {ENDPOINT_LABELS[endpoint]}
       </h3>
       {!collapsed[sectionKey] && (
         <>
-          <label className="injector-form-label injector-checkbox-label">
+          <label className="qn-form-label qn-checkbox-label">
             <input
               type="checkbox"
               checked={rc.enabled}
@@ -126,11 +126,11 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
             />
             Ретрай 429 — включён
           </label>
-          <div className="injector-form-row">
-            <label className="injector-form-label">
+          <div className="qn-form-row">
+            <label className="qn-form-label">
               Макс. попыток
               <input
-                className="injector-form-input injector-form-number"
+                className="qn-form-input qn-form-number"
                 type="number"
                 min={0}
                 value={rc.maxRetries}
@@ -144,10 +144,10 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
                 disabled={!rc.enabled}
               />
             </label>
-            <label className="injector-form-label">
+            <label className="qn-form-label">
               Задержка (мс)
               <input
-                className="injector-form-input injector-form-number"
+                className="qn-form-input qn-form-number"
                 type="number"
                 min={0}
                 value={rc.delayMs}
@@ -164,7 +164,7 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
           </div>
           {isSlots && (
             <>
-              <label className="injector-form-label injector-checkbox-label">
+              <label className="qn-form-label qn-checkbox-label">
                 <input
                   type="checkbox"
                   checked={rc.retry400Enabled}
@@ -178,11 +178,11 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
                 />
                 Ретрай 400 — включён
               </label>
-              <div className="injector-form-row">
-                <label className="injector-form-label">
+              <div className="qn-form-row">
+                <label className="qn-form-label">
                   Макс. попыток
                   <input
-                    className="injector-form-input injector-form-number"
+                    className="qn-form-input qn-form-number"
                     type="number"
                     min={0}
                     value={rc.retry400MaxRetries}
@@ -196,10 +196,10 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
                     disabled={!rc.retry400Enabled}
                   />
                 </label>
-                <label className="injector-form-label">
+                <label className="qn-form-label">
                   Задержка (мс)
                   <input
-                    className="injector-form-input injector-form-number"
+                    className="qn-form-input qn-form-number"
                     type="number"
                     min={0}
                     value={rc.retry400DelayMs}
@@ -222,19 +222,12 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
   );
 });
 
-const maskKey = (key: string) => {
-  if (key.length <= 2) return "••••";
-  return key[0] + "•".repeat(key.length - 2) + key[key.length - 1];
-};
-
 const ConfigForm = React.memo(function ConfigForm() {
   const config = useInjectorStore((s) => s.config);
   const updateField = useInjectorStore((s) => s.updateField);
   const setConfig = useInjectorStore((s) => s.setConfig);
   const collapsed = useInjectorStore((s) => s.collapsedSections);
   const toggleSection = useInjectorStore((s) => s.toggleSection);
-  const authKey = useInjectorStore((s) => s.authKey);
-  const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
   const [mockConfig, setMockConfig] = useState<Record<string, MockMode[]>>({});
   const [mockLoading, setMockLoading] = useState(false);
   const [mockSending, setMockSending] = useState(false);
@@ -251,11 +244,11 @@ const ConfigForm = React.memo(function ConfigForm() {
   }
 
   useEffect(() => {
-    const savedMode = localStorage.getItem("injector_last_mode");
+    const savedMode = localStorage.getItem("_m");
     if (savedMode && savedMode !== config.mode) {
       handleChange("slotDate", getDefaultSlotDate(config.mode));
     }
-    localStorage.setItem("injector_last_mode", config.mode);
+    localStorage.setItem("_m", config.mode);
   }, [config.mode]);
 
   // Load mock config on mount (localhost only)
@@ -345,14 +338,13 @@ const ConfigForm = React.memo(function ConfigForm() {
 
   const resetToDefaults = () => {
     if (!confirm("Сбросить все настройки к значениям по умолчанию?")) return;
-    localStorage.removeItem(`injector_config_${config.reservationId}`);
+    localStorage.removeItem(`_c_${config.reservationId}`);
     const fresh = createDefaultConfig(
       config.reservationId,
       config.facilityId,
       config.vehicleId,
       config.transportType,
     );
-    fresh.apiKey = config.apiKey;
     setConfig(fresh);
   };
 
@@ -373,9 +365,9 @@ const ConfigForm = React.memo(function ConfigForm() {
   };
 
   return (
-    <div className="injector-config-form">
+    <div className="qn-config-form">
       <div
-        className="injector-form-section injector-fullscreen-wide"
+        className="qn-form-section qn-fullscreen-wide"
         style={{ gridColumn: "1 / -1" }}
       >
         <div
@@ -386,23 +378,23 @@ const ConfigForm = React.memo(function ConfigForm() {
             marginBottom: "12px",
           }}
         >
-          <h3 className="injector-section-title" style={{ marginBottom: 0 }}>
+          <h3 className="qn-section-title" style={{ marginBottom: 0 }}>
             Общие настройки
           </h3>
           <button
-            className="injector-reset-icon-btn"
+            className="qn-reset-icon-btn"
             onClick={resetToDefaults}
             title="Сбросить настройки"
           >
             ↺
           </button>
         </div>
-        <div className="injector-form-row injector-form-row-3">
-          <label className="injector-form-label">
+        <div className="qn-form-row qn-form-row-3">
+          <label className="qn-form-label">
             Режим
             <select
               id="mode-select"
-              className="injector-form-input"
+              className="qn-form-input"
               value={config.mode}
               onChange={(e) =>
                 handleChange("mode", e.target.value as InjectorConfig["mode"])
@@ -412,11 +404,11 @@ const ConfigForm = React.memo(function ConfigForm() {
               <option value="create">Создание брони</option>
             </select>
           </label>
-          <label className="injector-form-label">
+          <label className="qn-form-label">
             Остановиться на этапе
             <select
               id="runUpTo-select"
-              className="injector-form-input"
+              className="qn-form-input"
               value={config.runUpTo}
               onChange={(e) => handleChange("runUpTo", Number(e.target.value))}
             >
@@ -427,7 +419,7 @@ const ConfigForm = React.memo(function ConfigForm() {
               <option value="5">5 — отправка</option>
             </select>
           </label>
-          <label className="injector-form-label injector-checkbox-label">
+          <label className="qn-form-label qn-checkbox-label">
             <input
               id="autoSolve-checkbox"
               type="checkbox"
@@ -436,67 +428,38 @@ const ConfigForm = React.memo(function ConfigForm() {
             />
             Авто-решение капчи
           </label>
-          <label className="injector-form-label injector-checkbox-label">
-            <input
-              id="enableSlotCoordination-checkbox"
-              type="checkbox"
-              checked={config.enableSlotCoordination}
-              onChange={(e) =>
-                handleChange("enableSlotCoordination", e.target.checked)
-              }
-            />
-            Координация слотов
-          </label>
-        </div>
-      </div>
-
-      <div className="injector-form-section">
-        <h3 className="injector-section-title">API ключ</h3>
-        <div className="injector-api-key-display">
-          <span className="injector-api-key-value">
-            {authKey ? maskKey(authKey) : "—"}
-          </span>
-          <button
-            className="injector-api-key-logout-btn"
-            onClick={() => {
-              clearAuthKey();
-              updateField("apiKey", "");
-            }}
-          >
-            Выйти
-          </button>
         </div>
       </div>
 
       <div
-        className="injector-form-section injector-fullscreen-wide"
+        className="qn-form-section qn-fullscreen-wide"
         style={{ gridColumn: "1 / -1" }}
       >
-        <h3 className="injector-section-title">Данные запроса</h3>
-        <div className="injector-form-row">
-          <label className="injector-form-label">
+        <h3 className="qn-section-title">Данные запроса</h3>
+        <div className="qn-form-row">
+          <label className="qn-form-label">
             ID бронирования
-            <span className="injector-form-text injector-form-readonly">
+            <span className="qn-form-text qn-form-readonly">
               {config.reservationId}
             </span>
           </label>
-          <label className="injector-form-label">
+          <label className="qn-form-label">
             ID транспортного средства
             <input
               id="vehicleId-input"
-              className="injector-form-input injector-form-text"
+              className="qn-form-input qn-form-text"
               type="text"
               value={config.vehicleId}
               onChange={(e) => handleChange("vehicleId", e.target.value)}
             />
           </label>
         </div>
-        <div className="injector-form-row">
-          <label className="injector-form-label">
+        <div className="qn-form-row">
+          <label className="qn-form-label">
             Вид перевозки
             <select
               id="transportType-select"
-              className="injector-form-input"
+              className="qn-form-input"
               value={config.transportType}
               onChange={(e) =>
                 handleChange("transportType", Number(e.target.value) as 1 | 2)
@@ -506,11 +469,11 @@ const ConfigForm = React.memo(function ConfigForm() {
               <option value="2">Транзит</option>
             </select>
           </label>
-          <label className="injector-form-label">
+          <label className="qn-form-label">
             Пропускной пункт (АПП)
             <select
               id="facilityId-select"
-              className="injector-form-input"
+              className="qn-form-input"
               value={config.facilityId}
               onChange={(e) => handleChange("facilityId", e.target.value)}
             >
@@ -522,22 +485,22 @@ const ConfigForm = React.memo(function ConfigForm() {
             </select>
           </label>
         </div>
-        <div className="injector-form-row">
-          <label className="injector-form-label">
+        <div className="qn-form-row">
+          <label className="qn-form-label">
             Дата пропуска
             <input
               id="slotDate-input"
-              className="injector-form-input"
+              className="qn-form-input"
               type="date"
               value={config.slotDate}
               onChange={(e) => handleChange("slotDate", e.target.value)}
             />
           </label>
-          <label className="injector-form-label">
+          <label className="qn-form-label">
             Предпочтительное время
             <select
               id="preferredTime-select"
-              className="injector-form-input"
+              className="qn-form-input"
               value={config.preferredTime || ""}
               onChange={(e) =>
                 handleChange("preferredTime", e.target.value || null)
@@ -557,20 +520,46 @@ const ConfigForm = React.memo(function ConfigForm() {
         </div>
       </div>
 
-      <div className="injector-form-section">
+      <div className="qn-form-section">
         <h3
-          className="injector-section-title injector-collapsible"
+          className="qn-section-title qn-collapsible"
+          onClick={() => toggleSection("reservationData")}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          <span className="qn-collapse-icon">
+            {collapsed.reservationData ? "▶" : "▼"}
+          </span>{" "}
+          Данные бронирования
+        </h3>
+        {!collapsed.reservationData && (
+          <div className="qn-reservation-data">
+            {config.reservationData?.raw ? (
+              <pre className="qn-reservation-raw">
+                {JSON.stringify(config.reservationData.raw, null, 2)}
+              </pre>
+            ) : (
+              <div style={{ color: "#999", fontSize: "12px" }}>
+                Данные не загружены
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="qn-form-section">
+        <h3
+          className="qn-section-title qn-collapsible"
           onClick={() => toggleSection("slotRetry")}
           style={{ cursor: "pointer", userSelect: "none" }}
         >
-          <span className="injector-collapse-icon">
+          <span className="qn-collapse-icon">
             {collapsed.slotRetry ? "▶" : "▼"}
           </span>{" "}
           Повтор при занятых слотах
         </h3>
         {!collapsed.slotRetry && (
           <>
-            <label className="injector-form-label injector-checkbox-label">
+            <label className="qn-form-label qn-checkbox-label">
               <input
                 id="retry-slots-enabled"
                 type="checkbox"
@@ -581,12 +570,12 @@ const ConfigForm = React.memo(function ConfigForm() {
               />
               Пробовать другой слот при занятости
             </label>
-            <div className="injector-form-row">
-              <label className="injector-form-label">
+            <div className="qn-form-row">
+              <label className="qn-form-label">
                 Макс. попыток
                 <input
                   id="retry-slots-maxRetries"
-                  className="injector-form-input injector-form-number"
+                  className="qn-form-input qn-form-number"
                   type="number"
                   value={config.maxSlotRetries}
                   onChange={(e) =>
@@ -594,11 +583,11 @@ const ConfigForm = React.memo(function ConfigForm() {
                   }
                 />
               </label>
-              <label className="injector-form-label">
+              <label className="qn-form-label">
                 Задержка (мс)
                 <input
                   id="retry-slots-delayMs"
-                  className="injector-form-input injector-form-number"
+                  className="qn-form-input qn-form-number"
                   type="number"
                   value={config.slotRetryDelayMs}
                   onChange={(e) =>
@@ -619,88 +608,21 @@ const ConfigForm = React.memo(function ConfigForm() {
         <RetryEndpointRow key={ep} endpoint={ep} />
       ))}
 
-      <div className="injector-form-section">
-        <h3
-          className="injector-section-title injector-collapsible"
-          onClick={() => toggleSection("retryMode")}
-          style={{ cursor: "pointer", userSelect: "none" }}
-        >
-          <span className="injector-collapse-icon">
-            {collapsed.retryMode ? "▶" : "▼"}
-          </span>{" "}
-          Режим ретраев
-        </h3>
-        {!collapsed.retryMode && (
-          <>
-            <div className="injector-form-row" style={{ alignItems: "center" }}>
-              <label
-                className="injector-form-label"
-                style={{ marginBottom: 0 }}
-              >
-                <input
-                  id="retryMode-sequential"
-                  type="radio"
-                  name="retryMode"
-                  checked={config.retryMode === "sequential"}
-                  onChange={() => handleChange("retryMode", "sequential")}
-                />{" "}
-                Последовательный
-              </label>
-              <label
-                className="injector-form-label"
-                style={{ marginBottom: 0 }}
-              >
-                <input
-                  id="retryMode-queue"
-                  type="radio"
-                  name="retryMode"
-                  checked={config.retryMode === "queue"}
-                  onChange={() => handleChange("retryMode", "queue")}
-                />{" "}
-                Очередь капч
-              </label>
-            </div>
-            {config.retryMode === "queue" && (
-              <div className="injector-form-row">
-                <label className="injector-form-label">
-                  Размер очереди
-                  <input
-                    id="retry-queueSize"
-                    className="injector-form-input injector-form-number"
-                    type="number"
-                    min={2}
-                    max={3}
-                    value={config.queueSize}
-                    onChange={(e) => {
-                      const v = Math.min(
-                        3,
-                        Math.max(2, Number(e.target.value)),
-                      );
-                      handleChange("queueSize", v);
-                    }}
-                  />
-                </label>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
       {/* Mock responses section (localhost only) */}
       {isLocalhost && (
         <div
-          className="injector-form-section injector-fullscreen-wide"
+          className="qn-form-section qn-fullscreen-wide"
           style={{ gridColumn: "1 / -1" }}
         >
           <h3
-            className="injector-section-title injector-collapsible"
+            className="qn-section-title qn-collapsible"
             onClick={() => toggleSection("mockResponses")}
             style={{ cursor: "pointer", userSelect: "none" }}
           >
-            <span className="injector-collapse-icon">
+            <span className="qn-collapse-icon">
               {collapsed.mockResponses ? "▶" : "▼"}
             </span>{" "}
-            Mock responses
+            Тестовые ответы
           </h3>
           {!collapsed.mockResponses && (
             <>
@@ -724,13 +646,13 @@ const ConfigForm = React.memo(function ConfigForm() {
                         >
                           <span>{ep.label}</span>
                           <button
-                            className="injector-mock-btn injector-mock-btn-add"
+                            className="qn-mock-btn qn-mock-btn-add"
                             onClick={() => addMockAttempt(ep.path)}
                           >
                             + попытка
                           </button>
                         </div>
-                        <div className="injector-mock-attempts">
+                        <div className="qn-mock-attempts">
                           {responses.map((mode, idx) => (
                             <div
                               key={idx}
@@ -751,7 +673,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                               </span>
                               <select
                                 id={`mock-${ep.path.replace(/\//g, "-").replace(/^\-/, "")}-attempt-${idx}`}
-                                className="injector-form-input"
+                                className="qn-form-input"
                                 value={mode}
                                 onChange={(e) =>
                                   updateMockMode(
@@ -786,7 +708,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                               </select>
                               {responses.length > 1 && (
                                 <button
-                                  className="injector-mock-btn injector-mock-btn-remove"
+                                  className="qn-mock-btn qn-mock-btn-remove"
                                   onClick={() =>
                                     removeMockAttempt(ep.path, idx)
                                   }
@@ -805,7 +727,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                     style={{ display: "flex", gap: "8px", marginTop: "8px" }}
                   >
                     <button
-                      className="injector-mock-btn injector-mock-btn-apply"
+                      className="qn-mock-btn qn-mock-btn-apply"
                       onClick={sendMockConfig}
                       disabled={mockSending}
                       style={{ flex: 1 }}
@@ -813,7 +735,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                       {mockSending ? "Отправка..." : "Применить"}
                     </button>
                     <button
-                      className="injector-mock-btn injector-mock-btn-reset"
+                      className="qn-mock-btn qn-mock-btn-reset"
                       onClick={resetMockConfig}
                       disabled={mockSending}
                       style={{ flex: 1 }}

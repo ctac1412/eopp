@@ -13,7 +13,7 @@ run-test: build-frontend
 run-write: build-frontend build-extension
 	uv run python manage.py --write
 
-run-dev: build-frontend
+run-dev: build-frontend build-extension
 	uv run python manage.py --host 0.0.0.0 --no-ssl --db-path data/api_keys_dev.db --port 8766
 
 install-frontend:
@@ -30,6 +30,12 @@ build-extension:
 
 build-extension-dev:
 	cd yandex-browser-plugin && DEV_BUILD=true npm run build
+
+build-crx: build-extension
+	@echo "Packing extension to CRX..."
+	@"C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/yandex-browser-plugin/dist" --no-sandbox --pack-extension-key="$(CURDIR)/data/eopp-injector.pem"
+	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/eopp-injector-v' + $$ver + '.crx'); Write-Host ('CRX created: plugins/eopp-injector-v' + $$ver + '.crx')"
+	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"ahmfeapbinmljhcpbefdpnhbhmnlback\">' + [Environment]::NewLine + '    <updatecheck codebase=\"https://china.alabai.netcraze.pro/plugins/eopp-injector-v' + $$ver + '.crx\" version=\"' + $$ver + '\" />' + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver)"
 
 install-extension:
 	cd yandex-browser-plugin && npm install
@@ -72,15 +78,6 @@ rebuild-prod:
 
 logs-prod:
 	docker compose logs -f
-
-# Plugin versioning
-build-plugin: build-extension
-	@echo "Building plugin with version bump..."
-	@python scripts/bump_plugin_version.py
-
-build-plugin-no-bump: build-extension
-	@echo "Building plugin without version bump..."
-	@python scripts/copy_plugin_to_plugins.py
 
 list-plugins:
 	@echo "Plugin versions:"

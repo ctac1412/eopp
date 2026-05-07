@@ -12,15 +12,15 @@ const LiveLog = React.memo(function LiveLog() {
   }, [logs]);
 
   return (
-    <div className="injector-live-log">
-      <div className="injector-live-log-header">Live Log ({logs.length})</div>
-      <div className="injector-live-log-body" ref={logRef}>
+    <div className="qn-live-log">
+      <div className="qn-live-log-header">Журнал ({logs.length})</div>
+      <div className="qn-live-log-body" ref={logRef}>
         {logs.length === 0 ? (
-          <div className="injector-log-empty">Ожидание логов...</div>
+          <div className="qn-log-empty">Ожидание логов...</div>
         ) : (
           logs.map((entry, i) => (
-            <div key={i} className="injector-log-line">
-              <span className="injector-log-ts">{entry.ts}</span> {entry.msg}
+            <div key={i} className="qn-log-line">
+              <span className="qn-log-ts">{entry.ts}</span> {entry.msg}
             </div>
           ))
         )}

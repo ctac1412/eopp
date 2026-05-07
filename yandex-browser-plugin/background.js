@@ -74,28 +74,6 @@ chrome.runtime.onConnect.addListener((port) => {
             config_json: msg.payload.configJson,
           }),
         });
-      } else if (msg.action === "pollSlotsGroup") {
-        res = await fetch(
-          `${serverUrl}/slots-group?group_id=${encodeURIComponent(msg.payload.groupId)}&consumer_id=${msg.payload.consumerId}`,
-          {
-            method: "GET",
-            headers: { Accept: "application/json, text/plain, */*" },
-          },
-        );
-      } else if (msg.action === "heartbeatSlotsGroup") {
-        res = await fetch(`${serverUrl}/slots-group`, {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_id: msg.payload.groupId,
-            consumer_id: msg.payload.consumerId,
-            api_key: msg.payload.apiKey,
-            slots: msg.payload.slots || [],
-          }),
-        });
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;

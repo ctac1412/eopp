@@ -20,13 +20,13 @@ const Scheduler = React.memo(function Scheduler() {
   const handleSchedule = useCallback(() => {
     if (!authKey) {
       setStatusMessage("Введите API ключ");
-      setStatusClass("injector-modal-status-error");
+      setStatusClass("qn-modal-status-error");
       return;
     }
     const mskSeconds = parseTime(timeInput);
     if (mskSeconds === null) {
       setStatusMessage("Неверный формат. Используйте HH:MM:SS.d");
-      setStatusClass("injector-modal-status-error");
+      setStatusClass("qn-modal-status-error");
       return;
     }
     const targetUtcSeconds = mskToUtcSeconds(mskSeconds);
@@ -45,7 +45,7 @@ const Scheduler = React.memo(function Scheduler() {
   const handleRun = useCallback(() => {
     if (!authKey) {
       setStatusMessage("Введите API ключ");
-      setStatusClass("injector-modal-status-error");
+      setStatusClass("qn-modal-status-error");
       return;
     }
     cancelSchedule();
@@ -72,45 +72,45 @@ const Scheduler = React.memo(function Scheduler() {
   }, []);
 
   return (
-    <div className="injector-schedule-sticky">
+    <div className="qn-schedule-sticky">
       {statusMessage && (
-        <div className={`injector-modal-status ${statusClass}`}>
+        <div className={`qn-modal-status ${statusClass}`}>
           {statusMessage}
         </div>
       )}
-      <div className="injector-time-tags">
+      <div className="qn-time-tags">
         <span
-          className="injector-time-tag"
+          className="qn-time-tag"
           onClick={() => setTimeInput("10:00:00.5")}
         >
           10:00:00.5
         </span>
         <span
-          className="injector-time-tag"
+          className="qn-time-tag"
           onClick={() => setTimeInput("12:00:00.5")}
         >
           12:00:00.5
         </span>
         <span
-          className="injector-time-tag injector-time-tag-now"
+          className="qn-time-tag qn-time-tag-now"
           onClick={handleNowPlus10}
         >
           Сейчас+10с
         </span>
       </div>
-      <div className="injector-schedule-row">
-        <div className="injector-schedule-time-wrapper">
+      <div className="qn-schedule-row">
+        <div className="qn-schedule-time-wrapper">
           <input
             id="schedule-time-input"
             type="text"
-            className="injector-schedule-input"
+            className="qn-schedule-input"
             value={timeInput}
             onChange={(e) => setTimeInput(e.target.value)}
             maxLength={12}
             placeholder="ЧЧ:ММ:СС.d"
           />
           <button
-            className="injector-schedule-cancel-icon"
+            className="qn-schedule-cancel-icon"
             onClick={handleCancel}
             title="Отменить расписание"
           >
@@ -118,13 +118,13 @@ const Scheduler = React.memo(function Scheduler() {
           </button>
         </div>
         <button
-          className="injector-modal-btn injector-modal-btn-schedule"
+          className="qn-modal-btn qn-modal-btn-schedule"
           onClick={handleSchedule}
         >
           Запланировать
         </button>
         <button
-          className="injector-modal-btn injector-modal-btn-run"
+          className="qn-modal-btn qn-modal-btn-run"
           onClick={handleRun}
         >
           Запустить сейчас

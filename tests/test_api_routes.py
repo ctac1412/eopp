@@ -166,7 +166,7 @@ class TestUsage:
         assert "usage_log_id" in response.json()
 
     def test_register_usage_with_config(self, client, api_key):
-        """Регистрация с конфигом (создаёт слоты)."""
+        """Регистрация с конфигом."""
         response = client.post(
             "/register-usage",
             json={
@@ -177,8 +177,7 @@ class TestUsage:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "group_id" in data
-        assert data["is_master"] is True
+        assert "usage_log_id" in data
 
     def test_confirm_usage(self, client, api_key):
         """Подтверждение использования."""
@@ -378,24 +377,6 @@ class TestCaptcha:
             json={"type": "test"},
         )
         assert response.status_code == 200
-
-
-# === Slots Tests ===
-class TestSlots:
-    """Тесты Slots эндпоинтов."""
-
-    def test_slots_group_requires_params(self, client):
-        """Требуются параметры."""
-        response = client.get("/slots-group")
-        assert response.status_code == 422
-
-    def test_slots_group_requires_auth(self, client):
-        """Требуется авторизация."""
-        response = client.post(
-            "/slots-group",
-            json={"group_id": "g1", "consumer_id": 0, "api_key": "invalid"},
-        )
-        assert response.status_code == 403
 
 
 # === Tariff Tests ===

@@ -18,8 +18,8 @@ def list_withdrawals() -> list[dict]:
             "id": row["id"],
             "name": row["name"],
             "percent": row["percent"],
-            "tax_percent": row.get("tax_percent", 0),
-            "percent_type": row.get("percent_type", "included"),
+            "tax_percent": row["tax_percent"] if "tax_percent" in row.keys() else 0,
+            "percent_type": row["percent_type"] if "percent_type" in row.keys() else "included",
             "requisites": row["requisites"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -38,8 +38,8 @@ def get_withdrawal(withdrawal_id: int) -> dict | None:
         "id": row["id"],
         "name": row["name"],
         "percent": row["percent"],
-        "tax_percent": row.get("tax_percent", 0),
-        "percent_type": row.get("percent_type", "included"),
+        "tax_percent": row["tax_percent"] if "tax_percent" in row.keys() else 0,
+        "percent_type": row["percent_type"] if "percent_type" in row.keys() else "included",
         "requisites": row["requisites"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -60,8 +60,8 @@ def create_withdrawal(name: str, percent: int, requisites: str, tax_percent: int
         "id": row["id"],
         "name": row["name"],
         "percent": row["percent"],
-        "tax_percent": row.get("tax_percent", 0),
-        "percent_type": row.get("percent_type", "included"),
+        "tax_percent": row["tax_percent"] if "tax_percent" in row.keys() else 0,
+        "percent_type": row["percent_type"] if "percent_type" in row.keys() else "included",
         "requisites": row["requisites"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -81,8 +81,8 @@ def update_withdrawal(
     name = name if name is not None else row["name"]
     percent = percent if percent is not None else row["percent"]
     requisites = requisites if requisites is not None else row["requisites"]
-    tax_percent = tax_percent if tax_percent is not None else row.get("tax_percent", 0)
-    percent_type = percent_type if percent_type is not None else row.get("percent_type", "included")
+    tax_percent = tax_percent if tax_percent is not None else row["tax_percent"] if "tax_percent" in row.keys() else 0
+    percent_type = percent_type if percent_type is not None else row["percent_type"] if "percent_type" in row.keys() else "included"
     conn.execute(
         "UPDATE withdrawals SET name = ?, percent = ?, requisites = ?, tax_percent = ?, percent_type = ?, updated_at = ? WHERE id = ?",
         (name, percent, requisites, tax_percent, percent_type, now, withdrawal_id),
@@ -94,8 +94,8 @@ def update_withdrawal(
         "id": row["id"],
         "name": row["name"],
         "percent": row["percent"],
-        "tax_percent": row.get("tax_percent", 0),
-        "percent_type": row.get("percent_type", "included"),
+        "tax_percent": row["tax_percent"] if "tax_percent" in row.keys() else 0,
+        "percent_type": row["percent_type"] if "percent_type" in row.keys() else "included",
         "requisites": row["requisites"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
