@@ -29,6 +29,35 @@ function getOpType(configData) {
   return configData.mode === "create" ? "Создание" : configData.mode === "reschedule" ? "Перенос" : null;
 }
 
+function maskFio(fio) {
+  if (!fio || typeof fio !== "string") return "—";
+  const parts = fio.trim().split(/\s+/);
+  if (parts.length === 0) return "—";
+  const first = parts[0];
+  const masked = first.length >= 3 ? first.slice(0, 3) : first;
+  if (parts.length >= 2) {
+    const second = parts[1];
+    if (parts.length >= 3) {
+      const third = parts[2];
+      return `${masked} ${second[0]}. ${third[0]}.`;
+    }
+    return `${masked} ${second[0]}.`;
+  }
+  return masked;
+}
+
+function isTestRecord(record) {
+  const rid = record.reservation_id || "";
+  if (rid === "unknown" || rid === "" || /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(rid)) {
+    return true;
+  }
+  const cfg = record.config_json;
+  if (cfg && typeof cfg.runUpTo === "number" && cfg.runUpTo < 5) {
+    return true;
+  }
+  return false;
+}
+
 const COLUMN_CONFIGS = {
   checkbox: { header: "", key: "checkbox" },
   id: { header: "ID", key: "id" },
@@ -36,8 +65,8 @@ const COLUMN_CONFIGS = {
   time: { header: "Время", key: "time" },
   status: { header: "Статус", key: "status" },
   slot: { header: "Дата слота", key: "slot" },
-  resid: { header: "Reservation ID", key: "resid" },
-  captcha: { header: "Капча", key: "captcha" },
+  fio: { header: "ФИО", key: "fio" },
+  test: { header: "Тестовая", key: "test" },
   price: { header: "Цена", key: "price" },
   paid: { header: "Оплата", key: "paid" },
   error: { header: "Ошибка", key: "error" },
@@ -50,7 +79,7 @@ const PRESETS = {
     actions: { showLogs: true, showConfig: true, showEdit: false, showDelete: false, showCheckbox: false },
   },
   admin: {
-    columns: ["checkbox", "id", "type", "time", "resid", "captcha", "status", "slot", "price", "paid", "error", "actions"],
+    columns: ["checkbox", "id", "type", "time", "status", "slot", "fio", "test", "price", "paid", "error", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: true, showDelete: true, showCheckbox: true },
   },
 };
@@ -131,10 +160,13 @@ export function HistoryRow({
         );
       case "slot":
         return <div className="history-cell history-cell--slot">{record.slot_date || "—"}</div>;
-      case "resid":
-        return <div className="history-cell history-cell--resid">{record.reservation_id || "—"}</div>;
-      case "captcha":
-        return <div className="history-cell history-cell--captcha">{record.captcha_id_short || record.captcha_id || "—"}</div>;
+      case "fio": {
+        const cfg = record.config_json;
+        const fio = cfg?.reservationData?.raw?.userData?.fio;
+        return <div className="history-cell history-cell--fio">{maskFio(fio)}</div>;
+      }
+      case "test":
+        return <div className="history-cell history-cell--test">{isTestRecord(record) ? "Да" : "Нет"}</div>;
       case "price":
         let priceColorClass = "history-cell--price--none";
         if (record.price != null && record.price > 0) {
@@ -187,7 +219,7 @@ export function HistoryRow({
         );
       case "paid":
         const isPaid = record.paid === true;
-        const paidIcon = isPaid ? "✅" : "⛔";
+        const paidDisplay = isPaid ? "✅" : "—";
         const paidTitle = isPaid ? "Оплачено" : "Не оплачено";
         return (
           <div
@@ -199,7 +231,7 @@ export function HistoryRow({
             title={`${paidTitle}${actions.showEdit ? " (двойной клик для смены)" : ""}`}
             style={actions.showEdit ? { cursor: "pointer" } : undefined}
           >
-            <span style={{ fontSize: "16px" }}>{paidIcon}</span>
+            <span style={{ fontSize: "16px" }}>{paidDisplay}</span>
           </div>
         );
       case "error":

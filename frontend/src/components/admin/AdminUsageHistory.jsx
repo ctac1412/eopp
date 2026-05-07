@@ -41,25 +41,38 @@ export function UsageHistory({
   };
 
   return (
-    <SharedHistoryTable
-      records={historyData}
-      preset="admin"
-      expandedLogs={expandedLogs}
-      expandedConfig={expandedConfig}
-      onToggleLogs={onToggleLogs}
-      onToggleConfig={onToggleConfig}
-      onEdit={onEdit}
-      onDelete={onDelete}
-      editingPriceId={editingPriceId}
-      setEditingPriceId={setEditingPriceId}
-      onPriceChange={onPriceChange}
-      onTogglePaid={onTogglePaid}
-      onGenerateInvoice={onGenerateInvoice}
-      selectedLogs={selectedLogs}
-      onToggleSelect={onToggleSelect}
-      onToggleSelectAll={onToggleSelectAll}
-      allSelected={allSelected}
-      columns={["checkbox", "id", "type", "time", "resid", "captcha", "status", "slot", "price", "paid", "error", "actions"]}
-    />
+    <>
+      <div className="admin-usage-toolbar">
+        <button
+          className={`btn btn--sm ${hideTest ? "btn--active" : "btn--ghost"}`}
+          onClick={onToggleHideTest}
+        >
+          {hideTest ? "Скрыть тестовые" : "Показать тестовые"}
+        </button>
+        <button className="btn btn--sm btn--ghost" onClick={onRefresh}>
+          Обновить
+        </button>
+      </div>
+      <SharedHistoryTable
+        records={historyData}
+        preset="admin"
+        expandedLogs={expandedLogs}
+        expandedConfig={expandedConfig}
+        onToggleLogs={onToggleLogs}
+        onToggleConfig={onToggleConfig}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        editingPriceId={editingPriceId}
+        setEditingPriceId={setEditingPriceId}
+        onPriceChange={onPriceChange}
+        onTogglePaid={onTogglePaid}
+        onGenerateInvoice={onGenerateInvoice}
+        selectedLogs={selectedLogs}
+        onToggleSelect={onToggleSelect}
+        onToggleSelectAll={onToggleSelectAll}
+        allSelected={allSelected}
+        columns={["checkbox", "id", "type", "time", "status", "slot", "fio", "test", "price", "paid", "error", "actions"]}
+      />
+    </>
   );
 }

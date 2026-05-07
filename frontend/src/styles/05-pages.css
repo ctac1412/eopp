@@ -468,6 +468,14 @@
   border-bottom: none;
 }
 
+.admin-usage-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(15, 17, 23, 0.5);
+  border-bottom: 1px solid rgba(39, 41, 61, 0.12);
+}
+
 /* ── Legacy Aliases ── */
 .admin-key-row {
 }
@@ -800,18 +808,15 @@
   text-align: center;
 }
 
-.history-cell--resid {
-  font-family: var(--font-mono);
+.history-cell--fio {
   font-size: var(--text-xs);
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
-.history-cell--captcha {
-  font-family: var(--font-mono);
+.history-cell--test {
+  text-align: center;
   font-size: var(--text-xs);
-  color: var(--text-faint);
 }
 
 .history-cell--price {

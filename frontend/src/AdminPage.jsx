@@ -375,8 +375,11 @@ function AdminPage() {
     setShowEdit(keyObj.id);
   };
 
-  const fetchUsageHistory = async (keyId, hideTest = false) => {
-    if (expandedHistory[keyId] && !hideTest) return;
+  const fetchUsageHistory = async (keyId, hideTest = true) => {
+    if (expandedHistory[keyId] !== undefined && expandedHistory[keyId] !== null) {
+      const currentHideTest = historyHideTest[keyId] ?? true;
+      if (hideTest === currentHideTest) return;
+    }
     setHistoryLoading((p) => ({ ...p, [keyId]: true }));
     try {
       const res = await fetch(
@@ -391,6 +394,7 @@ function AdminPage() {
         ...p,
         [keyId]: Array.isArray(data) ? data : data.logs || data.records || [],
       }));
+      setHistoryHideTest((p) => ({ ...p, [keyId]: hideTest }));
     } catch (err) {
       setExpandedHistory((p) => ({ ...p, [keyId]: null }));
     } finally {
@@ -406,7 +410,7 @@ function AdminPage() {
         return n;
       });
     } else {
-      fetchUsageHistory(keyId, false);
+      fetchUsageHistory(keyId, true);
     }
   };
 

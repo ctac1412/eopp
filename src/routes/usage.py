@@ -114,7 +114,7 @@ def register_usage_routes(app):
     async def get_usage_log(
         api_key_id: int | None = Query(None),
         api_key: str | None = Query(None),
-        hide_test: bool = Query(False),
+        hide_test: bool = Query(True),
     ):
         if api_key and api_key_id is None:
             key_record = get_key_record(api_key)
@@ -122,12 +122,16 @@ def register_usage_routes(app):
                 api_key_id = key_record["id"]
         records = list_usages(api_key_id)
         if hide_test:
-            records = [
-                r
-                for r in records
-                if r.get("reservation_id")
-                and not r["reservation_id"].startswith("00000000-0000-0000-0000-000000000000")
-            ]
+            filtered = []
+            for r in records:
+                rid = r.get("reservation_id") or ""
+                if rid == "unknown" or rid == "" or rid.startswith("00000000-0000-0000-0000-000000000000"):
+                    continue
+                cfg = r.get("config_json")
+                if cfg and isinstance(cfg.get("runUpTo"), int) and cfg["runUpTo"] < 5:
+                    continue
+                filtered.append(r)
+            records = filtered
         return JSONResponse(content=records)
 
     @app.post("/fail-usage")
