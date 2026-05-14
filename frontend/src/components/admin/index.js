@@ -7,3 +7,4 @@ export { KeyFormModal, DeleteConfirmModal } from "./KeyFormModal";
 export { WithdrawalModal } from "./WithdrawalModal";
 export { InvoiceModal } from "./InvoiceModal";
 export { UsageLogEditModal } from "./UsageLogEditModal";
+export { ReportsTab } from "./ReportsTab";

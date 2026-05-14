@@ -24,6 +24,7 @@ import {
   DeleteConfirmModal,
   InvoiceModal,
   UsageLogEditModal,
+  ReportsTab,
 } from "./components/admin";
 
 function adminHeaders(token) {
@@ -653,6 +654,7 @@ function AdminPage() {
 
   const tabs = [
     { id: "keys", label: "API Keys" },
+    { id: "reports", label: "Журнал" },
     { id: "streams", label: "Стримы" },
     { id: "testbench", label: "Тесты и бенчмарк" },
     { id: "withdrawals", label: "Способы вывода" },
@@ -748,6 +750,10 @@ function AdminPage() {
           onPriceChange={handleInlinePriceChange}
           onTogglePaid={handleInlineTogglePaid}
         />
+      )}
+
+      {activeTab === "reports" && (
+        <ReportsTab adminToken={adminToken} />
       )}
 
       {activeTab === "streams" && (
