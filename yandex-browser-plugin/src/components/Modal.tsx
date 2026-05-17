@@ -8,6 +8,7 @@ import AuthGate from "./AuthGate";
 import AuthHeader from "./AuthHeader";
 import { useClock } from "@/hooks/useClock";
 import { useInjectorStore } from "@/store";
+import { getServerUrl } from "@/api/background";
 
 interface Props {
   onClose: () => void;
@@ -42,6 +43,13 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
       >
         <div className="qn-modal-header">
           <span className="qn-modal-title">Помощник</span>
+          <button
+            className="qn-modal-server-btn"
+            onClick={() => window.open(getServerUrl(), "_blank")}
+            title="Открыть сервер"
+          >
+            Сервер
+          </button>
           <div className="qn-header-center">
             {isReady && <AuthHeader onLogout={handleLogout} />}
             <StatusBar />

@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useMemo } from "react";
 
-export function InvoiceModal({ show, withdrawals, selectedLogs, form, setForm, onGenerate, onClose }) {
+export function InvoiceModal({ show, selectedLogs, form, setForm, onGenerate, onClose }) {
   const [debtAmount, setDebtAmount] = useState(0);
+  const [percentRate, setPercentRate] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [percentAmount, setPercentAmount] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
-
-  const selectedWithdrawal = useMemo(() => {
-    return withdrawals.find((w) => String(w.id) === String(form.withdrawalId)) || null;
-  }, [withdrawals, form.withdrawalId]);
 
   useEffect(() => {
     if (!selectedLogs || selectedLogs.length === 0) {
@@ -20,30 +18,29 @@ export function InvoiceModal({ show, withdrawals, selectedLogs, form, setForm, o
   }, [selectedLogs]);
 
   useEffect(() => {
-    if (!selectedWithdrawal) {
+    const combinedRate = percentRate + taxRate;
+    if (combinedRate >= 100) {
+      setTotalAmount(0);
       setPercentAmount(0);
       setTaxAmount(0);
-      setTotalAmount(debtAmount);
       return;
     }
 
-    const pct = selectedWithdrawal.percent || 0;
-    const taxPct = selectedWithdrawal.tax_percent || 0;
-    const percentType = selectedWithdrawal.percent_type || "included";
+    const divisor = 1 - combinedRate / 100;
+    const total = divisor > 0 ? Math.round(debtAmount / divisor) : 0;
 
-    const newPercentAmount = percentType === "included" ? Math.round(debtAmount * pct / 100) : 0;
-    const newTaxAmount = Math.round((debtAmount + newPercentAmount) * taxPct / 100);
-    const newTotal = debtAmount + newPercentAmount + newTaxAmount;
+    const pAmount = Math.round(total * percentRate / 100);
+    const tAmount = Math.round(total * taxRate / 100);
 
-    setPercentAmount(newPercentAmount);
-    setTaxAmount(newTaxAmount);
-    setTotalAmount(newTotal);
-  }, [debtAmount, selectedWithdrawal]);
+    setPercentAmount(pAmount);
+    setTaxAmount(tAmount);
+    setTotalAmount(total);
+  }, [debtAmount, percentRate, taxRate]);
 
   const handleGenerate = () => {
     onGenerate({
-      withdrawalId: form.withdrawalId,
-      debtAmount,
+      percentRate,
+      taxRate,
       percentAmount,
       taxAmount,
       totalAmount,
@@ -57,30 +54,6 @@ export function InvoiceModal({ show, withdrawals, selectedLogs, form, setForm, o
     <div className="modal__overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal modal--lg" onClick={(e) => e.stopPropagation()}>
         <h3>Генерация счёта</h3>
-
-        <div className="form-group">
-          <label className="form-label">Способ вывода</label>
-          <select
-            value={form.withdrawalId}
-            onChange={(e) => setForm((p) => ({ ...p, withdrawalId: e.target.value }))}
-            className="input select"
-            required
-          >
-            <option value="">Выберите получателя</option>
-            {withdrawals.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} ({w.percent}%, налог {w.tax_percent || 0}%)
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {selectedWithdrawal && (
-          <div className="invoice-requisites">
-            <div className="invoice-requisites-title">Реквизиты:</div>
-            <div className="invoice-requisites-value">{selectedWithdrawal.requisites}</div>
-          </div>
-        )}
 
         <div className="invoice-logs-list">
           <div className="invoice-logs-title">Выбранные записи ({selectedLogs.length}):</div>
@@ -112,39 +85,50 @@ export function InvoiceModal({ show, withdrawals, selectedLogs, form, setForm, o
         <div className="invoice-totals">
           <div className="invoice-total-row">
             <span className="invoice-total-label">Сумма долга:</span>
-            <input
-              type="number"
-              className="input invoice-total-input"
-              value={debtAmount}
-              onChange={(e) => setDebtAmount(parseInt(e.target.value, 10) || 0)}
-            />
-            <span className="invoice-total-currency">₽</span>
+            <span className="invoice-total-value">{debtAmount} ₽</span>
           </div>
-          <div className="invoice-total-row">
-            <span className="invoice-total-label">
-              Сумма процента ({selectedWithdrawal?.percent || 0}%
-              {selectedWithdrawal?.percent_type === "excluded" ? " — не включён" : ""}):
-            </span>
-            <input
-              type="number"
-              className="input invoice-total-input"
-              value={percentAmount}
-              onChange={(e) => setPercentAmount(parseInt(e.target.value, 10) || 0)}
-            />
-            <span className="invoice-total-currency">₽</span>
+
+          <div className="invoice-rates-table">
+            <div className="invoice-rates-header">
+              <div className="invoice-rates-col invoice-rates-col--label">Ставка</div>
+              <div className="invoice-rates-col invoice-rates-col--input">Сумма</div>
+            </div>
+            <div className="invoice-rates-row">
+              <div className="invoice-rates-col invoice-rates-col--label">
+                Комиссия:
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input invoice-rate-input"
+                  value={percentRate}
+                  onChange={(e) => setPercentRate(parseFloat(e.target.value) || 0)}
+                />
+                <span className="invoice-rate-percent">%</span>
+              </div>
+              <div className="invoice-rates-col invoice-rates-col--value">
+                <span className="invoice-rate-sum">{percentAmount} ₽</span>
+                <span className="invoice-rate-note">от ИТОГО</span>
+              </div>
+            </div>
+            <div className="invoice-rates-row">
+              <div className="invoice-rates-col invoice-rates-col--label">
+                Налог:
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input invoice-rate-input"
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                />
+                <span className="invoice-rate-percent">%</span>
+              </div>
+              <div className="invoice-rates-col invoice-rates-col--value">
+                <span className="invoice-rate-sum">{taxAmount} ₽</span>
+                <span className="invoice-rate-note">от ИТОГО</span>
+              </div>
+            </div>
           </div>
-          <div className="invoice-total-row">
-            <span className="invoice-total-label">
-              Сумма налога ({selectedWithdrawal?.tax_percent || 0}%):
-            </span>
-            <input
-              type="number"
-              className="input invoice-total-input"
-              value={taxAmount}
-              onChange={(e) => setTaxAmount(parseInt(e.target.value, 10) || 0)}
-            />
-            <span className="invoice-total-currency">₽</span>
-          </div>
+
           <div className="invoice-total-row invoice-total-row--total">
             <span className="invoice-total-label">ИТОГО:</span>
             <span className="invoice-total-value">{totalAmount} ₽</span>
@@ -159,7 +143,7 @@ export function InvoiceModal({ show, withdrawals, selectedLogs, form, setForm, o
             type="button"
             className="btn btn--primary"
             onClick={handleGenerate}
-            disabled={!form.withdrawalId || selectedLogs.length === 0}
+            disabled={selectedLogs.length === 0 || totalAmount <= 0}
           >
             Сформировать счёт
           </button>

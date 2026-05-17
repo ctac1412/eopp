@@ -126,7 +126,9 @@ class WithdrawalBody(BaseModel):
 class GenerateInvoiceBody(BaseModel):
     api_key_id: int
     usage_log_ids: list[int]
-    withdrawal_id: int
+    withdrawal_id: int | None = None
+    percent_rate: float = 0
+    tax_rate: float = 0
     debt_amount: int = 0
     percent_amount: int = 0
     tax_amount: int = 0

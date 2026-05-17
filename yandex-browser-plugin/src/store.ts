@@ -20,7 +20,7 @@
  * Используется: всеми компонентами расширения
  */
 import { create } from "zustand";
-import type { InjectorConfig, PipelineStage, ApiKeyStatusResponse } from "@/types";
+import type { InjectorConfig, PipelineStage, ApiKeyStatusResponse, TimeOrderPreset } from "@/types";
 
 export type InjectorStatus =
   | "idle"
@@ -59,6 +59,8 @@ interface InjectorState {
   authLoading: boolean;
   authError: string;
   authChecking: boolean;
+  timeOrderPresets: TimeOrderPreset[];
+  activePresetId: string | null;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(
@@ -89,6 +91,10 @@ interface InjectorState {
   clearAuthKey: () => void;
   setAuthLoading: (loading: boolean) => void;
   setAuthError: (error: string) => void;
+  saveTimeOrderPreset: (name: string) => string;
+  loadTimeOrderPreset: (id: string) => void;
+  deleteTimeOrderPreset: (id: string) => void;
+  clearActivePreset: () => void;
 }
 
 const defaultCollapsed: Record<CollapsibleSection, boolean> = {
@@ -135,6 +141,15 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   authLoading: false,
   authError: "",
   authChecking: false,
+  timeOrderPresets: (() => {
+    try {
+      const saved = localStorage.getItem("_top");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  })(),
+  activePresetId: null,
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) =>
@@ -233,4 +248,47 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   setAuthLoading: (loading) => set({ authLoading: loading, authError: "" }),
   setAuthError: (error) => set({ authError: error, authLoading: false }),
   setAuthChecking: (checking) => set({ authChecking: checking }),
+  saveTimeOrderPreset: (name: string) => {
+    const { config } = get();
+    const id = `preset_${Date.now()}`;
+    const preset: TimeOrderPreset = {
+      id,
+      name,
+      timeOrder: config.timeOrder || [[]],
+      preferredMode: config.preferredMode || "soft",
+    };
+    set((state) => {
+      const next = [...state.timeOrderPresets, preset];
+      localStorage.setItem("_top", JSON.stringify(next));
+      return { timeOrderPresets: next, activePresetId: id };
+    });
+    return id;
+  },
+  loadTimeOrderPreset: (id: string) => {
+    const { timeOrderPresets } = get();
+    const preset = timeOrderPresets.find((p) => p.id === id);
+    if (preset) {
+      set((state) => {
+        const nextConfig = {
+          ...state.config,
+          timeOrder: preset.timeOrder,
+          preferredMode: preset.preferredMode,
+        };
+        return { config: nextConfig, activePresetId: id };
+      });
+    }
+  },
+  deleteTimeOrderPreset: (id: string) => {
+    set((state) => {
+      const next = state.timeOrderPresets.filter((p) => p.id !== id);
+      localStorage.setItem("_top", JSON.stringify(next));
+      return {
+        timeOrderPresets: next,
+        activePresetId: state.activePresetId === id ? null : state.activePresetId,
+      };
+    });
+  },
+  clearActivePreset: () => {
+    set({ activePresetId: null });
+  },
 }));

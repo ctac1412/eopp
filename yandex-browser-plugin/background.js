@@ -74,6 +74,22 @@ chrome.runtime.onConnect.addListener((port) => {
             config_json: msg.payload.configJson,
           }),
         });
+      } else if (msg.action === "checkStream") {
+        res = await fetch(
+          `${serverUrl}/check-stream?api_key=${encodeURIComponent(msg.payload.apiKey)}`,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json, text/plain, */*",
+            },
+          },
+        );
+      } else if (msg.action === "openServer") {
+        chrome.tabs.create({ url: serverUrl });
+        port.postMessage({ ok: true, data: null });
+        responded = true;
+        port.disconnect();
+        return;
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;

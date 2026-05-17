@@ -417,6 +417,26 @@
   font-weight: 600;
 }
 
+.qn-modal-server-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #ffcc00;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 8px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.qn-modal-server-btn:hover {
+  background: #333;
+  border-color: #ffcc00;
+}
+
 .qn-modal-close {
   background: none;
   border: none;
@@ -1179,6 +1199,59 @@
   border-radius: 6px;
 }
 
+.qn-time-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.qn-time-preset-select {
+  background: #333;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.qn-time-preset-select:focus {
+  outline: none;
+  border-color: #6ea5d1;
+}
+
+.qn-time-btn-small {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+}
+
+.qn-time-preset-save-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qn-time-preset-name-input {
+  background: #333;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  width: 160px;
+}
+
+.qn-time-preset-name-input:focus {
+  outline: none;
+  border-color: #6ea5d1;
+}
+
 .qn-time-mode-label {
   font-size: 12px;
   color: #888;
@@ -1202,4 +1275,204 @@
   height: 14px;
   accent-color: #ffcc00;
   cursor: pointer;
+}
+
+.qn-time-order-toggle {
+  margin-left: auto;
+}
+
+.qn-time-order-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #ffcc00;
+  cursor: pointer;
+}
+
+.qn-time-order-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.qn-time-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  min-height: 36px;
+  cursor: grab;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.qn-time-order-row:active {
+  cursor: grabbing;
+}
+
+.qn-time-order-row-over {
+  border-color: #ffcc00;
+  background: #333;
+}
+
+.qn-time-order-grip {
+  color: #666;
+  font-size: 16px;
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.qn-time-order-grip:active {
+  cursor: grabbing;
+}
+
+.qn-time-order-priority {
+  font-size: 11px;
+  color: #666;
+  font-weight: 600;
+  min-width: 24px;
+  flex-shrink: 0;
+}
+
+.qn-time-order-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-height: 24px;
+  align-items: center;
+}
+
+.qn-time-order-empty {
+  font-size: 11px;
+  color: #555;
+  font-style: italic;
+}
+
+.qn-time-order-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: #3a3a3a;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #ffcc00;
+  cursor: grab;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.qn-time-order-tag:active {
+  cursor: grabbing;
+}
+
+.qn-time-order-tag:hover {
+  background: #444;
+  border-color: #ffcc00;
+}
+
+.qn-time-order-tag-remove {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.qn-time-order-tag-remove:hover {
+  color: #ff4444;
+}
+
+.qn-time-order-row-remove {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.qn-time-order-row-remove:hover {
+  color: #ff4444;
+  background: #333;
+}
+
+.qn-time-order-pool {
+  padding: 10px 12px;
+  background: #222;
+  border: 1px dashed #444;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.qn-time-order-pool-over {
+  border-color: #ffcc00;
+  background: #2a2a2a;
+}
+
+.qn-time-pool-label {
+  font-size: 11px;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.qn-time-pool-hours {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.qn-time-pool-hour {
+  display: inline-block;
+  padding: 3px 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.qn-time-pool-hour:hover {
+  background: #333;
+  border-color: #ffcc00;
+  color: #ffcc00;
+}
+
+.qn-time-pool-empty {
+  font-size: 11px;
+  color: #555;
+  font-style: italic;
+}
+
+.qn-time-order-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.qn-time-order-hint {
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
 }

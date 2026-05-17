@@ -499,10 +499,6 @@ function AdminPage() {
 
   const handleGenerateInvoice = async (invoiceData) => {
     try {
-      if (!invoiceData.withdrawalId) {
-        setError("Выберите получателя");
-        return;
-      }
       if (!invoiceData.logs || invoiceData.logs.length === 0) {
         setError("Нет записей для счёта");
         return;
@@ -511,8 +507,10 @@ function AdminPage() {
       const body = {
         api_key_id: invoiceForm.apiKeyId,
         usage_log_ids: invoiceData.logs.map((l) => l.id),
-        withdrawal_id: parseInt(invoiceData.withdrawalId, 10),
-        debt_amount: invoiceData.debtAmount,
+        withdrawal_id: null,
+        percent_rate: invoiceData.percentRate,
+        tax_rate: invoiceData.taxRate,
+        debt_amount: invoiceData.logs.reduce((acc, l) => acc + (l.price || 0), 0),
         percent_amount: invoiceData.percentAmount,
         tax_amount: invoiceData.taxAmount,
         total_amount: invoiceData.totalAmount,
@@ -808,10 +806,7 @@ function AdminPage() {
 
       <InvoiceModal
         show={showInvoiceModal}
-        withdrawals={withdrawals}
         selectedLogs={invoiceSelectedLogs}
-        form={invoiceForm}
-        setForm={setInvoiceForm}
         onGenerate={handleGenerateInvoice}
         onClose={() => setShowInvoiceModal(false)}
       />

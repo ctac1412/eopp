@@ -37,6 +37,7 @@ import {
   confirmUsage,
   failUsage,
   registerUsage,
+  openServerUrl,
 } from "./background";
 import { log, setUsageIdPrefix } from "@/logger";
 import { useInjectorStore } from "@/store";
@@ -58,32 +59,35 @@ export function selectBestSlot(slots: Slot[]): Slot {
   log("Выбор лучшего слота");
 
   const config = useInjectorStore.getState().config;
-  const hasPartialPrefs =
-    config.preferredTimes.length > 0 && config.preferredTimes.length < 24;
+  const timeOrder = config.timeOrder || [[]];
+  const allPreferred = timeOrder.flat();
+  const hasPartialPrefs = allPreferred.length > 0 && allPreferred.length < 24;
 
-  let candidates = hasPartialPrefs
-    ? slots.filter((s) => config.preferredTimes.includes(s.time))
-    : slots;
+  if (hasPartialPrefs) {
+    for (const group of timeOrder) {
+      if (group.length === 0) continue;
+      const available = slots.filter(
+        (s) => group.includes(s.time) && !usedSlotIds.has(s.id),
+      );
+      if (available.length > 0) {
+        const selected = pickByMaxCount(available);
+        usedSlotIds.add(selected.id);
+        log(`Выбран слот (приоритет): ${selected.slotCaption} (count: ${selected.count})`);
+        return selected;
+      }
+    }
 
-  let available = candidates.filter((s) => !usedSlotIds.has(s.id));
-
-  if (available.length === 0 && hasPartialPrefs) {
     if (config.preferredMode === "strict") {
       throw new Error(
-        `Предпочтительные слоты недоступны: ${config.preferredTimes.join(", ")}`,
+        `Предпочтительные слоты недоступны: ${allPreferred.join(", ")}`,
       );
     }
     log("Предпочтительные слоты недоступны, пробуем остальные");
-    available = slots.filter((s) => !usedSlotIds.has(s.id));
-    if (available.length === 0) {
-      throw new Error("Нет доступных слотов");
-    }
-  } else if (available.length === 0) {
-    throw new Error("Нет доступных слотов");
   }
 
-  if (hasPartialPrefs) {
-    log(`Найдено ${available.length} предпочтительных слотов`);
+  const available = slots.filter((s) => !usedSlotIds.has(s.id));
+  if (available.length === 0) {
+    throw new Error("Нет доступных слотов");
   }
 
   const selected = pickByMaxCount(available);
@@ -319,6 +323,10 @@ export async function main(config: InjectorConfig): Promise<void> {
       }
     }
     log("=== ОШИБКА ===", err);
+    const error = err as Error;
+    if (error.message && error.message.includes("Откройте страницу с капчами")) {
+      openServerUrl();
+    }
     throw err;
   }
 }

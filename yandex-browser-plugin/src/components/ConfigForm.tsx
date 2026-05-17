@@ -7,7 +7,7 @@ import {
   getDefaultSlotDate,
   createDefaultConfig,
 } from "@/constants";
-import TimePreferencesPanel from "./TimePreferencesPanel";
+import TimeOrderPanel from "./TimeOrderPanel";
 
 const MOCK_ENDPOINTS: {
   path: string;
@@ -498,7 +498,7 @@ const ConfigForm = React.memo(function ConfigForm() {
             />
           </label>
         </div>
-        <TimePreferencesPanel />
+        <TimeOrderPanel />
       </div>
 
       <div className="qn-form-section">

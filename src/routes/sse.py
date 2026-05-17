@@ -16,16 +16,29 @@ EOPP Captcha Solver - SSE Routes
 import asyncio
 
 from fastapi import Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.db import get_key_record
 from src.utils import (
     register_sse_connection,
     unregister_sse_connection,
+    sse_queues,
+    lock,
 )
 
 
 def register_sse_routes(app):
+    @app.get("/check-stream")
+    async def check_stream(api_key: str = Query(...)):
+        key_record = get_key_record(api_key)
+        if not key_record:
+            return JSONResponse(status_code=401, content={"valid": False, "error": "Invalid API key"})
+        api_key_id = key_record["id"]
+        with lock:
+            queues = sse_queues.get(api_key_id, [])
+            has_active = len(queues) > 0
+        return JSONResponse(content={"valid": True, "has_active_stream": has_active})
+
     @app.get("/stream")
     async def sse_stream(request: Request, api_key: str = Query(...)):
         key_record = get_key_record(api_key)

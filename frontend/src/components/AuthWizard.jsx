@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
 
-function AuthWizard({ onAuthenticated }) {
+function AuthWizard() {
   const setApiKey = useCaptchaStore((s) => s.setApiKey);
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
@@ -23,7 +23,6 @@ function AuthWizard({ onAuthenticated }) {
       const data = await resp.json();
       if (data.valid) {
         setApiKey(trimmed);
-        onAuthenticated();
       } else {
         setError(data.reason || "Неверный API ключ");
       }

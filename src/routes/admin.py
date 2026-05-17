@@ -168,9 +168,9 @@ def register_admin_routes(app):
         if not api_key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
 
-        withdrawal = db_get_withdrawal(body.withdrawal_id)
-        if not withdrawal:
-            return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
+        withdrawal = None
+        if body.withdrawal_id:
+            withdrawal = db_get_withdrawal(body.withdrawal_id)
 
         usage_logs = []
         for log_id in body.usage_log_ids:
@@ -201,9 +201,10 @@ def register_admin_routes(app):
             ["Номер счёта:", invoice_number],
             ["Дата:", now.strftime("%d.%m.%Y %H:%M")],
             ["Плательщик:", api_key["label"] or f"Ключ #{api_key['id']}"],
-            ["Получатель:", withdrawal["name"]],
-            ["Реквизиты:", withdrawal["requisites"]],
         ]
+        if withdrawal:
+            info_data.append(["Получатель:", withdrawal["name"]])
+            info_data.append(["Реквизиты:", withdrawal["requisites"]])
         info_table = Table(info_data, colWidths=[60 * mm, 100 * mm])
         info_table.setStyle(
             TableStyle(
@@ -235,9 +236,9 @@ def register_admin_routes(app):
 
         table_data.append(["", "", "", "Сумма долга:", f"{debt_amount} ₽"])
         if percent_amount > 0:
-            table_data.append(["", "", "", f"Комиссия ({withdrawal['percent']}%):", f"{percent_amount} ₽"])
+            table_data.append(["", "", "", f"Комиссия ({body.percent_rate}%):", f"{percent_amount} ₽"])
         if tax_amount > 0:
-            table_data.append(["", "", "", f"Налог ({withdrawal.get('tax_percent', 0)}%):", f"{tax_amount} ₽"])
+            table_data.append(["", "", "", f"Налог ({body.tax_rate}%):", f"{tax_amount} ₽"])
         table_data.append(["", "", "", "ИТОГО:", f"{total_amount} ₽"])
 
         table = Table(table_data, colWidths=[10 * mm, 25 * mm, 50 * mm, 40 * mm, 30 * mm])

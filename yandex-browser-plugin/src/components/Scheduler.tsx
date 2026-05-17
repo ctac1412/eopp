@@ -3,6 +3,7 @@ import { useInjectorStore } from "@/store";
 import { parseTime, mskToUtcSeconds } from "@/hooks/useClock";
 import { useInjector } from "@/hooks/useInjector";
 import { useScheduler } from "@/hooks/useScheduler";
+import { checkStream, openServerUrl } from "@/api/background";
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
@@ -17,7 +18,7 @@ const Scheduler = React.memo(function Scheduler() {
   const [statusMessage, setStatusMessage] = useState("");
   const [statusClass, setStatusClass] = useState("");
 
-  const handleSchedule = useCallback(() => {
+  const handleSchedule = useCallback(async () => {
     if (!authKey) {
       setStatusMessage("Введите API ключ");
       setStatusClass("qn-modal-status-error");
@@ -29,11 +30,24 @@ const Scheduler = React.memo(function Scheduler() {
       setStatusClass("qn-modal-status-error");
       return;
     }
+    try {
+      const streamCheck = await checkStream(authKey);
+      if (!streamCheck.has_active_stream) {
+        setStatusMessage("Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение");
+        setStatusClass("qn-modal-status-error");
+        openServerUrl();
+        return;
+      }
+    } catch {
+      setStatusMessage("Не удалось проверить подключение к серверу");
+      setStatusClass("qn-modal-status-error");
+      return;
+    }
     const targetUtcSeconds = mskToUtcSeconds(mskSeconds);
     startSchedule(targetUtcSeconds, config);
     setStatusMessage("");
     setStatusClass("");
-  }, [timeInput, config, startSchedule]);
+  }, [timeInput, config, startSchedule, authKey]);
 
   const handleCancel = useCallback(() => {
     cancelSchedule();

@@ -92,6 +92,15 @@ export async function getApiKeyStatus(
   return response as ApiKeyStatusResponse;
 }
 
+export async function checkStream(apiKey: string): Promise<{ valid: boolean; has_active_stream: boolean }> {
+  const response = await sendMessageToBackground("checkStream", { apiKey });
+  return response as { valid: boolean; has_active_stream: boolean };
+}
+
+export async function openServerUrl(): Promise<void> {
+  await sendMessageToBackground("openServer", {});
+}
+
 function sanitizeConfig(config: InjectorConfig): Record<string, unknown> {
   const c = { ...config };
   delete (c as any).apiKey;

@@ -105,7 +105,7 @@ export function createDefaultConfig(
     transportType,
     slotDate: getDefaultSlotDate(mode),
     mode,
-    preferredTimes: Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`),
+    timeOrder: [[]],
     preferredMode: "soft",
     autoSolve: false,
     retryOnAllSlotsOccupied: true,

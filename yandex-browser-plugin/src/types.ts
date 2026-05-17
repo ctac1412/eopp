@@ -38,7 +38,7 @@ export interface InjectorConfig {
   transportType: 1 | 2;
   slotDate: string;
   mode: "reschedule" | "create";
-  preferredTimes: string[];
+  timeOrder: string[][];
   preferredMode: "strict" | "soft";
   autoSolve: boolean;
   apiKey: string;
@@ -116,4 +116,11 @@ export interface SlotDict {
   count: number;
   slotCaption: string;
   intervalIndex: number;
+}
+
+export interface TimeOrderPreset {
+  id: string;
+  name: string;
+  timeOrder: string[][];
+  preferredMode: "strict" | "soft";
 }

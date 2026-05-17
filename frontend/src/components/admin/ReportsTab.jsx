@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { UsageLogEditModal } from "./UsageLogEditModal";
+import { InvoiceModal } from "./InvoiceModal";
 
 function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
@@ -106,8 +107,9 @@ function groupByCompany(records) {
   records.forEach((r) => {
     const company = getCompany(r.config_json);
     if (!groups[company]) {
-      groups[company] = { reschedule: 0, create: 0 };
+      groups[company] = { reschedule: 0, create: 0, records: [] };
     }
+    groups[company].records.push(r);
     const mode = r.config_json?.mode;
     if (mode === "reschedule") {
       groups[company].reschedule++;
@@ -117,7 +119,9 @@ function groupByCompany(records) {
   });
   return Object.entries(groups).map(([name, counts]) => ({
     name,
-    ...counts,
+    reschedule: counts.reschedule,
+    create: counts.create,
+    records: counts.records,
   }));
 }
 
@@ -130,6 +134,8 @@ export function ReportsTab({ adminToken }) {
   const [expandedConfig, setExpandedConfig] = useState({});
   const [showEditModal, setShowEditModal] = useState(null);
   const [editForm, setEditForm] = useState({ price: "", paid: "" });
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceSelectedLogs, setInvoiceSelectedLogs] = useState([]);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -198,6 +204,61 @@ export function ReportsTab({ adminToken }) {
     }
   };
 
+  const handleOpenInvoiceForCompany = (companyName, companyRecords) => {
+    const unpaidLogs = companyRecords.filter((r) => {
+      if (isTestRecord(r)) return false;
+      const hasPrice = r.price != null && r.price > 0;
+      const isPaid = r.paid === true;
+      return hasPrice && !isPaid;
+    });
+    if (unpaidLogs.length === 0) {
+      setError(`Нет неоплаченных записей для "${companyName}"`);
+      return;
+    }
+    setInvoiceSelectedLogs(unpaidLogs);
+    setShowInvoiceModal(true);
+  };
+
+  const handleGenerateInvoice = async (invoiceData) => {
+    try {
+      if (!invoiceData.logs || invoiceData.logs.length === 0) {
+        setError("Нет записей для счёта");
+        return;
+      }
+
+      const apiKeyId = invoiceData.logs[0]?.api_key_id;
+      if (!apiKeyId) {
+        setError("Не удалось определить API ключ");
+        return;
+      }
+
+      const body = {
+        api_key_id: apiKeyId,
+        usage_log_ids: invoiceData.logs.map((l) => l.id),
+        withdrawal_id: null,
+        percent_rate: invoiceData.percentRate,
+        tax_rate: invoiceData.taxRate,
+        debt_amount: invoiceData.logs.reduce((acc, l) => acc + (l.price || 0), 0),
+        percent_amount: invoiceData.percentAmount,
+        tax_amount: invoiceData.taxAmount,
+        total_amount: invoiceData.totalAmount,
+      };
+      const res = await fetch("/admin/generate-invoice", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
+      setShowInvoiceModal(false);
+      setInvoiceSelectedLogs([]);
+      fetchRecords();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (loading) return <div className="reports-loading">Загрузка…</div>;
   if (error) return <div className="reports-error">Ошибка: {error}</div>;
 
@@ -238,6 +299,7 @@ export function ReportsTab({ adminToken }) {
             <div className="summary-col summary-col--company">Компания</div>
             <div className="summary-col summary-col--reschedule">Переносы</div>
             <div className="summary-col summary-col--create">Брони</div>
+            <div className="summary-col summary-col--actions"></div>
           </div>
           <div className="summary-body">
             {summary.map((row) => (
@@ -245,6 +307,15 @@ export function ReportsTab({ adminToken }) {
                 <div className="summary-col summary-col--company">{row.name}</div>
                 <div className="summary-col summary-col--reschedule">{row.reschedule}</div>
                 <div className="summary-col summary-col--create">{row.create}</div>
+                <div className="summary-col summary-col--actions">
+                  <button
+                    className="btn btn--sm btn--primary"
+                    onClick={() => handleOpenInvoiceForCompany(row.name, row.records)}
+                    title="Сделать расчёт"
+                  >
+                    Сделать расчёт
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -328,6 +399,13 @@ export function ReportsTab({ adminToken }) {
         setForm={setEditForm}
         onSubmit={handleSaveEdit}
         onClose={() => setShowEditModal(null)}
+      />
+
+      <InvoiceModal
+        show={showInvoiceModal}
+        selectedLogs={invoiceSelectedLogs}
+        onGenerate={handleGenerateInvoice}
+        onClose={() => setShowInvoiceModal(false)}
       />
     </div>
   );

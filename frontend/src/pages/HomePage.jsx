@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSSE from "../hooks/useSSE";
 import useCaptchaStore from "../store/useCaptchaStore";
@@ -10,33 +10,24 @@ import { HistoryTab } from "./HistoryTab";
 export function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const apiKey = useCaptchaStore((s) => s.apiKey);
-  const [showWizard, setShowWizard] = useState(!apiKey);
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "captchas"
   );
 
-  const handleAuthenticated = useCallback(() => {
-    setShowWizard(false);
-  }, []);
+  const showWizard = !apiKey;
 
-  useEffect(() => {
-    if (!apiKey) {
-      setShowWizard(true);
-    }
-  }, [apiKey]);
+  useSSE(!showWizard && activeTab === "captchas");
 
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab && tab !== activeTab) {
       setActiveTab(tab);
     }
-  }, [searchParams]);
+  }, [searchParams, activeTab]);
 
   if (showWizard) {
-    return <AuthWizard onAuthenticated={handleAuthenticated} />;
+    return <AuthWizard />;
   }
-
-  useSSE(activeTab === "captchas");
 
   return (
     <div className="container">
