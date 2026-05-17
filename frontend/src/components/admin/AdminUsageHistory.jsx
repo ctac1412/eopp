@@ -42,14 +42,14 @@ export function UsageHistory({
 
   return (
     <>
-      <div className="admin-usage-toolbar">
+      <div className="d-flex gap-2 mb-3">
         <button
-          className={`btn btn--sm ${hideTest ? "btn--active" : "btn--ghost"}`}
+          className={`btn btn-sm ${hideTest ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={onToggleHideTest}
         >
           {hideTest ? "Скрыть тестовые" : "Показать тестовые"}
         </button>
-        <button className="btn btn--sm btn--ghost" onClick={onRefresh}>
+        <button className="btn btn-sm btn-outline-secondary" onClick={onRefresh}>
           Обновить
         </button>
       </div>

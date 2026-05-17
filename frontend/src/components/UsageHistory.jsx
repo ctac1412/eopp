@@ -9,17 +9,9 @@ function UsageHistory({ apiKey }) {
   const [expandedConfig, setExpandedConfig] = useState({});
   const [expandedErrors, setExpandedErrors] = useState({});
 
-  const toggleLogs = (id) => {
-    setExpandedLogs((p) => ({ ...p, [id]: !p[id] }));
-  };
-
-  const toggleConfig = (id) => {
-    setExpandedConfig((p) => ({ ...p, [id]: !p[id] }));
-  };
-
-  const toggleError = (id) => {
-    setExpandedErrors((p) => ({ ...p, [id]: !p[id] }));
-  };
+  const toggleLogs = (id) => setExpandedLogs((p) => ({ ...p, [id]: !p[id] }));
+  const toggleConfig = (id) => setExpandedConfig((p) => ({ ...p, [id]: !p[id] }));
+  const toggleError = (id) => setExpandedErrors((p) => ({ ...p, [id]: !p[id] }));
 
   const fetchLogs = useCallback(async () => {
     if (!apiKey) {
@@ -28,15 +20,9 @@ function UsageHistory({ apiKey }) {
       return;
     }
     try {
-      const resp = await fetch(
-        `/usage-log?api_key=${encodeURIComponent(apiKey)}`,
-      );
+      const resp = await fetch(`/usage-log?api_key=${encodeURIComponent(apiKey)}`);
       if (!resp.ok) {
-        if (resp.status === 403) {
-          setError("Неверный API-ключ");
-        } else {
-          setError("Не удалось загрузить историю");
-        }
+        setError(resp.status === 403 ? "Неверный API-ключ" : "Не удалось загрузить историю");
         return;
       }
       const data = await resp.json();
@@ -49,29 +35,30 @@ function UsageHistory({ apiKey }) {
     }
   }, [apiKey]);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   if (loading) {
-    return <div className="admin-history-loading">Загрузка истории...</div>;
+    return (
+      <div className="d-flex align-items-center gap-2 py-3" style={{ fontSize: "0.8125rem", color: "#6e7681" }}>
+        <div className="idle-spinner" style={{ width: "16px", height: "16px" }} />
+        Загрузка...
+      </div>
+    );
   }
   if (error) {
-    return <div className="admin-history-error">{error}</div>;
+    return <div className="alert alert-danger py-2" style={{ fontSize: "0.8125rem" }}>{error}</div>;
   }
 
   return (
-    <div>
-      <HistoryTable
-        records={records}
-        expandedLogs={expandedLogs}
-        expandedConfig={expandedConfig}
-        expandedErrors={expandedErrors}
-        onToggleLogs={toggleLogs}
-        onToggleConfig={toggleConfig}
-        onToggleError={toggleError}
-      />
-    </div>
+    <HistoryTable
+      records={records}
+      expandedLogs={expandedLogs}
+      expandedConfig={expandedConfig}
+      expandedErrors={expandedErrors}
+      onToggleLogs={toggleLogs}
+      onToggleConfig={toggleConfig}
+      onToggleError={toggleError}
+    />
   );
 }
 

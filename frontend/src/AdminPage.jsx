@@ -19,6 +19,7 @@ import {
   StreamsTab,
   TestBenchmarkTab,
   WithdrawalsTab,
+  InvoicesTab,
   WithdrawalModal,
   KeyFormModal,
   DeleteConfirmModal,
@@ -508,6 +509,7 @@ function AdminPage() {
         api_key_id: invoiceForm.apiKeyId,
         usage_log_ids: invoiceData.logs.map((l) => l.id),
         withdrawal_id: null,
+        comment: invoiceData.comment || "",
         percent_rate: invoiceData.percentRate,
         tax_rate: invoiceData.taxRate,
         debt_amount: invoiceData.logs.reduce((acc, l) => acc + (l.price || 0), 0),
@@ -520,7 +522,10 @@ function AdminPage() {
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.detail || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
       setShowInvoiceModal(false);
@@ -653,6 +658,7 @@ function AdminPage() {
   const tabs = [
     { id: "keys", label: "API Keys" },
     { id: "reports", label: "Журнал" },
+    { id: "invoices", label: "Счета" },
     { id: "streams", label: "Стримы" },
     { id: "testbench", label: "Тесты и бенчмарк" },
     { id: "withdrawals", label: "Способы вывода" },
@@ -671,40 +677,46 @@ function AdminPage() {
   }
 
   return (
-    <div className="admin-page">
-      <div className="admin-header">
-        <h1>Админ-панель</h1>
-        <div className="admin-header__right">
+    <div className="container-fluid px-3 py-3" style={{ maxWidth: "1400px" }}>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h4 className="mb-0 fw-bold" style={{ fontSize: "1.125rem" }}>Админ-панель</h4>
+        <div className="d-flex gap-2 align-items-center">
           {activeTab === "keys" && (
-            <button className="btn btn--primary" onClick={() => setShowCreate(true)}>
+            <button className="btn btn-sm btn-primary" onClick={() => setShowCreate(true)}>
               + Новый ключ
             </button>
           )}
           {activeTab === "withdrawals" && (
-            <button className="btn btn--primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" }); setShowWithdrawalModal(true); }}>
+            <button className="btn btn-sm btn-primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" }); setShowWithdrawalModal(true); }}>
               + Новый способ вывода
             </button>
           )}
-          <button className="btn btn--secondary" onClick={handleLogout} style={{ fontSize: "11px", padding: "5px 10px" }}>
+          <button className="btn btn-sm btn-outline-secondary" onClick={handleLogout}>
             Выйти
           </button>
-          <Link to="/" className="back-link">← Назад к капчам</Link>
+          <Link to="/" className="btn btn-sm btn-outline-secondary">← Назад</Link>
         </div>
       </div>
 
-      <div className="admin-tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`tab ${activeTab === tab.id ? "tab--active" : ""}`}
-            onClick={() => { setActiveTab(tab.id); setSearchParams({ tab: tab.id }); }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {error && (
+        <div className="alert alert-danger alert-dismissible fade show mb-3" role="alert" style={{ borderRadius: 0, fontSize: "0.625rem", fontFamily: "var(--bs-font-monospace)" }}>
+          {error}
+          <button type="button" className="btn-close" onClick={() => setError(null)}></button>
+        </div>
+      )}
 
-      {error && <div className="admin-error">{error}</div>}
+      <ul className="nav nav-cyber mb-3">
+        {tabs.map((tab) => (
+          <li className="nav-item" key={tab.id}>
+            <button
+              className={`nav-link ${activeTab === tab.id ? "active" : ""}`}
+              onClick={() => { setActiveTab(tab.id); setSearchParams({ tab: tab.id }); }}
+            >
+              {tab.label}
+            </button>
+          </li>
+        ))}
+      </ul>
 
       {activeTab === "keys" && (
         <ApiKeysTab
@@ -752,6 +764,10 @@ function AdminPage() {
 
       {activeTab === "reports" && (
         <ReportsTab adminToken={adminToken} />
+      )}
+
+      {activeTab === "invoices" && (
+        <InvoicesTab adminToken={adminToken} onError={(msg) => setError(msg)} />
       )}
 
       {activeTab === "streams" && (

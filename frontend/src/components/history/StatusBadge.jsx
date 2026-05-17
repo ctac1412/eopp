@@ -2,9 +2,9 @@ import React from "react";
 
 export function StatusBadge({ status }) {
   const clsMap = {
-    confirmed: "badge--success",
-    pending: "badge--warning",
-    failed: "badge--error",
+    confirmed: "bg-success",
+    pending: "bg-warning text-dark",
+    failed: "bg-danger",
   };
   const labelMap = {
     confirmed: "Подтверждено",

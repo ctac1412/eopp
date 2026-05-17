@@ -44,6 +44,7 @@ from src.models import (
     GenerateInvoiceBody,
     TariffBody,
     UpdateApiKeyBody,
+    UpdateInvoiceBody,
     UpdateUsageLogBody,
     WithdrawalBody,
 )
@@ -149,28 +150,11 @@ def register_admin_routes(app):
 
     @app.post("/admin/generate-invoice")
     async def generate_invoice(body: GenerateInvoiceBody):
-        try:
-            from reportlab.lib import colors
-            from reportlab.lib.pagesizes import A4
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib.units import mm
-            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        except ImportError:
-            return JSONResponse(
-                status_code=500, content={"error": "reportlab not installed. Install with: pip install reportlab"}
-            )
-
-        import io
-        import os
         from datetime import datetime
 
         api_key = db_get_key_by_id(body.api_key_id)
         if not api_key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
-
-        withdrawal = None
-        if body.withdrawal_id:
-            withdrawal = db_get_withdrawal(body.withdrawal_id)
 
         usage_logs = []
         for log_id in body.usage_log_ids:
@@ -186,6 +170,92 @@ def register_admin_routes(app):
         tax_amount = body.tax_amount or 0
         total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
 
+        now = datetime.now()
+        invoice_number = f"INV-{now.strftime('%Y%m%d%H%M%S')}"
+
+        # Сохраняем счёт в БД
+        try:
+            from src.db.invoices import insert_invoice
+            invoice_id = insert_invoice(
+                invoice_number=invoice_number,
+                api_key_id=body.api_key_id,
+                usage_log_ids=body.usage_log_ids,
+                pdf_path="",
+                withdrawal_id=body.withdrawal_id,
+                comment=body.comment,
+                percent_rate=body.percent_rate,
+                tax_rate=body.tax_rate,
+                debt_amount=debt_amount,
+                percent_amount=percent_amount,
+                tax_amount=tax_amount,
+                total_amount=total_amount,
+                paid=False,
+            )
+
+            # Обновляем invoice_number в usage_log записях
+            from src.db.connection import get_connection
+            conn = get_connection()
+            for log_id in body.usage_log_ids:
+                conn.execute("UPDATE usage_log SET invoice_number = ? WHERE id = ?", (invoice_number, log_id))
+            conn.commit()
+            conn.close()
+        except Exception as db_err:
+            import logging
+            logging.warning(f"Failed to save invoice to DB: {db_err}")
+
+        return JSONResponse(
+            content={
+                "ok": True,
+                "invoice_number": invoice_number,
+                "invoice_id": invoice_id,
+                "debt_amount": debt_amount,
+                "percent_amount": percent_amount,
+                "tax_amount": tax_amount,
+                "total_amount": total_amount,
+            }
+        )
+
+    @app.post("/admin/invoices/{id}/generate-pdf")
+    async def generate_invoice_pdf(id: int):
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib.units import mm
+            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        except ImportError:
+            return JSONResponse(
+                status_code=500, content={"error": "reportlab not installed. Install with: pip install reportlab"}
+            )
+
+        import io
+        import os
+        from datetime import datetime
+        from src.db.invoices import get_invoice
+
+        invoice = get_invoice(id)
+        if not invoice:
+            return JSONResponse(status_code=404, content={"error": "Invoice not found"})
+
+        api_key = db_get_key_by_id(invoice["api_key_id"])
+        if not api_key:
+            return JSONResponse(status_code=404, content={"error": "API key not found"})
+
+        withdrawal = None
+        if invoice.get("withdrawal_id"):
+            withdrawal = db_get_withdrawal(invoice["withdrawal_id"])
+
+        usage_logs = []
+        for log_id in invoice["usage_log_ids"]:
+            log = db_get_usage_log_entry(log_id)
+            if log:
+                usage_logs.append(log)
+
+        debt_amount = invoice["debt_amount"] or 0
+        percent_amount = invoice["percent_amount"] or 0
+        tax_amount = invoice["tax_amount"] or 0
+        total_amount = invoice["total_amount"] or 0
+
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm, topMargin=20 * mm, bottomMargin=20 * mm)
         elements = []
@@ -195,11 +265,9 @@ def register_admin_routes(app):
         elements.append(title)
         elements.append(Spacer(1, 12 * mm))
 
-        now = datetime.now()
-        invoice_number = f"INV-{now.strftime('%Y%m%d%H%M%S')}"
         info_data = [
-            ["Номер счёта:", invoice_number],
-            ["Дата:", now.strftime("%d.%m.%Y %H:%M")],
+            ["Номер счёта:", invoice["invoice_number"]],
+            ["Дата:", invoice["created_at"][:19].replace("T", " ") if invoice["created_at"] else ""],
             ["Плательщик:", api_key["label"] or f"Ключ #{api_key['id']}"],
         ]
         if withdrawal:
@@ -236,9 +304,9 @@ def register_admin_routes(app):
 
         table_data.append(["", "", "", "Сумма долга:", f"{debt_amount} ₽"])
         if percent_amount > 0:
-            table_data.append(["", "", "", f"Комиссия ({body.percent_rate}%):", f"{percent_amount} ₽"])
+            table_data.append(["", "", "", f"Комиссия ({invoice['percent_rate']}%):", f"{percent_amount} ₽"])
         if tax_amount > 0:
-            table_data.append(["", "", "", f"Налог ({body.tax_rate}%):", f"{tax_amount} ₽"])
+            table_data.append(["", "", "", f"Налог ({invoice['tax_rate']}%):", f"{tax_amount} ₽"])
         table_data.append(["", "", "", "ИТОГО:", f"{total_amount} ₽"])
 
         table = Table(table_data, colWidths=[10 * mm, 25 * mm, 50 * mm, 40 * mm, 30 * mm])
@@ -262,19 +330,35 @@ def register_admin_routes(app):
         doc.build(elements)
         buffer.seek(0)
 
-        pdf_path = os.path.join("data", "invoices", f"{invoice_number}.pdf")
+        pdf_path = os.path.join("data", "invoices", f"{invoice['invoice_number']}.pdf")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
         with open(pdf_path, "wb") as f:
             f.write(buffer.getvalue())
 
+        # Обновляем pdf_path в БД
+        from src.db.connection import get_connection
+        conn = get_connection()
+        conn.execute("UPDATE invoices SET pdf_path = ? WHERE id = ?", (pdf_path, id))
+        conn.commit()
+        conn.close()
+
         return JSONResponse(
             content={
                 "ok": True,
-                "invoice_number": invoice_number,
+                "invoice_number": invoice["invoice_number"],
                 "path": pdf_path,
-                "debt_amount": debt_amount,
-                "percent_amount": percent_amount,
-                "tax_amount": tax_amount,
-                "total_amount": total_amount,
             }
         )
+
+    @app.get("/admin/invoices")
+    async def list_admin_invoices():
+        from src.db.invoices import list_invoices
+        return JSONResponse(content=list_invoices(limit=200))
+
+    @app.patch("/admin/invoices/{id}")
+    async def update_admin_invoice(id: int, body: UpdateInvoiceBody):
+        from src.db.invoices import set_invoice_paid
+        result = set_invoice_paid(id, body.paid)
+        if not result:
+            return JSONResponse(status_code=404, content={"error": "Invoice not found"})
+        return JSONResponse(content=result)

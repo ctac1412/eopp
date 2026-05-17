@@ -9,107 +9,116 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
   };
 
   return (
-    <div className="modal__overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${mode === "edit" ? "modal--lg" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <h3>{mode === "create" ? "Создать новый ключ" : "Редактировать ключ"}</h3>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Label</label>
-            <input
-              type="text"
-              value={form.label}
-              onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-              placeholder={mode === "create" ? "напр. production" : ""}
-              className="input"
-              required={mode === "create"}
-            />
+    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`modal-dialog modal-dialog-centered ${mode === "edit" ? "modal-lg" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">{mode === "create" ? "Создать новый ключ" : "Редактировать ключ"}</h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
           </div>
-          {mode === "edit" && (
-            <>
-              <div className="form-group">
-                <label className="form-label">Комментарий</label>
+          <div className="modal-body">
+            <form onSubmit={handleSubmit}>
+              <div className="mb-3">
+                <label className="form-label">Label</label>
                 <input
                   type="text"
-                  value={form.comment}
-                  onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
-                  className="input"
+                  value={form.label}
+                  onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
+                  placeholder={mode === "create" ? "напр. production" : ""}
+                  className="form-control"
+                  required={mode === "create"}
                 />
               </div>
-              <div className="form-row">
+              {mode === "edit" && (
+                <>
+                  <div className="mb-3">
+                    <label className="form-label">Комментарий</label>
+                    <input
+                      type="text"
+                      value={form.comment}
+                      onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
+                      className="form-control"
+                    />
+                  </div>
+                  <div className="mb-3 form-check">
+                    <input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="keyActive"
+                      checked={form.active}
+                      onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
+                    />
+                    <label className="form-check-label" htmlFor="keyActive">
+                      Активен
+                    </label>
+                  </div>
+                </>
+              )}
+              <div className="mb-3">
+                <label className="form-label">Max Uses (пусто = без лимита)</label>
                 <input
-                  type="checkbox"
-                  checked={form.active}
-                  onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
-                  className="checkbox"
+                  type="number"
+                  value={form.maxUses}
+                  onChange={(e) => setForm((p) => ({ ...p, maxUses: e.target.value }))}
+                  placeholder="∞"
+                  className="form-control"
+                  min="1"
                 />
-                Активен
               </div>
-            </>
-          )}
-          <div className="form-group">
-            <label className="form-label">Max Uses (пусто = без лимита)</label>
-            <input
-              type="number"
-              value={form.maxUses}
-              onChange={(e) => setForm((p) => ({ ...p, maxUses: e.target.value }))}
-              placeholder="∞"
-              className="input"
-              min="1"
-            />
+              {mode === "edit" && (
+                <div className="mb-3">
+                  <div className="fw-semibold mb-2">Тариф</div>
+                  <div className="row g-2">
+                    <div className="col">
+                      <label className="form-label">Бронь (₽)</label>
+                      <input
+                        type="number"
+                        value={form.priceCreate}
+                        onChange={(e) => setForm((p) => ({ ...p, priceCreate: e.target.value }))}
+                        placeholder="1000"
+                        className="form-control"
+                        min="0"
+                      />
+                    </div>
+                    <div className="col">
+                      <label className="form-label">Перенос (₽)</label>
+                      <input
+                        type="number"
+                        value={form.priceReschedule}
+                        onChange={(e) => setForm((p) => ({ ...p, priceReschedule: e.target.value }))}
+                        placeholder="7000"
+                        className="form-control"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </form>
           </div>
-          {mode === "edit" && (
-            <div className="tariff-section">
-              <div className="tariff-section__title">Тариф</div>
-              <div className="tariff-section__inputs">
-                <div className="form-group">
-                  <label className="form-label">Бронь (₽)</label>
-                  <input
-                    type="number"
-                    value={form.priceCreate}
-                    onChange={(e) => setForm((p) => ({ ...p, priceCreate: e.target.value }))}
-                    placeholder="1000"
-                    className="input"
-                    min="0"
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Перенос (₽)</label>
-                  <input
-                    type="number"
-                    value={form.priceReschedule}
-                    onChange={(e) => setForm((p) => ({ ...p, priceReschedule: e.target.value }))}
-                    placeholder="7000"
-                    className="input"
-                    min="0"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="modal__footer">
+          <div className="modal-footer">
             {mode === "edit" && (
               <>
-                <button type="button" className="btn btn--ghost" onClick={() => onResetUsage()}>
+                <button type="button" className="btn btn-sm btn-outline-secondary me-auto" onClick={() => onResetUsage()}>
                   Сбросить использование
                 </button>
-                <button type="button" className="btn btn--danger" onClick={() => onDeleteKey()}>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => onDeleteKey()}>
                   Удалить ключ
                 </button>
               </>
             )}
-            <div style={{ flex: 1 }} />
             <button
               type="button"
-              className="btn btn--secondary"
+              className="btn btn-sm btn-secondary"
               onClick={onClose}
             >
               Отмена
             </button>
-            <button type="submit" className="btn btn--primary">
+            <button type="submit" className="btn btn-sm btn-primary" onClick={handleSubmit}>
               {mode === "create" ? "Создать" : "Сохранить"}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
@@ -118,22 +127,24 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
 export function DeleteConfirmModal({ show, onConfirm, onClose }) {
   if (!show) return null;
   return (
-    <div className="modal__overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        className="modal modal--sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3>Подтверждение</h3>
-        <p className="admin-confirm-text">
-          Вы уверены, что хотите удалить этот ключ? Это действие нельзя отменить.
-        </p>
-        <div className="modal__footer">
-          <button className="btn btn--secondary" onClick={onClose}>
-            Отмена
-          </button>
-          <button className="btn btn--danger" onClick={onConfirm}>
-            Удалить
-          </button>
+    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title">Подтверждение</h5>
+            <button type="button" className="btn-close" onClick={onClose}></button>
+          </div>
+          <div className="modal-body">
+            <p>Вы уверены, что хотите удалить этот ключ? Это действие нельзя отменить.</p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-sm btn-secondary" onClick={onClose}>
+              Отмена
+            </button>
+            <button className="btn btn-sm btn-danger" onClick={onConfirm}>
+              Удалить
+            </button>
+          </div>
         </div>
       </div>
     </div>

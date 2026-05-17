@@ -30,30 +30,36 @@ export function HomePage() {
   }
 
   return (
-    <div className="container">
+    <div className="container py-3">
       <StatusBar />
-      <div className="tabs">
-        <button
-          className={`tab ${activeTab === "captchas" ? "tab--active" : ""}`}
-          onClick={() => { setActiveTab("captchas"); setSearchParams({ tab: "captchas" }); }}
-        >
-          Капчи
-        </button>
-        <button
-          className={`tab ${activeTab === "history" ? "tab--active" : ""}`}
-          onClick={() => { setActiveTab("history"); setSearchParams({ tab: "history" }); }}
-        >
-          История
-        </button>
+      <ul className="nav nav-tabs mt-3">
+        <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab === "captchas" ? "active" : ""}`}
+            onClick={() => { setActiveTab("captchas"); setSearchParams({ tab: "captchas" }); }}
+          >
+            Капчи
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab === "history" ? "active" : ""}`}
+            onClick={() => { setActiveTab("history"); setSearchParams({ tab: "history" }); }}
+          >
+            История
+          </button>
+        </li>
+      </ul>
+      <div className="mt-3">
+        {activeTab === "captchas" ? (
+          <CaptchaTab />
+        ) : (
+          <HistoryTab
+            apiKey={apiKey}
+            adminToken={localStorage.getItem("admin_token")}
+          />
+        )}
       </div>
-      {activeTab === "captchas" ? (
-        <CaptchaTab />
-      ) : (
-        <HistoryTab
-          apiKey={apiKey}
-          adminToken={localStorage.getItem("admin_token")}
-        />
-      )}
     </div>
   );
 }

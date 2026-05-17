@@ -15,18 +15,16 @@ function formatDate(iso) {
 export function StreamsTab({ streams, streamsLoading }) {
   return (
     <div>
-      <h2 style={{ fontSize: "16px", marginBottom: "12px", fontWeight: 600 }}>
-        Подключённые SSE-клиенты
-      </h2>
+      <h2 className="fs-6 fw-semibold mb-3">Подключённые SSE-клиенты</h2>
       {streamsLoading && streams.length === 0 && (
-        <div className="admin-loading">Загрузка…</div>
+        <p className="text-muted text-center">Загрузка…</p>
       )}
       {streams.length === 0 && !streamsLoading && (
-        <div className="admin-empty">Нет активных подключений</div>
+        <p className="text-muted text-center">Нет активных подключений</p>
       )}
       {streams.length > 0 && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
+        <div className="table-responsive">
+          <table className="table table-sm table-hover table-bordered">
             <thead>
               <tr>
                 <th>ID</th>
@@ -49,15 +47,15 @@ export function StreamsTab({ streams, streamsLoading }) {
                       : `${elapsed}с`;
                 return (
                   <tr key={idx}>
-                    <td className="admin-id">{s.api_key_id ?? "—"}</td>
-                    <td className="admin-label">{s.api_key_label || "—"}</td>
-                    <td>{s.ip || "—"}</td>
-                    <td className="admin-date">
+                    <td className="font-monospace small">{s.api_key_id ?? "—"}</td>
+                    <td>{s.api_key_label || "—"}</td>
+                    <td className="font-monospace small">{s.ip || "—"}</td>
+                    <td className="small">
                       {s.connected_at_iso
                         ? formatDate(s.connected_at_iso)
                         : "—"}
                     </td>
-                    <td>{durationStr}</td>
+                    <td className="small">{durationStr}</td>
                   </tr>
                 );
               })}

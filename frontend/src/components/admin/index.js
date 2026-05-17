@@ -3,6 +3,7 @@ export { ApiKeysTab } from "./ApiKeysTab";
 export { StreamsTab } from "./StreamsTab";
 export { TestBenchmarkTab } from "./TestBenchmarkTab";
 export { WithdrawalsTab } from "./WithdrawalsTab";
+export { InvoicesTab } from "./InvoicesTab";
 export { KeyFormModal, DeleteConfirmModal } from "./KeyFormModal";
 export { WithdrawalModal } from "./WithdrawalModal";
 export { InvoiceModal } from "./InvoiceModal";

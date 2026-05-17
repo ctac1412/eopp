@@ -91,6 +91,7 @@ def main(
         certfile, keyfile = ensure_self_signed_cert()
 
     src.constants.use_ssl = not no_ssl
+    src.constants.PORT = port
 
     typer.echo("=" * 56)
     typer.echo("  EOPP Captcha Solver Server — Configuration")

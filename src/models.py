@@ -127,9 +127,14 @@ class GenerateInvoiceBody(BaseModel):
     api_key_id: int
     usage_log_ids: list[int]
     withdrawal_id: int | None = None
+    comment: str = ""
     percent_rate: float = 0
     tax_rate: float = 0
     debt_amount: int = 0
     percent_amount: int = 0
     tax_amount: int = 0
     total_amount: int = 0
+
+
+class UpdateInvoiceBody(BaseModel):
+    paid: bool

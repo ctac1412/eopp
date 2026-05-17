@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(make *)"
+      "Bash(make *)",
+      "Bash(@echo *)",
+      "Bash(@find *)"
     ]
   },
   "$version": 4

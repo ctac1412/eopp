@@ -71,6 +71,31 @@ def init_db():
     _add_column(conn, "withdrawals", "tax_percent", "INTEGER DEFAULT 0")
     _add_column(conn, "withdrawals", "percent_type", "TEXT DEFAULT 'included'")
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT UNIQUE NOT NULL,
+            api_key_id INTEGER NOT NULL,
+            usage_log_ids TEXT NOT NULL,
+            withdrawal_id INTEGER,
+            comment TEXT DEFAULT '',
+            percent_rate REAL DEFAULT 0,
+            tax_rate REAL DEFAULT 0,
+            debt_amount INTEGER DEFAULT 0,
+            percent_amount INTEGER DEFAULT 0,
+            tax_amount INTEGER DEFAULT 0,
+            total_amount INTEGER DEFAULT 0,
+            pdf_path TEXT,
+            paid INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    _add_column(conn, "invoices", "paid", "INTEGER DEFAULT 0")
+    _add_column(conn, "invoices", "comment", "TEXT DEFAULT ''")
+
+    _add_column(conn, "usage_log", "invoice_number", "TEXT")
+
     now = datetime.now(UTC).isoformat()
     conn.execute(
         "INSERT OR IGNORE INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",

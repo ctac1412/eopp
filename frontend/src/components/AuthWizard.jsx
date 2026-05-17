@@ -34,27 +34,61 @@ function AuthWizard() {
   };
 
   return (
-    <div className="auth-wizard">
-      <div className="auth-wizard__card">
-        <div className="auth-wizard__title">EOPP Captcha Solver</div>
-        <div className="auth-wizard__subtitle">
-          Введите API ключ киоска для начала работы
-        </div>
-        <form className="auth-wizard__form" onSubmit={handleSubmit}>
-          <input
-            className="auth-wizard__input"
-            type="text"
-            placeholder="API ключ"
-            value={key}
-            onChange={(e) => {
-              setKey(e.target.value);
-              setError("");
+    <div className="auth-bg">
+      <div className="auth-box p-4" style={{ maxWidth: "400px", width: "100%" }}>
+        <div className="text-center mb-4">
+          <div
+            className="d-inline-flex align-items-center justify-content-center mb-3"
+            style={{
+              width: "48px",
+              height: "48px",
+              borderRadius: "0.75rem",
+              background: "var(--accent)",
+              boxShadow: "0 0 20px var(--accent-glow)",
             }}
-            autoFocus
-          />
-          {error && <div className="auth-wizard__error">{error}</div>}
-          <button className="auth-wizard__btn" type="submit" disabled={loading}>
-            {loading ? "Проверка..." : "Подключиться"}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h5 className="mb-1 fw-bold" style={{ fontSize: "1.125rem" }}>EOPP Captcha Solver</h5>
+          <p className="text-muted mb-0" style={{ fontSize: "0.8125rem" }}>
+            Введите API ключ киоска для начала работы
+          </p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="mb-3">
+            <input
+              className="form-control"
+              type="text"
+              placeholder="API ключ"
+              value={key}
+              onChange={(e) => {
+                setKey(e.target.value);
+                setError("");
+              }}
+              autoFocus
+            />
+          </div>
+          {error && (
+            <div className="alert alert-danger py-2 mb-3" style={{ fontSize: "0.8125rem" }}>
+              {error}
+            </div>
+          )}
+          <button
+            className="btn btn-primary w-100"
+            type="submit"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" />
+                Проверка...
+              </>
+            ) : (
+              "Подключиться"
+            )}
           </button>
         </form>
       </div>

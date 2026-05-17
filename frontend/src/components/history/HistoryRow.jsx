@@ -71,11 +71,13 @@ const COLUMN_CONFIGS = {
   paid: { header: "Оплата", key: "paid" },
   error: { header: "Ошибка", key: "error" },
   actions: { header: "Действия", key: "actions" },
+  resid: { header: "ID брони", key: "resid" },
+  captcha: { header: "Капча", key: "captcha" },
 };
 
 const PRESETS = {
   user: {
-    columns: ["id", "type", "time", "status", "slot", "resid", "captcha", "price", "paid", "error", "actions"],
+    columns: ["id", "type", "time", "status", "slot", "resid", "captcha", "paid", "error", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: false, showDelete: false, showCheckbox: false },
   },
   admin: {
@@ -122,66 +124,81 @@ export function HistoryRow({
     switch (columnKey) {
       case "checkbox":
         return (
-          <div className="history-cell history-cell--checkbox" onClick={(e) => e.stopPropagation()}>
+          <td className="align-middle" onClick={(e) => e.stopPropagation()}>
             <input
               type="checkbox"
+              className="form-check-input"
               checked={!!selected}
               onChange={() => onToggleSelect?.(record.id)}
             />
-          </div>
+          </td>
         );
       case "id":
-        return <div className="history-cell history-cell--id">{record.id}</div>;
+        return <td className="align-middle font-monospace small">{record.id}</td>;
       case "type":
         return (
-          <div className="history-cell history-cell--type">
+          <td className="align-middle">
             {opType ? (
-              <span className={`badge ${opType === "Создание" ? "badge--success" : "badge--info"}`}>
+              <span className={`badge ${opType === "Создание" ? "bg-success" : "bg-info text-dark"}`} style={{ borderRadius: "0.375rem", fontSize: "0.625rem" }}>
                 {opType}
               </span>
             ) : (
-              "—"
+              <span>—</span>
             )}
-          </div>
+          </td>
         );
       case "time":
-        return <div className="history-cell history-cell--time">{formatDate(record.created_at)}</div>;
+        return <td className="align-middle small">{formatDate(record.created_at)}</td>;
       case "status":
         return (
-          <div className="history-cell history-cell--status">
+          <td className="align-middle text-center">
             <span
-              className={`status-dot status-dot--${
-                record.status === "confirmed" ? "confirmed" :
-                record.status === "pending" ? "pending" : "failed"
+              className={`badge ${
+                record.status === "confirmed" ? "bg-success" :
+                record.status === "pending" ? "bg-warning text-dark" : "bg-danger"
               }`}
+              style={{ borderRadius: "0.375rem", fontSize: "0.625rem" }}
               title={record.status === "confirmed" ? "Подтверждено" : record.status === "pending" ? "Ожидание" : "Ошибка"}
-            />
-          </div>
+            >
+              {record.status === "confirmed" ? "Подтв." : record.status === "pending" ? "Ожид." : "Ошибка"}
+            </span>
+          </td>
         );
       case "slot":
-        return <div className="history-cell history-cell--slot">{record.slot_date || "—"}</div>;
+        return <td className="align-middle small">{record.slot_date || "—"}</td>;
       case "fio": {
         const cfg = record.config_json;
         const fio = cfg?.reservationData?.raw?.userData?.fio;
-        return <div className="history-cell history-cell--fio">{maskFio(fio)}</div>;
+        return <td className="align-middle small">{maskFio(fio)}</td>;
       }
       case "test":
-        return <div className="history-cell history-cell--test">{isTestRecord(record) ? "Да" : "Нет"}</div>;
+        return <td className="align-middle small">{isTestRecord(record) ? "Да" : "Нет"}</td>;
+      case "resid": {
+        const rid = record.reservation_id || "";
+        return (
+          <td className="align-middle small font-monospace" style={{ maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={rid}>
+            {rid || "—"}
+          </td>
+        );
+      }
+      case "captcha":
+        return <td className="align-middle small font-monospace">{record.captcha_id || "—"}</td>;
       case "price":
-        let priceColorClass = "history-cell--price--none";
+        let priceColorClass = "text-muted";
         if (record.price != null && record.price > 0) {
           if (record.paid === true) {
-            priceColorClass = "history-cell--price--paid";
+            priceColorClass = "text-success fw-semibold";
           } else if (record.paid === false) {
-            priceColorClass = "history-cell--price--unpaid";
+            priceColorClass = "text-danger fw-semibold";
           }
         }
         if (editingPriceId === record.id && actions.showEdit) {
           return (
-            <div className="history-cell history-cell--price history-cell--price-edit">
+            <td className="align-middle small">
               <input
                 type="number"
-                className="history-price-input"
+                className="form-control form-control-sm"
+                style={{ width: "80px" }}
                 defaultValue={record.price ?? 0}
                 autoFocus
                 onBlur={(e) => {
@@ -201,12 +218,12 @@ export function HistoryRow({
                 }}
                 onClick={(e) => e.stopPropagation()}
               />
-            </div>
+            </td>
           );
         }
         return (
-          <div
-            className={`history-cell history-cell--price ${priceColorClass}`}
+          <td
+            className={`align-middle small ${priceColorClass}`}
             onDoubleClick={actions.showEdit ? (e) => {
               e.stopPropagation();
               setEditingPriceId(record.id);
@@ -215,15 +232,15 @@ export function HistoryRow({
             title={actions.showEdit ? "Двойной клик для редактирования" : undefined}
           >
             {record.price != null ? `${record.price} ₽` : "—"}
-          </div>
+          </td>
         );
       case "paid":
         const isPaid = record.paid === true;
         const paidDisplay = isPaid ? "✅" : "—";
         const paidTitle = isPaid ? "Оплачено" : "Не оплачено";
         return (
-          <div
-            className="history-cell history-cell--paid"
+          <td
+            className="align-middle small text-center"
             onDoubleClick={actions.showEdit ? (e) => {
               e.stopPropagation();
               onTogglePaid?.(record.id);
@@ -231,25 +248,27 @@ export function HistoryRow({
             title={`${paidTitle}${actions.showEdit ? " (двойной клик для смены)" : ""}`}
             style={actions.showEdit ? { cursor: "pointer" } : undefined}
           >
-            <span style={{ fontSize: "16px" }}>{paidDisplay}</span>
-          </div>
+            {paidDisplay}
+          </td>
         );
       case "error":
         return (
-          <div className="history-cell history-cell--error">
+          <td className="align-middle small">
             {hasError ? (
               isErrorExpanded ? (
                 <span
-                  className="history-error-expanded"
+                  className="text-danger"
                   onClick={() => onToggleError?.(record.id)}
+                  style={{ cursor: "pointer" }}
                 >
                   {record.error_message}
                 </span>
               ) : (
                 <span
-                  className="history-error-truncated"
+                  className="text-danger"
                   onClick={() => onToggleError?.(record.id)}
                   title="Нажмите, чтобы развернуть"
+                  style={{ cursor: "pointer" }}
                 >
                   {errorTruncated}
                 </span>
@@ -257,25 +276,25 @@ export function HistoryRow({
             ) : (
               "—"
             )}
-          </div>
+          </td>
         );
       case "actions":
         return (
-          <div className="history-cell history-cell--actions" onClick={(e) => e.stopPropagation()}>
-            <div className="history-actions-group">
+          <td className="align-middle" onClick={(e) => e.stopPropagation()}>
+            <div className="d-flex gap-1">
               {actions.showEdit && (
-                <button className="btn btn--sm btn--ghost" onClick={() => onEdit?.(record)} title="Редактировать">
+                <button className="btn btn-sm btn-outline-primary" onClick={() => onEdit?.(record)} title="Редактировать">
                   ✏️
                 </button>
               )}
               {actions.showDelete && (
-                <button className="btn btn--sm btn--danger" onClick={() => onDelete?.(record.id)} title="Удалить">
+                <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete?.(record.id)} title="Удалить">
                   🗑
                 </button>
               )}
               {actions.showLogs && hasLogs && (
                 <button
-                  className={`btn btn--sm ${isLogsExpanded ? "btn--active" : "btn--ghost"}`}
+                  className={`btn btn-sm ${isLogsExpanded ? "btn-primary" : "btn-outline-secondary"}`}
                   onClick={() => onToggleLogs?.(record.id)}
                   title={isLogsExpanded ? "Свернуть логи" : "Показать логи"}
                 >
@@ -284,7 +303,7 @@ export function HistoryRow({
               )}
               {actions.showConfig && hasConfig && (
                 <button
-                  className={`btn btn--sm ${isConfigExpanded ? "btn--active" : "btn--ghost"}`}
+                  className={`btn btn-sm ${isConfigExpanded ? "btn-primary" : "btn-outline-secondary"}`}
                   onClick={() => onToggleConfig?.(record.id)}
                   title={isConfigExpanded ? "Свернуть конфиг" : "Показать конфиг"}
                 >
@@ -292,7 +311,7 @@ export function HistoryRow({
                 </button>
               )}
             </div>
-          </div>
+          </td>
         );
       default:
         return null;
@@ -301,34 +320,38 @@ export function HistoryRow({
 
   return (
     <React.Fragment>
-      <div
-        className="history-row"
+      <tr
+        className={onClick ? "history-row" : ""}
         onClick={onClick ? () => onClick(record) : undefined}
         style={onClick ? { cursor: "pointer" } : undefined}
       >
         {columns.map((col) => (
           <React.Fragment key={col}>{renderCell(col)}</React.Fragment>
         ))}
-      </div>
+      </tr>
       {isConfigExpanded && hasConfig && (
-        <div className="history-expandable">
-          <div className="history-expandable-body">
-            <pre className="history-expandable-pre">
-              {JSON.stringify(record.config_json, null, 2)}
-            </pre>
-          </div>
-        </div>
+        <tr>
+          <td colSpan={columns.length} className="p-0">
+            <div className="p-2" style={{ background: "var(--bs-dark)" }}>
+              <pre className="mb-0 small" style={{ fontSize: "0.6875rem", fontFamily: "var(--bs-font-monospace)", color: "#8b949e" }}>
+                {JSON.stringify(record.config_json, null, 2)}
+              </pre>
+            </div>
+          </td>
+        </tr>
       )}
       {isLogsExpanded && hasLogs && (
-        <div className="history-expandable">
-          <div className="history-expandable-body">
-            {record.logs.map((line, i) => (
-              <div key={i} className="history-log-line">
-                {line}
-              </div>
-            ))}
-          </div>
-        </div>
+        <tr>
+          <td colSpan={columns.length} className="p-0">
+            <div className="p-2" style={{ background: "var(--bs-dark)" }}>
+              {record.logs.map((line, i) => (
+                <div key={i} className="small font-monospace" style={{ fontSize: "0.6875rem", color: "#8b949e" }}>
+                  {line}
+                </div>
+              ))}
+            </div>
+          </td>
+        </tr>
       )}
     </React.Fragment>
   );
@@ -362,65 +385,72 @@ export function HistoryTable({
   const resolvedActions = { ...PRESETS[preset].actions, ...actions };
 
   if (records.length === 0) {
-    return <div className="history-empty">Нет записей</div>;
+    return <div style={{ fontSize: "0.8125rem", color: "#6e7681", padding: "1rem 0" }}>Нет записей</div>;
   }
 
   const selectedCount = Object.values(selectedLogs).filter(Boolean).length;
 
   return (
-    <div className="history-container" data-preset={preset}>
+    <div>
       {onGenerateInvoice && selectedCount > 0 && (
-        <div className="history-toolbar">
-          <span className="history-toolbar__info">Выбрано: {selectedCount}</span>
-          <button className="btn btn--primary btn--sm" onClick={onGenerateInvoice}>
+        <div className="d-flex justify-content-between align-items-center mb-2 p-2" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
+          <span className="small" style={{ fontSize: "0.8125rem", color: "#6e7681" }}>Выбрано: {selectedCount}</span>
+          <button className="btn btn-sm btn-primary" onClick={onGenerateInvoice}>
             Сформировать счёт
           </button>
         </div>
       )}
-      <div className="history-header">
-        {resolvedColumns.map((col) => {
-          if (col === "checkbox" && onToggleSelectAll != null) {
-            return (
-              <div key={col} className="history-header__checkbox">
-                <input
-                  type="checkbox"
-                  onChange={(e) => onToggleSelectAll(e.target.checked)}
-                  checked={!!allSelected}
-                />
-              </div>
-            );
-          }
-          return (
-            <div key={col} className={`history-header__${col}`}>
-              {COLUMN_CONFIGS[col]?.header || ""}
-            </div>
-          );
-        })}
-      </div>
-      <div className="history-list">
-        {records.map((record) => (
-          <HistoryRow
-            key={record.id}
-            record={record}
-            columns={resolvedColumns}
-            actions={resolvedActions}
-            expandedLogs={expandedLogs}
-            expandedConfig={expandedConfig}
-            expandedErrors={expandedErrors}
-            selected={selectedLogs[record.id]}
-            onToggleLogs={onToggleLogs}
-            onToggleConfig={onToggleConfig}
-            onToggleError={onToggleError}
-            onToggleSelect={onToggleSelect}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onClick={onRowClick}
-            editingPriceId={editingPriceId}
-            setEditingPriceId={setEditingPriceId}
-            onPriceChange={onPriceChange}
-            onTogglePaid={onTogglePaid}
-          />
-        ))}
+      <div className="table-responsive">
+        <table className="table table-hover table-bordered align-middle mb-0">
+          <thead className="table-light">
+            <tr>
+              {resolvedColumns.map((col) => {
+                if (col === "checkbox" && onToggleSelectAll != null) {
+                  return (
+                    <th key={col} className="text-center">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        onChange={(e) => onToggleSelectAll(e.target.checked)}
+                        checked={!!allSelected}
+                      />
+                    </th>
+                  );
+                }
+                return (
+                  <th key={col} className="small fw-semibold">
+                    {COLUMN_CONFIGS[col]?.header || ""}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((record) => (
+              <HistoryRow
+                key={record.id}
+                record={record}
+                columns={resolvedColumns}
+                actions={resolvedActions}
+                expandedLogs={expandedLogs}
+                expandedConfig={expandedConfig}
+                expandedErrors={expandedErrors}
+                selected={selectedLogs[record.id]}
+                onToggleLogs={onToggleLogs}
+                onToggleConfig={onToggleConfig}
+                onToggleError={onToggleError}
+                onToggleSelect={onToggleSelect}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onClick={onRowClick}
+                editingPriceId={editingPriceId}
+                setEditingPriceId={setEditingPriceId}
+                onPriceChange={onPriceChange}
+                onTogglePaid={onTogglePaid}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

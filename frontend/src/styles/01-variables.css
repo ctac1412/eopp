@@ -1,103 +1,66 @@
 /* ========================================
-   DESIGN TOKENS — CSS Custom Properties
+   DESIGN TOKENS — Futuristic Dark Theme
    ======================================== */
 
 :root {
-  /* ── Colors — Primary ── */
-  --primary: #818cf8;
-  --primary-hover: #a78bfa;
-  --primary-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
-  --primary-bg: rgba(129, 140, 248, 0.12);
-  --primary-border: rgba(129, 140, 248, 0.25);
+  /* ── Bootstrap overrides ── */
+  --bs-body-bg: #0a0e14;
+  --bs-body-color: #c9d1d9;
+  --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bs-body-font-size: 0.8125rem;
+  --bs-body-font-weight: 400;
+  --bs-body-line-height: 1.5;
 
-  /* ── Colors — Semantic ── */
-  --success: #22c55e;
-  --success-light: #4ade80;
-  --success-bg: rgba(34, 197, 94, 0.12);
-  --success-border: rgba(34, 197, 94, 0.25);
+  --bs-primary: #7c3aed;
+  --bs-primary-rgb: 124, 58, 237;
+  --bs-success: #10b981;
+  --bs-success-rgb: 16, 185, 129;
+  --bs-warning: #f59e0b;
+  --bs-warning-rgb: 245, 158, 11;
+  --bs-danger: #ef4444;
+  --bs-danger-rgb: 239, 68, 68;
+  --bs-info: #3b82f6;
+  --bs-info-rgb: 59, 130, 246;
 
-  --warning: #f59e0b;
-  --warning-light: #fbbf24;
-  --warning-bg: rgba(245, 158, 11, 0.12);
-  --warning-border: rgba(245, 158, 11, 0.25);
+  --bs-secondary: #21262d;
+  --bs-secondary-rgb: 33, 38, 45;
+  --bs-light: #161b22;
+  --bs-light-rgb: 22, 27, 34;
+  --bs-dark: #0d1117;
+  --bs-dark-rgb: 13, 17, 23;
 
-  --error: #ef4444;
-  --error-light: #f87171;
-  --error-bg: rgba(239, 68, 68, 0.12);
-  --error-border: rgba(239, 68, 68, 0.25);
+  --bs-border-color: #21262d;
+  --bs-border-color-translucent: rgba(33, 38, 45, 0.5);
 
-  --info: #3b82f6;
-  --info-light: #60a5fa;
-  --info-bg: rgba(59, 130, 246, 0.12);
-  --info-border: rgba(59, 130, 246, 0.25);
+  --bs-card-bg: #131a24;
+  --bs-card-border-color: #2a3340;
+  --bs-card-cap-bg: rgba(19, 26, 36, 0.8);
 
-  /* ── Colors — Neutral ── */
-  --bg: #0f1117;
-  --surface: #1a1b2e;
-  --surface-hover: #27293d;
-  --surface-active: #3f3f5a;
-  --border: #27293d;
-  --border-light: rgba(39, 41, 61, 0.5);
+  --bs-modal-bg: #131a24;
+  --bs-modal-border-color: #2a3340;
 
-  --text: #f4f4f5;
-  --text-muted: #d4d4d8;
-  --text-dim: #a1a1aa;
-  --text-faint: #71717a;
+  --bs-table-bg: #131a24;
+  --bs-table-color: #c9d1d9;
+  --bs-table-border-color: #2a3340;
+  --bs-table-hover-bg: rgba(124, 58, 237, 0.05);
+  --bs-table-hover-color: #c9d1d9;
+  --bs-table-striped-bg: rgba(13, 17, 23, 0.5);
 
-  /* ── Typography ── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'SF Mono', 'Fira Code', monospace;
+  --bs-tertiary-bg: #161b22;
+  --bs-tertiary-color: #6e7681;
 
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-md: 12px;
-  --text-base: 13px;
-  --text-lg: 14px;
-  --text-xl: 15px;
-  --text-2xl: 18px;
-  --text-3xl: 22px;
+  --bs-heading-color: #e6edf3;
+  --bs-link-color: #7c3aed;
+  --bs-link-hover-color: #a78bfa;
 
-  --font-normal: 400;
-  --font-medium: 500;
-  --font-semibold: 600;
-  --font-bold: 700;
+  --bs-font-monospace: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 
-  /* ── Spacing ── */
-  --space-1: 4px;
-  --space-2: 6px;
-  --space-3: 8px;
-  --space-4: 10px;
-  --space-5: 12px;
-  --space-6: 14px;
-  --space-8: 16px;
-  --space-10: 20px;
-  --space-12: 24px;
-  --space-16: 28px;
-  --space-20: 32px;
-
-  /* ── Border Radius ── */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --radius-2xl: 12px;
-  --radius-full: 9999px;
-
-  /* ── Shadows ── */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-glow-primary: 0 0 12px rgba(129, 140, 248, 0.3);
-  --shadow-glow-success: 0 0 12px rgba(34, 197, 94, 0.3);
-  --shadow-glow-error: 0 0 12px rgba(239, 68, 68, 0.4);
-
-  /* ── Transitions ── */
-  --transition-fast: 0.1s;
-  --transition: 0.15s;
-  --transition-slow: 0.2s;
-
-  /* ── Layout ── */
-  --container-max: 1100px;
-  --header-height: 60px;
-  --status-bar-height: 44px;
+  /* ── Custom tokens ── */
+  --accent: #7c3aed;
+  --accent-light: #a78bfa;
+  --accent-glow: rgba(124, 58, 237, 0.2);
+  --surface: #131a24;
+  --surface-raised: #1a2430;
+  --border: #2a3340;
+  --border-bright: #3a4555;
 }

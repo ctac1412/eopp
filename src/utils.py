@@ -336,9 +336,9 @@ def _http_post(path, body, extra_headers=None):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        conn = http.client.HTTPSConnection("127.0.0.1", PORT, context=ctx, timeout=5)
+        conn = http.client.HTTPSConnection("127.0.0.1", constants.PORT, context=ctx, timeout=5)
     else:
-        conn = http.client.HTTPConnection("127.0.0.1", PORT, timeout=5)
+        conn = http.client.HTTPConnection("127.0.0.1", constants.PORT, timeout=5)
 
     conn.request("POST", path, body=body, headers=headers)
     resp = conn.getresponse()

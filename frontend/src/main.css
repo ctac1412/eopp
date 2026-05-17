@@ -1,8 +1,9 @@
 /* ========================================
-   EOPP Frontend Styles
+   EOPP Frontend — Modern Design System
    ======================================== */
 
 @import "./styles/01-variables.css";
+@import "bootstrap/dist/css/bootstrap.min.css";
 @import "./styles/02-base.css";
 @import "./styles/03-components.css";
 @import "./styles/04-layout.css";

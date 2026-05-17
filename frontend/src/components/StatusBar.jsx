@@ -27,32 +27,11 @@ function StatusBar() {
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const clearApiKey = useCaptchaStore((s) => s.clearApiKey);
   const [showChange, setShowChange] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
   const [apiPriceCreate, setApiPriceCreate] = useState(null);
   const [apiPriceReschedule, setApiPriceReschedule] = useState(null);
-
-  useEffect(() => {
-    const token = localStorage.getItem("admin_token");
-    if (!token) {
-      setIsAdmin(false);
-      return;
-    }
-    fetch("/admin/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error();
-        setIsAdmin(true);
-      })
-      .catch(() => {
-        setIsAdmin(false);
-      });
-  }, []);
 
   useEffect(() => {
     if (!apiKey) {
@@ -110,90 +89,63 @@ function StatusBar() {
   };
 
   return (
-    <div className="status-bar">
-      <div className="status-bar__left">
-        <div
-          className={
-            "status-dot" + (sseError ? " status-dot--error" : isActive ? "" : " status-dot--idle")
-          }
-        />
+    <div className="status-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div className="d-flex align-items-center gap-2">
+        <span className={`status-dot ${sseError ? "status-dot--error" : isActive ? "status-dot--active" : "status-dot--idle"}`} />
         {isActive && (
-          <div className="status-text">
-            Активная: <strong>{activeId}</strong>
-          </div>
+          <span style={{ fontSize: "0.8125rem" }}>
+            <span style={{ color: "#6e7681" }}>Активная:</span>{" "}
+            <strong style={{ fontFamily: "var(--bs-font-monospace)", fontSize: "0.75rem", color: "var(--accent-light)" }}>{activeId}</strong>
+          </span>
         )}
-        {localMode && <span className="local-badge">LOCAL</span>}
-        {sseError && <span className="status-error">{sseError}</span>}
+        {!isActive && !sseError && (
+          <span style={{ fontSize: "0.8125rem", color: "#484f58" }}>Ожидание...</span>
+        )}
+        {sseError && <span style={{ fontSize: "0.75rem", color: "var(--bs-danger)" }}>{sseError}</span>}
+        {localMode && <span className="local-tag">LOCAL</span>}
       </div>
-      <div className="status-bar__right">
-        {localMode && (
-          <div className="test-links">
-            <button
-              className="test-link-btn"
-              onClick={() => openTestPage("/test-injector/edit")}
-            >
-              Тест: Создание
-            </button>
-            <button
-              className="test-link-btn"
-              onClick={() => openTestPage("/test-injector/reschedule")}
-            >
-              Тест: Перенос
-            </button>
-          </div>
-        )}
+      <div className="d-flex align-items-center gap-2 flex-wrap">
         {apiPriceCreate != null && (
-          <span className="status-bar__tariff status-bar__tariff--create">{apiPriceCreate}₽</span>
+          <span className="tariff-badge tariff-badge--create">{apiPriceCreate}₽</span>
         )}
         {apiPriceReschedule != null && (
-          <span className="status-bar__tariff status-bar__tariff--reschedule">{apiPriceReschedule}₽</span>
+          <span className="tariff-badge tariff-badge--reschedule">{apiPriceReschedule}₽</span>
         )}
         {apiKey && (
-          <div className="api-key-badge">
-            <span className="api-key-badge__text">
-              {apiLabel || maskKey(apiKey)}
-            </span>
+          <div className="d-flex align-items-center gap-2" style={{ fontSize: "0.8125rem" }}>
+            <span className="api-key">{apiLabel || maskKey(apiKey)}</span>
             {apiRemaining != null ? (
-              <span className="api-key-badge__limit">
+              <span className="api-key-limit">
                 {apiMaxUses != null ? `${apiRemaining}/${apiMaxUses}` : `${apiRemaining}`}
               </span>
             ) : (
-              <span className="api-key-badge__unlimited">Безлимит</span>
+              <span className="api-key-limit api-key-limit--unlimited">Безлимит</span>
             )}
             {showChange ? (
-              <div className="api-key-badge__actions">
-                <button
-                  className="api-key-badge__confirm"
-                  onClick={handleClearKey}
-                >
-                  ОК
-                </button>
-                <button
-                  className="api-key-badge__cancel"
-                  onClick={() => setShowChange(false)}
-                >
-                  Отмена
-                </button>
+              <div className="btn-group btn-group-sm">
+                <button className="btn btn-sm btn-success" onClick={handleClearKey}>ОК</button>
+                <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowChange(false)}>Отмена</button>
               </div>
             ) : (
-              <button
-                className="api-key-badge__btn"
-                onClick={() => setShowChange(true)}
-              >
-                Сменить
-              </button>
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowChange(true)}>Сменить</button>
             )}
           </div>
         )}
+        {localMode && (
+          <div className="btn-group btn-group-sm">
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => openTestPage("/test-injector/edit")}>Создание</button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => openTestPage("/test-injector/reschedule")}>Перенос</button>
+          </div>
+        )}
         <button
-          className="btn btn--primary"
+          className="btn btn-sm btn-primary"
           onClick={handleTestRun}
           disabled={loading}
         >
-          {loading ? "Запуск..." : "Тестовый запуск"}
+          {loading ? "Запуск..." : "Тест"}
         </button>
-        <Link to="/admin" className="btn btn--secondary">
-          Admin
+        <Link to="/admin" className="btn btn-sm btn-outline-secondary">
+          Админ
         </Link>
       </div>
     </div>

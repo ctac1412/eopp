@@ -180,6 +180,7 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "label": r["label"],
                 "price": r["price"],
                 "paid": bool(r["paid"]) if r["paid"] is not None else None,
+                "invoice_number": r["invoice_number"],
             }
         )
     return result

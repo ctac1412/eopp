@@ -7,47 +7,52 @@ export function WithdrawalsTab({ withdrawals, onEdit, onDelete }) {
         <div className="table__empty">Нет записей</div>
       )}
 
-      <div className="admin-withdrawals-container">
-        <div className="admin-withdrawals-header">
-          <div className="admin-withdrawals-header__id">ID</div>
-          <div className="admin-withdrawals-header__name">Название</div>
-          <div className="admin-withdrawals-header__percent">Процент</div>
-          <div className="admin-withdrawals-header__percent-type">Тип</div>
-          <div className="admin-withdrawals-header__tax">Налог</div>
-          <div className="admin-withdrawals-header__requisites">Реквизиты</div>
-          <div className="admin-withdrawals-header__date">Создан</div>
-          <div className="admin-withdrawals-header__actions">Действия</div>
-        </div>
-
-        <div className="admin-withdrawals-list">
-          {withdrawals.map((w) => (
-            <div className="admin-withdrawal-row" key={w.id}>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--id">{w.id}</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--name">{w.name}</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--percent">{w.percent}%</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--percent-type">{w.percent_type === "included" ? "Вкл" : "Не вкл"}</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--tax">{w.tax_percent || 0}%</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--requisites">{w.requisites}</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--date">{new Date(w.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
-              <div className="admin-withdrawal-cell admin-withdrawal-cell--actions">
-                <button
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => onEdit(w)}
-                  title="Редактировать"
-                >
-                  ✏️
-                </button>
-                <button
-                  className="btn btn--sm btn--danger"
-                  onClick={() => onDelete(w.id)}
-                  title="Удалить"
-                >
-                  🗑
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="table-responsive">
+        <table className="table table-sm table-hover table-bordered align-middle">
+          <thead className="table-light">
+            <tr>
+              <th className="text-center">ID</th>
+              <th>Название</th>
+              <th className="text-center">Процент</th>
+              <th className="text-center">Тип</th>
+              <th className="text-center">Налог</th>
+              <th>Реквизиты</th>
+              <th className="text-center">Создан</th>
+              <th className="text-center">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {withdrawals.map((w) => (
+              <tr key={w.id}>
+                <td className="text-center fw-bold">{w.id}</td>
+                <td>{w.name}</td>
+                <td className="text-center font-monospace small">{w.percent}%</td>
+                <td className="text-center small">{w.percent_type === "included" ? "Вкл" : "Не вкл"}</td>
+                <td className="text-center font-monospace small">{w.tax_percent || 0}%</td>
+                <td className="small">{w.requisites}</td>
+                <td className="text-center text-muted small">
+                  {new Date(w.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </td>
+                <td className="text-center">
+                  <button
+                    className="btn btn-sm btn-outline-primary me-1"
+                    onClick={() => onEdit(w)}
+                    title="Редактировать"
+                  >
+                    &#9998;
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={() => onDelete(w.id)}
+                    title="Удалить"
+                  >
+                    &#128465;
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </>
   );

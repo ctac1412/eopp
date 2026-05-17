@@ -236,6 +236,7 @@ export function ReportsTab({ adminToken }) {
         api_key_id: apiKeyId,
         usage_log_ids: invoiceData.logs.map((l) => l.id),
         withdrawal_id: null,
+        comment: invoiceData.comment || "",
         percent_rate: invoiceData.percentRate,
         tax_rate: invoiceData.taxRate,
         debt_amount: invoiceData.logs.reduce((acc, l) => acc + (l.price || 0), 0),
@@ -248,7 +249,10 @@ export function ReportsTab({ adminToken }) {
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.detail || `HTTP ${res.status}`);
+      }
       const data = await res.json();
       alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
       setShowInvoiceModal(false);
@@ -259,136 +263,165 @@ export function ReportsTab({ adminToken }) {
     }
   };
 
-  if (loading) return <div className="reports-loading">Загрузка…</div>;
-  if (error) return <div className="reports-error">Ошибка: {error}</div>;
+  if (loading) return <div className="text-center py-4">Загрузка…</div>;
+  if (error) return <div className="alert alert-danger">Ошибка: {error}</div>;
 
   const summary = groupByCompany(records);
 
   const renderPaidStatus = (record) => {
     const isPaid = record.paid === true;
     const hasPrice = record.price != null && record.price > 0;
-    if (!hasPrice) return <span className="paid-status paid-status--no-price">—</span>;
-    if (isPaid) return <span className="paid-status paid-status--paid">Оплачено</span>;
-    return <span className="paid-status paid-status--unpaid">Не оплачено</span>;
+    if (!hasPrice) return <span className="text-muted">—</span>;
+    if (isPaid) return <span className="text-success fw-semibold">Оплачено</span>;
+    return <span className="text-danger fw-semibold">Не оплачено</span>;
   };
 
   return (
     <div className="reports-page">
-      <div className="reports-toolbar">
+      {/* Toolbar */}
+      <div className="d-flex gap-2 align-items-center mb-3">
         <button
-          className={`btn btn--sm ${showOnlySuccess5 ? "btn--active" : "btn--ghost"}`}
+          className={`btn btn-sm ${showOnlySuccess5 ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={() => setShowOnlySuccess5(!showOnlySuccess5)}
         >
           Только этап 5
         </button>
         <button
-          className={`btn btn--sm ${hideTest ? "btn--active" : "btn--ghost"}`}
+          className={`btn btn-sm ${hideTest ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={() => setHideTest(!hideTest)}
         >
           {hideTest ? "Скрыть тестовые" : "Показать тестовые"}
         </button>
-        <button className="btn btn--sm btn--ghost" onClick={fetchRecords}>
+        <button className="btn btn-sm btn-outline-secondary" onClick={fetchRecords}>
           Обновить
         </button>
-        <span className="reports-count">Всего: {records.length}</span>
+        <span className="text-muted small ms-2">Всего: {records.length}</span>
       </div>
 
+      {/* Company summary */}
       {summary.length > 0 && (
-        <div className="summary-table">
-          <div className="summary-header">
-            <div className="summary-col summary-col--company">Компания</div>
-            <div className="summary-col summary-col--reschedule">Переносы</div>
-            <div className="summary-col summary-col--create">Брони</div>
-            <div className="summary-col summary-col--actions"></div>
-          </div>
-          <div className="summary-body">
-            {summary.map((row) => (
-              <div key={row.name} className="summary-row">
-                <div className="summary-col summary-col--company">{row.name}</div>
-                <div className="summary-col summary-col--reschedule">{row.reschedule}</div>
-                <div className="summary-col summary-col--create">{row.create}</div>
-                <div className="summary-col summary-col--actions">
-                  <button
-                    className="btn btn--sm btn--primary"
-                    onClick={() => handleOpenInvoiceForCompany(row.name, row.records)}
-                    title="Сделать расчёт"
-                  >
-                    Сделать расчёт
-                  </button>
-                </div>
-              </div>
-            ))}
+        <div className="card mb-3">
+          <div className="card-header fw-semibold">Сводка по компаниям</div>
+          <div className="card-body p-0">
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Компания</th>
+                    <th className="text-center">Переносы</th>
+                    <th className="text-center">Брони</th>
+                    <th className="text-center"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map((row) => (
+                    <tr key={row.name}>
+                      <td>{row.name}</td>
+                      <td className="text-center">{row.reschedule}</td>
+                      <td className="text-center">{row.create}</td>
+                      <td className="text-center">
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleOpenInvoiceForCompany(row.name, row.records)}
+                          title="Сделать расчёт"
+                        >
+                          Сделать расчёт
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="reports-table">
-        <div className="reports-header">
-          <div className="reports-col reports-col--num">#</div>
-          <div className="reports-col reports-col--id">ID</div>
-          <div className="reports-col reports-col--label">Токен</div>
-          <div className="reports-col reports-col--type">Тип</div>
-          <div className="reports-col reports-col--time">Дата</div>
-          <div className="reports-col reports-col--slot">Дата слота</div>
-          <div className="reports-col reports-col--fio">ФИО</div>
-          <div className="reports-col reports-col--company">Компания</div>
-          <div className="reports-col reports-col--vehicle">Номер машины</div>
-          <div className="reports-col reports-col--paid">Оплата</div>
-          <div className="reports-col reports-col--actions">Действия</div>
-        </div>
-
-        <div className="reports-body">
-          {records.length === 0 ? (
-            <div className="reports-empty">Нет записей</div>
-          ) : (
-            records.map((record, idx) => {
-              const cfg = record.config_json;
-              const isExpanded = expandedConfig[record.id];
-              return (
-                <React.Fragment key={record.id}>
-                  <div className="reports-row">
-                    <div className="reports-col reports-col--num">{idx + 1}</div>
-                    <div className="reports-col reports-col--id">{record.id}</div>
-                    <div className="reports-col reports-col--label" title={record.label || "—"}>{record.label || "—"}</div>
-                    <div className="reports-col reports-col--type">
-                      <span className={`badge ${getOpType(cfg) === "Создание" ? "badge--success" : getOpType(cfg) === "Перенос" ? "badge--info" : ""}`}>
-                        {getOpType(cfg)}
-                      </span>
-                    </div>
-                    <div className="reports-col reports-col--time">{formatSlotDate(record.created_at)}</div>
-                    <div className="reports-col reports-col--slot">{formatSlotDate(record.slot_date)}</div>
-                    <div className="reports-col reports-col--fio" title={getFioFull(cfg)}>{getFio(cfg)}</div>
-                    <div className="reports-col reports-col--company" title={getCompanyFull(cfg)}>{getCompany(cfg)}</div>
-                    <div className="reports-col reports-col--vehicle" title={getVehicleNumberFull(cfg)}>{getVehicleNumber(cfg)}</div>
-                    <div className="reports-col reports-col--paid">{renderPaidStatus(record)}</div>
-                    <div className="reports-col reports-col--actions">
-                      <button
-                        className="btn btn--sm btn--ghost"
-                        onClick={() => openEditModal(record)}
-                        title="Редактировать"
-                      >
-                        ✏️
-                      </button>
-                      {cfg && (
-                        <button
-                          className={`btn btn--sm ${isExpanded ? "btn--active" : "btn--ghost"}`}
-                          onClick={() => toggleConfig(record.id)}
-                          title={isExpanded ? "Свернуть конфиг" : "Показать конфиг"}
-                        >
-                          ⚙
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isExpanded && cfg && (
-                    <div className="reports-expandable">
-                      <pre>{JSON.stringify(cfg, null, 2)}</pre>
-                    </div>
-                  )}
-                </React.Fragment>
-              );
-            })
-          )}
+      {/* Main records table */}
+      <div className="card">
+        <div className="card-header fw-semibold">Журнал использования</div>
+        <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-sm table-hover table-bordered align-middle mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th className="text-center" style={{ width: "40px" }}>#</th>
+                  <th>ID</th>
+                  <th>Токен</th>
+                  <th className="text-center">Тип</th>
+                  <th>Дата</th>
+                  <th>Дата слота</th>
+                  <th>ФИО</th>
+                  <th>Компания</th>
+                  <th>Номер машины</th>
+                  <th>Счёт</th>
+                  <th className="text-center">Оплата</th>
+                  <th className="text-center" style={{ width: "80px" }}>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="text-center text-muted py-3">Нет записей</td>
+                  </tr>
+                ) : (
+                  records.map((record, idx) => {
+                    const cfg = record.config_json;
+                    const isExpanded = expandedConfig[record.id];
+                    const opType = getOpType(cfg);
+                    return (
+                      <React.Fragment key={record.id}>
+                        <tr>
+                          <td className="text-center">{idx + 1}</td>
+                          <td className="small text-muted">{record.id}</td>
+                          <td className="small" title={record.label || "—"}>{record.label || "—"}</td>
+                          <td className="text-center">
+                            <span className={`badge ${opType === "Создание" ? "bg-success" : opType === "Перенос" ? "bg-info text-dark" : "bg-secondary"}`}>
+                              {opType}
+                            </span>
+                          </td>
+                          <td className="small">{formatSlotDate(record.created_at)}</td>
+                          <td className="small">{formatSlotDate(record.slot_date)}</td>
+                          <td className="small" title={getFioFull(cfg)}>{getFio(cfg)}</td>
+                          <td className="small" title={getCompanyFull(cfg)}>{getCompany(cfg)}</td>
+                          <td className="small" title={getVehicleNumberFull(cfg)}>{getVehicleNumber(cfg)}</td>
+                          <td className="small">{record.invoice_number || "—"}</td>
+                          <td className="text-center">{renderPaidStatus(record)}</td>
+                          <td className="text-center text-nowrap">
+                            <button
+                              className="btn btn-sm btn-outline-secondary me-1"
+                              onClick={() => openEditModal(record)}
+                              title="Редактировать"
+                            >
+                              ✏️
+                            </button>
+                            {cfg && (
+                              <button
+                                className={`btn btn-sm ${isExpanded ? "btn-secondary" : "btn-outline-secondary"}`}
+                                onClick={() => toggleConfig(record.id)}
+                                title={isExpanded ? "Свернуть конфиг" : "Показать конфиг"}
+                              >
+                                ⚙
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && cfg && (
+                          <tr>
+                            <td colSpan={12}>
+                              <pre className="p-2 small m-0" style={{ maxHeight: "300px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
+                                {JSON.stringify(cfg, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

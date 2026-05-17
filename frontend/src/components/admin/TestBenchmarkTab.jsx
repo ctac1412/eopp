@@ -15,71 +15,36 @@ function formatDate(iso) {
 export function TestBenchmarkTab({ testStats, testStatsLoading, benchmark, benchmarkLoading, benchmarkRunning, onRunBenchmark, adminToken }) {
   return (
     <div>
-      <h3 style={{ fontSize: "14px", marginBottom: "12px", fontWeight: 600, color: "var(--text-muted)" }}>
-        Тесткейсы
-      </h3>
+      <h5 className="text-muted mb-3">Тесткейсы</h5>
       {testStatsLoading && !testStats && (
         <div className="admin-loading">Загрузка…</div>
       )}
       {testStats && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            maxWidth: "400px",
-            marginBottom: "24px",
-          }}
-        >
-          <div
-            style={{
-              padding: "16px",
-              background: "#1a1a2e",
-              borderRadius: "8px",
-              border: "1px solid #2a2a4a",
-            }}
-          >
-            <div
-              style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}
-            >
-              Помеченные (valid/)
-            </div>
-            <div
-              style={{ fontSize: "28px", fontWeight: 700, color: "#4ade80" }}
-            >
-              {testStats.labeled_count}
+        <div className="row g-3 mb-4" style={{ maxWidth: "400px" }}>
+          <div className="col-6">
+            <div className="card">
+              <div className="card-body">
+                <h6 className="card-subtitle mb-1 text-muted">Помеченные (valid/)</h6>
+                <p className="card-text fs-4 fw-bold text-success mb-0">{testStats.labeled_count}</p>
+              </div>
             </div>
           </div>
-          <div
-            style={{
-              padding: "16px",
-              background: "#1a1a2e",
-              borderRadius: "8px",
-              border: "1px solid #2a2a4a",
-            }}
-          >
-            <div
-              style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}
-            >
-              Без пометки (no_valid/)
-            </div>
-            <div
-              style={{ fontSize: "28px", fontWeight: 700, color: "#f59e0b" }}
-            >
-              {testStats.unlabeled_count}
+          <div className="col-6">
+            <div className="card">
+              <div className="card-body">
+                <h6 className="card-subtitle mb-1 text-muted">Без пометки (no_valid/)</h6>
+                <p className="card-text fs-4 fw-bold text-warning mb-0">{testStats.unlabeled_count}</p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <h3 style={{ fontSize: "14px", marginBottom: "12px", fontWeight: 600, color: "var(--text-muted)" }}>
-        Бенчмарк решателя
-      </h3>
+      <h5 className="text-muted mb-3">Бенчмарк решателя</h5>
       <button
-        className="btn btn--primary"
+        className="btn btn-primary mb-3"
         onClick={() => onRunBenchmark(adminToken)}
         disabled={benchmarkRunning}
-        style={{ marginBottom: "16px" }}
       >
         {benchmarkRunning ? "Выполняется…" : "Запустить бенчмарк"}
       </button>
@@ -89,108 +54,59 @@ export function TestBenchmarkTab({ testStats, testStatsLoading, benchmark, bench
       {benchmark && (
         <div>
           {benchmark.error ? (
-            <div
-              style={{
-                padding: "12px",
-                background: "#2a1a1a",
-                borderRadius: "8px",
-                border: "1px solid #4a2a2a",
-                color: "#f87171",
-                whiteSpace: "pre-wrap",
-                fontSize: "13px",
-              }}
-            >
+            <div className="alert alert-danger mb-3" style={{ whiteSpace: "pre-wrap" }}>
               Ошибка: {benchmark.error}
             </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: "12px",
-                marginBottom: "16px",
-              }}
-            >
-              <div
-                style={{
-                  padding: "16px",
-                  background: "#1a1a2e",
-                  borderRadius: "8px",
-                  border: "1px solid #2a2a4a",
-                }}
-              >
-                <div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>
-                  Всего тестов
-                </div>
-                <div style={{ fontSize: "28px", fontWeight: 700 }}>
-                  {benchmark.total}
+            <div className="row g-3 mb-3">
+              <div className="col-md-4">
+                <div className="card">
+                  <div className="card-body">
+                    <h6 className="card-subtitle mb-1 text-muted">Всего тестов</h6>
+                    <p className="card-text fs-4 fw-bold mb-0">{benchmark.total}</p>
+                  </div>
                 </div>
               </div>
-              <div
-                style={{
-                  padding: "16px",
-                  background: "#1a1a2e",
-                  borderRadius: "8px",
-                  border: "1px solid #2a2a4a",
-                }}
-              >
-                <div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>
-                  Пройдено
-                </div>
-                <div style={{ fontSize: "28px", fontWeight: 700, color: "#4ade80" }}>
-                  {benchmark.passed}
+              <div className="col-md-4">
+                <div className="card">
+                  <div className="card-body">
+                    <h6 className="card-subtitle mb-1 text-muted">Пройдено</h6>
+                    <p className="card-text fs-4 fw-bold text-success mb-0">{benchmark.passed}</p>
+                  </div>
                 </div>
               </div>
-              <div
-                style={{
-                  padding: "16px",
-                  background: "#1a1a2e",
-                  borderRadius: "8px",
-                  border: "1px solid #2a2a4a",
-                }}
-              >
-                <div style={{ fontSize: "12px", color: "#888", marginBottom: "4px" }}>
-                  Покрытие
-                </div>
-                <div
-                  style={{
-                    fontSize: "28px",
-                    fontWeight: 700,
-                    color:
-                      benchmark.coverage_percent >= 90
-                        ? "#4ade80"
-                        : benchmark.coverage_percent >= 70
-                          ? "#f59e0b"
-                          : "#f87171",
-                  }}
-                >
-                  {benchmark.coverage_percent}%
+              <div className="col-md-4">
+                <div className="card">
+                  <div className="card-body">
+                    <h6 className="card-subtitle mb-1 text-muted">Покрытие</h6>
+                    <p
+                      className={`card-text fs-4 fw-bold mb-0 ${
+                        benchmark.coverage_percent >= 90
+                          ? "text-success"
+                          : benchmark.coverage_percent >= 70
+                            ? "text-warning"
+                            : "text-danger"
+                      }`}
+                    >
+                      {benchmark.coverage_percent}%
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           )}
           {benchmark.last_run_timestamp && (
-            <div style={{ fontSize: "12px", color: "#666" }}>
+            <div className="text-muted small">
               Последний запуск: {formatDate(benchmark.last_run_timestamp)}
             </div>
           )}
           {benchmark.best_config && (
-            <div
-              style={{
-                marginTop: "12px",
-                padding: "12px",
-                background: "#1a1a2e",
-                borderRadius: "8px",
-                border: "1px solid #2a2a4a",
-                fontSize: "13px",
-                fontFamily: "monospace",
-              }}
-            >
-              <div style={{ color: "#888", marginBottom: "4px" }}>
-                Лучший конфиг:
-              </div>
-              <div>
-                edge_trim={benchmark.best_config.edge_trim} W_DISC={benchmark.best_config.W_DISC} W_SSIM={benchmark.best_config.W_SSIM} W_COH={benchmark.best_config.W_COH} W_SOBEL={benchmark.best_config.W_SOBEL}
+            <div className="card mt-3">
+              <div className="card-body">
+                <div className="text-muted mb-2">Лучший конфиг:</div>
+                <div className="font-monospace">
+                  edge_trim={benchmark.best_config.edge_trim} W_DISC={benchmark.best_config.W_DISC} W_SSIM={benchmark.best_config.W_SSIM} W_COH={benchmark.best_config.W_COH} W_SOBEL={benchmark.best_config.W_SOBEL}
+                </div>
               </div>
             </div>
           )}
