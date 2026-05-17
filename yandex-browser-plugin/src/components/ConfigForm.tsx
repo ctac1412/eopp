@@ -7,6 +7,7 @@ import {
   getDefaultSlotDate,
   createDefaultConfig,
 } from "@/constants";
+import TimePreferencesPanel from "./TimePreferencesPanel";
 
 const MOCK_ENDPOINTS: {
   path: string;
@@ -496,28 +497,8 @@ const ConfigForm = React.memo(function ConfigForm() {
               onChange={(e) => handleChange("slotDate", e.target.value)}
             />
           </label>
-          <label className="qn-form-label">
-            Предпочтительное время
-            <select
-              id="preferredTime-select"
-              className="qn-form-input"
-              value={config.preferredTime || ""}
-              onChange={(e) =>
-                handleChange("preferredTime", e.target.value || null)
-              }
-            >
-              <option value="">Не выбрано (любой слот)</option>
-              {Array.from({ length: 24 }, (_, h) => {
-                const label = `${String(h).padStart(2, "0")}:00`;
-                return (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
         </div>
+        <TimePreferencesPanel />
       </div>
 
       <div className="qn-form-section">

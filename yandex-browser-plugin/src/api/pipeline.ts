@@ -48,34 +48,45 @@ export function resetUsedSlots(): void {
   usedSlotIds.clear();
 }
 
+function pickByMaxCount(slots: Slot[]): Slot {
+  const maxCount = Math.max(...slots.map((s) => s.count));
+  const best = slots.filter((s) => s.count === maxCount);
+  return best[Math.floor(Math.random() * best.length)];
+}
+
 export function selectBestSlot(slots: Slot[]): Slot {
   log("Выбор лучшего слота");
 
-  const availableSlots = slots.filter((slot) => !usedSlotIds.has(slot.id));
   const config = useInjectorStore.getState().config;
+  const hasPartialPrefs =
+    config.preferredTimes.length > 0 && config.preferredTimes.length < 24;
 
-  if (config.preferredTime) {
-    const preferredSlot = availableSlots.find(
-      (slot) => slot.time === config.preferredTime,
-    );
-    if (preferredSlot) {
-      log(`Найден предпочтительный слот: ${preferredSlot.slotCaption}`);
-      usedSlotIds.add(preferredSlot.id);
-      return preferredSlot;
+  let candidates = hasPartialPrefs
+    ? slots.filter((s) => config.preferredTimes.includes(s.time))
+    : slots;
+
+  let available = candidates.filter((s) => !usedSlotIds.has(s.id));
+
+  if (available.length === 0 && hasPartialPrefs) {
+    if (config.preferredMode === "strict") {
+      throw new Error(
+        `Предпочтительные слоты недоступны: ${config.preferredTimes.join(", ")}`,
+      );
     }
-    log(
-      `Предпочтительный слот ${config.preferredTime} недоступен, выбираем по другому критерию`,
-    );
-  }
-
-  if (availableSlots.length === 0) {
+    log("Предпочтительные слоты недоступны, пробуем остальные");
+    available = slots.filter((s) => !usedSlotIds.has(s.id));
+    if (available.length === 0) {
+      throw new Error("Нет доступных слотов");
+    }
+  } else if (available.length === 0) {
     throw new Error("Нет доступных слотов");
   }
 
-  const maxCount = Math.max(...availableSlots.map((s) => s.count));
-  const bestSlots = availableSlots.filter((s) => s.count === maxCount);
-  const selected = bestSlots[Math.floor(Math.random() * bestSlots.length)];
+  if (hasPartialPrefs) {
+    log(`Найдено ${available.length} предпочтительных слотов`);
+  }
 
+  const selected = pickByMaxCount(available);
   usedSlotIds.add(selected.id);
   log(`Выбран слот: ${selected.slotCaption} (count: ${selected.count})`);
   return selected;

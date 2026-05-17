@@ -38,7 +38,8 @@ export interface InjectorConfig {
   transportType: 1 | 2;
   slotDate: string;
   mode: "reschedule" | "create";
-  preferredTime: string | null;
+  preferredTimes: string[];
+  preferredMode: "strict" | "soft";
   autoSolve: boolean;
   apiKey: string;
   retryOnAllSlotsOccupied: boolean;

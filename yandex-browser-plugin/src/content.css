@@ -1078,3 +1078,128 @@
   word-break: break-all;
   overflow-x: auto;
 }
+
+.qn-time-panel {
+  background: #252525;
+  border-radius: 8px;
+  padding: 12px;
+  grid-column: 1 / -1;
+}
+
+.qn-time-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.qn-time-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #888;
+  letter-spacing: 0.5px;
+}
+
+.qn-time-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.qn-time-btn {
+  background: #333;
+  border: 1px solid #555;
+  color: #aaa;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+  white-space: nowrap;
+}
+
+.qn-time-btn:hover {
+  background: #444;
+  border-color: #ffcc00;
+  color: #e0e0e0;
+}
+
+.qn-time-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px;
+}
+
+.qn-time-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+  user-select: none;
+}
+
+.qn-time-checkbox:hover {
+  background: #333;
+  border-color: #555;
+}
+
+.qn-time-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #ffcc00;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.qn-time-checkbox input[type="checkbox"]:checked + span {
+  color: #ffcc00;
+}
+
+.qn-time-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border-radius: 6px;
+}
+
+.qn-time-mode-label {
+  font-size: 12px;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.qn-time-mode-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #aaa;
+  cursor: pointer;
+  user-select: none;
+}
+
+.qn-time-mode-radio input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #ffcc00;
+  cursor: pointer;
+}

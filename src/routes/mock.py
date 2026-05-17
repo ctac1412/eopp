@@ -175,23 +175,30 @@ def register_mock_routes(app):
                             "id": "slot-mock-1",
                             "time": "06:00",
                             "count": 0,
-                            "slotCaption": "06:00 - 08:00",
+                            "slotCaption": "06:00 - 07:00",
                             "intervalIndex": 1,
                         },
                         {
                             "id": "slot-mock-2",
                             "time": "08:00",
                             "count": 0,
-                            "slotCaption": "08:00 - 10:00",
+                            "slotCaption": "08:00 - 09:00",
                             "intervalIndex": 2,
                         },
                         {
                             "id": "slot-mock-3",
                             "time": "10:00",
                             "count": 0,
-                            "slotCaption": "10:00 - 12:00",
+                            "slotCaption": "10:00 - 11:00",
                             "intervalIndex": 3,
                         },
+                    {
+                        "id": "slot-mock-4",
+                        "time": "11:00",
+                        "count": 2,
+                        "slotCaption": "11:00 - 12:00",
+                        "intervalIndex": 4,
+                    },
                     ]
                 }
             )
@@ -204,22 +211,29 @@ def register_mock_routes(app):
                         "id": "slot-mock-1",
                         "time": "06:00",
                         "count": 3,
-                        "slotCaption": "06:00 - 08:00",
+                        "slotCaption": "06:00 - 07:00",
                         "intervalIndex": 1,
                     },
                     {
                         "id": "slot-mock-2",
                         "time": "08:00",
                         "count": 5,
-                        "slotCaption": "08:00 - 10:00",
+                        "slotCaption": "08:00 - 90:00",
                         "intervalIndex": 2,
                     },
                     {
                         "id": "slot-mock-3",
                         "time": "10:00",
                         "count": 2,
-                        "slotCaption": "10:00 - 12:00",
+                        "slotCaption": "10:00 - 11:00",
                         "intervalIndex": 3,
+                    },
+                    {
+                        "id": "slot-mock-4",
+                        "time": "11:00",
+                        "count": 2,
+                        "slotCaption": "11:00 - 12:00",
+                        "intervalIndex": 4,
                     },
                 ]
             }
