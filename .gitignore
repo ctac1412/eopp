@@ -40,3 +40,14 @@ data/
 
 # opencode plans
 .opencode/
+
+# Server config
+server.json
+
+# Deploy env (contains sensitive data)
+scripts/.env.deploy
+
+# Server config (contains server URLs)
+.env.server
+
+backups/

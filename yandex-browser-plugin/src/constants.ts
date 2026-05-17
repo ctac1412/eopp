@@ -18,7 +18,12 @@ export const FACILITIES: Facility[] = [
 ];
 
 export const TZ_OFFSET = 3;
-export const CAPTCHA_SERVER = "https://china.alabai.netcraze.pro";
+export const CAPTCHA_SERVER =
+  (typeof import.meta.env !== "undefined" && import.meta.env.VITE_SERVER_URL) ||
+  "http://localhost:8765";
+export const SERVER_HOST =
+  (typeof import.meta.env !== "undefined" && import.meta.env.VITE_SERVER_HOST) ||
+  "localhost";
 export const EOPP_API_BASE = "https://eopp.epd-portal.ru/reservations-api/v1";
 
 export function shouldInject(pageUrl: string): PageInfo | null {
@@ -44,7 +49,10 @@ export function shouldInject(pageUrl: string): PageInfo | null {
     pageUrl.startsWith("http://127.0.0.1:8765") ||
     pageUrl.startsWith("https://localhost:8765") ||
     pageUrl.startsWith("https://127.0.0.1:8765") ||
-    pageUrl.startsWith("https://china.alabai.netcraze.pro/")
+    pageUrl.startsWith("http://127.0.0.1:8766") ||
+    pageUrl.startsWith("https://127.0.0.1:8766") ||
+    pageUrl.startsWith(`http://${SERVER_HOST}`) ||
+    pageUrl.startsWith(`https://${SERVER_HOST}`)
   ) {
     return {
       reservationId: "00000000-0000-0000-0000-000000000000",

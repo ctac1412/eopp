@@ -35,7 +35,7 @@ build-crx: build-extension
 	@echo "Packing extension to CRX..."
 	@"C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/yandex-browser-plugin/dist" --no-sandbox --pack-extension-key="$(CURDIR)/data/my.pem"
 	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/my-helper-v' + $$ver + '.crx'); Write-Host ('CRX created: plugins/my-helper-v' + $$ver + '.crx')"
-	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + '    <updatecheck codebase=\"https://china.alabai.netcraze.pro/plugins/my-helper-v' + $$ver + '.crx\" version=\"' + $$ver + '\" />' + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver)"
+	@powershell -Command "$$envFile = '$(CURDIR)/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; $$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl.TrimEnd('/') + '/plugins/my-helper-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver + ' at ' + $$codebase)"
 
 install-extension:
 	cd yandex-browser-plugin && npm install
@@ -82,3 +82,22 @@ logs-prod:
 list-plugins:
 	@echo "Plugin versions:"
 	@python -c "from src.plugins import get_versions; [print(f\"  {v['version']} - {v.get('note', '')}\") for v in get_versions()]"
+
+# Deploy (requires scripts/.env.deploy to be configured)
+deploy:                  # Full deploy: build, transfer, run, health-check
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" deploy
+
+deploy-pull-data:        # Download remote data/ to local backups/pulled-data/
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" pull-data
+
+deploy-logs:             # Stream remote container logs in real-time
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" logs
+
+deploy-backup:           # Backup remote data/ and plugins/ to local backups/
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" backup
+
+deploy-rollback:         # Rollback to previous Docker image on remote server
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" rollback
+
+deploy-push-data:        # Push local data/ and plugins/ to remote server
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" push-data

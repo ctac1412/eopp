@@ -1,4 +1,4 @@
-const CAPTCHA_SERVER = "https://china.alabai.netcraze.pro";
+const CAPTCHA_SERVER = "http://localhost:8765";
 
 chrome.runtime.onConnect.addListener((port) => {
   let responded = false;
