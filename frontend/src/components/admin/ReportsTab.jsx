@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { formatMoney } from "../../utils/format";
 import { UsageLogEditModal } from "./UsageLogEditModal";
 import { InvoiceModal } from "./InvoiceModal";
 
@@ -36,62 +37,47 @@ const COMPANY_ALIASES = {
   'ООО "АРТ-ТРАНС"': "Хип-Хоп Транс Дэнс",
 };
 
-function getOpType(configData) {
-  if (!configData) return "—";
-  return configData.mode === "create" ? "Создание" : configData.mode === "reschedule" ? "Перенос" : "—";
+function getOpType(record) {
+  if (record.op_type === "create") return "Создание";
+  if (record.op_type === "reschedule") return "Перенос";
+  return "—";
 }
 
-function getFio(configData) {
-  const fio = configData?.reservationData?.raw?.userData?.fio;
+function getFio(record) {
+  const fio = record.fio;
   if (!fio || typeof fio !== "string") return "—";
   return fio.trim().split(/\s+/).map((p) => p[0] + ".").join(" ");
 }
 
-function getFioFull(configData) {
-  return configData?.reservationData?.raw?.userData?.fio || "—";
+function getFioFull(record) {
+  return record.fio || "—";
 }
 
-function getCompany(configData) {
-  const name = configData?.reservationData?.raw?.userData?.organizationName;
+function getCompany(record) {
+  const name = record.company;
   if (!name) return "—";
   return COMPANY_ALIASES[name] || name;
 }
 
-function getCompanyFull(configData) {
-  return configData?.reservationData?.raw?.userData?.organizationName || "—";
+function getCompanyFull(record) {
+  return record.company || "—";
 }
 
-function getVehicleNumber(configData, short = true) {
-  const vehicles = configData?.reservationData?.raw?.vehicleData;
-  if (Array.isArray(vehicles)) {
-    const trucks = vehicles.filter((v) => v.subTypeId === 1);
-    if (trucks.length > 0) {
-      return trucks.map((v) => {
-        const num = v.regNumber || "";
-        if (short && num.length > 4) {
-          return num.slice(0, 4) + "....";
-        }
-        return num;
-      }).filter(Boolean).join(", ") || "—";
-    }
+function getVehicleNumber(record, short = true) {
+  const num = record.vehicle_number;
+  if (!num) return "—";
+  if (short && num.length > 4) {
+    return num.slice(0, 4) + "....";
   }
-  return "—";
+  return num;
 }
 
-function getVehicleNumberFull(configData) {
-  return getVehicleNumber(configData, false);
+function getVehicleNumberFull(record) {
+  return record.vehicle_number || "—";
 }
 
 function isTestRecord(record) {
-  const rid = record.reservation_id || "";
-  if (rid === "unknown" || rid === "" || /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(rid)) {
-    return true;
-  }
-  const cfg = record.config_json;
-  if (cfg && typeof cfg.runUpTo === "number" && cfg.runUpTo < 5) {
-    return true;
-  }
-  return false;
+  return record.is_test === true || record.is_test === 1;
 }
 
 function isSuccessStage5(record) {
@@ -105,15 +91,15 @@ function isSuccessStage5(record) {
 function groupByCompany(records) {
   const groups = {};
   records.forEach((r) => {
-    const company = getCompany(r.config_json);
+    const company = getCompany(r);
     if (!groups[company]) {
       groups[company] = { reschedule: 0, create: 0, records: [] };
     }
     groups[company].records.push(r);
-    const mode = r.config_json?.mode;
-    if (mode === "reschedule") {
+    const opType = r.op_type;
+    if (opType === "reschedule") {
       groups[company].reschedule++;
-    } else if (mode === "create") {
+    } else if (opType === "create") {
       groups[company].create++;
     }
   });
@@ -125,10 +111,19 @@ function groupByCompany(records) {
   }));
 }
 
-export function ReportsTab({ adminToken }) {
+function getReadyForInvoiceCount(companyRecords) {
+  return companyRecords.filter((r) => {
+    if (isTestRecord(r)) return false;
+    const hasPrice = r.price != null && r.price > 0;
+    const isPaid = r.paid === true;
+    const noInvoice = !r.invoice_id;
+    return hasPrice && !isPaid && noInvoice;
+  }).length;
+}
+
+export function ReportsTab({ adminToken, onError }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [hideTest, setHideTest] = useState(true);
   const [showOnlySuccess5, setShowOnlySuccess5] = useState(true);
   const [expandedConfig, setExpandedConfig] = useState({});
@@ -139,7 +134,6 @@ export function ReportsTab({ adminToken }) {
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/usage-log?hide_test=${hideTest}`, {
         headers: adminHeadersJson(adminToken),
@@ -152,12 +146,12 @@ export function ReportsTab({ adminToken }) {
       }
       setRecords(records);
     } catch (err) {
-      setError(err.message);
+      onError?.(err.message);
       setRecords([]);
     } finally {
       setLoading(false);
     }
-  }, [adminToken, hideTest, showOnlySuccess5]);
+  }, [adminToken, hideTest, showOnlySuccess5, onError]);
 
   useEffect(() => {
     fetchRecords();
@@ -200,7 +194,7 @@ export function ReportsTab({ adminToken }) {
       );
       setShowEditModal(null);
     } catch (err) {
-      setError(err.message);
+      onError?.(err.message);
     }
   };
 
@@ -209,10 +203,21 @@ export function ReportsTab({ adminToken }) {
       if (isTestRecord(r)) return false;
       const hasPrice = r.price != null && r.price > 0;
       const isPaid = r.paid === true;
-      return hasPrice && !isPaid;
+      const noInvoice = !r.invoice_number;
+      return hasPrice && !isPaid && noInvoice;
     });
     if (unpaidLogs.length === 0) {
-      setError(`Нет неоплаченных записей для "${companyName}"`);
+      const allUnpaid = companyRecords.filter((r) => {
+        if (isTestRecord(r)) return false;
+        const hasPrice = r.price != null && r.price > 0;
+        const isPaid = r.paid === true;
+        return hasPrice && !isPaid;
+      });
+      if (allUnpaid.length > 0) {
+        onError?.(`Все неоплаченные записи для "${companyName}" уже привязаны к счетам`);
+      } else {
+        onError?.(`Нет неоплаченных записей для "${companyName}"`);
+      }
       return;
     }
     setInvoiceSelectedLogs(unpaidLogs);
@@ -222,20 +227,12 @@ export function ReportsTab({ adminToken }) {
   const handleGenerateInvoice = async (invoiceData) => {
     try {
       if (!invoiceData.logs || invoiceData.logs.length === 0) {
-        setError("Нет записей для счёта");
-        return;
-      }
-
-      const apiKeyId = invoiceData.logs[0]?.api_key_id;
-      if (!apiKeyId) {
-        setError("Не удалось определить API ключ");
+        onError?.("Нет записей для счёта");
         return;
       }
 
       const body = {
-        api_key_id: apiKeyId,
         usage_log_ids: invoiceData.logs.map((l) => l.id),
-        withdrawal_id: null,
         comment: invoiceData.comment || "",
         percent_rate: invoiceData.percentRate,
         tax_rate: invoiceData.taxRate,
@@ -254,17 +251,16 @@ export function ReportsTab({ adminToken }) {
         throw new Error(errData.error || errData.detail || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
+      alert(`Счёт ${data.invoice_number} создан! Итого: ${formatMoney(data.total_amount)}`);
       setShowInvoiceModal(false);
       setInvoiceSelectedLogs([]);
       fetchRecords();
     } catch (err) {
-      setError(err.message);
+      onError?.(err.message);
     }
   };
 
   if (loading) return <div className="text-center py-4">Загрузка…</div>;
-  if (error) return <div className="alert alert-danger">Ошибка: {error}</div>;
 
   const summary = groupByCompany(records);
 
@@ -325,7 +321,7 @@ export function ReportsTab({ adminToken }) {
                           onClick={() => handleOpenInvoiceForCompany(row.name, row.records)}
                           title="Сделать расчёт"
                         >
-                          Сделать расчёт
+                          Сделать расчёт {getReadyForInvoiceCount(row.records) > 0 && `(${getReadyForInvoiceCount(row.records)})`}
                         </button>
                       </td>
                     </tr>
@@ -366,9 +362,8 @@ export function ReportsTab({ adminToken }) {
                   </tr>
                 ) : (
                   records.map((record, idx) => {
-                    const cfg = record.config_json;
                     const isExpanded = expandedConfig[record.id];
-                    const opType = getOpType(cfg);
+                    const opType = getOpType(record);
                     return (
                       <React.Fragment key={record.id}>
                         <tr>
@@ -382,10 +377,10 @@ export function ReportsTab({ adminToken }) {
                           </td>
                           <td className="small">{formatSlotDate(record.created_at)}</td>
                           <td className="small">{formatSlotDate(record.slot_date)}</td>
-                          <td className="small" title={getFioFull(cfg)}>{getFio(cfg)}</td>
-                          <td className="small" title={getCompanyFull(cfg)}>{getCompany(cfg)}</td>
-                          <td className="small" title={getVehicleNumberFull(cfg)}>{getVehicleNumber(cfg)}</td>
-                          <td className="small">{record.invoice_number || "—"}</td>
+                          <td className="small" title={getFioFull(record)}>{getFio(record)}</td>
+                          <td className="small" title={getCompanyFull(record)}>{getCompany(record)}</td>
+                          <td className="small" title={getVehicleNumberFull(record)}>{getVehicleNumber(record)}</td>
+                          <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
                           <td className="text-center text-nowrap">
                             <button
@@ -395,7 +390,7 @@ export function ReportsTab({ adminToken }) {
                             >
                               ✏️
                             </button>
-                            {cfg && (
+                            {record.config_json && (
                               <button
                                 className={`btn btn-sm ${isExpanded ? "btn-secondary" : "btn-outline-secondary"}`}
                                 onClick={() => toggleConfig(record.id)}
@@ -406,11 +401,11 @@ export function ReportsTab({ adminToken }) {
                             )}
                           </td>
                         </tr>
-                        {isExpanded && cfg && (
+                        {isExpanded && record.config_json && (
                           <tr>
                             <td colSpan={12}>
                               <pre className="p-2 small m-0" style={{ maxHeight: "300px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
-                                {JSON.stringify(cfg, null, 2)}
+                                {JSON.stringify(record.config_json, null, 2)}
                               </pre>
                             </td>
                           </tr>

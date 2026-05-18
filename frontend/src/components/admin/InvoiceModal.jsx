@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { formatMoney } from "../../utils/format";
 
 const DEFAULT_COMMISSION_RATE = 5;
 const DEFAULT_TAX_RATE = 6;
@@ -71,16 +72,14 @@ export function InvoiceModal({ show, selectedLogs, onGenerate, onClose }) {
                   </thead>
                   <tbody>
                     {selectedLogs.map((log, i) => {
-                      const config = log.config_json || {};
-                      const mode = config.mode || "create";
-                      const opType = mode === "reschedule" ? "Перенос" : "Создание";
+                      const opType = log.op_type === "reschedule" ? "Перенос" : "Создание";
                       return (
                         <tr key={log.id}>
                           <td>{i + 1}</td>
                           <td>{(log.created_at || "").substring(0, 10)}</td>
                           <td>{(log.reservation_id || "").substring(0, 20)}</td>
                           <td>{opType}</td>
-                          <td>{log.price || 0} ₽</td>
+                          <td>{formatMoney(log.price)}</td>
                         </tr>
                       );
                     })}
@@ -93,51 +92,61 @@ export function InvoiceModal({ show, selectedLogs, onGenerate, onClose }) {
               <div className="row mb-2">
                 <div className="col">
                   <span className="fw-semibold">Сумма долга:</span>
-                  <span className="ms-2">{debtAmount} ₽</span>
+                  <span className="ms-2">{formatMoney(debtAmount)}</span>
                 </div>
               </div>
 
-              <table className="table table-sm table-bordered mb-2">
+              <table className="table table-sm table-bordered mb-2" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "30%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "50%" }} />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th>Название</th>
                     <th>Ставка</th>
                     <th>Сумма</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
+                    <td>Комиссия</td>
                     <td>
-                      <span>Комиссия:</span>{" "}
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-control form-control-sm d-inline-block"
-                        style={{ width: "80px" }}
-                        value={percentRate}
-                        onChange={(e) => setPercentRate(parseFloat(e.target.value) || 0)}
-                      />
-                      <span>%</span>
+                      <div className="d-flex align-items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="form-control form-control-sm"
+                          style={{ width: "70px" }}
+                          value={percentRate}
+                          onChange={(e) => setPercentRate(parseFloat(e.target.value) || 0)}
+                        />
+                        <span>%</span>
+                      </div>
                     </td>
                     <td>
-                      <span>{percentAmount} ₽</span>
+                      <span>{formatMoney(percentAmount)}</span>
                       <span className="text-muted ms-1">от ИТОГО</span>
                     </td>
                   </tr>
                   <tr>
+                    <td>Налог</td>
                     <td>
-                      <span>Налог:</span>{" "}
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="form-control form-control-sm d-inline-block"
-                        style={{ width: "80px" }}
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                      />
-                      <span>%</span>
+                      <div className="d-flex align-items-center gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="form-control form-control-sm"
+                          style={{ width: "70px" }}
+                          value={taxRate}
+                          onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
+                        />
+                        <span>%</span>
+                      </div>
                     </td>
                     <td>
-                      <span>{taxAmount} ₽</span>
+                      <span>{formatMoney(taxAmount)}</span>
                       <span className="text-muted ms-1">от ИТОГО</span>
                     </td>
                   </tr>
@@ -146,7 +155,7 @@ export function InvoiceModal({ show, selectedLogs, onGenerate, onClose }) {
 
               <div className="fw-bold mb-2">
                 <span>ИТОГО:</span>
-                <span className="ms-2">{totalAmount} ₽</span>
+                <span className="ms-2">{formatMoney(totalAmount)}</span>
               </div>
 
               <div className="mb-0">

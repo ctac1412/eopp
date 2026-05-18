@@ -9,10 +9,6 @@ EOPP Captcha Solver - Admin Routes
 - GET /admin/tariffs/{api_key_id} - получить тариф по апи ключу
 - PUT /admin/tariffs/{api_key_id} - создать/обновить тариф
 - DELETE /admin/tariffs/{api_key_id} - удалить тариф
-- GET /admin/withdrawals - список выводов
-- POST /admin/withdrawals - создать вывод
-- PUT /admin/withdrawals/{id} - обновить вывод
-- DELETE /admin/withdrawals/{id} - удалить вывод
 - PATCH /admin/api-keys/{id} - обновить ключ (comment)
 - PATCH /admin/usage-log/{id} - обновить лог (price, paid)
 - POST /admin/generate-invoice - сгенерировать PDF-счёт
@@ -27,11 +23,6 @@ from src.db import (
     create_tariff as db_create_tariff,
     update_tariff as db_update_tariff,
     delete_tariff as db_delete_tariff,
-    list_withdrawals as db_list_withdrawals,
-    get_withdrawal as db_get_withdrawal,
-    create_withdrawal as db_create_withdrawal,
-    update_withdrawal as db_update_withdrawal,
-    delete_withdrawal as db_delete_withdrawal,
     update_key as db_update_key,
     update_usage_log as db_update_usage_log,
     list_usages as db_list_usages,
@@ -46,7 +37,13 @@ from src.models import (
     UpdateApiKeyBody,
     UpdateInvoiceBody,
     UpdateUsageLogBody,
-    WithdrawalBody,
+    CreateExpenseBody,
+    UpdateExpenseBody,
+    CreatePayoutBody,
+    UpdatePayoutBody,
+    SetPayoutStatusBody,
+    CreateUserBody,
+    UpdateUserBody,
 )
 from src.utils import (
     get_connected_streams,
@@ -111,29 +108,6 @@ def register_admin_routes(app):
             return JSONResponse(status_code=404, content={"error": "Tariff not found"})
         return JSONResponse(content={"ok": True})
 
-    @app.get("/admin/withdrawals")
-    async def list_admin_withdrawals():
-        return JSONResponse(content=db_list_withdrawals())
-
-    @app.post("/admin/withdrawals")
-    async def create_admin_withdrawal(body: WithdrawalBody):
-        withdrawal = db_create_withdrawal(body.name, body.percent, body.requisites, body.tax_percent, body.percent_type)
-        return JSONResponse(content=withdrawal)
-
-    @app.put("/admin/withdrawals/{id}")
-    async def update_admin_withdrawal(id: int, body: WithdrawalBody):
-        withdrawal = db_update_withdrawal(id, body.name, body.percent, body.requisites, body.tax_percent, body.percent_type)
-        if not withdrawal:
-            return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
-        return JSONResponse(content=withdrawal)
-
-    @app.delete("/admin/withdrawals/{id}")
-    async def delete_admin_withdrawal(id: int):
-        success = db_delete_withdrawal(id)
-        if not success:
-            return JSONResponse(status_code=404, content={"error": "Withdrawal not found"})
-        return JSONResponse(content={"ok": True})
-
     @app.patch("/admin/api-keys/{id}")
     async def update_api_key(id: int, body: UpdateApiKeyBody):
         key = db_update_key(id, comment=body.comment)
@@ -152,10 +126,6 @@ def register_admin_routes(app):
     async def generate_invoice(body: GenerateInvoiceBody):
         from datetime import datetime
 
-        api_key = db_get_key_by_id(body.api_key_id)
-        if not api_key:
-            return JSONResponse(status_code=404, content={"error": "API key not found"})
-
         usage_logs = []
         for log_id in body.usage_log_ids:
             log = db_get_usage_log_entry(log_id)
@@ -172,16 +142,14 @@ def register_admin_routes(app):
 
         now = datetime.now()
         invoice_number = f"INV-{now.strftime('%Y%m%d%H%M%S')}"
+        invoice_id = None
 
         # Сохраняем счёт в БД
         try:
             from src.db.invoices import insert_invoice
             invoice_id = insert_invoice(
                 invoice_number=invoice_number,
-                api_key_id=body.api_key_id,
-                usage_log_ids=body.usage_log_ids,
                 pdf_path="",
-                withdrawal_id=body.withdrawal_id,
                 comment=body.comment,
                 percent_rate=body.percent_rate,
                 tax_rate=body.tax_rate,
@@ -192,11 +160,14 @@ def register_admin_routes(app):
                 paid=False,
             )
 
-            # Обновляем invoice_number в usage_log записях
+            # Привязываем usage_log к инвойсу через FK
             from src.db.connection import get_connection
             conn = get_connection()
             for log_id in body.usage_log_ids:
-                conn.execute("UPDATE usage_log SET invoice_number = ? WHERE id = ?", (invoice_number, log_id))
+                conn.execute(
+                    "UPDATE usage_log SET invoice_id = ?, paid = 0 WHERE id = ?",
+                    (invoice_id, log_id)
+                )
             conn.commit()
             conn.close()
         except Exception as db_err:
@@ -215,141 +186,6 @@ def register_admin_routes(app):
             }
         )
 
-    @app.post("/admin/invoices/{id}/generate-pdf")
-    async def generate_invoice_pdf(id: int):
-        try:
-            from reportlab.lib import colors
-            from reportlab.lib.pagesizes import A4
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib.units import mm
-            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-        except ImportError:
-            return JSONResponse(
-                status_code=500, content={"error": "reportlab not installed. Install with: pip install reportlab"}
-            )
-
-        import io
-        import os
-        from datetime import datetime
-        from src.db.invoices import get_invoice
-
-        invoice = get_invoice(id)
-        if not invoice:
-            return JSONResponse(status_code=404, content={"error": "Invoice not found"})
-
-        api_key = db_get_key_by_id(invoice["api_key_id"])
-        if not api_key:
-            return JSONResponse(status_code=404, content={"error": "API key not found"})
-
-        withdrawal = None
-        if invoice.get("withdrawal_id"):
-            withdrawal = db_get_withdrawal(invoice["withdrawal_id"])
-
-        usage_logs = []
-        for log_id in invoice["usage_log_ids"]:
-            log = db_get_usage_log_entry(log_id)
-            if log:
-                usage_logs.append(log)
-
-        debt_amount = invoice["debt_amount"] or 0
-        percent_amount = invoice["percent_amount"] or 0
-        tax_amount = invoice["tax_amount"] or 0
-        total_amount = invoice["total_amount"] or 0
-
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20 * mm, leftMargin=20 * mm, topMargin=20 * mm, bottomMargin=20 * mm)
-        elements = []
-        styles = getSampleStyleSheet()
-
-        title = Paragraph("Счёт на оплату", styles["Heading1"])
-        elements.append(title)
-        elements.append(Spacer(1, 12 * mm))
-
-        info_data = [
-            ["Номер счёта:", invoice["invoice_number"]],
-            ["Дата:", invoice["created_at"][:19].replace("T", " ") if invoice["created_at"] else ""],
-            ["Плательщик:", api_key["label"] or f"Ключ #{api_key['id']}"],
-        ]
-        if withdrawal:
-            info_data.append(["Получатель:", withdrawal["name"]])
-            info_data.append(["Реквизиты:", withdrawal["requisites"]])
-        info_table = Table(info_data, colWidths=[60 * mm, 100 * mm])
-        info_table.setStyle(
-            TableStyle(
-                [
-                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ]
-            )
-        )
-        elements.append(info_table)
-        elements.append(Spacer(1, 15 * mm))
-
-        table_data = [["№", "Дата", "Reservation ID", "Тип", "Цена"]]
-        for i, log in enumerate(usage_logs, 1):
-            config = log.get("config_json") or {}
-            mode = config.get("mode", "create")
-            op_type = "Перенос" if mode == "reschedule" else "Создание"
-            price = log.get("price") or 0
-            table_data.append(
-                [
-                    str(i),
-                    log.get("created_at", "")[:10],
-                    log.get("reservation_id", "")[:20],
-                    op_type,
-                    f"{price} ₽",
-                ]
-            )
-
-        table_data.append(["", "", "", "Сумма долга:", f"{debt_amount} ₽"])
-        if percent_amount > 0:
-            table_data.append(["", "", "", f"Комиссия ({invoice['percent_rate']}%):", f"{percent_amount} ₽"])
-        if tax_amount > 0:
-            table_data.append(["", "", "", f"Налог ({invoice['tax_rate']}%):", f"{tax_amount} ₽"])
-        table_data.append(["", "", "", "ИТОГО:", f"{total_amount} ₽"])
-
-        table = Table(table_data, colWidths=[10 * mm, 25 * mm, 50 * mm, 40 * mm, 30 * mm])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                    ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
-                    ("BACKGROUND", (-2, -1), (-1, -1), colors.lightgrey),
-                ]
-            )
-        )
-        elements.append(table)
-
-        doc.build(elements)
-        buffer.seek(0)
-
-        pdf_path = os.path.join("data", "invoices", f"{invoice['invoice_number']}.pdf")
-        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-        with open(pdf_path, "wb") as f:
-            f.write(buffer.getvalue())
-
-        # Обновляем pdf_path в БД
-        from src.db.connection import get_connection
-        conn = get_connection()
-        conn.execute("UPDATE invoices SET pdf_path = ? WHERE id = ?", (pdf_path, id))
-        conn.commit()
-        conn.close()
-
-        return JSONResponse(
-            content={
-                "ok": True,
-                "invoice_number": invoice["invoice_number"],
-                "path": pdf_path,
-            }
-        )
-
     @app.get("/admin/invoices")
     async def list_admin_invoices():
         from src.db.invoices import list_invoices
@@ -362,3 +198,121 @@ def register_admin_routes(app):
         if not result:
             return JSONResponse(status_code=404, content={"error": "Invoice not found"})
         return JSONResponse(content=result)
+
+    @app.delete("/admin/invoices/{id}")
+    async def delete_admin_invoice(id: int):
+        from src.db.invoices import delete_invoice
+        deleted = delete_invoice(id)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"error": "Invoice not found"})
+        return JSONResponse(content={"ok": True})
+
+    @app.get("/admin/expenses")
+    async def list_admin_expenses():
+        from src.db.expenses import list_expenses, get_total_expenses
+        expenses = list_expenses()
+        total = get_total_expenses()
+        return JSONResponse(content={"expenses": expenses, "total": total})
+
+    @app.post("/admin/expenses")
+    async def create_admin_expense(body: CreateExpenseBody):
+        from src.db.expenses import create_expense
+        expense = create_expense(body.amount, body.reason, body.user_id, body.comment)
+        return JSONResponse(content=expense)
+
+    @app.put("/admin/expenses/{id}")
+    async def update_admin_expense(id: int, body: UpdateExpenseBody):
+        from src.db.expenses import update_expense
+        expense = update_expense(id, body.amount, body.reason, body.comment, body.user_id)
+        if not expense:
+            return JSONResponse(status_code=404, content={"error": "Expense not found"})
+        return JSONResponse(content=expense)
+
+    @app.delete("/admin/expenses/{id}")
+    async def delete_admin_expense(id: int):
+        from src.db.expenses import delete_expense
+        deleted = delete_expense(id)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"error": "Expense not found"})
+        return JSONResponse(content={"ok": True})
+
+    @app.get("/admin/payouts")
+    async def list_admin_payouts():
+        from src.db.payouts import list_payouts
+        return JSONResponse(content=list_payouts())
+
+    @app.post("/admin/payouts")
+    async def create_admin_payout(body: CreatePayoutBody):
+        from src.db.payouts import create_payout_with_calculation
+        if not body.invoice_ids or not body.expense_ids or not body.user_splits:
+            return JSONResponse(status_code=400, content={"error": "invoice_ids, expense_ids и user_splits обязательны"})
+        payout = create_payout_with_calculation(
+            body.name,
+            body.invoice_ids,
+            body.expense_ids,
+            body.user_splits,
+        )
+        return JSONResponse(content=payout)
+
+    @app.put("/admin/payouts/{id}")
+    async def update_admin_payout(id: int, body: UpdatePayoutBody):
+        from src.db.payouts import update_payout
+        if body.name is None:
+            return JSONResponse(status_code=400, content={"error": "name required"})
+        payout = update_payout(id, body.name)
+        if not payout:
+            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
+        return JSONResponse(content=payout)
+
+    @app.patch("/admin/payouts/{id}")
+    async def set_admin_payout_status(id: int, body: SetPayoutStatusBody):
+        from src.db.payouts import set_payout_status
+        payout = set_payout_status(id, body.status)
+        if not payout:
+            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
+        return JSONResponse(content=payout)
+
+    @app.delete("/admin/payouts/{id}")
+    async def delete_admin_payout(id: int):
+        from src.db.payouts import delete_payout
+        deleted = delete_payout(id)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"error": "Payout not found or not deletable"})
+        return JSONResponse(content={"ok": True})
+
+    @app.post("/admin/payouts/{id}/recalculate")
+    async def recalculate_admin_payout(id: int, body: CreatePayoutBody):
+        from src.db.payouts import recalculate_payout
+        if not body.invoice_ids or not body.expense_ids or not body.user_splits:
+            return JSONResponse(status_code=400, content={"error": "invoice_ids, expense_ids и user_splits обязательны"})
+        payout = recalculate_payout(id, body.invoice_ids, body.expense_ids, body.user_splits)
+        if not payout:
+            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
+        return JSONResponse(content=payout)
+
+    @app.get("/admin/users")
+    async def list_admin_users():
+        from src.db.users import list_users
+        return JSONResponse(content=list_users())
+
+    @app.post("/admin/users")
+    async def create_admin_user(body: CreateUserBody):
+        from src.db.users import create_user
+        user = create_user(body.name)
+        return JSONResponse(content=user)
+
+    @app.put("/admin/users/{id}")
+    async def update_admin_user(id: int, body: UpdateUserBody):
+        from src.db.users import update_user
+        user = update_user(id, body.name)
+        if not user:
+            return JSONResponse(status_code=404, content={"error": "User not found"})
+        return JSONResponse(content=user)
+
+    @app.delete("/admin/users/{id}")
+    async def delete_admin_user(id: int):
+        from src.db.users import delete_user
+        deleted = delete_user(id)
+        if not deleted:
+            return JSONResponse(status_code=404, content={"error": "User not found"})
+        return JSONResponse(content={"ok": True})

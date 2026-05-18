@@ -5,10 +5,61 @@ EOPP Captcha Solver - Usage Log.
 """
 
 import json
+import re
 from datetime import UTC, datetime
 
 from src.db.connection import get_connection
 from src.db.tariffs import get_tariff
+
+
+# UUID v0 pattern for zero UUID (used as placeholder)
+_UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")
+
+
+def _extract_fields_from_config(config_json: dict | None) -> dict:
+    """Парсит config_json и извлекает денормализованные поля."""
+    if not config_json:
+        return {
+            "op_type": None,
+            "company": None,
+            "fio": None,
+            "vehicle_number": None,
+        }
+    op_type = config_json.get("mode")
+    company = (
+        config_json.get("reservationData", {})
+        .get("raw", {})
+        .get("userData", {})
+        .get("organizationName")
+    )
+    fio = (
+        config_json.get("reservationData", {})
+        .get("raw", {})
+        .get("userData", {})
+        .get("fio")
+    )
+    vehicle_number = None
+    vehicles = config_json.get("reservationData", {}).get("raw", {}).get("vehicleData", [])
+    if isinstance(vehicles, list):
+        for v in vehicles:
+            if isinstance(v, dict) and v.get("subTypeId") == 1:
+                vehicle_number = v.get("regNumber") or None
+                break
+    return {
+        "op_type": op_type,
+        "company": company,
+        "fio": fio,
+        "vehicle_number": vehicle_number,
+    }
+
+
+def _calc_is_test(reservation_id: str, config_json: dict | None) -> int:
+    """Вычисляет is_test по reservation_id и config_json."""
+    if reservation_id in ("unknown", "") or _UUID_V0_PATTERN.match(reservation_id):
+        return 1
+    if config_json and isinstance(config_json.get("runUpTo"), int) and config_json.get("runUpTo") < 5:
+        return 1
+    return 0
 
 
 def get_usage_log_entry(usage_log_id: int) -> dict | None:
@@ -32,6 +83,13 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "confirmed_at": row["confirmed_at"],
         "price": row["price"],
         "paid": bool(row["paid"]) if row["paid"] is not None else None,
+        # Денормализованные поля
+        "op_type": row["op_type"],
+        "company": row["company"],
+        "fio": row["fio"],
+        "vehicle_number": row["vehicle_number"],
+        "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
+        "invoice_id": row["invoice_id"],
     }
 
 
@@ -54,9 +112,21 @@ def log_usage(
         raise ValueError(f"API key not found: {api_key[:8]}...")
     now = datetime.now(UTC).isoformat()
     config_str = json.dumps(config_json) if config_json else None
+
+    # Извлекаем денормализованные поля из config_json
+    extracted = _extract_fields_from_config(config_json)
+    is_test = _calc_is_test(reservation_id, config_json)
+
     cursor = conn.execute(
-        "INSERT INTO usage_log (api_key_id, reservation_id, captcha_id, status, created_at, config_json) VALUES (?, ?, ?, 'pending', ?, ?)",
-        (row["id"], reservation_id, captcha_id, now, config_str),
+        """INSERT INTO usage_log
+           (api_key_id, reservation_id, captcha_id, status, created_at, config_json,
+            op_type, company, fio, vehicle_number, is_test)
+           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            row["id"], reservation_id, captcha_id, now, config_str,
+            extracted["op_type"], extracted["company"], extracted["fio"],
+            extracted["vehicle_number"], is_test,
+        ),
     )
     conn.commit()
     usage_log_id = cursor.lastrowid
@@ -159,7 +229,6 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
     conn.close()
     result = []
     for r in rows:
-        captcha_id = r["captcha_id"] or ""
         logs_raw = r["logs"]
         logs = json.loads(logs_raw) if logs_raw else None
         result.append(
@@ -167,8 +236,7 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "id": r["id"],
                 "api_key_id": r["api_key_id"],
                 "reservation_id": r["reservation_id"],
-                "captcha_id": captcha_id,
-                "captcha_id_short": captcha_id[:16] if len(captcha_id) > 16 else captcha_id,
+                "captcha_id": r["captcha_id"],
                 "status": r["status"],
                 "error_message": r["error_message"],
                 "error_stage": r["error_stage"],
@@ -180,7 +248,13 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "label": r["label"],
                 "price": r["price"],
                 "paid": bool(r["paid"]) if r["paid"] is not None else None,
-                "invoice_number": r["invoice_number"],
+                # Денормализованные поля
+                "op_type": r["op_type"],
+                "company": r["company"],
+                "fio": r["fio"],
+                "vehicle_number": r["vehicle_number"],
+                "is_test": bool(r["is_test"]) if r["is_test"] is not None else False,
+                "invoice_id": r["invoice_id"],
             }
         )
     return result
@@ -242,4 +316,10 @@ def update_usage_log(usage_log_id: int, price: int | None = None, paid: bool | N
         "confirmed_at": row["confirmed_at"],
         "price": row["price"],
         "paid": bool(row["paid"]) if row["paid"] is not None else None,
+        "op_type": row["op_type"],
+        "company": row["company"],
+        "fio": row["fio"],
+        "vehicle_number": row["vehicle_number"],
+        "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
+        "invoice_id": row["invoice_id"],
     }

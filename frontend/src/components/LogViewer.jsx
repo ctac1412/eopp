@@ -5,8 +5,8 @@ function LogViewer() {
   const logs = useCaptchaStore((s) => s.logs);
 
   return (
-    <div className="card" style={{ animation: "fade-in 0.3s ease" }}>
-      <div className="card-body p-0" style={{ maxHeight: "160px", overflowY: "auto" }}>
+    <div className="card" style={{ animation: "fade-in 0.3s ease", borderRadius: 0, borderLeft: "none", borderRight: "none", borderBottom: "none" }}>
+      <div className="card-body p-0" style={{ maxHeight: "100px", overflowY: "auto" }}>
         {logs.length === 0 ? (
           <div className="text-center py-2" style={{ color: "#484f58", fontSize: "0.75rem" }}>
             Нет записей

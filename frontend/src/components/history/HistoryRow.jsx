@@ -1,4 +1,5 @@
 import React from "react";
+import { formatMoney } from "../../utils/format";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -24,9 +25,10 @@ function formatDateShort(iso) {
   });
 }
 
-function getOpType(configData) {
-  if (!configData) return null;
-  return configData.mode === "create" ? "Создание" : configData.mode === "reschedule" ? "Перенос" : null;
+function opTypeLabel(opType) {
+  if (opType === "create") return "Создание";
+  if (opType === "reschedule") return "Перенос";
+  return null;
 }
 
 function maskFio(fio) {
@@ -47,15 +49,7 @@ function maskFio(fio) {
 }
 
 function isTestRecord(record) {
-  const rid = record.reservation_id || "";
-  if (rid === "unknown" || rid === "" || /^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(rid)) {
-    return true;
-  }
-  const cfg = record.config_json;
-  if (cfg && typeof cfg.runUpTo === "number" && cfg.runUpTo < 5) {
-    return true;
-  }
-  return false;
+  return record.is_test === true || record.is_test === 1;
 }
 
 const COLUMN_CONFIGS = {
@@ -112,7 +106,7 @@ export function HistoryRow({
   const hasLogs = record.logs && record.logs.length > 0;
   const hasConfig = record.config_json != null;
   const hasError = record.error_message != null && record.error_message !== "";
-  const opType = getOpType(record.config_json);
+  const opType = opTypeLabel(record.op_type);
   const errorTruncated =
     hasError && !isErrorExpanded
       ? record.error_message.length > 100
@@ -166,11 +160,8 @@ export function HistoryRow({
         );
       case "slot":
         return <td className="align-middle small">{record.slot_date || "—"}</td>;
-      case "fio": {
-        const cfg = record.config_json;
-        const fio = cfg?.reservationData?.raw?.userData?.fio;
-        return <td className="align-middle small">{maskFio(fio)}</td>;
-      }
+      case "fio":
+        return <td className="align-middle small">{maskFio(record.fio)}</td>;
       case "test":
         return <td className="align-middle small">{isTestRecord(record) ? "Да" : "Нет"}</td>;
       case "resid": {
@@ -231,7 +222,7 @@ export function HistoryRow({
             style={actions.showEdit ? { cursor: "pointer" } : undefined}
             title={actions.showEdit ? "Двойной клик для редактирования" : undefined}
           >
-            {record.price != null ? `${record.price} ₽` : "—"}
+            {record.price != null ? formatMoney(record.price) : "—"}
           </td>
         );
       case "paid":

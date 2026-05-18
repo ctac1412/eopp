@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { formatMoney } from "../utils/format";
 import useCaptchaStore from "../store/useCaptchaStore";
 
 function maskKey(key) {
@@ -106,10 +107,10 @@ function StatusBar() {
       </div>
       <div className="d-flex align-items-center gap-2 flex-wrap">
         {apiPriceCreate != null && (
-          <span className="tariff-badge tariff-badge--create">{apiPriceCreate}₽</span>
+          <span className="tariff-badge tariff-badge--create">{formatMoney(apiPriceCreate)}</span>
         )}
         {apiPriceReschedule != null && (
-          <span className="tariff-badge tariff-badge--reschedule">{apiPriceReschedule}₽</span>
+          <span className="tariff-badge tariff-badge--reschedule">{formatMoney(apiPriceReschedule)}</span>
         )}
         {apiKey && (
           <div className="d-flex align-items-center gap-2" style={{ fontSize: "0.8125rem" }}>

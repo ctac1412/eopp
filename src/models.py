@@ -115,18 +115,8 @@ class TariffBody(BaseModel):
     price_reschedule: int
 
 
-class WithdrawalBody(BaseModel):
-    name: str
-    percent: int
-    requisites: str
-    tax_percent: int = 0
-    percent_type: str = "included"
-
-
 class GenerateInvoiceBody(BaseModel):
-    api_key_id: int
     usage_log_ids: list[int]
-    withdrawal_id: int | None = None
     comment: str = ""
     percent_rate: float = 0
     tax_rate: float = 0
@@ -138,3 +128,41 @@ class GenerateInvoiceBody(BaseModel):
 
 class UpdateInvoiceBody(BaseModel):
     paid: bool
+
+
+class CreateUserBody(BaseModel):
+    name: str
+
+
+class UpdateUserBody(BaseModel):
+    name: str
+
+
+class CreateExpenseBody(BaseModel):
+    amount: int
+    reason: str
+    user_id: int | None = None
+    comment: str = ""
+
+
+class UpdateExpenseBody(BaseModel):
+    amount: int | None = None
+    reason: str | None = None
+    comment: str | None = None
+    user_id: int | None = None
+
+
+class CreatePayoutBody(BaseModel):
+    name: str
+    invoice_ids: list[int] = []
+    expense_ids: list[int] = []
+    user_splits: list[dict] = []
+    # user_splits = [{"user_id": int, "split_pct": float}, ...]
+
+
+class UpdatePayoutBody(BaseModel):
+    name: str | None = None
+
+
+class SetPayoutStatusBody(BaseModel):
+    status: str  # "completed" | "cancelled"

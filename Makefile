@@ -101,3 +101,22 @@ deploy-rollback:         # Rollback to previous Docker image on remote server
 
 deploy-push-data:        # Push local data/ and plugins/ to remote server
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" push-data
+
+# Alembic migrations
+migrate:                 # Применить все миграции (alembic upgrade head)
+	uv run python -m alembic upgrade head
+
+migrate-status:          # Статус миграций
+	uv run python -m alembic current
+
+migrate-history:         # История миграций
+	uv run python -m alembic history --verbose
+
+migration:               # Создать новую миграцию: make migration MSG="add column"
+	uv run python -m alembic revision -m "$(MSG)"
+
+migrate-downgrade:       # Откатить последнюю миграцию
+	uv run python -m alembic downgrade -1
+
+migrate-downgrade-all:   # Откатить все миграции
+	uv run python -m alembic downgrade base

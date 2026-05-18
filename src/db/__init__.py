@@ -7,7 +7,6 @@ EOPP Captcha Solver - Database Layer.
 - api_keys: CRUD для API ключей
 - usage_log: логирование использования
 - tariffs: CRUD для тарифов
-- withdrawals: CRUD для способов вывода
 """
 
 from src.db.connection import get_connection, DB_PATH
@@ -40,12 +39,31 @@ from src.db.tariffs import (
     update_tariff,
     delete_tariff,
 )
-from src.db.withdrawals import (
-    list_withdrawals,
-    get_withdrawal,
-    create_withdrawal,
-    update_withdrawal,
-    delete_withdrawal,
+from src.db.expenses import (
+    list_expenses,
+    get_expense_by_id,
+    create_expense,
+    update_expense,
+    delete_expense,
+    get_total_expenses,
+    get_total_expenses_by_user,
+)
+from src.db.payouts import (
+    list_payouts,
+    get_payout_by_id,
+    create_payout,
+    update_payout,
+    set_payout_status,
+    delete_payout,
+    calculate_payout,
+    recalculate_payout,
+)
+from src.db.users import (
+    list_users,
+    get_user_by_id,
+    create_user,
+    update_user,
+    delete_user,
 )
 
 __all__ = [
@@ -74,9 +92,24 @@ __all__ = [
     "create_tariff",
     "update_tariff",
     "delete_tariff",
-    "list_withdrawals",
-    "get_withdrawal",
-    "create_withdrawal",
-    "update_withdrawal",
-    "delete_withdrawal",
+    "list_expenses",
+    "get_expense_by_id",
+    "create_expense",
+    "update_expense",
+    "delete_expense",
+    "get_total_expenses",
+    "get_total_expenses_by_user",
+    "list_payouts",
+    "get_payout_by_id",
+    "create_payout",
+    "update_payout",
+    "set_payout_status",
+    "delete_payout",
+    "calculate_payout",
+    "recalculate_payout",
+    "list_users",
+    "get_user_by_id",
+    "create_user",
+    "update_user",
+    "delete_user",
 ]

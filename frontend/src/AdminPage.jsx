@@ -18,14 +18,17 @@ import {
   ApiKeysTab,
   StreamsTab,
   TestBenchmarkTab,
-  WithdrawalsTab,
   InvoicesTab,
-  WithdrawalModal,
   KeyFormModal,
   DeleteConfirmModal,
-  InvoiceModal,
   UsageLogEditModal,
   ReportsTab,
+  ExpensesTab,
+  ExpenseModal,
+  PayoutsTab,
+  PayoutModal,
+  UsersTab,
+  UserModal,
 } from "./components/admin";
 
 function adminHeaders(token) {
@@ -62,13 +65,6 @@ function AdminPage() {
     priceCreate: "",
     priceReschedule: "",
   });
-  const [withdrawals, setWithdrawals] = useState([]);
-  const [withdrawalForm, setWithdrawalForm] = useState({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
-  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
-  const [selectedUsageLogs, setSelectedUsageLogs] = useState({});
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({ apiKeyId: null, withdrawalId: "" });
-  const [invoiceSelectedLogs, setInvoiceSelectedLogs] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
   const [historyLoading, setHistoryLoading] = useState({});
@@ -79,6 +75,23 @@ function AdminPage() {
   const [usageLogEditForm, setUsageLogEditForm] = useState({ price: "", paid: "" });
   const [editingPriceId, setEditingPriceId] = useState(null);
   const intervalRef = useRef(null);
+
+  // Expenses
+  const [expenses, setExpenses] = useState([]);
+  const [expenseTotal, setExpenseTotal] = useState(0);
+  const [expenseForm, setExpenseForm] = useState({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+
+  // Payouts
+  const [payouts, setPayouts] = useState([]);
+  const [payoutForm, setPayoutForm] = useState({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [payoutPreview, setPayoutPreview] = useState(null);
+
+  // Users
+  const [users, setUsers] = useState([]);
+  const [userForm, setUserForm] = useState({ id: null, name: "" });
+  const [showUserModal, setShowUserModal] = useState(false);
 
   // Streams
   const [streams, setStreams] = useState([]);
@@ -112,19 +125,75 @@ function AdminPage() {
     [adminToken],
   );
 
-  const fetchWithdrawals = useCallback(
+  const fetchExpenses = useCallback(
     async (token) => {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/withdrawals", {
+        const res = await fetch("/admin/expenses", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        setWithdrawals(Array.isArray(data) ? data : []);
+        setExpenses(Array.isArray(data) ? data : data.expenses || []);
+        setExpenseTotal(data.total || 0);
       } catch (err) {
-        setWithdrawals([]);
+        setExpenses([]);
+        setExpenseTotal(0);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchUsers = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/users", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setUsers(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setUsers([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchPayouts = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/payouts", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setPayouts(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setPayouts([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchPreview = useCallback(
+    async (split_pct1, split_pct2) => {
+      const t = adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch(`/admin/payouts/preview?split_pct1=${split_pct1}&split_pct2=${split_pct2}`, {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPayoutPreview(data);
+      } catch (err) {
+        setPayoutPreview(null);
       }
     },
     [adminToken],
@@ -222,10 +291,28 @@ function AdminPage() {
   }, [adminToken, activeTab, fetchTestStats]);
 
   useEffect(() => {
-    if (adminToken && activeTab === "withdrawals") {
-      fetchWithdrawals(adminToken);
+    if (adminToken && activeTab === "expenses") {
+      fetchExpenses(adminToken);
     }
-  }, [adminToken, activeTab, fetchWithdrawals]);
+  }, [adminToken, activeTab, fetchExpenses]);
+
+  useEffect(() => {
+    if (adminToken && activeTab === "payouts") {
+      fetchPayouts(adminToken);
+    }
+  }, [adminToken, activeTab, fetchPayouts]);
+
+  useEffect(() => {
+    if (adminToken && activeTab === "users") {
+      fetchUsers(adminToken);
+    }
+  }, [adminToken, activeTab, fetchUsers]);
+
+  useEffect(() => {
+    if (adminToken && (activeTab === "expenses" || activeTab === "payouts")) {
+      fetchUsers(adminToken);
+    }
+  }, [adminToken, activeTab]);
 
   const doAuth = async () => {
     setAuthError(null);
@@ -436,108 +523,205 @@ function AdminPage() {
     }
   };
 
-  const handleCreateWithdrawal = async (e) => {
+  const handleCreateExpense = async (e) => {
     e.preventDefault();
     try {
       const body = {
-        name: withdrawalForm.name,
-        percent: parseInt(withdrawalForm.percent, 10),
-        tax_percent: parseInt(withdrawalForm.tax_percent, 10),
-        percent_type: withdrawalForm.percent_type,
-        requisites: withdrawalForm.requisites,
+        amount: parseInt(expenseForm.amount, 10),
+        reason: expenseForm.reason,
+        user_id: expenseForm.user_id,
+        comment: expenseForm.comment,
       };
-      const res = await fetch("/admin/withdrawals", {
+      const res = await fetch("/admin/expenses", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
-      setShowWithdrawalModal(false);
-      fetchWithdrawals(adminToken);
+      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+      setShowExpenseModal(false);
+      fetchExpenses(adminToken);
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const handleUpdateWithdrawal = async (e) => {
+  const handleUpdateExpense = async (e) => {
     e.preventDefault();
-    if (!withdrawalForm.id) return;
+    if (!expenseForm.id) return;
     try {
       const body = {
-        name: withdrawalForm.name,
-        percent: parseInt(withdrawalForm.percent, 10),
-        tax_percent: parseInt(withdrawalForm.tax_percent, 10),
-        percent_type: withdrawalForm.percent_type,
-        requisites: withdrawalForm.requisites,
+        amount: parseInt(expenseForm.amount, 10),
+        reason: expenseForm.reason,
+        user_id: expenseForm.user_id,
+        comment: expenseForm.comment,
       };
-      const res = await fetch(`/admin/withdrawals/${withdrawalForm.id}`, {
+      const res = await fetch(`/admin/expenses/${expenseForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" });
-      setShowWithdrawalModal(false);
-      fetchWithdrawals(adminToken);
+      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+      setShowExpenseModal(false);
+      fetchExpenses(adminToken);
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const handleDeleteWithdrawal = async (id) => {
+  const handleCreatePayout = async (e) => {
+    e.preventDefault();
     try {
-      const res = await fetch(`/admin/withdrawals/${id}`, {
-        method: "DELETE",
-        headers: adminHeadersJson(adminToken),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      fetchWithdrawals(adminToken);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleGenerateInvoice = async (invoiceData) => {
-    try {
-      if (!invoiceData.logs || invoiceData.logs.length === 0) {
-        setError("Нет записей для счёта");
-        return;
-      }
-
       const body = {
-        api_key_id: invoiceForm.apiKeyId,
-        usage_log_ids: invoiceData.logs.map((l) => l.id),
-        withdrawal_id: null,
-        comment: invoiceData.comment || "",
-        percent_rate: invoiceData.percentRate,
-        tax_rate: invoiceData.taxRate,
-        debt_amount: invoiceData.logs.reduce((acc, l) => acc + (l.price || 0), 0),
-        percent_amount: invoiceData.percentAmount,
-        tax_amount: invoiceData.taxAmount,
-        total_amount: invoiceData.totalAmount,
+        name: payoutForm.name,
+        user_id1: payoutForm.user_id1,
+        split_pct1: parseInt(payoutForm.split_pct1, 10),
+        user_id2: payoutForm.user_id2,
+        split_pct2: parseInt(payoutForm.split_pct2, 10),
       };
-      const res = await fetch("/admin/generate-invoice", {
+      const res = await fetch("/admin/payouts", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.detail || `HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      alert(`Счёт ${data.invoice_number} создан! Итого: ${data.total_amount} ₽`);
-      setShowInvoiceModal(false);
-      setSelectedUsageLogs({});
-      setInvoiceSelectedLogs([]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+      setShowPayoutModal(false);
+      setPayoutPreview(null);
+      fetchPayouts(adminToken);
     } catch (err) {
       setError(err.message);
     }
   };
 
-  const toggleUsageLogSelection = (logId) => {
-    setSelectedUsageLogs((prev) => ({ ...prev, [logId]: !prev[logId] }));
+  const handleUpdatePayout = async (e) => {
+    e.preventDefault();
+    if (!payoutForm.id) return;
+    try {
+      const body = {
+        name: payoutForm.name,
+        user_id1: payoutForm.user_id1,
+        split_pct1: parseInt(payoutForm.split_pct1, 10),
+        user_id2: payoutForm.user_id2,
+        split_pct2: parseInt(payoutForm.split_pct2, 10),
+      };
+      const res = await fetch(`/admin/payouts/${payoutForm.id}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+      setShowPayoutModal(false);
+      setPayoutPreview(null);
+      fetchPayouts(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeletePayout = async (id) => {
+    try {
+      const res = await fetch(`/admin/payouts/${id}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchPayouts(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleSetPayoutStatus = async (id, status) => {
+    try {
+      const res = await fetch(`/admin/payouts/${id}`, {
+        method: "PATCH",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchPayouts(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRecalculatePayout = async (id) => {
+    try {
+      const res = await fetch(`/admin/payouts/${id}/recalculate`, {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchPayouts(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    try {
+      const body = { name: userForm.name };
+      const res = await fetch("/admin/users", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUserForm({ id: null, name: "" });
+      setShowUserModal(false);
+      fetchUsers(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    if (!userForm.id) return;
+    try {
+      const body = { name: userForm.name };
+      const res = await fetch(`/admin/users/${userForm.id}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUserForm({ id: null, name: "" });
+      setShowUserModal(false);
+      fetchUsers(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (id) => {
+    try {
+      const res = await fetch(`/admin/users/${id}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchUsers(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    try {
+      const res = await fetch(`/admin/expenses/${id}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchExpenses(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const togglePluginLogs = (usageLogId) => {
@@ -661,7 +845,9 @@ function AdminPage() {
     { id: "invoices", label: "Счета" },
     { id: "streams", label: "Стримы" },
     { id: "testbench", label: "Тесты и бенчмарк" },
-    { id: "withdrawals", label: "Способы вывода" },
+    { id: "expenses", label: "Расходы" },
+    { id: "payouts", label: "Выплаты" },
+    { id: "users", label: "Пользователи" },
   ];
 
   if (!adminToken) {
@@ -686,9 +872,19 @@ function AdminPage() {
               + Новый ключ
             </button>
           )}
-          {activeTab === "withdrawals" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setWithdrawalForm({ id: null, name: "", percent: "", tax_percent: "0", percent_type: "included", requisites: "" }); setShowWithdrawalModal(true); }}>
-              + Новый способ вывода
+          {activeTab === "expenses" && (
+            <button className="btn btn-sm btn-primary" onClick={() => { setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" }); setShowExpenseModal(true); }}>
+              + Новый расход
+            </button>
+          )}
+          {activeTab === "payouts" && (
+            <button className="btn btn-sm btn-primary" onClick={() => { setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" }); setPayoutPreview(null); fetchPreview(50, 50); setShowPayoutModal(true); }}>
+              + Новая выплата
+            </button>
+          )}
+          {activeTab === "users" && (
+            <button className="btn btn-sm btn-primary" onClick={() => { setUserForm({ id: null, name: "" }); setShowUserModal(true); }}>
+              + Новый пользователь
             </button>
           )}
           <button className="btn btn-sm btn-outline-secondary" onClick={handleLogout}>
@@ -729,32 +925,15 @@ function AdminPage() {
           historyHideTest={historyHideTest}
           expandedLogs={expandedLogs}
           expandedConfig={expandedConfig}
-          selectedUsageLogs={selectedUsageLogs}
           onEditKey={openEdit}
           onToggleActive={handleToggleActive}
           onToggleHistory={toggleHistory}
           onFetchUsageHistory={fetchUsageHistory}
           onDeleteUsage={handleDeleteUsage}
           onEditUsageLog={openUsageLogEdit}
-          onToggleUsageLogSelection={toggleUsageLogSelection}
           onTogglePluginLogs={togglePluginLogs}
           onToggleConfig={toggleConfig}
           onCloseNewKey={() => setNewKey(null)}
-          onShowInvoiceModal={(keyId) => {
-            const selectedIds = Object.entries(selectedUsageLogs)
-              .filter(([_, v]) => v)
-              .map(([k, _]) => parseInt(k, 10));
-            const allLogs = expandedHistory[keyId] || [];
-            const selected = allLogs.filter((l) => selectedIds.includes(l.id));
-            if (selected.length === 0) {
-              setError("Выберите хотя бы одну запись");
-              return;
-            }
-            setInvoiceForm({ apiKeyId: keyId, withdrawalId: "" });
-            setInvoiceSelectedLogs(selected);
-            setShowInvoiceModal(true);
-            fetchWithdrawals(adminToken);
-          }}
           editingPriceId={editingPriceId}
           setEditingPriceId={setEditingPriceId}
           onPriceChange={handleInlinePriceChange}
@@ -763,7 +942,7 @@ function AdminPage() {
       )}
 
       {activeTab === "reports" && (
-        <ReportsTab adminToken={adminToken} />
+        <ReportsTab adminToken={adminToken} onError={(msg) => setError(msg)} />
       )}
 
       {activeTab === "invoices" && (
@@ -786,11 +965,31 @@ function AdminPage() {
         />
       )}
 
-      {activeTab === "withdrawals" && (
-        <WithdrawalsTab
-          withdrawals={withdrawals}
-          onEdit={(w) => { setWithdrawalForm({ id: w.id, name: w.name, percent: String(w.percent), tax_percent: String(w.tax_percent || 0), percent_type: w.percent_type || "included", requisites: w.requisites }); setShowWithdrawalModal(true); }}
-          onDelete={handleDeleteWithdrawal}
+      {activeTab === "expenses" && (
+        <ExpensesTab
+          expenses={expenses}
+          total={expenseTotal}
+          users={users}
+          onEdit={(e) => { setExpenseForm({ id: e.id, amount: String(e.amount), reason: e.reason, user_id: e.user_id, comment: e.comment || "" }); setShowExpenseModal(true); }}
+          onDelete={handleDeleteExpense}
+        />
+      )}
+
+      {activeTab === "payouts" && (
+        <PayoutsTab
+          payouts={payouts}
+          onEdit={(p) => { setPayoutForm({ id: p.id, name: p.name, user_id1: p.user_id1, split_pct1: String(p.split_pct1), user_id2: p.user_id2, split_pct2: String(p.split_pct2) }); fetchPreview(p.split_pct1, p.split_pct2); setShowPayoutModal(true); }}
+          onDelete={handleDeletePayout}
+          onRecalculate={handleRecalculatePayout}
+          onStatusChange={handleSetPayoutStatus}
+        />
+      )}
+
+      {activeTab === "users" && (
+        <UsersTab
+          users={users}
+          onEdit={(u) => { setUserForm({ id: u.id, name: u.name }); setShowUserModal(true); }}
+          onDelete={handleDeleteUser}
         />
       )}
 
@@ -820,13 +1019,6 @@ function AdminPage() {
         onClose={() => setConfirmDelete(null)}
       />
 
-      <InvoiceModal
-        show={showInvoiceModal}
-        selectedLogs={invoiceSelectedLogs}
-        onGenerate={handleGenerateInvoice}
-        onClose={() => setShowInvoiceModal(false)}
-      />
-
       <UsageLogEditModal
         show={!!showUsageLogEdit}
         entry={showUsageLogEdit}
@@ -836,12 +1028,32 @@ function AdminPage() {
         onClose={() => setShowUsageLogEdit(null)}
       />
 
-      <WithdrawalModal
-        show={showWithdrawalModal}
-        form={withdrawalForm}
-        setForm={setWithdrawalForm}
-        onSubmit={withdrawalForm.id ? handleUpdateWithdrawal : handleCreateWithdrawal}
-        onClose={() => setShowWithdrawalModal(false)}
+      <ExpenseModal
+        show={showExpenseModal}
+        form={expenseForm}
+        setForm={setExpenseForm}
+        onSubmit={expenseForm.id ? handleUpdateExpense : handleCreateExpense}
+        onClose={() => setShowExpenseModal(false)}
+        users={users}
+      />
+
+      <PayoutModal
+        show={showPayoutModal}
+        form={payoutForm}
+        setForm={setPayoutForm}
+        onSubmit={payoutForm.id ? handleUpdatePayout : handleCreatePayout}
+        onClose={() => setShowPayoutModal(false)}
+        preview={payoutPreview}
+        onPctChange={fetchPreview}
+        users={users}
+      />
+
+      <UserModal
+        show={showUserModal}
+        form={userForm}
+        setForm={setUserForm}
+        onSubmit={userForm.id ? handleUpdateUser : handleCreateUser}
+        onClose={() => setShowUserModal(false)}
       />
     </div>
   );

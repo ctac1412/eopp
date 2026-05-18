@@ -49,10 +49,10 @@ function CaptchaGrid() {
           </div>
         </div>
       </div>
-      <div className="card-body p-3 d-flex align-items-center justify-content-center flex-grow-1" style={{ overflow: "auto", minHeight: 0 }}>
-        <div className="row g-3 w-100 justify-content-center">
+      <div className="card-body p-3 d-flex align-items-center justify-content-center flex-grow-1" style={{ minHeight: 0 }}>
+        <div className="row row-cols-5 g-2 w-100 justify-content-center">
           {ordered.map((key) => (
-            <div className="col-3 col-md-2 col-lg-2" key={active.id + "-" + key}>
+            <div key={active.id + "-" + key}>
               <CaptchaCard entry={active} index={key} />
             </div>
           ))}

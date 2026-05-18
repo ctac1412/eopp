@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { formatMoney } from "../../utils/format";
 
 function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
@@ -66,6 +67,20 @@ export function InvoicesTab({ adminToken, onError }) {
     }
   };
 
+  const deleteInvoice = async (invoice) => {
+    if (!confirm(`Удалить счёт ${invoice.invoice_number}?`)) return;
+    try {
+      const res = await fetch(`/admin/invoices/${invoice.id}`, {
+        method: "DELETE",
+        headers: adminHeaders(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setInvoices((prev) => prev.filter((inv) => inv.id !== invoice.id));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const generatePdf = async (invoice) => {
     setPdfLoading((prev) => ({ ...prev, [invoice.id]: true }));
     try {
@@ -74,9 +89,15 @@ export function InvoicesTab({ adminToken, onError }) {
         headers: adminHeaders(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      if (onError) onError(`PDF ${data.invoice_number} создан: ${data.path}`);
-      fetchInvoices();
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${invoice.invoice_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -87,13 +108,19 @@ export function InvoicesTab({ adminToken, onError }) {
   if (loading) return <div className="text-center text-muted py-5">Загрузка…</div>;
   if (error) return <div className="alert alert-danger">Ошибка: {error}</div>;
 
+  const unpaidInvoices = invoices.filter((inv) => !inv.paid);
+  const unpaidTotal = unpaidInvoices.reduce((acc, inv) => acc + (inv.total_amount || 0), 0);
+
   return (
     <div>
       <div className="d-flex justify-content-between align-items-center mb-3">
-        <button className="btn btn-outline-secondary btn-sm" onClick={fetchInvoices}>
-          Обновить
-        </button>
-        <span className="text-muted small">Всего: {invoices.length}</span>
+        <div className="d-flex gap-3 align-items-center">
+          <button className="btn btn-outline-secondary btn-sm" onClick={fetchInvoices}>
+            Обновить
+          </button>
+          <span className="text-muted small">Всего: {invoices.length}</span>
+          <span className="text-danger small fw-semibold">Не оплачено: {unpaidInvoices.length} ({formatMoney(unpaidTotal)})</span>
+        </div>
       </div>
 
       <div className="table-responsive">
@@ -110,12 +137,12 @@ export function InvoicesTab({ adminToken, onError }) {
               <th className="text-end fw-bold">ИТОГО</th>
               <th>Комментарий</th>
               <th className="text-center" style={{ width: "110px" }}>Оплата</th>
-              <th className="text-center" style={{ width: "70px" }}>Действия</th>
+              <th className="text-center" style={{ width: "110px" }}>Действия</th>
             </tr>
           </thead>
           <tbody>
             {invoices.length === 0 ? (
-              <tr><td colSpan={11} className="text-center text-muted py-4">Нет счетов</td></tr>
+              <tr><td colSpan={12} className="text-center text-muted py-4">Нет счетов</td></tr>
             ) : (
               invoices.map((inv, idx) => (
                 <tr key={inv.id}>
@@ -123,10 +150,10 @@ export function InvoicesTab({ adminToken, onError }) {
                   <td><code>{inv.invoice_number}</code></td>
                   <td className="small">{formatDate(inv.created_at)}</td>
                   <td className="text-center">{inv.usage_log_ids?.length || 0}</td>
-                  <td className="text-end font-monospace small">{inv.debt_amount} ₽</td>
-                  <td className="text-end font-monospace small">{inv.percent_amount} ₽</td>
-                  <td className="text-end font-monospace small">{inv.tax_amount} ₽</td>
-                  <td className="text-end fw-bold text-primary">{inv.total_amount} ₽</td>
+                  <td className="text-end font-monospace small">{formatMoney(inv.debt_amount)}</td>
+                  <td className="text-end font-monospace small">{formatMoney(inv.percent_amount)}</td>
+                  <td className="text-end font-monospace small">{formatMoney(inv.tax_amount)}</td>
+                  <td className="text-end fw-bold text-primary">{formatMoney(inv.total_amount)}</td>
                   <td className="small text-truncate" style={{ maxWidth: "150px" }} title={inv.comment || ""}>{inv.comment || "—"}</td>
                   <td className="text-center">
                     <button
@@ -143,6 +170,12 @@ export function InvoicesTab({ adminToken, onError }) {
                       disabled={pdfLoading[inv.id]}
                     >
                       {pdfLoading[inv.id] ? "..." : "PDF"}
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline-danger ms-1"
+                      onClick={() => deleteInvoice(inv)}
+                    >
+                      ✕
                     </button>
                   </td>
                 </tr>

@@ -1,4 +1,5 @@
 import React from "react";
+import { formatMoney } from "../../utils/format";
 import { UsageHistory } from "./AdminUsageHistory";
 
 function formatDate(iso) {
@@ -39,18 +40,15 @@ export function ApiKeysTab({
   historyHideTest,
   expandedLogs,
   expandedConfig,
-  selectedUsageLogs,
   onEditKey,
   onToggleActive,
   onToggleHistory,
   onFetchUsageHistory,
   onDeleteUsage,
   onEditUsageLog,
-  onToggleUsageLogSelection,
   onTogglePluginLogs,
   onToggleConfig,
   onCloseNewKey,
-  onShowInvoiceModal,
   editingPriceId,
   setEditingPriceId,
   onPriceChange,
@@ -132,10 +130,10 @@ export function ApiKeysTab({
                     <td className="text-nowrap small">{formatDate(k.created_at)}</td>
                     <td className="small">{k.comment || "—"}</td>
                     <td className="text-center">
-                      {tariff ? `${tariff.price_create} ₽` : "—"}
+                      {tariff ? formatMoney(tariff.price_create) : "—"}
                     </td>
                     <td className="text-center">
-                      {tariff ? `${tariff.price_reschedule} ₽` : "—"}
+                      {tariff ? formatMoney(tariff.price_reschedule) : "—"}
                     </td>
                     <td className="text-center">
                       {k.usage_count ?? 0}{k.max_uses != null ? ` / ${k.max_uses}` : ""}
@@ -146,10 +144,10 @@ export function ApiKeysTab({
                           className="badge bg-warning text-dark"
                           title={`${debt.unpaid_count} не оплачено, ${debt.no_price_count} без цены`}
                         >
-                          {debt.unpaid_total} ₽
+                          {formatMoney(debt.unpaid_total)}
                         </span>
                       ) : (
-                        <span className="badge bg-success">0 ₽</span>
+                        <span className="badge bg-success">{formatMoney(0)}</span>
                       )}
                     </td>
                     <td className="text-center">
@@ -181,32 +179,29 @@ export function ApiKeysTab({
                     <tr>
                       <td colSpan={11} className="p-0">
                         <div className="p-3" style={{ background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
-                          <UsageHistory
-                            keyId={k.id}
-                            historyData={historyData}
-                            isLoading={historyLoading[k.id]}
-                            isEmpty={historyData === null}
-                            isError={historyData === null}
-                            hideTest={historyHideTest[k.id]}
-                            onToggleHideTest={() => {
-                              const next = !historyHideTest[k.id];
-                              onFetchUsageHistory(k.id, next);
-                            }}
-                            onRefresh={() => onFetchUsageHistory(k.id, historyHideTest[k.id])}
-                            onDelete={(usageId) => onDeleteUsage(k.id, usageId)}
-                            onEdit={(entry) => onEditUsageLog(entry)}
-                            selectedLogs={selectedUsageLogs}
-                            onToggleSelect={(id) => onToggleUsageLogSelection(id)}
-                            expandedLogs={expandedLogs}
-                            expandedConfig={expandedConfig}
-                            onToggleLogs={(id) => onTogglePluginLogs(id)}
-                            onToggleConfig={(id) => onToggleConfig(id)}
-                            onGenerateInvoice={() => onShowInvoiceModal(k.id)}
-                            editingPriceId={editingPriceId}
-                            setEditingPriceId={setEditingPriceId}
-                            onPriceChange={onPriceChange}
-                            onTogglePaid={onTogglePaid}
-                          />
+                        <UsageHistory
+                          keyId={k.id}
+                          historyData={historyData}
+                          isLoading={historyLoading[k.id]}
+                          isEmpty={historyData === null}
+                          isError={historyData === null}
+                          hideTest={historyHideTest[k.id]}
+                          onToggleHideTest={() => {
+                            const next = !historyHideTest[k.id];
+                            onFetchUsageHistory(k.id, next);
+                          }}
+                          onRefresh={() => onFetchUsageHistory(k.id, historyHideTest[k.id])}
+                          onDelete={(usageId) => onDeleteUsage(k.id, usageId)}
+                          onEdit={(entry) => onEditUsageLog(entry)}
+                          expandedLogs={expandedLogs}
+                          expandedConfig={expandedConfig}
+                          onToggleLogs={(id) => onTogglePluginLogs(id)}
+                          onToggleConfig={(id) => onToggleConfig(id)}
+                          editingPriceId={editingPriceId}
+                          setEditingPriceId={setEditingPriceId}
+                          onPriceChange={onPriceChange}
+                          onTogglePaid={onTogglePaid}
+                        />
                         </div>
                       </td>
                     </tr>

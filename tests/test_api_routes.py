@@ -440,62 +440,6 @@ class TestTariffs:
         assert get_response.status_code == 404
 
 
-# === Withdrawal Tests ===
-class TestWithdrawals:
-    """Тесты Withdrawal эндпоинтов."""
-
-    def test_list_withdrawals_empty(self, client, admin_token):
-        """Пустой список выводов."""
-        response = client.get("/admin/withdrawals", headers={"X-Admin-Token": admin_token})
-        assert response.status_code == 200
-        assert response.json() == []
-
-    def test_create_withdrawal(self, client, admin_token):
-        """Создание вывода."""
-        response = client.post(
-            "/admin/withdrawals",
-            headers={"X-Admin-Token": admin_token},
-            json={"name": "Test", "percent": 10, "requisites": "123456"},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "Test"
-        assert data["percent"] == 10
-
-    def test_update_withdrawal(self, client, admin_token):
-        """Обновление вывода."""
-        create = client.post(
-            "/admin/withdrawals",
-            headers={"X-Admin-Token": admin_token},
-            json={"name": "Test", "percent": 10, "requisites": "123456"},
-        )
-        wid = create.json()["id"]
-        response = client.put(
-            f"/admin/withdrawals/{wid}",
-            headers={"X-Admin-Token": admin_token},
-            json={"name": "Updated", "percent": 15, "requisites": "789012"},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["name"] == "Updated"
-        assert data["percent"] == 15
-
-    def test_delete_withdrawal(self, client, admin_token):
-        """Удаление вывода."""
-        create = client.post(
-            "/admin/withdrawals",
-            headers={"X-Admin-Token": admin_token},
-            json={"name": "Test", "percent": 10, "requisites": "123456"},
-        )
-        wid = create.json()["id"]
-        response = client.delete(
-            f"/admin/withdrawals/{wid}", headers={"X-Admin-Token": admin_token}
-        )
-        assert response.status_code == 200
-        get_response = client.get("/admin/withdrawals", headers={"X-Admin-Token": admin_token})
-        assert len(get_response.json()) == 0
-
-
 # === Update API Key Tests ===
 class TestUpdateApiKey:
     """Тесты обновления API ключей."""

@@ -286,60 +286,6 @@ class TestTariffs:
         assert get_tariff(key["id"]) is None
 
 
-class TestWithdrawals:
-    """Операции с выводами."""
-
-    def test_create_withdrawal(self):
-        """Создание вывода."""
-        from src.db import create_withdrawal
-
-        w = create_withdrawal(name="Test", percent=10, requisites="123456")
-        assert w["name"] == "Test"
-        assert w["percent"] == 10
-
-    def test_list_withdrawals(self):
-        """Список выводов."""
-        from src.db import create_withdrawal, list_withdrawals
-
-        create_withdrawal(name="W1", percent=5, requisites="r1")
-        create_withdrawal(name="W2", percent=15, requisites="r2")
-        withdrawals = list_withdrawals()
-        assert len(withdrawals) >= 2
-
-    def test_get_withdrawal(self):
-        """Получение вывода."""
-        from src.db import create_withdrawal, get_withdrawal
-
-        w = create_withdrawal(name="GetTest", percent=20, requisites="get123")
-        found = get_withdrawal(w["id"])
-        assert found["name"] == "GetTest"
-
-    def test_get_withdrawal_not_found(self):
-        """Получение несуществующего вывода."""
-        from src.db import get_withdrawal
-
-        assert get_withdrawal(99999) is None
-
-    def test_update_withdrawal(self):
-        """Обновление вывода."""
-        from src.db import create_withdrawal, update_withdrawal
-
-        w = create_withdrawal(name="Original", percent=10, requisites="orig")
-        updated = update_withdrawal(w["id"], name="Updated", percent=25)
-        assert updated["name"] == "Updated"
-        assert updated["percent"] == 25
-        assert updated["requisites"] == "orig"
-
-    def test_delete_withdrawal(self):
-        """Удаление вывода."""
-        from src.db import create_withdrawal, delete_withdrawal, list_withdrawals
-
-        w = create_withdrawal(name="ToDelete", percent=10, requisites="del")
-        assert delete_withdrawal(w["id"]) is True
-        withdrawals = list_withdrawals()
-        assert not any(x["id"] == w["id"] for x in withdrawals)
-
-
 class TestAdminKey:
     """Админский ключ."""
 

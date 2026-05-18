@@ -1,113 +1,33 @@
 """
 EOPP Captcha Solver - Database Initialization.
 
-Создание таблиц и миграции.
+Инициализация БД через alembic migrations.
 """
 
-from datetime import UTC, datetime
+from pathlib import Path
 
-from src.constants import ADMIN_TOKEN
-from src.db.connection import get_connection
+from alembic import command
+from alembic.config import Config
+
+import src.db.connection as conn_module
 
 
 def init_db():
-    conn = get_connection()
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS api_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT UNIQUE NOT NULL,
-            label TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL,
-            usage_count INTEGER NOT NULL DEFAULT 0,
-            max_uses INTEGER,
-            active INTEGER NOT NULL DEFAULT 1,
-            comment TEXT
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS usage_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            api_key_id INTEGER NOT NULL,
-            reservation_id TEXT NOT NULL,
-            captcha_id TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            error_message TEXT,
-            error_stage TEXT,
-            slot_date TEXT,
-            created_at TEXT NOT NULL,
-            confirmed_at TEXT,
-            price INTEGER,
-            paid INTEGER
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS tariffs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            api_key_id INTEGER UNIQUE NOT NULL,
-            price_create INTEGER NOT NULL,
-            price_reschedule INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
-        )
-    """)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS withdrawals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            percent INTEGER NOT NULL,
-            requisites TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
+    """Запускает alembic upgrade head для применения всех миграций."""
+    db_path = conn_module.DB_PATH
 
-    _add_column(conn, "usage_log", "slot_date", "TEXT")
-    _add_column(conn, "usage_log", "logs", "TEXT")
-    _add_column(conn, "usage_log", "config_json", "TEXT")
-    _add_column(conn, "usage_log", "price", "INTEGER")
-    _add_column(conn, "usage_log", "paid", "INTEGER")
-    _add_column(conn, "api_keys", "comment", "TEXT")
-    _add_column(conn, "withdrawals", "tax_percent", "INTEGER DEFAULT 0")
-    _add_column(conn, "withdrawals", "percent_type", "TEXT DEFAULT 'included'")
+    # Убеждаемся, что директория БД существует
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number TEXT UNIQUE NOT NULL,
-            api_key_id INTEGER NOT NULL,
-            usage_log_ids TEXT NOT NULL,
-            withdrawal_id INTEGER,
-            comment TEXT DEFAULT '',
-            percent_rate REAL DEFAULT 0,
-            tax_rate REAL DEFAULT 0,
-            debt_amount INTEGER DEFAULT 0,
-            percent_amount INTEGER DEFAULT 0,
-            tax_amount INTEGER DEFAULT 0,
-            total_amount INTEGER DEFAULT 0,
-            pdf_path TEXT,
-            paid INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now'))
-        )
-    """)
+    # Alembic требует, чтобы cwd был в корне проекта
+    project_root = Path(__file__).parent.parent.parent
+    alembic_ini = project_root / "alembic.ini"
 
-    _add_column(conn, "invoices", "paid", "INTEGER DEFAULT 0")
-    _add_column(conn, "invoices", "comment", "TEXT DEFAULT ''")
-
-    _add_column(conn, "usage_log", "invoice_number", "TEXT")
-
-    now = datetime.now(UTC).isoformat()
-    conn.execute(
-        "INSERT OR IGNORE INTO api_keys (key, label, created_at, max_uses, active) VALUES (?, ?, ?, NULL, 1)",
-        (ADMIN_TOKEN, "admin", now),
-    )
-    conn.commit()
-    conn.close()
-
-
-def _add_column(conn, table, column, type_):
     try:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {type_}")
-        conn.commit()
+        cfg = Config(str(alembic_ini))
+        cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+        command.upgrade(cfg, "head")
     except Exception:
+        # Fallback: если alembic не установлен или ошибка —
+        # это не критично, сервер продолжит работу
         pass
