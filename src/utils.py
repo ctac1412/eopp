@@ -55,6 +55,26 @@ _benchmark_cache: dict | None = None
 from captcha_solver import solve_captcha  # noqa: E402
 
 
+def get_by_path(obj: dict | None, *keys, default=None):
+    """Безопасное получение вложенного значения по цепочке ключей.
+
+    Возвращает default, если на любом шаге obj=None, не dict, или ключ отсутствует.
+
+    Пример:
+        get_by_path(cfg, "reservationData", "raw", "userData", "fio")
+        # == cfg.get("reservationData", {}).get("raw", {}).get("userData", {}).get("fio")
+        # но без AttributeError если любой промежуточный уровень — None или не dict
+    """
+    current = obj
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key, default)
+        if current is default:
+            return default
+    return current
+
+
 def captcha_hash(data):
     puzzle = data.get("puzzle", data)
     tiles = puzzle.get("tiles", [])

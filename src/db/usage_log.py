@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from src.db.connection import get_connection
 from src.db.tariffs import get_tariff
+from src.utils import get_by_path
 
 
 # UUID v0 pattern for zero UUID (used as placeholder)
@@ -26,22 +27,12 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
             "vehicle_number": None,
         }
     op_type = config_json.get("mode")
-    company = (
-        config_json.get("reservationData", {})
-        .get("raw", {})
-        .get("userData", {})
-        .get("organizationName")
-    )
-    fio = (
-        config_json.get("reservationData", {})
-        .get("raw", {})
-        .get("userData", {})
-        .get("fio")
-    )
+    company = get_by_path(config_json, "reservationData", "raw", "userData", "organizationName")
+    fio = get_by_path(config_json, "reservationData", "raw", "userData", "fio")
     vehicle_number = None
-    vehicles = config_json.get("reservationData", {}).get("raw", {}).get("vehicleData", [])
-    if isinstance(vehicles, list):
-        for v in vehicles:
+    vehicle_data = get_by_path(config_json, "reservationData", "raw", "vehicleData", default=[])
+    if isinstance(vehicle_data, list):
+        for v in vehicle_data:
             if isinstance(v, dict) and v.get("subTypeId") == 1:
                 vehicle_number = v.get("regNumber") or None
                 break
@@ -158,18 +149,20 @@ def confirm_usage(
             (now, slot_date, logs_json, usage_log_id),
         )
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
-    mode = config_json.get("mode", "create") if config_json else "create"
-    tariff = get_tariff(row["api_key_id"])
-    price = 0
-    if tariff:
-        if mode == "reschedule":
-            price = tariff["price_reschedule"]
-        else:
-            price = tariff["price_create"]
-    conn.execute(
-        "UPDATE usage_log SET price = ? WHERE id = ?",
-        (price, usage_log_id),
-    )
+    is_test = bool(row["is_test"]) if row["is_test"] else False
+    if not is_test:
+        mode = config_json.get("mode", "create") if config_json else "create"
+        tariff = get_tariff(row["api_key_id"])
+        price = 0
+        if tariff:
+            if mode == "reschedule":
+                price = tariff["price_reschedule"]
+            else:
+                price = tariff["price_create"]
+        conn.execute(
+            "UPDATE usage_log SET price = ? WHERE id = ?",
+            (price, usage_log_id),
+        )
     conn.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
         (row["api_key_id"],),
