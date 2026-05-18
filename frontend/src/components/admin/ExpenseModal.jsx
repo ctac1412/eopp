@@ -8,6 +8,18 @@ export function ExpenseModal({ show, form, setForm, onSubmit, onClose, users }) 
     onSubmit(e);
   };
 
+  const formatDateForInput = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const parseInputDate = (val) => {
+    if (!val) return null;
+    return new Date(val).toISOString();
+  };
+
   return (
     <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
@@ -51,6 +63,15 @@ export function ExpenseModal({ show, form, setForm, onSubmit, onClose, users }) 
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Дата</label>
+                <input
+                  type="datetime-local"
+                  value={form.created_at ? formatDateForInput(form.created_at) : formatDateForInput(new Date().toISOString())}
+                  onChange={(e) => setForm((p) => ({ ...p, created_at: parseInputDate(e.target.value) }))}
+                  className="form-control"
+                />
               </div>
               <div className="mb-3">
                 <label className="form-label">Комментарий</label>

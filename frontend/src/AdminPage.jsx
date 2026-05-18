@@ -48,7 +48,7 @@ function AdminPage() {
   const [authError, setAuthError] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(
-    () => searchParams.get("tab") || "keys"
+    () => searchParams.get("tab") || "reports"
   );
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,14 +79,17 @@ function AdminPage() {
   // Expenses
   const [expenses, setExpenses] = useState([]);
   const [expenseTotal, setExpenseTotal] = useState(0);
-  const [expenseForm, setExpenseForm] = useState({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+  const [expenseForm, setExpenseForm] = useState({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" });
   const [showExpenseModal, setShowExpenseModal] = useState(false);
 
   // Payouts
   const [payouts, setPayouts] = useState([]);
-  const [payoutForm, setPayoutForm] = useState({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+  const [payoutForm, setPayoutForm] = useState({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutPreview, setPayoutPreview] = useState(null);
+  const [payoutPreviewLoading, setPayoutPreviewLoading] = useState(false);
+  const [availableInvoices, setAvailableInvoices] = useState([]);
+  const [availableExpenses, setAvailableExpenses] = useState([]);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -181,19 +184,69 @@ function AdminPage() {
     [adminToken],
   );
 
-  const fetchPreview = useCallback(
-    async (split_pct1, split_pct2) => {
+  const fetchPayoutPreview = useCallback(
+    async (invoiceIds, expenseIds, splits) => {
       const t = adminToken;
       if (!t) return;
+      setPayoutPreviewLoading(true);
       try {
-        const res = await fetch(`/admin/payouts/preview?split_pct1=${split_pct1}&split_pct2=${split_pct2}`, {
-          headers: adminHeadersJson(t),
+        const res = await fetch("/admin/payouts/preview", {
+          method: "POST",
+          headers: adminHeaders(t),
+          body: JSON.stringify({ invoice_ids: invoiceIds || [], expense_ids: expenseIds || [], user_splits: splits || [] }),
         });
-        if (!res.ok) return;
+        if (!res.ok) { setPayoutPreview(null); return; }
         const data = await res.json();
         setPayoutPreview(data);
       } catch (err) {
         setPayoutPreview(null);
+      } finally {
+        setPayoutPreviewLoading(false);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchAvailableResources = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/payouts/available", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setAvailableInvoices(data.invoices || []);
+        setAvailableExpenses(data.expenses || []);
+      } catch (err) {
+        setAvailableInvoices([]);
+        setAvailableExpenses([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchAllResources = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const [invRes, expRes] = await Promise.all([
+          fetch("/admin/invoices", { headers: adminHeadersJson(t) }),
+          fetch("/admin/expenses", { headers: adminHeadersJson(t) }),
+        ]);
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          setAvailableInvoices(Array.isArray(invData) ? invData : []);
+        }
+        if (expRes.ok) {
+          const expData = await expRes.json();
+          setAvailableExpenses(Array.isArray(expData.expenses) ? expData.expenses : []);
+        }
+      } catch (err) {
+        setAvailableInvoices([]);
+        setAvailableExpenses([]);
       }
     },
     [adminToken],
@@ -309,10 +362,16 @@ function AdminPage() {
   }, [adminToken, activeTab, fetchUsers]);
 
   useEffect(() => {
-    if (adminToken && (activeTab === "expenses" || activeTab === "payouts")) {
+    if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices")) {
       fetchUsers(adminToken);
     }
   }, [adminToken, activeTab]);
+
+  useEffect(() => {
+    if (adminToken && activeTab === "payouts") {
+      fetchAvailableResources(adminToken);
+    }
+  }, [adminToken, activeTab, fetchAvailableResources]);
 
   const doAuth = async () => {
     setAuthError(null);
@@ -532,13 +591,16 @@ function AdminPage() {
         user_id: expenseForm.user_id,
         comment: expenseForm.comment,
       };
+      if (expenseForm.created_at) {
+        body.created_at = expenseForm.created_at;
+      }
       const res = await fetch("/admin/expenses", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" });
       setShowExpenseModal(false);
       fetchExpenses(adminToken);
     } catch (err) {
@@ -556,13 +618,16 @@ function AdminPage() {
         user_id: expenseForm.user_id,
         comment: expenseForm.comment,
       };
+      if (expenseForm.created_at) {
+        body.created_at = expenseForm.created_at;
+      }
       const res = await fetch(`/admin/expenses/${expenseForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" });
+      setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" });
       setShowExpenseModal(false);
       fetchExpenses(adminToken);
     } catch (err) {
@@ -573,12 +638,14 @@ function AdminPage() {
   const handleCreatePayout = async (e) => {
     e.preventDefault();
     try {
+      const splits = (payoutForm.splits || [])
+        .filter((s) => s.user_id != null)
+        .map((s) => ({ user_id: s.user_id, split_pct: Number(s.split_pct) || 0 }));
       const body = {
         name: payoutForm.name,
-        user_id1: payoutForm.user_id1,
-        split_pct1: parseInt(payoutForm.split_pct1, 10),
-        user_id2: payoutForm.user_id2,
-        split_pct2: parseInt(payoutForm.split_pct2, 10),
+        invoice_ids: payoutForm.invoice_ids || [],
+        expense_ids: payoutForm.expense_ids || [],
+        user_splits: splits,
       };
       const res = await fetch("/admin/payouts", {
         method: "POST",
@@ -586,10 +653,11 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
       setShowPayoutModal(false);
       setPayoutPreview(null);
       fetchPayouts(adminToken);
+      fetchAvailableResources(adminToken);
     } catch (err) {
       setError(err.message);
     }
@@ -599,23 +667,35 @@ function AdminPage() {
     e.preventDefault();
     if (!payoutForm.id) return;
     try {
-      const body = {
-        name: payoutForm.name,
-        user_id1: payoutForm.user_id1,
-        split_pct1: parseInt(payoutForm.split_pct1, 10),
-        user_id2: payoutForm.user_id2,
-        split_pct2: parseInt(payoutForm.split_pct2, 10),
-      };
-      const res = await fetch(`/admin/payouts/${payoutForm.id}`, {
+      // Обновляем имя
+      const nameRes = await fetch(`/admin/payouts/${payoutForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
+        body: JSON.stringify({ name: payoutForm.name }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" });
+      if (!nameRes.ok) throw new Error(`HTTP ${nameRes.status} (name)`);
+
+      // Пересчитываем с новыми данными
+      const splits = (payoutForm.splits || [])
+        .filter((s) => s.user_id != null)
+        .map((s) => ({ user_id: s.user_id, split_pct: Number(s.split_pct) || 0 }));
+      const recalcRes = await fetch(`/admin/payouts/${payoutForm.id}/recalculate`, {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          name: payoutForm.name,
+          invoice_ids: payoutForm.invoice_ids || [],
+          expense_ids: payoutForm.expense_ids || [],
+          user_splits: splits,
+        }),
+      });
+      if (!recalcRes.ok) throw new Error(`HTTP ${recalcRes.status} (recalculate)`);
+
+      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
       setShowPayoutModal(false);
       setPayoutPreview(null);
       fetchPayouts(adminToken);
+      fetchAvailableResources(adminToken);
     } catch (err) {
       setError(err.message);
     }
@@ -650,12 +730,30 @@ function AdminPage() {
 
   const handleRecalculatePayout = async (id) => {
     try {
+      // Берём текущие данные выплаты из состояния
+      const payout = payouts.find((p) => p.id === id);
+      if (!payout) return;
+
+      const invoiceIds = (payout.invoices || []).map((i) => i.invoice_id || i.id);
+      const expenseIds = (payout.expenses || []).map((e) => e.expense_id || e.id);
+      const splits = (payout.shares || []).map((sh) => ({
+        user_id: sh.user_id,
+        split_pct: Number(sh.split_pct) || 0,
+      }));
+
       const res = await fetch(`/admin/payouts/${id}/recalculate`, {
         method: "POST",
         headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          name: payout.name,
+          invoice_ids: invoiceIds,
+          expense_ids: expenseIds,
+          user_splits: splits,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       fetchPayouts(adminToken);
+      fetchAvailableResources(adminToken);
     } catch (err) {
       setError(err.message);
     }
@@ -840,14 +938,14 @@ function AdminPage() {
   };
 
   const tabs = [
-    { id: "keys", label: "API Keys" },
     { id: "reports", label: "Журнал" },
+    { id: "keys", label: "API Keys" },
     { id: "invoices", label: "Счета" },
-    { id: "streams", label: "Стримы" },
-    { id: "testbench", label: "Тесты и бенчмарк" },
     { id: "expenses", label: "Расходы" },
     { id: "payouts", label: "Выплаты" },
     { id: "users", label: "Пользователи" },
+    { id: "testbench", label: "Тесты и бенчмарк" },
+    { id: "streams", label: "Стримы" },
   ];
 
   if (!adminToken) {
@@ -872,14 +970,26 @@ function AdminPage() {
               + Новый ключ
             </button>
           )}
-          {activeTab === "expenses" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "" }); setShowExpenseModal(true); }}>
-              + Новый расход
+          {activeTab === "payouts" && (
+            <button className="btn btn-sm btn-primary" onClick={() => {
+              // Автозаполнение: все пользователи, доли поровну
+              const n = users.length || 1;
+              const base = Math.floor(100 / n);
+              const remainder = 100 - base * n;
+              const autoSplits = users.map((u, i) => ({
+                user_id: u.id,
+                split_pct: base + (i < remainder ? 1 : 0),
+              }));
+              setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: autoSplits });
+              setPayoutPreview(null);
+              setShowPayoutModal(true);
+            }}>
+              + Новая выплата
             </button>
           )}
-          {activeTab === "payouts" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setPayoutForm({ id: null, name: "", user_id1: null, split_pct1: "50", user_id2: null, split_pct2: "50" }); setPayoutPreview(null); fetchPreview(50, 50); setShowPayoutModal(true); }}>
-              + Новая выплата
+          {activeTab === "expenses" && (
+            <button className="btn btn-sm btn-primary" onClick={() => { setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" }); setShowExpenseModal(true); }}>
+              + Новый расход
             </button>
           )}
           {activeTab === "users" && (
@@ -914,6 +1024,10 @@ function AdminPage() {
         ))}
       </ul>
 
+      {activeTab === "reports" && (
+        <ReportsTab adminToken={adminToken} onError={(msg) => setError(msg)} />
+      )}
+
       {activeTab === "keys" && (
         <ApiKeysTab
           keys={keys}
@@ -941,16 +1055,46 @@ function AdminPage() {
         />
       )}
 
-      {activeTab === "reports" && (
-        <ReportsTab adminToken={adminToken} onError={(msg) => setError(msg)} />
-      )}
-
       {activeTab === "invoices" && (
-        <InvoicesTab adminToken={adminToken} onError={(msg) => setError(msg)} />
+        <InvoicesTab adminToken={adminToken} onError={(msg) => setError(msg)} users={users} />
       )}
 
-      {activeTab === "streams" && (
-        <StreamsTab streams={streams} streamsLoading={streamsLoading} />
+      {activeTab === "expenses" && (
+        <ExpensesTab
+          expenses={expenses}
+          total={expenseTotal}
+          users={users}
+          onEdit={(e) => { setExpenseForm({ id: e.id, amount: String(e.amount), reason: e.reason, user_id: e.user_id, comment: e.comment || "", created_at: e.created_at }); setShowExpenseModal(true); }}
+          onDelete={handleDeleteExpense}
+        />
+      )}
+
+      {activeTab === "payouts" && (
+        <PayoutsTab
+          payouts={payouts}
+          onEdit={(p) => {
+            const splits = (p.shares || []).map((sh) => ({
+              user_id: sh.user_id,
+              split_pct: sh.split_pct || 0,
+            }));
+            const invoiceIds = (p.invoices || []).map((i) => i.invoice_id || i.id);
+            const expenseIds = (p.expenses || []).map((e) => e.expense_id || e.id);
+            setPayoutForm({ id: p.id, name: p.name, invoice_ids: invoiceIds, expense_ids: expenseIds, splits });
+            fetchAllResources(adminToken);
+            setShowPayoutModal(true);
+          }}
+          onDelete={handleDeletePayout}
+          onRecalculate={handleRecalculatePayout}
+          onStatusChange={handleSetPayoutStatus}
+        />
+      )}
+
+      {activeTab === "users" && (
+        <UsersTab
+          users={users}
+          onEdit={(u) => { setUserForm({ id: u.id, name: u.name }); setShowUserModal(true); }}
+          onDelete={handleDeleteUser}
+        />
       )}
 
       {activeTab === "testbench" && (
@@ -965,32 +1109,8 @@ function AdminPage() {
         />
       )}
 
-      {activeTab === "expenses" && (
-        <ExpensesTab
-          expenses={expenses}
-          total={expenseTotal}
-          users={users}
-          onEdit={(e) => { setExpenseForm({ id: e.id, amount: String(e.amount), reason: e.reason, user_id: e.user_id, comment: e.comment || "" }); setShowExpenseModal(true); }}
-          onDelete={handleDeleteExpense}
-        />
-      )}
-
-      {activeTab === "payouts" && (
-        <PayoutsTab
-          payouts={payouts}
-          onEdit={(p) => { setPayoutForm({ id: p.id, name: p.name, user_id1: p.user_id1, split_pct1: String(p.split_pct1), user_id2: p.user_id2, split_pct2: String(p.split_pct2) }); fetchPreview(p.split_pct1, p.split_pct2); setShowPayoutModal(true); }}
-          onDelete={handleDeletePayout}
-          onRecalculate={handleRecalculatePayout}
-          onStatusChange={handleSetPayoutStatus}
-        />
-      )}
-
-      {activeTab === "users" && (
-        <UsersTab
-          users={users}
-          onEdit={(u) => { setUserForm({ id: u.id, name: u.name }); setShowUserModal(true); }}
-          onDelete={handleDeleteUser}
-        />
+      {activeTab === "streams" && (
+        <StreamsTab streams={streams} streamsLoading={streamsLoading} />
       )}
 
       <KeyFormModal
@@ -1044,8 +1164,11 @@ function AdminPage() {
         onSubmit={payoutForm.id ? handleUpdatePayout : handleCreatePayout}
         onClose={() => setShowPayoutModal(false)}
         preview={payoutPreview}
-        onPctChange={fetchPreview}
         users={users}
+        availableInvoices={availableInvoices}
+        availableExpenses={availableExpenses}
+        onPreview={fetchPayoutPreview}
+        previewLoading={payoutPreviewLoading}
       />
 
       <UserModal

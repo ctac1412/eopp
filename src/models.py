@@ -115,6 +115,20 @@ class TariffBody(BaseModel):
     price_reschedule: int
 
 
+class CreateInvoiceBody(BaseModel):
+    invoice_number: str | None = None
+    comment: str = ""
+    percent_rate: float = 0
+    tax_rate: float = 0
+    debt_amount: int = 0
+    percent_amount: int = 0
+    tax_amount: int = 0
+    total_amount: int = 0
+    items: list[dict] = []
+    commission_user_id: int | None = None
+    tax_user_id: int | None = None
+
+
 class GenerateInvoiceBody(BaseModel):
     usage_log_ids: list[int]
     comment: str = ""
@@ -127,7 +141,17 @@ class GenerateInvoiceBody(BaseModel):
 
 
 class UpdateInvoiceBody(BaseModel):
-    paid: bool
+    paid: bool | None = None
+    comment: str | None = None
+    percent_rate: float | None = None
+    tax_rate: float | None = None
+    debt_amount: int | None = None
+    percent_amount: int | None = None
+    tax_amount: int | None = None
+    total_amount: int | None = None
+    items: list[dict] | None = None
+    commission_user_id: int | None = None
+    tax_user_id: int | None = None
 
 
 class CreateUserBody(BaseModel):
@@ -150,6 +174,7 @@ class UpdateExpenseBody(BaseModel):
     reason: str | None = None
     comment: str | None = None
     user_id: int | None = None
+    created_at: str | None = None
 
 
 class CreatePayoutBody(BaseModel):
@@ -158,6 +183,12 @@ class CreatePayoutBody(BaseModel):
     expense_ids: list[int] = []
     user_splits: list[dict] = []
     # user_splits = [{"user_id": int, "split_pct": float}, ...]
+
+
+class PreviewPayoutBody(BaseModel):
+    invoice_ids: list[int] = []
+    expense_ids: list[int] = []
+    user_splits: list[dict] = []
 
 
 class UpdatePayoutBody(BaseModel):

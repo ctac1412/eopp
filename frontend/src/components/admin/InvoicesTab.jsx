@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { formatMoney } from "../../utils/format";
+import { InvoiceEditModal } from "./InvoiceEditModal";
+import { InvoiceCreateModal } from "./InvoiceCreateModal";
 
 function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
@@ -21,11 +23,13 @@ function formatDate(iso) {
   });
 }
 
-export function InvoicesTab({ adminToken, onError }) {
+export function InvoicesTab({ adminToken, onError, users }) {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pdfLoading, setPdfLoading] = useState({});
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -105,6 +109,14 @@ export function InvoicesTab({ adminToken, onError }) {
     }
   };
 
+  const handleSaveEdit = async (updated) => {
+    setInvoices((prev) => prev.map((inv) => inv.id === updated.id ? { ...inv, ...updated } : inv));
+  };
+
+  const handleCreated = (newInvoice) => {
+    setInvoices((prev) => [newInvoice, ...prev]);
+  };
+
   if (loading) return <div className="text-center text-muted py-5">Загрузка…</div>;
   if (error) return <div className="alert alert-danger">Ошибка: {error}</div>;
 
@@ -121,6 +133,9 @@ export function InvoicesTab({ adminToken, onError }) {
           <span className="text-muted small">Всего: {invoices.length}</span>
           <span className="text-danger small fw-semibold">Не оплачено: {unpaidInvoices.length} ({formatMoney(unpaidTotal)})</span>
         </div>
+        <button className="btn btn-sm btn-primary" onClick={() => setShowCreate(true)}>
+          + Новый счёт
+        </button>
       </div>
 
       <div className="table-responsive">
@@ -130,32 +145,64 @@ export function InvoicesTab({ adminToken, onError }) {
               <th className="text-center" style={{ width: "40px" }}>#</th>
               <th>Номер счёта</th>
               <th style={{ width: "140px" }}>Дата</th>
-              <th className="text-center" style={{ width: "60px" }}>Записей</th>
               <th className="text-end">Сумма долга</th>
               <th className="text-end">Комиссия</th>
               <th className="text-end">Налог</th>
-              <th className="text-end fw-bold">ИТОГО</th>
+              <th className="text-end fw-bold">ИТОГО (с налогом)</th>
+              <th className="text-end fw-bold text-success">Прибыль</th>
               <th>Комментарий</th>
+              <th className="text-center" style={{ width: "120px" }}>Распределение</th>
+              <th className="text-center" style={{ width: "100px" }}>Комиссия</th>
+              <th className="text-center" style={{ width: "100px" }}>Налог</th>
               <th className="text-center" style={{ width: "110px" }}>Оплата</th>
-              <th className="text-center" style={{ width: "110px" }}>Действия</th>
+              <th className="text-center" style={{ width: "110px", whiteSpace: "nowrap" }}>Действия</th>
             </tr>
           </thead>
           <tbody>
             {invoices.length === 0 ? (
-              <tr><td colSpan={12} className="text-center text-muted py-4">Нет счетов</td></tr>
+              <tr><td colSpan={14} className="text-center text-muted py-4">Нет счетов</td></tr>
             ) : (
               invoices.map((inv, idx) => (
                 <tr key={inv.id}>
                   <td className="text-center text-muted small">{idx + 1}</td>
                   <td><code>{inv.invoice_number}</code></td>
                   <td className="small">{formatDate(inv.created_at)}</td>
-                  <td className="text-center">{inv.usage_log_ids?.length || 0}</td>
                   <td className="text-end font-monospace small">{formatMoney(inv.debt_amount)}</td>
                   <td className="text-end font-monospace small">{formatMoney(inv.percent_amount)}</td>
                   <td className="text-end font-monospace small">{formatMoney(inv.tax_amount)}</td>
                   <td className="text-end fw-bold text-primary">{formatMoney(inv.total_amount)}</td>
+                  <td className="text-end fw-bold text-success">{formatMoney(inv.debt_amount)}</td>
                   <td className="small text-truncate" style={{ maxWidth: "150px" }} title={inv.comment || ""}>{inv.comment || "—"}</td>
-                  <td className="text-center">
+                <td className="text-center">
+                  {inv.allocation ? (
+                    <span className={`badge ${
+                      inv.allocation.status === "fully_allocated" ? "bg-success" :
+                      inv.allocation.status === "partially_allocated" ? "bg-warning text-dark" :
+                      "bg-secondary"
+                    }`}>
+                      {inv.allocation.status === "fully_allocated" ? "Распределён" :
+                       inv.allocation.status === "partially_allocated" ? `Частично (${inv.allocation.allocated_pct}%)` :
+                       "Не распределён"}
+                    </span>
+                  ) : (
+                    <span className="badge bg-secondary">Не распределён</span>
+                  )}
+                </td>
+                <td className="text-center small">
+                  {inv.commission_user_id ? (
+                    <span className="text-success">{(users || []).find(u => u.id === inv.commission_user_id)?.name || "—"}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+                <td className="text-center small">
+                  {inv.tax_user_id ? (
+                    <span className="text-danger">{(users || []).find(u => u.id === inv.tax_user_id)?.name || "—"}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+                <td className="text-center">
                     <button
                       className={`btn btn-sm ${inv.paid ? "btn-success" : "btn-outline-secondary"}`}
                       onClick={() => togglePaid(inv)}
@@ -163,16 +210,16 @@ export function InvoicesTab({ adminToken, onError }) {
                       {inv.paid ? "✓ Оплачен" : "Не оплачен"}
                     </button>
                   </td>
-                  <td className="text-center">
+                  <td className="text-center" style={{ whiteSpace: "nowrap" }}>
                     <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => generatePdf(inv)}
-                      disabled={pdfLoading[inv.id]}
+                      className="btn btn-sm btn-outline-primary me-1"
+                      onClick={() => setEditingInvoice(inv)}
+                      title="Редактировать"
                     >
-                      {pdfLoading[inv.id] ? "..." : "PDF"}
+                      ✏️
                     </button>
                     <button
-                      className="btn btn-sm btn-outline-danger ms-1"
+                      className="btn btn-sm btn-outline-danger"
                       onClick={() => deleteInvoice(inv)}
                     >
                       ✕
@@ -184,6 +231,23 @@ export function InvoicesTab({ adminToken, onError }) {
           </tbody>
         </table>
       </div>
+
+      <InvoiceEditModal
+        show={!!editingInvoice}
+        invoice={editingInvoice}
+        onClose={() => setEditingInvoice(null)}
+        onSave={handleSaveEdit}
+        adminToken={adminToken}
+        users={users || []}
+      />
+
+      <InvoiceCreateModal
+        show={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={handleCreated}
+        adminToken={adminToken}
+        users={users || []}
+      />
     </div>
   );
 }

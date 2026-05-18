@@ -22,6 +22,7 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete }) {
               <th>Причина</th>
               <th>Комментарий</th>
               <th>Кто понес</th>
+              <th className="text-center">Распределение</th>
               <th className="text-center">Создан</th>
               <th className="text-center">Действия</th>
             </tr>
@@ -35,6 +36,21 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete }) {
                 <td className="small">{e.comment || "—"}</td>
                 <td>
                   {e.user_name || "—"}
+                </td>
+                <td className="text-center">
+                  {e.allocation ? (
+                    <span className={`badge ${
+                      e.allocation.status === "fully_allocated" ? "bg-success" :
+                      e.allocation.status === "partially_allocated" ? "bg-warning text-dark" :
+                      "bg-secondary"
+                    }`}>
+                      {e.allocation.status === "fully_allocated" ? "Распределён" :
+                       e.allocation.status === "partially_allocated" ? `Частично (${e.allocation.allocated_pct}%)` :
+                       "Не распределён"}
+                    </span>
+                  ) : (
+                    <span className="badge bg-secondary">Не распределён</span>
+                  )}
                 </td>
                 <td className="text-center text-muted small">
                   {new Date(e.created_at).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
