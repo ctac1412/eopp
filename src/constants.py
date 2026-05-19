@@ -15,9 +15,11 @@ import os
 
 PORT = 8765
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEST_DIR = os.path.join(PROJECT_DIR, "data", "captcha_examples")
-VALID_DIR = os.path.join(TEST_DIR, "valid")
-NO_VALID_DIR = os.path.join(TEST_DIR, "no_valid")
+DATA_DIR = os.environ.get("EOPP_DATA_DIR") or os.path.join(PROJECT_DIR, "data")
+CAPTCHA_EXAMPLES_DIR = os.path.join(DATA_DIR, "captcha_examples")
+TEST_DIR = CAPTCHA_EXAMPLES_DIR
+VALID_DIR = os.path.join(CAPTCHA_EXAMPLES_DIR, "valid")
+NO_VALID_DIR = os.path.join(CAPTCHA_EXAMPLES_DIR, "no_valid")
 CAPTCHA_TIMEOUT = 10
 FRONTEND_DIST = os.path.join(PROJECT_DIR, "frontend", "dist")
 PLUGINS_DIR = os.environ.get("EOPP_PLUGINS_DIR") or os.path.join(PROJECT_DIR, "plugins")

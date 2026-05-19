@@ -74,15 +74,16 @@ def main(
     host: str = "127.0.0.1",
     port: int = PORT,
     no_ssl: bool = False,
-    db_path: str = None,
+    data_dir: str = None,
 ):
     """Start the captcha solver server."""
     import uvicorn
 
     import src.utils
 
-    if db_path:
-        os.environ["EOPP_DB_PATH"] = db_path
+    if data_dir:
+        os.environ["EOPP_DATA_DIR"] = data_dir
+        os.environ["EOPP_DB_PATH"] = os.path.join(data_dir, "api_keys.db")
 
     from src.app import create_app
 
@@ -108,6 +109,7 @@ def main(
     typer.echo(f"  Test dir        : {TEST_DIR}")
     typer.echo(f"  Valid dir       : {VALID_DIR}")
     typer.echo(f"  No-valid dir    : {NO_VALID_DIR}")
+    typer.echo(f"  Data dir        : {os.environ.get('EOPP_DATA_DIR', 'data/')}")
     typer.echo(f"  DB path         : {os.environ.get('EOPP_DB_PATH', 'data/api_keys.db')}")
 
     import captcha_solver

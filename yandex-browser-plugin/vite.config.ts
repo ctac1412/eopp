@@ -6,7 +6,7 @@ import fs from "fs";
 const isDevBuild = process.env.DEV_BUILD === "true";
 
 // Load .env.server from project root
-const rootDir = resolve(__dirname, "..");
+const rootDir = resolve(__dirname, "../prod");
 const envServerPath = resolve(rootDir, ".env.server");
 let serverUrl = "http://localhost:8765";
 let serverHost = "localhost";
@@ -54,7 +54,7 @@ const copyStaticFiles = () => ({
     const manifest = {
       manifest_version: 3,
       name: "Помощник",
-      version: "1.2.3",
+      version: "1.2.5",
       description: "Быстрые заметки прямо на странице",
       icons: {
         "48": "icon.png",

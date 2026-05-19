@@ -129,6 +129,8 @@
 
 ### 3. Browser Extension (`yandex-browser-plugin/`)
 
+> **ВАЖНО:** Перед релизом плагина ВСЕГДА читай `yandex-browser-plugin/AGENTS.md` — там описан точный порядок действий.
+
 Manifest V3 расширение для Яндекс.Браузера (совместимо с Chrome).
 
 **Архитектура расширения:**

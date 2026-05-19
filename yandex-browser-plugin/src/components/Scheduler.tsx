@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useInjectorStore } from "@/store";
 import { parseTime, mskToUtcSeconds } from "@/hooks/useClock";
 import { useInjector } from "@/hooks/useInjector";
 import { useScheduler } from "@/hooks/useScheduler";
-import { checkStream, openServerUrl } from "@/api/background";
+import { checkStream, openServerUrl, getDefaultScheduleTime } from "@/api/background";
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
@@ -14,9 +14,18 @@ const Scheduler = React.memo(function Scheduler() {
   const { run } = useInjector();
   useScheduler();
 
-  const [timeInput, setTimeInput] = useState("12:00:01.0");
+  const getDefaultTime = useCallback(() => {
+    const mode = config.mode === "reschedule" ? "reschedule" : "create";
+    return getDefaultScheduleTime(mode);
+  }, [config.mode]);
+
+  const [timeInput, setTimeInput] = useState(getDefaultTime());
   const [statusMessage, setStatusMessage] = useState("");
   const [statusClass, setStatusClass] = useState("");
+
+  useEffect(() => {
+    setTimeInput(getDefaultTime());
+  }, [getDefaultTime]);
 
   const handleSchedule = useCallback(async () => {
     if (!authKey) {
@@ -53,8 +62,8 @@ const Scheduler = React.memo(function Scheduler() {
     cancelSchedule();
     setStatusMessage("");
     setStatusClass("");
-    setTimeInput("12:00:01.0");
-  }, [cancelSchedule]);
+    setTimeInput(getDefaultTime());
+  }, [cancelSchedule, getDefaultTime]);
 
   const handleRun = useCallback(() => {
     if (!authKey) {

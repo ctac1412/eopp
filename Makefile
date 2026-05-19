@@ -1,20 +1,12 @@
-bench:
-	uv run pytest tests/test_solve_captcha.py -v -s
-
-run: build-frontend build-extension
-	uv run python manage.py --host 0.0.0.0
-
-run-http: build-frontend
-	uv run python manage.py --host 0.0.0.0 --no-ssl
-
-run-test: build-frontend
-	uv run python manage.py --test
-
-run-write: build-frontend build-extension
-	uv run python manage.py --write
+# === Server ===
 
 run-dev: build-frontend build-extension
-	uv run python manage.py --host 0.0.0.0 --no-ssl --db-path data/api_keys_dev.db --port 8766
+	uv run python manage.py --host 0.0.0.0 --no-ssl --data-dir data --port 8766
+
+run-prod: build-frontend build-extension
+	uv run python manage.py --host 0.0.0.0 --no-ssl --data-dir prod/data --port 8766
+
+# === Frontend ===
 
 install-frontend:
 	cd frontend && npm install
@@ -25,6 +17,11 @@ build-frontend:
 dev-frontend:
 	cd frontend && npm run dev
 
+# === Extension ===
+
+install-extension:
+	cd yandex-browser-plugin && npm install
+
 build-extension:
 	cd yandex-browser-plugin && npm run build
 
@@ -34,11 +31,10 @@ build-extension-dev:
 build-crx: build-extension
 	@echo "Packing extension to CRX..."
 	@"C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/yandex-browser-plugin/dist" --no-sandbox --pack-extension-key="$(CURDIR)/data/my.pem"
-	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/my-helper-v' + $$ver + '.crx'); Write-Host ('CRX created: plugins/my-helper-v' + $$ver + '.crx')"
-	@powershell -Command "$$envFile = '$(CURDIR)/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; $$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl.TrimEnd('/') + '/plugins/my-helper-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver + ' at ' + $$codebase)"
+	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/my-helper-v' + $$ver + '.crx'); if (Test-Path '$(CURDIR)/yandex-browser-plugin/dist.crx') { Remove-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' }; Write-Host ('CRX created: plugins/my-helper-v' + $$ver + '.crx')"
+	@powershell -Command "$$envFile = '$(CURDIR)/prod/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; $$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl.TrimEnd('/') + '/plugins/my-helper-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver + ' at ' + $$codebase)"
 
-install-extension:
-	cd yandex-browser-plugin && npm install
+# === Formatters ===
 
 install-formatters:
 	uv pip install black ruff
@@ -60,63 +56,57 @@ format-check-py:
 format-check-js:
 	cd frontend && npm run format:check
 
-# Prod (Docker)
-build-prod:
-	docker compose build
+# === Utils ===
 
-start-prod:
-	docker compose up -d
-
-stop-prod:
-	docker compose down
-
-restart-prod: stop-prod start-prod
-
-rebuild-prod:
-	docker compose up -d --build
-	docker compose logs -f
-
-logs-prod:
-	docker compose logs -f
+bench:
+	uv run pytest tests/test_solve_captcha.py -v -s
 
 list-plugins:
 	@echo "Plugin versions:"
 	@python -c "from src.plugins import get_versions; [print(f\"  {v['version']} - {v.get('note', '')}\") for v in get_versions()]"
 
-# Deploy (requires scripts/.env.deploy to be configured)
-deploy:                  # Full deploy: build, transfer, run, health-check
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" deploy
+# === Deploy ===
 
-deploy-pull-data:        # Download remote data/ to local backups/pulled-data/
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" pull-data
+deploy-preflight:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/preflight.ps1"
 
-deploy-logs:             # Stream remote container logs in real-time
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" logs
+deploy:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/deploy.ps1"
 
-deploy-backup:           # Backup remote data/ and plugins/ to local backups/
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" backup
+deploy-backup:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/backup.ps1"
 
-deploy-rollback:         # Rollback to previous Docker image on remote server
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" rollback
+deploy-pull-data:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/pull-data.ps1"
 
-deploy-push-data:        # Push local data/ and plugins/ to remote server
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy.ps1" push-data
+deploy-push-data:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/push-data.ps1"
 
-# Alembic migrations
-migrate:                 # Применить все миграции (alembic upgrade head)
+deploy-push-plugins:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/push-plugins.ps1"
+
+deploy-logs:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/logs.ps1"
+
+deploy-rollback:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/rollback.ps1"
+
+# === Migrations ===
+
+migrate:
 	uv run python -m alembic upgrade head
 
-migrate-status:          # Статус миграций
+migrate-status:
 	uv run python -m alembic current
 
-migrate-history:         # История миграций
+migrate-history:
 	uv run python -m alembic history --verbose
 
-migration:               # Создать новую миграцию: make migration MSG="add column"
+migration:
 	uv run python -m alembic revision -m "$(MSG)"
 
-migrate-downgrade:       # Откатить последнюю миграцию
+migrate-downgrade:
 	uv run python -m alembic downgrade -1
 
-migrate-downgrade-all:   # Откатить все миграции
+migrate-downgrade-all:
 	uv run python -m alembic downgrade base

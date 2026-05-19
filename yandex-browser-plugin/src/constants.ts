@@ -129,6 +129,10 @@ export function getDefaultSlotDate(mode: "reschedule" | "create"): string {
   return mode === "reschedule" ? addDays(1) : addDays(13);
 }
 
+export function getDefaultScheduleTime(mode: "reschedule" | "create"): string {
+  return mode === "reschedule" ? "12:00:01.0" : "10:00:01.0";
+}
+
 export function loadSavedConfig(
   reservationId: string,
 ): Partial<InjectorConfig> | null {

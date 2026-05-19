@@ -45,9 +45,21 @@ data/
 server.json
 
 # Deploy env (contains sensitive data)
-scripts/.env.deploy
+prod/.env.deploy
 
 # Server config (contains server URLs)
-.env.server
+prod/.env.server
 
-backups/
+# Server config example (template, safe to commit)
+!prod/.env.server.example
+
+# Prod data
+prod/data/
+
+# Prod plugins
+prod/plugins/
+
+# Local data
+data/*.db
+
+prod/backups/

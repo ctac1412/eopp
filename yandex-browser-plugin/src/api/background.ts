@@ -2,7 +2,9 @@ import type {
   ApiKeyStatusResponse,
   InjectorConfig,
 } from "@/types";
-import { CAPTCHA_SERVER } from "@/constants";
+import { CAPTCHA_SERVER, getDefaultScheduleTime } from "@/constants";
+
+export { getDefaultScheduleTime };
 
 export function getServerUrl(): string {
   if (
