@@ -13,15 +13,17 @@ from src.db.usage_log import calc_debt
 
 
 def _row_to_dict(row):
+    d = dict(row)
     return {
-        "id": row["id"],
-        "key": row["key"],
-        "label": row["label"],
-        "created_at": row["created_at"],
-        "usage_count": row["usage_count"],
-        "max_uses": row["max_uses"],
-        "active": bool(row["active"]),
-        "comment": row["comment"],
+        "id": d["id"],
+        "key": d["key"],
+        "label": d["label"],
+        "created_at": d["created_at"],
+        "usage_count": d["usage_count"],
+        "max_uses": d["max_uses"],
+        "active": bool(d["active"]),
+        "comment": d.get("comment"),
+        "is_admin": bool(d.get("is_admin", 0)),
     }
 
 
@@ -76,6 +78,7 @@ def update_key(
     max_uses: int | None = None,
     active: bool | None = None,
     comment: str = None,
+    is_admin: bool | None = None,
 ) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -88,10 +91,11 @@ def update_key(
     max_uses = max_uses if max_uses is not None else current["max_uses"]
     active = active if active is not None else current["active"]
     comment = comment if comment is not None else current["comment"]
+    is_admin = is_admin if is_admin is not None else current["is_admin"]
 
     conn.execute(
-        "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ? WHERE id = ?",
-        (label, max_uses, 1 if active else 0, comment, key_id),
+        "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ?, is_admin = ? WHERE id = ?",
+        (label, max_uses, 1 if active else 0, comment, 1 if is_admin else 0, key_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -173,3 +177,13 @@ def get_key_by_label(label: str) -> dict | None:
     row = conn.execute("SELECT * FROM api_keys WHERE label = ?", (label,)).fetchone()
     conn.close()
     return _row_to_dict(row) if row else None
+
+
+def check_admin_token(token: str) -> bool:
+    """Проверяет, является ли ключ админским (is_admin=1)."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT is_admin FROM api_keys WHERE key = ? AND active = 1", (token,)
+    ).fetchone()
+    conn.close()
+    return bool(row and row["is_admin"])

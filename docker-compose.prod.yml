@@ -1,11 +1,11 @@
 services:
   eopp-prod:
-    build: .
+    image: eopp:latest
     ports:
       - "8765:8765"
     volumes:
       - ./data:/app/data
-      - ./certs:/app/certs:ro
+      - ./certs:/app/certs
       - ./plugins:/app/plugins
     environment:
       - EOPP_DB_PATH=/app/data/api_keys.db
@@ -14,12 +14,11 @@ services:
 
   sqlite-web:
     image: coleifer/sqlite-web
-    ports:
-      - "8081:8080"
     volumes:
       - ./data:/data
     environment:
       - SQLITE_DATABASE=api_keys.db
       - SQLITE_WEB_PASSWORD=changeme
-    command: ["/bin/ash", "-c", "sqlite_web -H 0.0.0.0 -x $$SQLITE_DATABASE -u /sqlite-web/ -P"]
+    command: ["/bin/ash", "-c", "sqlite_web -H 127.0.0.1 -x $$SQLITE_DATABASE -u /sqlite-web/ -P"]
     restart: unless-stopped
+    network_mode: "host"

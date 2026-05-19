@@ -22,6 +22,7 @@ from src.db.api_keys import (
     increment_usage,
     get_key_record,
     get_key_by_label,
+    check_admin_token,
 )
 from src.db.usage_log import (
     get_usage_log_entry,
@@ -80,6 +81,7 @@ __all__ = [
     "increment_usage",
     "get_key_record",
     "get_key_by_label",
+    "check_admin_token",
     "get_usage_log_entry",
     "delete_usage_log",
     "log_usage",

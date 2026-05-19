@@ -55,7 +55,13 @@ def client(isolate_db):
 
 @pytest.fixture
 def admin_token():
-    return "13243546"
+    """Возвращает токен админского ключа из БД (is_admin=1)."""
+    from src.db import list_keys
+
+    keys = list_keys()
+    admin_key = next((k for k in keys if k["is_admin"]), None)
+    assert admin_key is not None, "Admin key not found in test DB"
+    return admin_key["key"]
 
 
 @pytest.fixture
@@ -304,6 +310,19 @@ class TestAdmin:
         response = client.post("/admin/auth", json={"token": "wrong"})
         assert response.status_code == 401
 
+    def test_admin_auth_non_admin_key(self, client, admin_token):
+        """Не-админский ключ не проходит авторизацию."""
+        # Создаём обычный ключ без is_admin
+        resp = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "non_admin_key"},
+        )
+        normal_key = resp.json()["key"]
+
+        response = client.post("/admin/auth", json={"token": normal_key})
+        assert response.status_code == 401
+
     def test_admin_streams(self, client, admin_token):
         """Список потоков."""
         response = client.get("/admin/streams", headers={"X-Admin-Token": admin_token})
@@ -460,6 +479,44 @@ class TestUpdateApiKey:
         assert response.status_code == 200
         data = response.json()
         assert data["comment"] == "Test comment"
+
+    def test_update_api_key_is_admin(self, client, admin_token):
+        """Обновление is_admin флага."""
+        create = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "admin_test"},
+        )
+        kid = create.json()["id"]
+        assert create.json()["is_admin"] is False
+
+        # Делаем ключ админским
+        response = client.patch(
+            f"/admin/api-keys/{kid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"is_admin": True},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_admin"] is True
+
+        # Проверяем, что теперь ключ проходит авторизацию
+        new_key = create.json()["key"]
+        auth_resp = client.post("/admin/auth", json={"token": new_key})
+        assert auth_resp.status_code == 200
+
+        # Убираем админские права
+        response = client.patch(
+            f"/admin/api-keys/{kid}",
+            headers={"X-Admin-Token": admin_token},
+            json={"is_admin": False},
+        )
+        assert response.status_code == 200
+        assert response.json()["is_admin"] is False
+
+        # Проверяем, что ключ больше не проходит
+        auth_resp = client.post("/admin/auth", json={"token": new_key})
+        assert auth_resp.status_code == 401
 
 
 # === Update Usage Log Tests ===

@@ -49,6 +49,7 @@ class UpdateApiKeyBody(BaseModel):
     max_uses: int | None = None
     active: bool | None = None
     comment: str | None = None
+    is_admin: bool | None = None
 
 
 class UpdateUsageLogBody(BaseModel):

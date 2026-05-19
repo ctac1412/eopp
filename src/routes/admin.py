@@ -13,7 +13,7 @@ EOPP Captcha Solver - Admin Routes
 - PATCH /admin/usage-log/{id} - обновить лог (price, paid)
 - POST /admin/generate-invoice - сгенерировать PDF-счёт
 
-Защита: требует X-Admin-Token в заголовках (ADMIN_TOKEN)
+Защита: требует X-Admin-Token в заголовках (is_admin=1 в api_keys)
 """
 
 from fastapi.responses import JSONResponse
@@ -28,8 +28,9 @@ from src.db import (
     list_usages as db_list_usages,
     get_key_by_id as db_get_key_by_id,
     get_usage_log_entry as db_get_usage_log_entry,
+    check_admin_token as db_check_admin_token,
 )
-from src.constants import ADMIN_TOKEN, PROTECTED_PATHS
+from src.constants import PROTECTED_PATHS
 from src.models import (
     AdminAuthBody,
     CreateInvoiceBody,
@@ -60,7 +61,7 @@ def admin_auth_middleware_factory(app):
         path = request.url.path
         if any(path.startswith(p) for p in PROTECTED_PATHS):
             token = request.headers.get("X-Admin-Token")
-            if not token or token != ADMIN_TOKEN:
+            if not token or not db_check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         response = await call_next(request)
         return response
@@ -71,7 +72,7 @@ def admin_auth_middleware_factory(app):
 def register_admin_routes(app):
     @app.post("/admin/auth")
     async def admin_auth(body: AdminAuthBody):
-        if body.token == ADMIN_TOKEN:
+        if db_check_admin_token(body.token):
             return JSONResponse(content={"ok": True})
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
@@ -112,7 +113,14 @@ def register_admin_routes(app):
 
     @app.patch("/admin/api-keys/{id}")
     async def update_api_key(id: int, body: UpdateApiKeyBody):
-        key = db_update_key(id, comment=body.comment)
+        key = db_update_key(
+            id,
+            label=body.label,
+            max_uses=body.max_uses,
+            active=body.active,
+            comment=body.comment,
+            is_admin=body.is_admin,
+        )
         if not key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
         return JSONResponse(content=key)
