@@ -1,53 +1,31 @@
-"""
-EOPP Captcha Solver - Admin Routes
+"""Admin routes.
 
-Админские эндпоинты:
-- POST /admin/auth - аутентификация админа
-- GET /admin/streams - список активных SSE соединений
-- GET /admin/test-stats - статистика по тестовым кейсам
-- POST /admin/benchmark - запуск бенчмарка решателя
-- GET /admin/tariffs/{api_key_id} - получить тариф по апи ключу
-- PUT /admin/tariffs/{api_key_id} - создать/обновить тариф
-- DELETE /admin/tariffs/{api_key_id} - удалить тариф
-- PATCH /admin/api-keys/{id} - обновить ключ (comment)
-- PATCH /admin/usage-log/{id} - обновить лог (price, paid)
-- POST /admin/generate-invoice - сгенерировать PDF-счёт
-
-Защита: требует X-Admin-Token в заголовках (is_admin=1 в api_keys)
+HTTP adapters for admin auth, monitoring, billing, users, and captcha replay.
+Business rules live in services; storage calls live behind repositories.
 """
 
 from fastapi.responses import JSONResponse
 
-from src.db import (
-    get_tariff as db_get_tariff,
-    create_tariff as db_create_tariff,
-    update_tariff as db_update_tariff,
-    delete_tariff as db_delete_tariff,
-    update_key as db_update_key,
-    update_usage_log as db_update_usage_log,
-    list_usages as db_list_usages,
-    get_key_by_id as db_get_key_by_id,
-    get_usage_log_entry as db_get_usage_log_entry,
-    check_admin_token as db_check_admin_token,
-)
-from src.models import (
+from src.db import check_admin_token as db_check_admin_token
+from src.schemas.billing import (
     CreateInvoiceBody,
+    CreateExpenseBody,
+    CreatePayoutBody,
+    CreateUserBody,
     GenerateInvoiceBody,
+    PreviewPayoutBody,
+    SetPayoutStatusBody,
     TariffBody,
     UpdateApiKeyBody,
-    UpdateInvoiceBody,
-    UpdateUsageLogBody,
-    CreateExpenseBody,
     UpdateExpenseBody,
-    CreatePayoutBody,
-    PreviewPayoutBody,
+    UpdateInvoiceBody,
     UpdatePayoutBody,
-    SetPayoutStatusBody,
-    CreateUserBody,
+    UpdateUsageLogBody,
     UpdateUserBody,
 )
 from src.policies.access_policy import requires_admin
 from src.schemas.auth import AdminAuthBody
+from src.services import billing_service
 from src.utils import (
     get_connected_streams,
     get_test_stats,
@@ -67,6 +45,11 @@ def admin_auth_middleware_factory(app):
         return response
 
     return admin_auth_middleware
+
+
+def _json_result(result):
+    status, content = result
+    return JSONResponse(status_code=status, content=content)
 
 
 def register_admin_routes(app):
@@ -90,375 +73,107 @@ def register_admin_routes(app):
 
     @app.get("/admin/tariffs/{api_key_id}")
     async def get_admin_tariff(api_key_id: int):
-        tariff = db_get_tariff(api_key_id)
-        if not tariff:
-            return JSONResponse(status_code=404, content={"error": "Tariff not found"})
-        return JSONResponse(content=tariff)
+        return _json_result(billing_service.get_tariff(api_key_id))
 
     @app.put("/admin/tariffs/{api_key_id}")
     async def create_update_tariff(api_key_id: int, body: TariffBody):
-        existing = db_get_tariff(api_key_id)
-        if existing:
-            tariff = db_update_tariff(api_key_id, body.price_create, body.price_reschedule)
-        else:
-            tariff = db_create_tariff(api_key_id, body.price_create, body.price_reschedule)
-        return JSONResponse(content=tariff)
+        return _json_result(billing_service.upsert_tariff(api_key_id, body))
 
     @app.delete("/admin/tariffs/{api_key_id}")
     async def delete_admin_tariff(api_key_id: int):
-        success = db_delete_tariff(api_key_id)
-        if not success:
-            return JSONResponse(status_code=404, content={"error": "Tariff not found"})
-        return JSONResponse(content={"ok": True})
+        return _json_result(billing_service.delete_tariff(api_key_id))
 
     @app.patch("/admin/api-keys/{id}")
     async def update_api_key(id: int, body: UpdateApiKeyBody):
-        key = db_update_key(
-            id,
-            label=body.label,
-            max_uses=body.max_uses,
-            active=body.active,
-            comment=body.comment,
-            is_admin=body.is_admin,
-            is_super_kiosk=body.is_super_kiosk,
-        )
-        if not key:
-            return JSONResponse(status_code=404, content={"error": "API key not found"})
-        return JSONResponse(content=key)
+        return _json_result(billing_service.update_api_key(id, body))
 
     @app.patch("/admin/usage-log/{id}")
     async def update_admin_usage_log(id: int, body: UpdateUsageLogBody):
-        log = db_update_usage_log(id, body.price, body.paid)
-        if not log:
-            return JSONResponse(status_code=404, content={"error": "Usage log not found"})
-        return JSONResponse(content=log)
+        return _json_result(billing_service.update_usage_log(id, body))
 
     @app.post("/admin/generate-invoice")
     async def generate_invoice(body: GenerateInvoiceBody):
-        from datetime import datetime
-
-        usage_logs = []
-        for log_id in body.usage_log_ids:
-            log = db_get_usage_log_entry(log_id)
-            if log:
-                usage_logs.append(log)
-
-        if not usage_logs:
-            return JSONResponse(status_code=400, content={"error": "No valid usage logs provided"})
-
-        debt_amount = body.debt_amount or 0
-        percent_amount = body.percent_amount or 0
-        tax_amount = body.tax_amount or 0
-        total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
-
-        now = datetime.now()
-        invoice_number = f"INV-{now.strftime('%Y%m%d%H%M%S')}"
-        invoice_id = None
-
-        # Сохраняем счёт в БД
-        try:
-            from src.db.invoices import insert_invoice
-            invoice_id = insert_invoice(
-                invoice_number=invoice_number,
-                pdf_path="",
-                comment=body.comment,
-                percent_rate=body.percent_rate,
-                tax_rate=body.tax_rate,
-                debt_amount=debt_amount,
-                percent_amount=percent_amount,
-                tax_amount=tax_amount,
-                total_amount=total_amount,
-                paid=False,
-            )
-
-            # Привязываем usage_log к инвойсу через FK
-            from src.db.connection import get_connection
-            conn = get_connection()
-            for log_id in body.usage_log_ids:
-                conn.execute(
-                    "UPDATE usage_log SET invoice_id = ?, paid = 0 WHERE id = ?",
-                    (invoice_id, log_id)
-                )
-            conn.commit()
-            conn.close()
-        except Exception as db_err:
-            import logging
-            logging.warning(f"Failed to save invoice to DB: {db_err}")
-
-        return JSONResponse(
-            content={
-                "ok": True,
-                "invoice_number": invoice_number,
-                "invoice_id": invoice_id,
-                "debt_amount": debt_amount,
-                "percent_amount": percent_amount,
-                "tax_amount": tax_amount,
-                "total_amount": total_amount,
-            }
-        )
+        return _json_result(billing_service.generate_invoice(body))
 
     @app.get("/admin/invoices")
     async def list_admin_invoices():
-        from src.db.invoices import list_invoices_with_items
-        return JSONResponse(content=list_invoices_with_items(limit=200))
+        return _json_result(billing_service.list_invoices())
 
     @app.post("/admin/invoices")
     async def create_admin_invoice(body: CreateInvoiceBody):
-        from src.db.invoices import insert_invoice_with_items
-        from datetime import datetime
-
-        items_total = sum(it.get("amount", 0) for it in (body.items or []))
-        debt = body.debt_amount or items_total
-
-        combined_rate = body.percent_rate + body.tax_rate
-        divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
-        calc_total = round(debt / divisor) if divisor > 0 else debt
-        calc_percent = round(calc_total * body.percent_rate / 100)
-        calc_tax = round(calc_total * body.tax_rate / 100)
-
-        invoice_number = body.invoice_number or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-        result = insert_invoice_with_items(
-            invoice_number=invoice_number,
-            comment=body.comment,
-            percent_rate=body.percent_rate,
-            tax_rate=body.tax_rate,
-            debt_amount=debt,
-            percent_amount=body.percent_amount or calc_percent,
-            tax_amount=body.tax_amount or calc_tax,
-            total_amount=body.total_amount or calc_total,
-            paid=False,
-            items=body.items,
-            commission_user_id=body.commission_user_id,
-            tax_user_id=body.tax_user_id,
-        )
-        return JSONResponse(content=result)
+        return _json_result(billing_service.create_invoice(body))
 
     @app.patch("/admin/invoices/{id}")
     async def update_admin_invoice(id: int, body: UpdateInvoiceBody):
-        from src.db.invoices import update_invoice, set_invoice_paid
-        from src.db.invoice_items import delete_items_for_invoice, add_item, get_items_for_invoice
-
-        # Если передан paid — используем старый метод
-        if body.paid is not None:
-            result = set_invoice_paid(id, body.paid)
-            if not result:
-                return JSONResponse(status_code=404, content={"error": "Invoice not found"})
-            return JSONResponse(content=result)
-
-        # Если переданы items — пересчитываем debt_amount из сумм строк
-        items_total = None
-        if body.items is not None:
-            items_total = sum(it.get("amount", 0) for it in body.items)
-            debt = body.debt_amount if body.debt_amount is not None else items_total
-
-            combined_rate = (body.percent_rate if body.percent_rate is not None else 0) + \
-                            (body.tax_rate if body.tax_rate is not None else 0)
-            divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
-            calc_total = round(debt / divisor) if divisor > 0 else debt
-            calc_percent = round(calc_total * (body.percent_rate or 0) / 100)
-            calc_tax = round(calc_total * (body.tax_rate or 0) / 100)
-
-            result = update_invoice(
-                id,
-                comment=body.comment,
-                percent_rate=body.percent_rate,
-                tax_rate=body.tax_rate,
-                debt_amount=debt,
-                percent_amount=body.percent_amount or calc_percent,
-                tax_amount=body.tax_amount or calc_tax,
-                total_amount=body.total_amount or calc_total,
-                commission_user_id=body.commission_user_id,
-                tax_user_id=body.tax_user_id,
-            )
-            if not result:
-                return JSONResponse(status_code=404, content={"error": "Invoice not found"})
-
-            delete_items_for_invoice(id)
-            for i, item in enumerate(body.items):
-                add_item(
-                    id,
-                    description=item.get("description", ""),
-                    amount=item.get("amount", 0),
-                    sort_order=item.get("sort_order", i),
-                )
-            result["items"] = body.items
-        else:
-            result = update_invoice(
-                id,
-                comment=body.comment,
-                percent_rate=body.percent_rate,
-                tax_rate=body.tax_rate,
-                debt_amount=body.debt_amount,
-                percent_amount=body.percent_amount,
-                tax_amount=body.tax_amount,
-                total_amount=body.total_amount,
-                commission_user_id=body.commission_user_id,
-                tax_user_id=body.tax_user_id,
-            )
-            if not result:
-                return JSONResponse(status_code=404, content={"error": "Invoice not found"})
-
-        return JSONResponse(content=result)
+        return _json_result(billing_service.update_invoice(id, body))
 
     @app.delete("/admin/invoices/{id}")
     async def delete_admin_invoice(id: int):
-        from src.db.invoices import delete_invoice
-        deleted = delete_invoice(id)
-        if not deleted:
-            return JSONResponse(status_code=404, content={"error": "Invoice not found"})
-        return JSONResponse(content={"ok": True})
+        return _json_result(billing_service.delete_invoice(id))
 
     @app.get("/admin/expenses")
     async def list_admin_expenses():
-        from src.db.expenses import list_expenses, get_total_expenses
-        expenses = list_expenses()
-        total = get_total_expenses()
-        return JSONResponse(content={"expenses": expenses, "total": total})
+        return _json_result(billing_service.list_expenses())
 
     @app.post("/admin/expenses")
     async def create_admin_expense(body: CreateExpenseBody):
-        from src.db.expenses import create_expense
-        expense = create_expense(body.amount, body.reason, body.user_id, body.comment)
-        return JSONResponse(content=expense)
+        return _json_result(billing_service.create_expense(body))
 
     @app.put("/admin/expenses/{id}")
     async def update_admin_expense(id: int, body: UpdateExpenseBody):
-        from src.db.expenses import update_expense
-        expense = update_expense(id, body.amount, body.reason, body.comment, body.user_id, body.created_at)
-        if not expense:
-            return JSONResponse(status_code=404, content={"error": "Expense not found"})
-        return JSONResponse(content=expense)
+        return _json_result(billing_service.update_expense(id, body))
 
     @app.delete("/admin/expenses/{id}")
     async def delete_admin_expense(id: int):
-        from src.db.expenses import delete_expense
-        deleted = delete_expense(id)
-        if not deleted:
-            return JSONResponse(status_code=404, content={"error": "Expense not found"})
-        return JSONResponse(content={"ok": True})
+        return _json_result(billing_service.delete_expense(id))
 
     @app.get("/admin/payouts")
     async def list_admin_payouts():
-        from src.db.payouts import list_payouts
-        return JSONResponse(content=list_payouts())
+        return _json_result(billing_service.list_payouts())
 
     @app.post("/admin/payouts/preview")
     async def preview_admin_payout(body: PreviewPayoutBody):
-        from src.db.payouts import preview_payout
-        if not body.user_splits:
-            return JSONResponse(status_code=400, content={"error": "user_splits обязателен"})
-        preview = preview_payout(
-            body.invoice_ids or [],
-            body.expense_ids or [],
-            body.user_splits,
-        )
-        return JSONResponse(content=preview)
+        return _json_result(billing_service.preview_payout(body))
 
     @app.get("/admin/payouts/available")
     async def get_available_resources():
-        """Список invoices и expenses со статусом распределения. Полностью распределённые исключены."""
-        from src.db.invoices import list_invoices
-        from src.db.expenses import list_expenses
-
-        invoices = list_invoices(limit=1000)
-        # Исключаем полностью распределённые
-        available_invoices = [
-            inv for inv in invoices
-            if inv.get("allocation", {}).get("status") != "fully_allocated"
-        ]
-
-        expenses_data = list_expenses()
-        # Исключаем полностью распределённые
-        available_expenses = [
-            exp for exp in expenses_data
-            if exp.get("allocation", {}).get("status") != "fully_allocated"
-        ]
-
-        return JSONResponse(content={
-            "invoices": available_invoices,
-            "expenses": available_expenses,
-        })
+        return _json_result(billing_service.available_resources())
 
     @app.post("/admin/payouts")
     async def create_admin_payout(body: CreatePayoutBody):
-        from src.db.payouts import create_payout_with_calculation
-        if not body.user_splits:
-            return JSONResponse(status_code=400, content={"error": "user_splits обязателен"})
-        if not body.invoice_ids and not body.expense_ids:
-            return JSONResponse(status_code=400, content={"error": "нужен хотя бы один invoice_id или expense_id"})
-        payout = create_payout_with_calculation(
-            body.name,
-            body.invoice_ids or [],
-            body.expense_ids or [],
-            body.user_splits,
-        )
-        return JSONResponse(content=payout)
+        return _json_result(billing_service.create_payout(body))
 
     @app.put("/admin/payouts/{id}")
     async def update_admin_payout(id: int, body: UpdatePayoutBody):
-        from src.db.payouts import update_payout
-        if body.name is None:
-            return JSONResponse(status_code=400, content={"error": "name required"})
-        payout = update_payout(id, body.name)
-        if not payout:
-            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
-        return JSONResponse(content=payout)
+        return _json_result(billing_service.update_payout(id, body))
 
     @app.patch("/admin/payouts/{id}")
     async def set_admin_payout_status(id: int, body: SetPayoutStatusBody):
-        from src.db.payouts import set_payout_status
-        payout = set_payout_status(id, body.status)
-        if not payout:
-            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
-        return JSONResponse(content=payout)
+        return _json_result(billing_service.set_payout_status(id, body))
 
     @app.delete("/admin/payouts/{id}")
     async def delete_admin_payout(id: int):
-        from src.db.payouts import delete_payout
-        deleted = delete_payout(id)
-        if not deleted:
-            return JSONResponse(status_code=404, content={"error": "Payout not found or not deletable"})
-        return JSONResponse(content={"ok": True})
+        return _json_result(billing_service.delete_payout(id))
 
     @app.post("/admin/payouts/{id}/recalculate")
     async def recalculate_admin_payout(id: int, body: CreatePayoutBody):
-        from src.db.payouts import recalculate_payout
-        if not body.user_splits:
-            return JSONResponse(status_code=400, content={"error": "user_splits обязателен"})
-        if not body.invoice_ids and not body.expense_ids:
-            return JSONResponse(status_code=400, content={"error": "нужен хотя бы один invoice_id или expense_id"})
-        payout = recalculate_payout(id, body.invoice_ids or [], body.expense_ids or [], body.user_splits)
-        if not payout:
-            return JSONResponse(status_code=404, content={"error": "Payout not found or not editable"})
-        return JSONResponse(content=payout)
+        return _json_result(billing_service.recalculate_payout(id, body))
 
     @app.get("/admin/users")
     async def list_admin_users():
-        from src.db.users import list_users
-        return JSONResponse(content=list_users())
+        return _json_result(billing_service.list_users())
 
     @app.post("/admin/users")
     async def create_admin_user(body: CreateUserBody):
-        from src.db.users import create_user
-        user = create_user(body.name)
-        return JSONResponse(content=user)
+        return _json_result(billing_service.create_user(body))
 
     @app.put("/admin/users/{id}")
     async def update_admin_user(id: int, body: UpdateUserBody):
-        from src.db.users import update_user
-        user = update_user(id, body.name)
-        if not user:
-            return JSONResponse(status_code=404, content={"error": "User not found"})
-        return JSONResponse(content=user)
+        return _json_result(billing_service.update_user(id, body))
 
     @app.delete("/admin/users/{id}")
     async def delete_admin_user(id: int):
-        from src.db.users import delete_user
-        deleted = delete_user(id)
-        if not deleted:
-            return JSONResponse(status_code=404, content={"error": "User not found"})
-        return JSONResponse(content={"ok": True})
+        return _json_result(billing_service.delete_user(id))
 
     @app.post("/admin/captchas/send-selected")
     async def send_selected_captchas(body: dict):
@@ -467,17 +182,16 @@ def register_admin_routes(app):
         import threading
         import time
 
-        from src.constants import ADMIN_TOKEN, NO_VALID_DIR, VALID_DIR
-        from src.db.captchas import list_captchas
-        from src.utils import _http_post, push_sse, assemble_captchas, get_connected_streams
+        from src.constants import NO_VALID_DIR, VALID_DIR
+        from src.utils import push_sse, assemble_captchas, get_connected_streams
 
         captcha_ids = body.get("captcha_ids", [])
         if not captcha_ids:
-            return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
+            return JSONResponse(status_code=400, content={"error": "РќРµС‚ РІС‹Р±СЂР°РЅРЅС‹С… РєР°РїС‡"})
 
         streams = get_connected_streams()
         if not streams:
-            return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
+            return JSONResponse(status_code=400, content={"error": "РќРµС‚ Р°РєС‚РёРІРЅС‹С… SSE РїРѕРґРєР»СЋС‡РµРЅРёР№"})
 
         def send_captchas():
             for cid in captcha_ids:

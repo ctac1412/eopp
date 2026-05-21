@@ -1,0 +1,301 @@
+"""Admin billing workflow rules."""
+
+import logging
+from datetime import datetime
+
+from src.repositories import billing_repo
+
+
+def _invoice_totals(body) -> tuple[int, int, int, int]:
+    items_total = sum(item.get("amount", 0) for item in (body.items or []))
+    debt = body.debt_amount or items_total
+    combined_rate = body.percent_rate + body.tax_rate
+    divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
+    total = round(debt / divisor) if divisor > 0 else debt
+    percent = round(total * body.percent_rate / 100)
+    tax = round(total * body.tax_rate / 100)
+    return debt, percent, tax, total
+
+
+def _updated_invoice_totals(body, items_total: int) -> tuple[int, int, int, int]:
+    debt = body.debt_amount if body.debt_amount is not None else items_total
+    percent_rate = body.percent_rate if body.percent_rate is not None else 0
+    tax_rate = body.tax_rate if body.tax_rate is not None else 0
+    combined_rate = percent_rate + tax_rate
+    divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
+    total = round(debt / divisor) if divisor > 0 else debt
+    percent = round(total * percent_rate / 100)
+    tax = round(total * tax_rate / 100)
+    return debt, percent, tax, total
+
+
+def get_tariff(api_key_id: int) -> tuple[int, dict]:
+    tariff = billing_repo.get_tariff(api_key_id)
+    if not tariff:
+        return 404, {"error": "Tariff not found"}
+    return 200, tariff
+
+
+def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
+    return 200, billing_repo.upsert_tariff(api_key_id, body.price_create, body.price_reschedule)
+
+
+def delete_tariff(api_key_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_tariff(api_key_id):
+        return 404, {"error": "Tariff not found"}
+    return 200, {"ok": True}
+
+
+def update_api_key(api_key_id: int, body) -> tuple[int, dict]:
+    key = billing_repo.update_api_key(api_key_id, body)
+    if not key:
+        return 404, {"error": "API key not found"}
+    return 200, key
+
+
+def update_usage_log(usage_log_id: int, body) -> tuple[int, dict]:
+    log = billing_repo.update_usage_log(usage_log_id, body)
+    if not log:
+        return 404, {"error": "Usage log not found"}
+    return 200, log
+
+
+def generate_invoice(body) -> tuple[int, dict]:
+    usage_logs = [log for log_id in body.usage_log_ids if (log := billing_repo.get_usage_log(log_id))]
+    if not usage_logs:
+        return 400, {"error": "No valid usage logs provided"}
+
+    debt_amount = body.debt_amount or 0
+    percent_amount = body.percent_amount or 0
+    tax_amount = body.tax_amount or 0
+    total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
+    invoice_number = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    invoice_id = None
+
+    try:
+        invoice_id = billing_repo.create_invoice_record(
+            invoice_number=invoice_number,
+            pdf_path="",
+            comment=body.comment,
+            percent_rate=body.percent_rate,
+            tax_rate=body.tax_rate,
+            debt_amount=debt_amount,
+            percent_amount=percent_amount,
+            tax_amount=tax_amount,
+            total_amount=total_amount,
+            paid=False,
+        )
+        billing_repo.link_usage_logs_to_invoice(invoice_id, body.usage_log_ids)
+    except Exception as exc:
+        logging.warning("Failed to save invoice to DB: %s", exc)
+
+    return 200, {
+        "ok": True,
+        "invoice_number": invoice_number,
+        "invoice_id": invoice_id,
+        "debt_amount": debt_amount,
+        "percent_amount": percent_amount,
+        "tax_amount": tax_amount,
+        "total_amount": total_amount,
+    }
+
+
+def list_invoices() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_invoices(limit=200)
+
+
+def create_invoice(body) -> tuple[int, dict]:
+    debt, calc_percent, calc_tax, calc_total = _invoice_totals(body)
+    invoice_number = body.invoice_number or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    return 200, billing_repo.create_invoice_with_items(
+        invoice_number=invoice_number,
+        comment=body.comment,
+        percent_rate=body.percent_rate,
+        tax_rate=body.tax_rate,
+        debt_amount=debt,
+        percent_amount=body.percent_amount or calc_percent,
+        tax_amount=body.tax_amount or calc_tax,
+        total_amount=body.total_amount or calc_total,
+        paid=False,
+        items=body.items,
+        commission_user_id=body.commission_user_id,
+        tax_user_id=body.tax_user_id,
+    )
+
+
+def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
+    if body.paid is not None:
+        result = billing_repo.set_invoice_paid(invoice_id, body.paid)
+        if not result:
+            return 404, {"error": "Invoice not found"}
+        return 200, result
+
+    if body.items is not None:
+        items_total = sum(item.get("amount", 0) for item in body.items)
+        debt, calc_percent, calc_tax, calc_total = _updated_invoice_totals(body, items_total)
+        result = billing_repo.update_invoice(
+            invoice_id,
+            comment=body.comment,
+            percent_rate=body.percent_rate,
+            tax_rate=body.tax_rate,
+            debt_amount=debt,
+            percent_amount=body.percent_amount or calc_percent,
+            tax_amount=body.tax_amount or calc_tax,
+            total_amount=body.total_amount or calc_total,
+            commission_user_id=body.commission_user_id,
+            tax_user_id=body.tax_user_id,
+        )
+        if not result:
+            return 404, {"error": "Invoice not found"}
+        billing_repo.replace_invoice_items(invoice_id, body.items)
+        result["items"] = body.items
+        return 200, result
+
+    result = billing_repo.update_invoice(
+        invoice_id,
+        comment=body.comment,
+        percent_rate=body.percent_rate,
+        tax_rate=body.tax_rate,
+        debt_amount=body.debt_amount,
+        percent_amount=body.percent_amount,
+        tax_amount=body.tax_amount,
+        total_amount=body.total_amount,
+        commission_user_id=body.commission_user_id,
+        tax_user_id=body.tax_user_id,
+    )
+    if not result:
+        return 404, {"error": "Invoice not found"}
+    return 200, result
+
+
+def delete_invoice(invoice_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_invoice(invoice_id):
+        return 404, {"error": "Invoice not found"}
+    return 200, {"ok": True}
+
+
+def list_expenses() -> tuple[int, dict]:
+    return 200, {
+        "expenses": billing_repo.list_expenses(),
+        "total": billing_repo.get_total_expenses(),
+    }
+
+
+def create_expense(body) -> tuple[int, dict]:
+    return 200, billing_repo.create_expense(body.amount, body.reason, body.user_id, body.comment)
+
+
+def update_expense(expense_id: int, body) -> tuple[int, dict]:
+    expense = billing_repo.update_expense(expense_id, body)
+    if not expense:
+        return 404, {"error": "Expense not found"}
+    return 200, expense
+
+
+def delete_expense(expense_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_expense(expense_id):
+        return 404, {"error": "Expense not found"}
+    return 200, {"ok": True}
+
+
+def list_payouts() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_payouts()
+
+
+def preview_payout(body) -> tuple[int, dict]:
+    if not body.user_splits:
+        return 400, {"error": "user_splits обязателен"}
+    return 200, billing_repo.preview_payout(body.invoice_ids or [], body.expense_ids or [], body.user_splits)
+
+
+def available_resources() -> tuple[int, dict]:
+    invoices = billing_repo.list_available_invoices(limit=1000)
+    expenses = billing_repo.list_expenses()
+    return 200, {
+        "invoices": [
+            invoice for invoice in invoices
+            if invoice.get("allocation", {}).get("status") != "fully_allocated"
+        ],
+        "expenses": [
+            expense for expense in expenses
+            if expense.get("allocation", {}).get("status") != "fully_allocated"
+        ],
+    }
+
+
+def _validate_payout_payload(body) -> tuple[int, dict] | None:
+    if not body.user_splits:
+        return 400, {"error": "user_splits обязателен"}
+    if not body.invoice_ids and not body.expense_ids:
+        return 400, {"error": "нужен хотя бы один invoice_id или expense_id"}
+    return None
+
+
+def create_payout(body) -> tuple[int, dict]:
+    invalid = _validate_payout_payload(body)
+    if invalid:
+        return invalid
+    return 200, billing_repo.create_payout_with_calculation(
+        body.name,
+        body.invoice_ids or [],
+        body.expense_ids or [],
+        body.user_splits,
+    )
+
+
+def update_payout(payout_id: int, body) -> tuple[int, dict]:
+    if body.name is None:
+        return 400, {"error": "name required"}
+    payout = billing_repo.update_payout(payout_id, body.name)
+    if not payout:
+        return 404, {"error": "Payout not found or not editable"}
+    return 200, payout
+
+
+def set_payout_status(payout_id: int, body) -> tuple[int, dict]:
+    payout = billing_repo.set_payout_status(payout_id, body.status)
+    if not payout:
+        return 404, {"error": "Payout not found or not editable"}
+    return 200, payout
+
+
+def delete_payout(payout_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_payout(payout_id):
+        return 404, {"error": "Payout not found or not deletable"}
+    return 200, {"ok": True}
+
+
+def recalculate_payout(payout_id: int, body) -> tuple[int, dict]:
+    invalid = _validate_payout_payload(body)
+    if invalid:
+        return invalid
+    payout = billing_repo.recalculate_payout(
+        payout_id,
+        body.invoice_ids or [],
+        body.expense_ids or [],
+        body.user_splits,
+    )
+    if not payout:
+        return 404, {"error": "Payout not found or not editable"}
+    return 200, payout
+
+
+def list_users() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_users()
+
+
+def create_user(body) -> tuple[int, dict]:
+    return 200, billing_repo.create_user(body.name)
+
+
+def update_user(user_id: int, body) -> tuple[int, dict]:
+    user = billing_repo.update_user(user_id, body.name)
+    if not user:
+        return 404, {"error": "User not found"}
+    return 200, user
+
+
+def delete_user(user_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_user(user_id):
+        return 404, {"error": "User not found"}
+    return 200, {"ok": True}
