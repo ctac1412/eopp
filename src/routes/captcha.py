@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
 from src.db import (
+    check_admin_token,
     get_key_by_id,
     get_key_record,
     get_usage_log_entry,
@@ -32,7 +33,6 @@ from src.db import (
     log_usage,
     validate_key,
 )
-from src.db.captchas import _tiles_hash
 from src.constants import (
     CAPTCHA_TIMEOUT,
     NO_VALID_DIR,
@@ -83,13 +83,11 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         captcha_id = captcha_hash(data)
         reservation_id = body.reservation_id or "unknown"
-        thash = _tiles_hash(tiles) if tiles else None
-
         if body.usage_log_id:
             usage_log_id = body.usage_log_id
         else:
             usage_log_id = log_usage(
-                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id, tiles_hash=thash
+                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id
             )
 
         has_valid_index = "valid_index" in data
@@ -294,6 +292,9 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
     @app.post("/broadcast")
     async def handle_broadcast(request: Request):
+        token = request.headers.get("X-Admin-Token")
+        if not token or not check_admin_token(token):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         data = await request.json()
         push_sse(data)
         return JSONResponse(content={"ok": True})

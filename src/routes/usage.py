@@ -12,10 +12,11 @@ EOPP Captcha Solver - Usage Routes
 import json
 import os
 
-from fastapi import Query
+from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
 from src.db import (
+    check_admin_token,
     confirm_usage,
     fail_usage,
     get_key_record,
@@ -102,8 +103,12 @@ def register_usage_routes(app):
         return JSONResponse(content={"ok": True})
 
     @app.delete("/usage-log/{usage_log_id}")
-    async def delete_usage_log_entry(usage_log_id: int):
+    async def delete_usage_log_entry(usage_log_id: int, request: Request):
         from src.db import delete_usage_log as _delete_usage_log
+
+        token = request.headers.get("X-Admin-Token")
+        if not token or not check_admin_token(token):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
         ok = _delete_usage_log(usage_log_id)
         if not ok:
@@ -112,14 +117,28 @@ def register_usage_routes(app):
 
     @app.get("/usage-log")
     async def get_usage_log(
+        request: Request,
         api_key_id: int | None = Query(None),
         api_key: str | None = Query(None),
         hide_test: bool = Query(True),
     ):
-        if api_key and api_key_id is None:
+        admin_token = request.headers.get("X-Admin-Token")
+        is_admin = bool(admin_token and check_admin_token(admin_token))
+
+        if api_key_id is not None and not is_admin:
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+        if api_key:
             key_record = get_key_record(api_key)
-            if key_record:
+            if not key_record:
+                return JSONResponse(status_code=403, content={"error": "Invalid API key"})
+            if not is_admin:
                 api_key_id = key_record["id"]
+            elif api_key_id is None:
+                api_key_id = key_record["id"]
+        elif not is_admin:
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
         records = list_usages(api_key_id)
         if hide_test:
             filtered = []

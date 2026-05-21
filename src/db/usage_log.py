@@ -86,7 +86,6 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
         "invoice_id": row["invoice_id"],
-        "tiles_hash": row["tiles_hash"],
     }
 
 
@@ -100,7 +99,7 @@ def delete_usage_log(usage_log_id: int) -> bool:
 
 
 def log_usage(
-    api_key: str, reservation_id: str, captcha_id: str, config_json: dict | None = None, tiles_hash: str | None = None
+    api_key: str, reservation_id: str, captcha_id: str, config_json: dict | None = None
 ) -> int:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (api_key,)).fetchone()
@@ -116,12 +115,12 @@ def log_usage(
     cursor = conn.execute(
         """INSERT INTO usage_log
            (api_key_id, reservation_id, captcha_id, status, created_at, config_json,
-            op_type, company, fio, vehicle_number, is_test, tiles_hash)
-           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)""",
+            op_type, company, fio, vehicle_number, is_test)
+           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
         (
             row["id"], reservation_id, captcha_id, now, config_str,
             extracted["op_type"], extracted["company"], extracted["fio"],
-            extracted["vehicle_number"], is_test, tiles_hash,
+            extracted["vehicle_number"], is_test,
         ),
     )
     conn.commit()
@@ -176,7 +175,7 @@ def confirm_usage(
 
     if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
-        create_captcha_records(usage_log_id, captcha_id, logs, "confirmed", row["tiles_hash"])
+        create_captcha_records(usage_log_id, captcha_id, logs, "confirmed")
 
     conn.close()
     return True
@@ -217,7 +216,7 @@ def fail_usage(
 
     if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
-        create_captcha_records(usage_log_id, captcha_id, logs, "failed", row["tiles_hash"])
+        create_captcha_records(usage_log_id, captcha_id, logs, "failed")
 
     conn.close()
     return True
@@ -263,7 +262,6 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "vehicle_number": r["vehicle_number"],
                 "is_test": bool(r["is_test"]) if r["is_test"] is not None else False,
                 "invoice_id": r["invoice_id"],
-                "tiles_hash": r["tiles_hash"],
             }
         )
     return result
@@ -331,5 +329,4 @@ def update_usage_log(usage_log_id: int, price: int | None = None, paid: bool | N
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
         "invoice_id": row["invoice_id"],
-        "tiles_hash": row["tiles_hash"],
     }

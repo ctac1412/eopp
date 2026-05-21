@@ -217,15 +217,29 @@ class TestUsage:
         )
         assert response.status_code == 200
 
-    def test_usage_log(self, client):
-        """История использования."""
+    def test_usage_log_requires_scope(self, client):
+        """История использования без ключа или admin token закрыта."""
         response = client.get("/usage-log")
-        assert response.status_code == 200
-        assert isinstance(response.json(), list)
+        assert response.status_code == 401
 
     def test_usage_log_filter(self, client, api_key):
         """Фильтрация по ключу."""
         response = client.get(f"/usage-log?api_key={api_key}")
+        assert response.status_code == 200
+
+    def test_usage_log_invalid_key(self, client):
+        """История использования не раскрывается по невалидному ключу."""
+        response = client.get("/usage-log?api_key=invalid")
+        assert response.status_code == 403
+
+    def test_usage_log_api_key_id_requires_admin(self, client):
+        """Фильтр по ID ключа доступен только администратору."""
+        response = client.get("/usage-log?api_key_id=1")
+        assert response.status_code == 401
+
+    def test_usage_log_admin_scope(self, client, admin_token):
+        """Администратор может запросить журнал целиком."""
+        response = client.get("/usage-log", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
 
@@ -299,6 +313,34 @@ class TestMock:
 class TestAdmin:
     """Тесты Admin эндпоинтов."""
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/admin/invoices",
+            "/admin/expenses",
+            "/admin/payouts",
+            "/admin/users",
+            "/admin/captchas",
+        ],
+    )
+    def test_admin_routes_unauthorized(self, client, path):
+        response = client.get(path)
+        assert response.status_code == 401
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/admin/invoices",
+            "/admin/expenses",
+            "/admin/payouts",
+            "/admin/users",
+            "/admin/captchas",
+        ],
+    )
+    def test_admin_routes_authorized(self, client, admin_token, path):
+        response = client.get(path, headers={"X-Admin-Token": admin_token})
+        assert response.status_code == 200
+
     def test_admin_auth_success(self, client, admin_token):
         """Успешная авторизация."""
         response = client.post("/admin/auth", json={"token": admin_token})
@@ -343,6 +385,26 @@ class TestAdmin:
         """Бенчмарк."""
         response = client.get("/admin/benchmark", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
+
+
+class TestCaptchaRecords:
+    """Тесты доступа к captcha records."""
+
+    def test_captchas_require_admin(self, client):
+        response = client.get("/captchas")
+        assert response.status_code == 401
+
+    def test_captchas_allow_admin(self, client, admin_token):
+        response = client.get("/captchas", headers={"X-Admin-Token": admin_token})
+        assert response.status_code == 200
+
+    def test_delete_captcha_requires_admin(self, client):
+        response = client.delete("/captchas/1")
+        assert response.status_code == 401
+
+    def test_delete_usage_log_requires_admin(self, client):
+        response = client.delete("/usage-log/1")
+        assert response.status_code == 401
 
 
 # === Frontend Tests ===
@@ -396,6 +458,11 @@ class TestCaptcha:
             json={"type": "test"},
         )
         assert response.status_code == 200
+
+    def test_broadcast_unauthorized(self, client):
+        """Broadcast без admin token закрыт."""
+        response = client.post("/broadcast", json={"type": "test"})
+        assert response.status_code == 401
 
 
 # === Tariff Tests ===

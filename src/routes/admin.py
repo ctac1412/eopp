@@ -59,7 +59,8 @@ def admin_auth_middleware_factory(app):
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):
         path = request.url.path
-        if any(path.startswith(p) for p in PROTECTED_PATHS):
+        is_admin_route = path.startswith("/admin/") and path != "/admin/auth"
+        if is_admin_route or any(path.startswith(p) for p in PROTECTED_PATHS):
             token = request.headers.get("X-Admin-Token")
             if not token or not db_check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})

@@ -7,9 +7,11 @@ EOPP Captcha Solver - Captchas DB.
 
 import hashlib
 import json
+import os
 import re
 from datetime import UTC, datetime
 
+from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db.connection import get_connection
 
 
@@ -62,12 +64,29 @@ def _extract_v2(logs: list[str]) -> list[tuple[str, str, str | None, str | None]
     return results
 
 
+def _resolve_tiles_hash(captcha_id: str) -> str | None:
+    """Best-effort tiles hash lookup from stored captcha payload files."""
+    for base_dir in (VALID_DIR, NO_VALID_DIR):
+        payload_path = os.path.join(base_dir, f"{captcha_id}.json")
+        if not os.path.exists(payload_path):
+            continue
+        try:
+            with open(payload_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            puzzle = data.get("puzzle", data)
+            tiles = puzzle.get("tiles", [])
+            if tiles:
+                return _tiles_hash(tiles)
+        except Exception:
+            continue
+    return None
+
+
 def create_captcha_records(
     usage_log_id: int,
     captcha_id: str,
     logs: list[str] | None,
     overall_status: str,
-    tiles_hash: str | None = None,
 ) -> list[int]:
     """Создаёт записи в таблице captchas на основе v2 логов.
 
@@ -85,6 +104,7 @@ def create_captcha_records(
     created_ids = []
 
     for cid, status, correct_answer, fail_reason in parsed:
+        tiles_hash = _resolve_tiles_hash(cid)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, correct_answer, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (cid, status, usage_log_id, tiles_hash, correct_answer, fail_reason, now),
