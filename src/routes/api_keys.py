@@ -27,10 +27,7 @@ from src.db import (
     update_key,
     validate_key,
 )
-from src.models import (
-    CreateApiKeyBody,
-    UpdateApiKeyBody,
-)
+from src.schemas.auth import CreateApiKeyBody, UpdateApiKeyBody
 
 
 def register_api_key_routes(app):

@@ -30,9 +30,7 @@ from src.db import (
     get_usage_log_entry as db_get_usage_log_entry,
     check_admin_token as db_check_admin_token,
 )
-from src.constants import PROTECTED_PATHS
 from src.models import (
-    AdminAuthBody,
     CreateInvoiceBody,
     GenerateInvoiceBody,
     TariffBody,
@@ -48,6 +46,8 @@ from src.models import (
     CreateUserBody,
     UpdateUserBody,
 )
+from src.policies.access_policy import requires_admin
+from src.schemas.auth import AdminAuthBody
 from src.utils import (
     get_connected_streams,
     get_test_stats,
@@ -59,8 +59,7 @@ def admin_auth_middleware_factory(app):
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):
         path = request.url.path
-        is_admin_route = path.startswith("/admin/") and path != "/admin/auth"
-        if is_admin_route or any(path.startswith(p) for p in PROTECTED_PATHS):
+        if requires_admin(request.method, path):
             token = request.headers.get("X-Admin-Token")
             if not token or not db_check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})

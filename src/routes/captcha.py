@@ -25,13 +25,9 @@ from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
 from src.db import (
-    check_admin_token,
     get_key_by_id,
     get_key_record,
-    get_usage_log_entry,
     is_super_kiosk_key,
-    log_usage,
-    validate_key,
 )
 from src.constants import (
     CAPTCHA_TIMEOUT,
@@ -39,10 +35,8 @@ from src.constants import (
     VALID_DIR,
     write_mode,
 )
-from src.models import (
-    SolveCaptchaBody,
-    SolveRequest,
-)
+from src.schemas.captcha import SolveCaptchaBody, SolveRequest
+from src.services import captcha_service
 from src.utils import (
     assemble_captchas,
     captcha_hash,
@@ -61,17 +55,14 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
     async def handle_captcha(body: SolveCaptchaBody):
         auto_solve = body.auto_solve
         api_key = body.api_key
-        validation = validate_key(api_key)
-        if not validation["valid"]:
+        key_record = captcha_service.validate_captcha_api_key(api_key)
+        if isinstance(key_record, tuple):
+            status, content = key_record
             return JSONResponse(
-                status_code=403,
-                content={
-                    "error": "Invalid API key",
-                    "reason": validation["reason"],
-                },
+                status_code=status,
+                content=content,
             )
 
-        key_record = get_key_record(api_key)
         api_key_id = key_record["id"]
 
         data = body.model_dump(exclude={"api_key", "auto_solve", "reservation_id"})
@@ -83,12 +74,12 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         captcha_id = captcha_hash(data)
         reservation_id = body.reservation_id or "unknown"
-        if body.usage_log_id:
-            usage_log_id = body.usage_log_id
-        else:
-            usage_log_id = log_usage(
-                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id
-            )
+        usage_log_id = captcha_service.get_or_create_usage_log(
+            body.usage_log_id,
+            api_key,
+            reservation_id,
+            captcha_id,
+        )
 
         has_valid_index = "valid_index" in data
         target_dir = VALID_DIR if has_valid_index else NO_VALID_DIR
@@ -216,8 +207,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 solved_by_super = True
 
         if entry and body.usage_log_id:
-            log_entry = get_usage_log_entry(body.usage_log_id)
-            if not log_entry or log_entry["captcha_id"] != captcha_id:
+            if not captcha_service.verify_usage_log_matches_captcha(body.usage_log_id, captcha_id):
                 return JSONResponse(
                     status_code=403,
                     content={"error": "Usage log ID does not match this captcha"},
@@ -292,9 +282,10 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
     @app.post("/broadcast")
     async def handle_broadcast(request: Request):
-        token = request.headers.get("X-Admin-Token")
-        if not token or not check_admin_token(token):
-            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        unauthorized = captcha_service.authorize_broadcast(request.headers.get("X-Admin-Token"))
+        if unauthorized:
+            status, content = unauthorized
+            return JSONResponse(status_code=status, content=content)
         data = await request.json()
         push_sse(data)
         return JSONResponse(content={"ok": True})

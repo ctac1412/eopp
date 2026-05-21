@@ -31,14 +31,8 @@ import {
   UserModal,
   CaptchasTab,
 } from "./components/admin";
-
-function adminHeaders(token) {
-  return { "Content-Type": "application/json", "X-Admin-Token": token };
-}
-
-function adminHeadersJson(token) {
-  return { "X-Admin-Token": token };
-}
+import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
+import { ADMIN_TABS } from "./features/admin/shared/tabs";
 
 function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -938,18 +932,6 @@ function AdminPage() {
     }
   };
 
-  const tabs = [
-    { id: "reports", label: "Журнал" },
-    { id: "keys", label: "API Keys" },
-    { id: "captchas", label: "Капчи" },
-    { id: "invoices", label: "Счета" },
-    { id: "expenses", label: "Расходы" },
-    { id: "payouts", label: "Выплаты" },
-    { id: "users", label: "Пользователи" },
-    { id: "testbench", label: "Тесты и бенчмарк" },
-    { id: "streams", label: "Стримы" },
-  ];
-
   if (!adminToken) {
     return (
       <AdminAuth
@@ -1014,7 +996,7 @@ function AdminPage() {
       )}
 
       <ul className="nav nav-cyber mb-3">
-        {tabs.map((tab) => (
+        {ADMIN_TABS.map((tab) => (
           <li className="nav-item" key={tab.id}>
             <button
               className={`nav-link ${activeTab === tab.id ? "active" : ""}`}
