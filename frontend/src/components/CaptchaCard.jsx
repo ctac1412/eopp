@@ -6,6 +6,8 @@ function CaptchaCard({ entry, index }) {
     (s) => s.selectedCard === index && s.selectedCaptchaId === entry.id,
   );
   const setSelectedCard = useCaptchaStore((s) => s.setSelectedCard);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
+  const apiKey = useCaptchaStore((s) => s.apiKey);
 
   const handleClick = async () => {
     setSelectedCard(entry.id, index);
@@ -16,40 +18,55 @@ function CaptchaCard({ entry, index }) {
       body: JSON.stringify({
         captcha_id: entry.id,
         variantIndex: parseInt(index),
+        api_key: apiKey,
       }),
     });
     const data = await res.json();
 
-    useCaptchaStore.getState().markSolved(entry.id);
+    if (data.already_solved) {
+      useCaptchaStore.getState().markSolved(entry.id);
+      useCaptchaStore
+        .getState()
+        .addLog(
+          `Капча ${entry.id} уже решена другим киоском`,
+          "info",
+        );
+      return;
+    }
+
+    useCaptchaStore.getState().markSolved(entry.id, superKioskMode, null);
+    const solverInfo = superKioskMode && entry.ownerLabel
+      ? `Супер Киоск → ${entry.ownerLabel}`
+      : superKioskMode
+      ? "Супер Киоск"
+      : "Локально";
     useCaptchaStore
       .getState()
       .addLog(
-        `Решено: ${entry.id} → #${index}  (${data.resultFile})`,
+        `Решено [${solverInfo}]: ${entry.id} → #${index}  (${data.resultFile})`,
         "success",
       );
-
-    fetch("/broadcast", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "captcha_solved",
-        captcha_id: entry.id,
-      }),
-    });
   };
 
   const rank = entry.top3.indexOf(String(index));
 
   return (
     <div
-      className={`captcha-card position-relative ${isSelected ? "captcha-card--selected" : ""}`}
+      className={`captcha-card position-relative ${isSelected ? "captcha-card--selected" : ""} ${entry.solved ? "captcha-card--solved" : ""}`}
       data-index={index}
-      onClick={handleClick}
+      onClick={entry.solved ? undefined : handleClick}
     >
-      {rank >= 0 && (
+      {rank >= 0 && !entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
           <span className={`rank-badge rank-badge--${rank + 1}`}>
             TOP {rank + 1}
+          </span>
+        </div>
+      )}
+      {entry.solved && (
+        <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
+          <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>
+            {entry.solvedBySuper ? `Супер: ${entry.solverLabel || "?"}` : "Решено"}
           </span>
         </div>
       )}
@@ -57,6 +74,7 @@ function CaptchaCard({ entry, index }) {
         className="captcha-card__img"
         src={"data:image/png;base64," + entry.images[index]}
         alt={`Вариант ${index}`}
+        style={entry.solved ? { opacity: 0.5 } : {}}
       />
       <div className="text-center py-2" style={{
         fontSize: "0.75rem",

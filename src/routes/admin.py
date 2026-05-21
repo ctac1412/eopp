@@ -120,6 +120,7 @@ def register_admin_routes(app):
             active=body.active,
             comment=body.comment,
             is_admin=body.is_admin,
+            is_super_kiosk=body.is_super_kiosk,
         )
         if not key:
             return JSONResponse(status_code=404, content={"error": "API key not found"})
@@ -458,3 +459,84 @@ def register_admin_routes(app):
         if not deleted:
             return JSONResponse(status_code=404, content={"error": "User not found"})
         return JSONResponse(content={"ok": True})
+
+    @app.post("/admin/captchas/send-selected")
+    async def send_selected_captchas(body: dict):
+        import json
+        import os
+        import threading
+        import time
+
+        from src.constants import ADMIN_TOKEN, NO_VALID_DIR, VALID_DIR
+        from src.db.captchas import list_captchas
+        from src.utils import _http_post, push_sse, assemble_captchas, get_connected_streams
+
+        captcha_ids = body.get("captcha_ids", [])
+        if not captcha_ids:
+            return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
+
+        streams = get_connected_streams()
+        if not streams:
+            return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
+
+        def send_captchas():
+            for cid in captcha_ids:
+                for d in [VALID_DIR, NO_VALID_DIR]:
+                    filepath = os.path.join(d, f"{cid}.json")
+                    if os.path.exists(filepath):
+                        try:
+                            with open(filepath) as f:
+                                data = json.load(f)
+                            puzzle = data.get("puzzle", data)
+                            tiles = puzzle.get("tiles", [])
+                            variants = puzzle.get("variantsCapture", [])
+                            valid_index = data.get("valid_index")
+                            generated = assemble_captchas(tiles, variants, valid_index)
+                            push_sse({
+                                "type": "new_captcha",
+                                "captcha_id": cid,
+                                "images": {str(g["index"]): g["image"] for g in generated},
+                                "count": len(generated),
+                                "top3": [],
+                                "created_at": time.time(),
+                                "timeout": 30,
+                                "owner_label": "replay",
+                                "owner_api_key_id": -1,
+                            })
+                            print(f"Sent replay captcha {cid}")
+                            time.sleep(1)
+                        except Exception as e:
+                            print(f"Error sending replay captcha {cid}: {e}")
+                        break
+
+        t = threading.Thread(target=send_captchas, daemon=True)
+        t.start()
+
+        return JSONResponse(content={"sent": len(captcha_ids)})
+
+    @app.get("/admin/captchas")
+    async def list_admin_captchas(
+        status: str | None = None,
+        api_key_id: int | None = None,
+    ):
+        from src.db.captchas import list_captchas
+        from src.db import get_usage_log_entry, get_key_by_id
+
+        rows = list_captchas()
+        result = []
+        for r in rows:
+            if status and r["status"] != status:
+                continue
+            ul = get_usage_log_entry(r["usage_log_id"])
+            if api_key_id:
+                if not ul or ul["api_key_id"] != api_key_id:
+                    continue
+            key_label = None
+            if ul:
+                key_info = get_key_by_id(ul["api_key_id"])
+                if key_info:
+                    key_label = key_info["label"]
+            entry = dict(r)
+            entry["key_label"] = key_label
+            result.append(entry)
+        return JSONResponse(content=result)

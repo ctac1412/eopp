@@ -25,11 +25,14 @@ from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
 from src.db import (
+    get_key_by_id,
     get_key_record,
     get_usage_log_entry,
+    is_super_kiosk_key,
     log_usage,
     validate_key,
 )
+from src.db.captchas import _tiles_hash
 from src.constants import (
     CAPTCHA_TIMEOUT,
     NO_VALID_DIR,
@@ -49,6 +52,7 @@ from src.utils import (
     source_files,
     lock,
     pending,
+    super_kiosk_subscriptions,
 )
 
 
@@ -79,12 +83,13 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         captcha_id = captcha_hash(data)
         reservation_id = body.reservation_id or "unknown"
+        thash = _tiles_hash(tiles) if tiles else None
 
         if body.usage_log_id:
             usage_log_id = body.usage_log_id
         else:
             usage_log_id = log_usage(
-                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id
+                api_key=api_key, reservation_id=reservation_id, captcha_id=captcha_id, tiles_hash=thash
             )
 
         has_valid_index = "valid_index" in data
@@ -125,6 +130,9 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         with lock:
             pending[captcha_id] = entry
 
+        owner_info = get_key_by_id(api_key_id)
+        owner_label = owner_info["label"] if owner_info else "unknown"
+
         push_sse(
             {
                 "type": "new_captcha",
@@ -134,6 +142,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 "top3": top3,
                 "created_at": time.time(),
                 "timeout": captcha_timeout,
+                "owner_label": owner_label,
+                "owner_api_key_id": api_key_id,
             },
             api_key_id=api_key_id,
         )
@@ -144,7 +154,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         if entry["result"] is None:
             push_sse(
-                {"type": "captcha_timeout", "captcha_id": captcha_id},
+                {"type": "captcha_timeout", "captcha_id": captcha_id, "owner_label": owner_label, "owner_api_key_id": api_key_id},
                 api_key_id=api_key_id,
             )
 
@@ -164,13 +174,48 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         with lock:
             entry = pending.get(captcha_id)
 
-        if entry and body.api_key:
+        if not entry:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Captcha {captcha_id} not found or already solved"},
+            )
+
+        if entry["result"] is not None:
+            return JSONResponse(
+                status_code=200,
+                content={"already_solved": True, "captcha_id": captcha_id},
+            )
+
+        solver_is_super = False
+        solver_label = None
+        solved_by_super = False
+        if body.api_key:
             key_record = get_key_record(body.api_key)
-            if not key_record or key_record["id"] != entry.get("api_key_id"):
+            if not key_record:
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "Invalid API key"},
+                )
+            solver_label = key_record.get("label")
+            has_super_flag = key_record.get("is_super_kiosk", False)
+            solver_id = key_record["id"]
+            is_owning = solver_id == entry.get("api_key_id")
+            owner_id = entry.get("api_key_id")
+
+            if not has_super_flag and not is_owning:
                 return JSONResponse(
                     status_code=403,
                     content={"error": "API key does not own this captcha"},
                 )
+
+            if has_super_flag and not is_owning:
+                subs = super_kiosk_subscriptions.get(solver_id)
+                if subs is not None and len(subs) > 0 and owner_id not in subs:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "Super kiosk not subscribed to this captcha owner"},
+                    )
+                solved_by_super = True
 
         if entry and body.usage_log_id:
             log_entry = get_usage_log_entry(body.usage_log_id)
@@ -180,40 +225,46 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                     content={"error": "Usage log ID does not match this captcha"},
                 )
 
-        result = None
-        if entry:
-            tile_ids = entry["variants"][variant_index]
-            rid = next_result_id()
-            result = {
-                "variantIndex": variant_index,
-                "variantTiles": tile_ids,
-            }
+        tile_ids = entry["variants"][variant_index]
+        rid = next_result_id()
+        result = {
+            "variantIndex": variant_index,
+            "variantTiles": tile_ids,
+            "solved_by_super": solved_by_super,
+            "solver_label": solver_label,
+        }
 
-            result["resultFile"] = f"captcha_{captcha_id}_{rid:04d}.json"
-            entry["result"] = result
-            entry["event"].set()
+        result["resultFile"] = f"captcha_{captcha_id}_{rid:04d}.json"
+        entry["result"] = result
+        entry["event"].set()
 
-            if write_mode and entry.get("source_file"):
-                source_path = entry["source_file"]
-                with open(source_path, "r") as f:
-                    source_data = json.load(f)
-                source_data["valid_index"] = variant_index
-                new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
-                if not os.path.exists(new_path):
-                    with open(new_path, "w") as f:
-                        json.dump(source_data, f, indent=2)
-                    os.remove(source_path)
+        if write_mode and entry.get("source_file"):
+            source_path = entry["source_file"]
+            with open(source_path, "r") as f:
+                source_data = json.load(f)
+            source_data["valid_index"] = variant_index
+            new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
+            if not os.path.exists(new_path):
+                with open(new_path, "w") as f:
+                    json.dump(source_data, f, indent=2)
+                os.remove(source_path)
 
-            push_sse(
-                {"type": "captcha_solved", "captcha_id": captcha_id},
-                api_key_id=entry.get("api_key_id"),
-            )
+        owner_id = entry.get("api_key_id")
+        owner_info = get_key_by_id(owner_id)
+        owner_label = owner_info["label"] if owner_info else "unknown"
 
-        if result is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": f"Captcha {captcha_id} not found or already solved"},
-            )
+        push_sse(
+            {
+                "type": "captcha_solved",
+                "captcha_id": captcha_id,
+                "solved_by_super": solved_by_super,
+                "solver_label": solver_label,
+                "owner_label": owner_label,
+                "owner_api_key_id": owner_id,
+            },
+            api_key_id=owner_id,
+        )
+
         return JSONResponse(content=result)
 
     @app.post("/trigger-test")
@@ -226,6 +277,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             body = {}
         api_key = body.get("api_key")
         reservation_id = body.get("reservation_id")
+        captcha_id = body.get("captcha_id")
 
         if api_key:
             key_record = get_key_record(api_key)
@@ -234,7 +286,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         t = threading.Thread(
             target=send_one_test_captcha,
-            kwargs={"api_key": api_key, "reservation_id": reservation_id},
+            kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id},
             daemon=True,
         )
         t.start()

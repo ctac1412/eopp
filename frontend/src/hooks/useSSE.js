@@ -1,7 +1,7 @@
 /**
  * EOPP Captcha Solver - SSE Hook (Server-Sent Events)
  *
- * Подключается к /stream?api_key=... и слушает события:
+ * Подключается к /stream?api_key=...&super_kiosk=1 и слушает события:
  * - new_captcha: новая капча для решения -> addCaptcha
  * - captcha_solved: капча решена -> markSolved
  * - captcha_timeout: таймаут -> removeCaptcha
@@ -11,6 +11,7 @@
  * - Автоматическое переподключение при ошибках (до 10 попыток)
  * - Звуковое уведомление при новой капче
  * - Логирование всех событий
+ * - Поддержка режима супер-киоска (?super_kiosk=1)
  *
  * Использует: useCaptchaStore (addCaptcha, markSolved, removeCaptcha, addLog, setSseError)
  */
@@ -22,6 +23,8 @@ const sounded = new Set();
 
 function useSSE(enabled = true) {
   const apiKey = useCaptchaStore((s) => s.apiKey);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
+  const helpFor = useCaptchaStore((s) => s.helpFor);
   const addCaptcha = useCaptchaStore((s) => s.addCaptcha);
   const markSolved = useCaptchaStore((s) => s.markSolved);
   const removeCaptcha = useCaptchaStore((s) => s.removeCaptcha);
@@ -38,7 +41,14 @@ function useSSE(enabled = true) {
       if (closed) return;
       let url = "/stream";
       if (apiKey) {
-        url += `?api_key=${encodeURIComponent(apiKey)}`;
+        const params = new URLSearchParams({ api_key: apiKey });
+        if (superKioskMode) {
+          params.set("super_kiosk", "1");
+          if (helpFor && helpFor.length > 0) {
+            params.set("help_for", helpFor.join(","));
+          }
+        }
+        url += `?${params.toString()}`;
       } else {
         addLog("SSE: API ключ не установлен, подключение невозможно", "error");
         return;
@@ -80,16 +90,24 @@ function useSSE(enabled = true) {
             count: msg.count,
             created_at: msg.created_at,
             timeout: msg.timeout || 10,
+            ownerLabel: msg.owner_label || null,
+            ownerApiKeyId: msg.owner_api_key_id || null,
           });
           if (wasEmpty) {
             playNewCaptchaSound();
           }
-          addLog(`Капча ${msg.captcha_id} — ${msg.count} вариантов`);
+          const ownerInfo = msg.owner_label ? ` (${msg.owner_label})` : "";
+          addLog(`Капча ${msg.captcha_id} — ${msg.count} вариантов${ownerInfo}`);
         }
 
         if (msg.type === "captcha_solved") {
-          markSolved(msg.captcha_id);
+          markSolved(msg.captcha_id, msg.solved_by_super || false, msg.solver_label || null);
           sounded.delete(msg.captcha_id);
+          if (msg.solved_by_super) {
+            addLog(`Капча ${msg.captcha_id} — решена из Супер Киоска (${msg.solver_label || "?"})`, "success");
+          } else {
+            addLog(`Капча ${msg.captcha_id} — решена (${msg.solver_label || msg.owner_label || "?"})`, "success");
+          }
         }
 
         if (msg.type === "captcha_timeout") {
@@ -121,7 +139,7 @@ function useSSE(enabled = true) {
       closed = true;
       if (es) es.close();
     };
-  }, [apiKey, addCaptcha, markSolved, removeCaptcha, addLog, setSseError, enabled]);
+  }, [apiKey, superKioskMode, helpFor, addCaptcha, markSolved, removeCaptcha, addLog, setSseError, enabled]);
 }
 
 export default useSSE;

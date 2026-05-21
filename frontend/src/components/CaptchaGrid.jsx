@@ -8,7 +8,9 @@ import useCaptchaStore from "../store/useCaptchaStore";
 
 function CaptchaGrid() {
   const queue = useCaptchaStore((s) => s.queue);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const unsolved = queue.filter((q) => !q.solved);
+  const solved = queue.filter((q) => q.solved);
   const active = unsolved[0] || null;
 
   if (!active) {
@@ -19,6 +21,11 @@ function CaptchaGrid() {
         <p className="mb-0" style={{ fontSize: "0.75rem", color: "#484f58" }}>
           Подключено к серверу, новые капчи появятся автоматически
         </p>
+        {solved.length > 0 && (
+          <div className="mt-3" style={{ fontSize: "0.75rem", color: "#484f58" }}>
+            Решено: {solved.length}
+          </div>
+        )}
       </div>
     );
   }
@@ -37,7 +44,14 @@ function CaptchaGrid() {
   return (
     <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%" }}>
       <div className="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span className="fw-semibold" style={{ fontSize: "0.8125rem" }}>Капча {active.id} — выберите вариант</span>
+        <div className="d-flex align-items-center gap-2">
+          <span className="fw-semibold" style={{ fontSize: "0.8125rem" }}>Капча {active.id}</span>
+          {superKioskMode && active.ownerLabel && (
+            <span className="badge bg-info" style={{ fontSize: "0.7rem" }}>
+              для: {active.ownerLabel}
+            </span>
+          )}
+        </div>
         <div className="d-flex align-items-center gap-2">
           <CountdownTimer createdAt={active.createdAt} timeout={active.timeout} />
           <div className="d-flex gap-1">

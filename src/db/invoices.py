@@ -293,10 +293,10 @@ def set_invoice_paid(invoice_id: int, paid: bool) -> dict | None:
 
     conn.execute("UPDATE invoices SET paid = ? WHERE id = ?", (1 if paid else 0, invoice_id))
 
-    # Cascade to usage logs via FK
+    # Cascade paid status to linked usage logs
     conn.execute(
-        "UPDATE usage_log SET paid = 0, invoice_id = NULL WHERE invoice_id = ?",
-        (invoice_id,)
+        "UPDATE usage_log SET paid = ? WHERE invoice_id = ?",
+        (1 if paid else 0, invoice_id)
     )
 
     conn.commit()

@@ -87,6 +87,8 @@ export interface SolvedAnswer {
   variantTiles: string[];
   usage_log_id?: number;
   captcha_id?: string;
+  solved_by_super?: boolean;
+  solver_label?: string;
 }
 
 export interface ApiKeyStatusResponse {

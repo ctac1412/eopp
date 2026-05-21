@@ -36,6 +36,7 @@ export async function retryOn429<T>(
   fn: () => Promise<T>,
   retries: number,
   delayMs: number,
+  label: string = "",
 ): Promise<T> {
   for (let i = 0; i <= retries; i++) {
     try {
@@ -43,8 +44,9 @@ export async function retryOn429<T>(
     } catch (err) {
       const error = err as { status?: number };
       if (error.status === 429 && i < retries) {
+        const lbl = label ? ` [${label}]` : "";
         log(
-          `Получен 429, повтор через ${delayMs / 1000}с (попытка ${i + 1}/${retries})`,
+          `Получен 429, повтор через ${delayMs / 1000}с (попытка ${i + 1}/${retries})${lbl}`,
         );
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
@@ -59,6 +61,7 @@ export async function retryWith429And400<T>(
   fn: () => Promise<T>,
   retry429: { enabled: boolean; maxRetries: number; delayMs: number },
   retry400: { enabled: boolean; maxRetries: number; delayMs: number },
+  label: string = "",
 ): Promise<T> {
   let last429Error: unknown;
   let last400Error: unknown;
@@ -76,6 +79,7 @@ export async function retryWith429And400<T>(
     } catch (err) {
       const error = err as { status?: number };
       const status = error.status;
+      const lbl = label ? ` [${label}]` : "";
 
       if (
         status === 429 &&
@@ -85,7 +89,7 @@ export async function retryWith429And400<T>(
         attempts429++;
         last429Error = err;
         log(
-          `Получен 429, повтор через ${retry429.delayMs / 1000}с (429-попытка ${attempts429}/${retry429.maxRetries})`,
+          `Получен 429, повтор через ${retry429.delayMs / 1000}с (429-попытка ${attempts429}/${retry429.maxRetries})${lbl}`,
         );
         await new Promise((r) => setTimeout(r, retry429.delayMs));
         continue;
@@ -99,7 +103,7 @@ export async function retryWith429And400<T>(
         attempts400++;
         last400Error = err;
         log(
-          `Получен 400, повтор через ${retry400.delayMs / 1000}с (400-попытка ${attempts400}/${retry400.maxRetries})`,
+          `Получен 400, повтор через ${retry400.delayMs / 1000}с (400-попытка ${attempts400}/${retry400.maxRetries})${lbl}`,
         );
         await new Promise((r) => setTimeout(r, retry400.delayMs));
         continue;

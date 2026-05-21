@@ -29,6 +29,7 @@ import {
   PayoutModal,
   UsersTab,
   UserModal,
+  CaptchasTab,
 } from "./components/admin";
 
 function adminHeaders(token) {
@@ -940,6 +941,7 @@ function AdminPage() {
   const tabs = [
     { id: "reports", label: "Журнал" },
     { id: "keys", label: "API Keys" },
+    { id: "captchas", label: "Капчи" },
     { id: "invoices", label: "Счета" },
     { id: "expenses", label: "Расходы" },
     { id: "payouts", label: "Выплаты" },
@@ -1052,6 +1054,14 @@ function AdminPage() {
           setEditingPriceId={setEditingPriceId}
           onPriceChange={handleInlinePriceChange}
           onTogglePaid={handleInlineTogglePaid}
+        />
+      )}
+
+      {activeTab === "captchas" && (
+        <CaptchasTab
+          adminToken={adminToken}
+          keys={keys}
+          onError={(msg) => setError(msg)}
         />
       )}
 

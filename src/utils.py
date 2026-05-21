@@ -46,7 +46,9 @@ from src.constants import (
 pending = {}
 sse_queues: dict[int | None, list[asyncio.Queue]] = {}
 sse_connections: list[dict] = []
+super_kiosk_subscriptions: dict[int, set[int]] = {}
 lock = threading.Lock()
+queue_subscriptions: dict[int, set[int]] = {}
 result_counter = 0
 counter_lock = threading.Lock()
 source_files = {}
@@ -144,7 +146,13 @@ def push_sse(msg, api_key_id=None):
     dead_queues = []
     with lock:
         if api_key_id is not None:
-            queues = sse_queues.get(api_key_id, [])
+            queues = list(sse_queues.get(api_key_id, []))
+            if api_key_id != -1:
+                for q in sse_queues.get(-1, []):
+                    qid = id(q)
+                    subs = queue_subscriptions.get(qid, set())
+                    if not subs or api_key_id in subs:
+                        queues.append(q)
         else:
             queues = []
             for v in sse_queues.values():
@@ -160,23 +168,27 @@ def push_sse(msg, api_key_id=None):
                     v.remove(q)
 
 
-def register_sse_connection(api_key_id: int | None, ip: str) -> tuple[asyncio.Queue, bool]:
+def register_sse_connection(api_key_id: int | None, ip: str, real_api_key_id: int | None = None, help_for: set[int] | None = None) -> tuple[asyncio.Queue, bool]:
     q: asyncio.Queue = asyncio.Queue()
     displaced = False
     with lock:
         existing = sse_queues.get(api_key_id, [])
-        if existing:
+        if existing and api_key_id != -1:
             displaced = True
         else:
             sse_queues.setdefault(api_key_id, []).append(q)
-            sse_connections.append(
-                {
-                    "queue": q,
-                    "api_key_id": api_key_id,
-                    "ip": ip,
-                    "connected_at": time.time(),
-                }
-            )
+            conn_info = {
+                "queue": q,
+                "api_key_id": api_key_id,
+                "real_api_key_id": real_api_key_id,
+                "ip": ip,
+                "connected_at": time.time(),
+            }
+            sse_connections.append(conn_info)
+            if api_key_id == -1 and real_api_key_id is not None:
+                subs = set(help_for) if help_for is not None else set()
+                queue_subscriptions[id(q)] = subs
+                super_kiosk_subscriptions[real_api_key_id] = subs
     return q, displaced
 
 
@@ -185,7 +197,13 @@ def unregister_sse_connection(q: asyncio.Queue, api_key_id: int | None):
         queues_for_key = sse_queues.get(api_key_id, [])
         if q in queues_for_key:
             queues_for_key.remove(q)
+        conn_info = next((c for c in sse_connections if c["queue"] is q), None)
         sse_connections[:] = [c for c in sse_connections if c["queue"] is not q]
+        qid = id(q)
+        if qid in queue_subscriptions:
+            del queue_subscriptions[qid]
+        if conn_info and conn_info.get("real_api_key_id") is not None:
+            super_kiosk_subscriptions.pop(conn_info["real_api_key_id"], None)
 
 
 def get_connected_streams() -> list[dict]:
@@ -480,7 +498,7 @@ def send_test_cases_with_key(api_key=None):
         time.sleep(1)
 
 
-def send_one_test_captcha(api_key=None, reservation_id=None):
+def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None):
     pattern = os.path.join(VALID_DIR, "*.json")
     files = sorted(glob.glob(pattern))
     if not files:
@@ -488,7 +506,13 @@ def send_one_test_captcha(api_key=None, reservation_id=None):
         return
 
     time.sleep(1)
-    filepath = random.choice(files)
+    if captcha_id:
+        filepath = os.path.join(VALID_DIR, f"{captcha_id}.json")
+        if not os.path.exists(filepath):
+            print(f"Test file not found: {filepath}")
+            return
+    else:
+        filepath = random.choice(files)
     with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")

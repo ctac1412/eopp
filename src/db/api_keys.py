@@ -24,6 +24,7 @@ def _row_to_dict(row):
         "active": bool(d["active"]),
         "comment": d.get("comment"),
         "is_admin": bool(d.get("is_admin", 0)),
+        "is_super_kiosk": bool(d.get("is_super_kiosk", 0)),
     }
 
 
@@ -79,6 +80,7 @@ def update_key(
     active: bool | None = None,
     comment: str = None,
     is_admin: bool | None = None,
+    is_super_kiosk: bool | None = None,
 ) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -92,10 +94,11 @@ def update_key(
     active = active if active is not None else current["active"]
     comment = comment if comment is not None else current["comment"]
     is_admin = is_admin if is_admin is not None else current["is_admin"]
+    is_super_kiosk = is_super_kiosk if is_super_kiosk is not None else current["is_super_kiosk"]
 
     conn.execute(
-        "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ?, is_admin = ? WHERE id = ?",
-        (label, max_uses, 1 if active else 0, comment, 1 if is_admin else 0, key_id),
+        "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ?, is_admin = ?, is_super_kiosk = ? WHERE id = ?",
+        (label, max_uses, 1 if active else 0, comment, 1 if is_admin else 0, 1 if is_super_kiosk else 0, key_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -187,3 +190,13 @@ def check_admin_token(token: str) -> bool:
     ).fetchone()
     conn.close()
     return bool(row and row["is_admin"])
+
+
+def is_super_kiosk_key(key: str) -> bool:
+    """Проверяет, является ли ключ супер-киоском (is_super_kiosk=1)."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT is_super_kiosk FROM api_keys WHERE key = ? AND active = 1", (key,)
+    ).fetchone()
+    conn.close()
+    return bool(row and row["is_super_kiosk"])

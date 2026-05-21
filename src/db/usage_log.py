@@ -44,9 +44,14 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
     }
 
 
+def _is_fake_reservation(reservation_id: str) -> bool:
+    """Проверяет, что reservation_id фейковый (тестовый запуск с нашего бека)."""
+    return reservation_id in ("unknown", "") or bool(_UUID_V0_PATTERN.match(reservation_id))
+
+
 def _calc_is_test(reservation_id: str, config_json: dict | None) -> int:
     """Вычисляет is_test по reservation_id и config_json."""
-    if reservation_id in ("unknown", "") or _UUID_V0_PATTERN.match(reservation_id):
+    if _is_fake_reservation(reservation_id):
         return 1
     if config_json and isinstance(config_json.get("runUpTo"), int) and config_json.get("runUpTo") < 5:
         return 1
@@ -81,6 +86,7 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
         "invoice_id": row["invoice_id"],
+        "tiles_hash": row["tiles_hash"],
     }
 
 
@@ -94,7 +100,7 @@ def delete_usage_log(usage_log_id: int) -> bool:
 
 
 def log_usage(
-    api_key: str, reservation_id: str, captcha_id: str, config_json: dict | None = None
+    api_key: str, reservation_id: str, captcha_id: str, config_json: dict | None = None, tiles_hash: str | None = None
 ) -> int:
     conn = get_connection()
     row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (api_key,)).fetchone()
@@ -104,19 +110,18 @@ def log_usage(
     now = datetime.now(UTC).isoformat()
     config_str = json.dumps(config_json) if config_json else None
 
-    # Извлекаем денормализованные поля из config_json
     extracted = _extract_fields_from_config(config_json)
     is_test = _calc_is_test(reservation_id, config_json)
 
     cursor = conn.execute(
         """INSERT INTO usage_log
            (api_key_id, reservation_id, captcha_id, status, created_at, config_json,
-            op_type, company, fio, vehicle_number, is_test)
-           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
+            op_type, company, fio, vehicle_number, is_test, tiles_hash)
+           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             row["id"], reservation_id, captcha_id, now, config_str,
             extracted["op_type"], extracted["company"], extracted["fio"],
-            extracted["vehicle_number"], is_test,
+            extracted["vehicle_number"], is_test, tiles_hash,
         ),
     )
     conn.commit()
@@ -168,6 +173,11 @@ def confirm_usage(
         (row["api_key_id"],),
     )
     conn.commit()
+
+    if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
+        from src.db.captchas import create_captcha_records
+        create_captcha_records(usage_log_id, captcha_id, logs, "confirmed", row["tiles_hash"])
+
     conn.close()
     return True
 
@@ -204,6 +214,11 @@ def fail_usage(
             (error_message, error_stage, slot_date, logs_json, usage_log_id),
         )
     conn.commit()
+
+    if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
+        from src.db.captchas import create_captcha_records
+        create_captcha_records(usage_log_id, captcha_id, logs, "failed", row["tiles_hash"])
+
     conn.close()
     return True
 
@@ -248,6 +263,7 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "vehicle_number": r["vehicle_number"],
                 "is_test": bool(r["is_test"]) if r["is_test"] is not None else False,
                 "invoice_id": r["invoice_id"],
+                "tiles_hash": r["tiles_hash"],
             }
         )
     return result
@@ -315,4 +331,5 @@ def update_usage_log(usage_log_id: int, price: int | None = None, paid: bool | N
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
         "invoice_id": row["invoice_id"],
+        "tiles_hash": row["tiles_hash"],
     }

@@ -6,6 +6,7 @@ EOPP Captcha Solver - Database Layer.
 - init: инициализация БД
 - api_keys: CRUD для API ключей
 - usage_log: логирование использования
+- captchas: история отдельных капч
 - tariffs: CRUD для тарифов
 """
 
@@ -23,6 +24,7 @@ from src.db.api_keys import (
     get_key_record,
     get_key_by_label,
     check_admin_token,
+    is_super_kiosk_key,
 )
 from src.db.usage_log import (
     get_usage_log_entry,
@@ -33,6 +35,12 @@ from src.db.usage_log import (
     list_usages,
     calc_debt,
     update_usage_log,
+)
+from src.db.captchas import (
+    list_captchas,
+    get_captcha_by_id,
+    delete_captcha,
+    create_captcha_records,
 )
 from src.db.tariffs import (
     get_tariff,
@@ -82,6 +90,7 @@ __all__ = [
     "get_key_record",
     "get_key_by_label",
     "check_admin_token",
+    "is_super_kiosk_key",
     "get_usage_log_entry",
     "delete_usage_log",
     "log_usage",
@@ -90,6 +99,10 @@ __all__ = [
     "list_usages",
     "calc_debt",
     "update_usage_log",
+    "list_captchas",
+    "get_captcha_by_id",
+    "delete_captcha",
+    "create_captcha_records",
     "get_tariff",
     "create_tariff",
     "update_tariff",

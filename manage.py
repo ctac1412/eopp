@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import typer
 
-from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, PORT, TEST_DIR, VALID_DIR
+# Импортируем только константы, не зависящие от EOPP_DATA_DIR
+from src.constants import CAPTCHA_TIMEOUT, PORT
 
 app = typer.Typer(help="Captcha Solver Server")
 
@@ -79,12 +80,13 @@ def main(
     """Start the captcha solver server."""
     import uvicorn
 
-    import src.utils
-
     if data_dir:
         os.environ["EOPP_DATA_DIR"] = data_dir
         os.environ["EOPP_DB_PATH"] = os.path.join(data_dir, "api_keys.db")
 
+    import src.utils
+
+    from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
     from src.app import create_app
 
     certfile, keyfile = None, None

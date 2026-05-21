@@ -102,6 +102,7 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
   const sectionKey = ENDPOINT_SECTIONS[endpoint];
   const rc = config.retryPerEndpoint[endpoint];
   const isSlots = endpoint === "getAvailableSlots";
+  const isValidate = endpoint === "validateCaptcha";
 
   return (
     <div className="qn-form-section">
@@ -178,6 +179,60 @@ const RetryEndpointRow = React.memo(function RetryEndpointRow({
                   }
                 />
                 Ретрай 400 — включён
+              </label>
+              <div className="qn-form-row">
+                <label className="qn-form-label">
+                  Макс. попыток
+                  <input
+                    className="qn-form-input qn-form-number"
+                    type="number"
+                    min={0}
+                    value={rc.retry400MaxRetries}
+                    onChange={(e) =>
+                      updateRetryEndpoint(
+                        endpoint,
+                        "retry400MaxRetries",
+                        Number(e.target.value),
+                      )
+                    }
+                    disabled={!rc.retry400Enabled}
+                  />
+                </label>
+                <label className="qn-form-label">
+                  Задержка (мс)
+                  <input
+                    className="qn-form-input qn-form-number"
+                    type="number"
+                    min={0}
+                    value={rc.retry400DelayMs}
+                    onChange={(e) =>
+                      updateRetryEndpoint(
+                        endpoint,
+                        "retry400DelayMs",
+                        Number(e.target.value),
+                      )
+                    }
+                    disabled={!rc.retry400Enabled}
+                  />
+                </label>
+              </div>
+            </>
+          )}
+          {isValidate && (
+            <>
+              <label className="qn-form-label qn-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={rc.retry400Enabled}
+                  onChange={(e) =>
+                    updateRetryEndpoint(
+                      endpoint,
+                      "retry400Enabled",
+                      e.target.checked,
+                    )
+                  }
+                />
+                Не верная капча или не получили ответ
               </label>
               <div className="qn-form-row">
                 <label className="qn-form-label">

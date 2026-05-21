@@ -4,15 +4,27 @@ import useSSE from "../hooks/useSSE";
 import useCaptchaStore from "../store/useCaptchaStore";
 import StatusBar from "../components/StatusBar";
 import AuthWizard from "../components/AuthWizard";
+import SuperKioskPanel from "../components/SuperKioskPanel";
 import { CaptchaTab } from "./CaptchaTab";
 import { HistoryTab } from "./HistoryTab";
 
 export function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const apiKey = useCaptchaStore((s) => s.apiKey);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "captchas"
   );
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const adminToken = localStorage.getItem("admin_token");
+    const isAdm = !!(adminToken && apiKey && apiKey === adminToken);
+    setIsAdmin(isAdm);
+    if (!isAdm && superKioskMode) {
+      useCaptchaStore.getState().clearSuperKioskMode();
+    }
+  }, [apiKey, superKioskMode]);
 
   const showWizard = !apiKey;
 
@@ -32,6 +44,7 @@ export function HomePage() {
   return (
     <div className="container py-3">
       <StatusBar />
+      {superKioskMode && isAdmin && <SuperKioskPanel />}
       <ul className="nav nav-tabs mt-3">
         <li className="nav-item">
           <button

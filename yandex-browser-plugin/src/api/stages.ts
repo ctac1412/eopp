@@ -6,7 +6,7 @@ import type {
   CaptchaValidationResponse,
   SolvedAnswer,
 } from "@/types";
-import { httpRequest, retryOn429 } from "./client";
+import { httpRequest } from "./client";
 import { sendMessageToBackground } from "./background";
 import { log } from "@/logger";
 import { useInjectorStore } from "@/store";
@@ -14,7 +14,6 @@ import { useInjectorStore } from "@/store";
 export async function getAvailableSlots(
   config: InjectorConfig,
 ): Promise<SlotsResponse> {
-  log("Этап 1: получение свободных слотов");
   useInjectorStore.getState().setStage("slots");
 
   const isCreateReservation = config.mode === "create";
@@ -30,7 +29,9 @@ export async function getAvailableSlots(
   });
 
   const slotsResponse = response as SlotsResponse;
-  log(`Получено ${slotsResponse.slots?.length || 0} доступных слотов`);
+  const slots = slotsResponse.slots || [];
+  const slotsStr = slots.map((s) => `${s.time}(${s.count})`).join(", ");
+  log(`Получено ${slots.length} доступных слотов: ${slotsStr}`);
   return slotsResponse;
 }
 
@@ -38,7 +39,6 @@ export async function generateCaptcha(
   config: InjectorConfig,
   slot: { time: string },
 ): Promise<CaptchaResponse> {
-  log("Этап 2: генерация капчи");
   useInjectorStore.getState().setStage("captcha");
 
   const payload = {
@@ -66,7 +66,6 @@ export async function solveCaptcha(
   apiKey: string,
   reservationId: string,
 ): Promise<SolvedAnswer> {
-  log("Этап 3: запрос к нашему серверу /solve-captcha");
   useInjectorStore.getState().setStage("solving");
 
   const storeState = useInjectorStore.getState();
@@ -100,6 +99,7 @@ export async function solveCaptcha(
     useInjectorStore.getState().setCaptchaId(solved.captcha_id);
   }
   useInjectorStore.getState().setSolvedVariantIndex(solved.variantIndex);
+  useInjectorStore.getState().setSolvedVariantTiles(solved.variantTiles);
   log("Капча решена");
   return solved;
 }
@@ -110,7 +110,6 @@ export async function validateCaptcha(
   slot: { time: string },
   solvedAnswer: SolvedAnswer,
 ): Promise<CaptchaValidationResponse> {
-  log("Этап 4: валидация капчи");
   useInjectorStore.getState().setStage("validating");
 
   const payload = {
@@ -131,7 +130,8 @@ export async function validateCaptcha(
     },
   );
   useInjectorStore.getState().setCaptchaValidated(true);
-  log("Капча валидирована");
+  const storeState = useInjectorStore.getState();
+  log(`Капча валидирована [${storeState.captchaId || "?"}] ответ: ${JSON.stringify(solvedAnswer.variantTiles)}`);
   return response as CaptchaValidationResponse;
 }
 
@@ -140,7 +140,6 @@ export async function submitReschedule(
   slot: { slotCaption: string; intervalIndex: number },
   captchaValidation: CaptchaValidationResponse,
 ): Promise<unknown> {
-  log("Этап 5: перенос брони (Reschedule)");
   useInjectorStore.getState().setStage("submitting");
 
   const payload = {
@@ -181,7 +180,6 @@ export async function submitCreate(
   slot: { intervalIndex: number },
   captchaValidation: CaptchaValidationResponse,
 ): Promise<unknown> {
-  log("Этап 5: создание брони (SubmitDraft)");
   useInjectorStore.getState().setStage("submitting");
 
   const payload = {

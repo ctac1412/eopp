@@ -27,12 +27,17 @@ function StatusBar() {
   const [loading, setLoading] = useState(false);
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const clearApiKey = useCaptchaStore((s) => s.clearApiKey);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
+  const setSuperKioskMode = useCaptchaStore((s) => s.setSuperKioskMode);
   const [showChange, setShowChange] = useState(false);
+  const [testCaptchaId, setTestCaptchaId] = useState("");
+  const [showTestId, setShowTestId] = useState(false);
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
   const [apiPriceCreate, setApiPriceCreate] = useState(null);
   const [apiPriceReschedule, setApiPriceReschedule] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!apiKey) {
@@ -41,8 +46,12 @@ function StatusBar() {
       setApiMaxUses(null);
       setApiPriceCreate(null);
       setApiPriceReschedule(null);
+      setIsAdmin(false);
       return;
     }
+    const adminToken = localStorage.getItem("admin_token");
+    const hasAdmin = adminToken && apiKey === adminToken;
+    setIsAdmin(hasAdmin);
     fetch(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -70,6 +79,7 @@ function StatusBar() {
         body: JSON.stringify({
           api_key: apiKey,
           reservation_id: "00000000-0000-0000-0000-000000000000",
+          captcha_id: testCaptchaId || undefined,
         }),
       });
     } finally {
@@ -104,6 +114,7 @@ function StatusBar() {
         )}
         {sseError && <span style={{ fontSize: "0.75rem", color: "var(--bs-danger)" }}>{sseError}</span>}
         {localMode && <span className="local-tag">LOCAL</span>}
+        {superKioskMode && isAdmin && <span className="super-kiosk-tag">СУПЕР</span>}
       </div>
       <div className="d-flex align-items-center gap-2 flex-wrap">
         {apiPriceCreate != null && (
@@ -139,6 +150,23 @@ function StatusBar() {
           </div>
         )}
         <button
+          className="btn btn-sm btn-outline-secondary"
+          onClick={() => setShowTestId(!showTestId)}
+          style={{ fontSize: "0.75rem" }}
+        >
+          ID
+        </button>
+        {showTestId && (
+          <input
+            type="text"
+            className="form-control form-control-sm"
+            style={{ width: "280px", fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)" }}
+            placeholder="captcha_id (пусто = рандом)"
+            value={testCaptchaId}
+            onChange={(e) => setTestCaptchaId(e.target.value)}
+          />
+        )}
+        <button
           className="btn btn-sm btn-primary"
           onClick={handleTestRun}
           disabled={loading}
@@ -148,6 +176,16 @@ function StatusBar() {
         <Link to="/admin" className="btn btn-sm btn-outline-secondary">
           Админ
         </Link>
+        {isAdmin && (
+          <button
+            className={`btn btn-sm ${superKioskMode ? "btn-warning" : "btn-outline-secondary"}`}
+            onClick={() => setSuperKioskMode(!superKioskMode)}
+            title={superKioskMode ? "Отключить Супер Киоск" : "Включить Супер Киоск"}
+            style={{ fontSize: "0.75rem" }}
+          >
+            {superKioskMode ? "Супер Киоск ✓" : "Супер Киоск"}
+          </button>
+        )}
       </div>
     </div>
   );

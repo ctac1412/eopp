@@ -45,19 +45,25 @@ import { getEndpointRetry } from "@/constants";
 
 const usedSlotIds = new Set<string>();
 
+/** Очищает набор использованных ID слотов для нового запуска */
 export function resetUsedSlots(): void {
   usedSlotIds.clear();
 }
 
+/** Выбирает случайный слот с максимальным количеством мест */
 function pickByMaxCount(slots: Slot[]): Slot {
   const maxCount = Math.max(...slots.map((s) => s.count));
   const best = slots.filter((s) => s.count === maxCount);
   return best[Math.floor(Math.random() * best.length)];
 }
 
+/**
+ * Выбирает лучший слот из доступных с учётом приоритетов.
+ * Сначала пытается найти слот из предпочтительных групп (timeOrder),
+ * затем fallback на любой свободный. В strict mode бросает ошибку,
+ * если предпочтительные слоты недоступны.
+ */
 export function selectBestSlot(slots: Slot[]): Slot {
-  log("Выбор лучшего слота");
-
   const config = useInjectorStore.getState().config;
   const timeOrder = config.timeOrder || [[]];
   const allPreferred = timeOrder.flat();
@@ -67,12 +73,11 @@ export function selectBestSlot(slots: Slot[]): Slot {
     for (const group of timeOrder) {
       if (group.length === 0) continue;
       const available = slots.filter(
-        (s) => group.includes(s.time) && !usedSlotIds.has(s.id),
+        (s) => group.includes(s.time) && !usedSlotIds.has(s.id) && s.count > 0,
       );
       if (available.length > 0) {
         const selected = pickByMaxCount(available);
         usedSlotIds.add(selected.id);
-        log(`Выбран слот (приоритет): ${selected.slotCaption} (count: ${selected.count})`);
         return selected;
       }
     }
@@ -82,20 +87,22 @@ export function selectBestSlot(slots: Slot[]): Slot {
         `Предпочтительные слоты недоступны: ${allPreferred.join(", ")}`,
       );
     }
-    log("Предпочтительные слоты недоступны, пробуем остальные");
   }
 
-  const available = slots.filter((s) => !usedSlotIds.has(s.id));
+  const available = slots.filter((s) => !usedSlotIds.has(s.id) && s.count > 0);
   if (available.length === 0) {
     throw new Error("Нет доступных слотов");
   }
 
   const selected = pickByMaxCount(available);
   usedSlotIds.add(selected.id);
-  log(`Выбран слот: ${selected.slotCaption} (count: ${selected.count})`);
   return selected;
 }
 
+/**
+ * Определяет стадию pipeline, на которой произошла ошибка,
+ * для корректной классификации в логах использования.
+ */
 function getErrorStage(): string {
   const stage = useInjectorStore.getState().currentStage;
   if (stage === "solving") return "stage3";
@@ -104,6 +111,10 @@ function getErrorStage(): string {
   return "other";
 }
 
+/**
+ * Сериализует ошибку в строку для логирования.
+ * Обрабатывает Error, объекты и примитивы.
+ */
 function serializeError(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "object" && err !== null) {
@@ -116,6 +127,10 @@ function serializeError(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Выполняет функцию с retry-логикой на основе конфига эндпоинта.
+ * Ретраит только на 429 ошибки. Если retry отключён — вызывает fn один раз.
+ */
 async function retryWithConfig<T>(
   fn: () => Promise<T>,
   endpoint: EndpointName,
@@ -125,9 +140,13 @@ async function retryWithConfig<T>(
   if (!rc.enabled) {
     return fn();
   }
-  return retryOn429(fn, rc.maxRetries, rc.delayMs);
+  return retryOn429(fn, rc.maxRetries, rc.delayMs, endpoint);
 }
 
+/**
+ * Выполняет функцию получения слотов с retry на 429 и 400 ошибки.
+ * Использует отдельную конфигурацию retryPerEndpoint.getAvailableSlots.
+ */
 async function retrySlotsWithConfig<T>(
   fn: () => Promise<T>,
   config: InjectorConfig,
@@ -143,53 +162,60 @@ async function retrySlotsWithConfig<T>(
     maxRetries: rc.retry400MaxRetries,
     delayMs: rc.retry400DelayMs,
   };
-  return retryWith429And400(fn, retry429, retry400);
+  return retryWith429And400(fn, retry429, retry400, "getAvailableSlots");
 }
 
-async function runPipeline(
-  slotsResponse: SlotsResponse,
+/**
+ * Выполняет этапы 2-5: генерация капчи → решение → валидация → отправка.
+ * При ретрае капчи вызывается повторно с тем же слотом.
+ */
+async function runCaptchaPipeline(
+  slotData: Slot,
+  attemptLabel = "",
+  signal?: AbortSignal,
 ): Promise<unknown | null> {
   const config = useInjectorStore.getState().config;
-
-  const slotData = selectBestSlot(slotsResponse.slots);
-  log("Выбранный слот", slotData);
-  log("Этап 1 (слоты) завершён успешно");
 
   if (config.runUpTo < 2) {
     log("Остановка по конфигу runUpTo");
     return null;
   }
 
-  const captchaResponse = await retryWithConfig(
-    () => generateCaptcha(config, slotData),
-    "generateCaptcha",
+  const captchaResponse = await withAbort(
+    retryWithConfig(() => generateCaptcha(config, slotData), "generateCaptcha"),
+    signal,
   );
-  log("Этап 2 (капча) завершён успешно");
 
   if (config.runUpTo < 3) {
     log("Остановка по конфигу runUpTo");
     return null;
   }
 
-  const solvedAnswer = await solveCaptcha(
-    captchaResponse,
-    config.autoSolve,
-    config.apiKey,
-    config.reservationId,
+  const solvedAnswer = await withAbort(
+    solveCaptcha(
+      captchaResponse,
+      config.autoSolve,
+      config.apiKey,
+      config.reservationId,
+    ),
+    signal,
   );
-  log("Ответ от нашего сервера", solvedAnswer);
-  log("Этап 3 (решение капчи) завершён успешно");
+  const solverInfo = solvedAnswer.solver_label || "local";
+  const tilesStr = solvedAnswer.variantTiles.join(",");
+  log(`Ответ сервера: captcha=${solvedAnswer.captcha_id || "?"} variant=${solvedAnswer.variantIndex} solver=${solverInfo} tiles=[${tilesStr}]${attemptLabel}`);
 
   if (config.runUpTo < 4) {
     log("Остановка по конфигу runUpTo");
     return null;
   }
 
-  const validationResponse = await retryWithConfig(
-    () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
-    "validateCaptcha",
+  const validationResponse = await withAbort(
+    retryWithConfig(
+      () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
+      "validateCaptcha",
+    ),
+    signal,
   );
-  log("Этап 4 (валидация) завершён успешно");
 
   if (config.runUpTo < 5) {
     log("Остановка по конфигу runUpTo");
@@ -201,127 +227,370 @@ async function runPipeline(
   const endpointName: EndpointName = isCreateReservation
     ? "submitCreate"
     : "submitReschedule";
-  const submitResponse = await retryWithConfig(
-    () => submitFn(config, slotData, validationResponse),
-    endpointName,
+  const submitResponse = await withAbort(
+    retryWithConfig(() => submitFn(config, slotData, validationResponse), endpointName),
+    signal,
   );
 
   return submitResponse;
 }
 
-export async function main(config: InjectorConfig): Promise<void> {
+/**
+ * Выполняет полный 5-стадийный pipeline: слоты → капча → решение → валидация → отправка.
+ * Учитывает runUpTo для остановки на выбранном этапе (для отладки).
+ * Возвращает результат submit или null при ранней остановке.
+ */
+async function runPipeline(
+  slotsResponse: SlotsResponse,
+): Promise<unknown | null> {
+  const slotData = selectBestSlot(slotsResponse.slots);
+  log(`Выбран слот: ${slotData.slotCaption} (count: ${slotData.count}, idx: ${slotData.intervalIndex})`);
+  return runCaptchaPipeline(slotData);
+}
+
+/**
+ * Проверяет, является ли ошибка связанной с капчей.
+ * Возвращает true для 400 (неверное решение) и "Сервер вернул null" (таймаут).
+ */
+function isCaptchaRelatedError(err: unknown): boolean {
+  if (err instanceof Error && err.message.includes("Сервер вернул null")) {
+    return true;
+  }
+  if (typeof err === "object" && err !== null && "status" in err) {
+    return (err as { status: number }).status === 400;
+  }
+  return false;
+}
+
+/**
+ * Отправляет подтверждение успешного использования на сервер.
+ * Fire-and-forget: ошибки подавляются, чтобы не блокировать основной поток.
+ */
+async function confirmUsageInBackground(config: InjectorConfig): Promise<void> {
+  const usageLogId = useInjectorStore.getState().usageLogId;
+  if (usageLogId == null || !config.apiKey) return;
+  const logs = useInjectorStore
+    .getState()
+    .logs.map((l) => `${l.ts} ${l.msg}`);
+  const captchaId = useInjectorStore.getState().captchaId;
+  const validated = useInjectorStore.getState().captchaValidated;
+  const variantIndex = useInjectorStore.getState().solvedVariantIndex;
+  try {
+    await confirmUsage(
+      usageLogId,
+      config.apiKey,
+      config.slotDate,
+      logs,
+      captchaId ?? undefined,
+      validated && variantIndex != null ? variantIndex : undefined,
+    );
+  } catch {
+    // fire-and-forget, silently swallow
+  }
+}
+
+/**
+ * Отправляет отчёт об ошибке использования на сервер.
+ * Fire-and-forget: ошибки подавляются, чтобы не маскировать основную ошибку.
+ */
+async function failUsageInBackground(config: InjectorConfig, err: unknown): Promise<void> {
+  const usageLogId = useInjectorStore.getState().usageLogId;
+  if (usageLogId == null || !config.apiKey) return;
+  const logs = useInjectorStore
+    .getState()
+    .logs.map((l) => `${l.ts} ${l.msg}`);
+  const captchaId = useInjectorStore.getState().captchaId;
+  const validated = useInjectorStore.getState().captchaValidated;
+  const variantIndex = useInjectorStore.getState().solvedVariantIndex;
+  try {
+    await failUsage(
+      usageLogId,
+      config.apiKey,
+      serializeError(err),
+      getErrorStage(),
+      config.slotDate,
+      logs,
+      captchaId ?? undefined,
+      validated && variantIndex != null ? variantIndex : undefined,
+    );
+  } catch {
+    // fire-and-forget
+  }
+}
+
+type RetryDecision =
+  | { action: "retry-slot" }
+  | { action: "retry-captcha" }
+  | { action: "continue" };
+
+/**
+ * Решает, нужно ли ретраить слот при ошибке.
+ * Возвращает { action: "retry-slot" } только для AllSlotsOccupiedOnInterval
+ * при включённом retryOnAllSlotsOccupied и неиспользованном лимите попыток.
+ */
+function decideSlotRetry(
+  err: unknown,
+  slotRetryCount: number,
+  config: InjectorConfig,
+): RetryDecision {
+  const error = err as { body?: string };
+  const isAllSlotsOccupied =
+    error.body && error.body.includes("AllSlotsOccupiedOnInterval");
+  if (
+    isAllSlotsOccupied &&
+    config.retryOnAllSlotsOccupied &&
+    slotRetryCount < config.maxSlotRetries
+  ) {
+    return { action: "retry-slot" };
+  }
+  return { action: "continue" } as RetryDecision;
+}
+
+/**
+ * Решает, нужно ли ретраить капчу при ошибке.
+ * Возвращает { action: "retry-captcha" } для ошибок капчи (400/timeout)
+ * при включённом retry400Enabled и неиспользованном лимите попыток.
+ */
+function decideCaptchaRetry(
+  err: unknown,
+  captchaAttempt: number,
+  validateRc: InjectorConfig["retryPerEndpoint"]["validateCaptcha"],
+): RetryDecision {
+  const isCaptchaError = isCaptchaRelatedError(err);
+  if (
+    isCaptchaError &&
+    validateRc.retry400Enabled &&
+    captchaAttempt < validateRc.retry400MaxRetries
+  ) {
+    return { action: "retry-captcha" };
+  }
+  return { action: "continue" } as RetryDecision;
+}
+
+/**
+ * Сбрасывает состояние pipeline перед новым запуском.
+ * Очищает конфиг, ID капчи, решённый вариант, валидацию, usage log prefix и использованные слоты.
+ */
+function resetPipelineState(config: InjectorConfig): void {
   useInjectorStore.getState().setConfig(config);
   useInjectorStore.getState().setCaptchaId(null);
   useInjectorStore.getState().setSolvedVariantIndex(null);
   useInjectorStore.getState().setCaptchaValidated(null);
   setUsageIdPrefix(null);
   resetUsedSlots();
-  log("=== Старт скрипта (runUpTo: " + config.runUpTo + ") ===");
+}
 
-  try {
-    if (!config.apiKey) {
-      throw new Error("apiKey обязателен");
-    }
-    const usageLogId = await registerUsage(
-      config.apiKey,
-      config.reservationId,
-      config,
+/**
+ * Регистрирует использование на сервере и получает доступные слоты.
+ * Валидирует наличие apiKey, создаёт usage log entry, fetch-ит слоты с retry.
+ */
+async function registerUsageAndFetchSlots(
+  config: InjectorConfig,
+): Promise<SlotsResponse> {
+  if (!config.apiKey) {
+    throw new Error("apiKey обязателен");
+  }
+  const usageLogId = await registerUsage(
+    config.apiKey,
+    config.reservationId,
+    config,
+  );
+  useInjectorStore.getState().setUsageLogId(usageLogId);
+  setUsageIdPrefix(usageLogId);
+  log("Usage log зарегистрирован");
+
+  const slotsResponse = await retrySlotsWithConfig(
+    () => getAvailableSlots(config),
+    config,
+  );
+  return slotsResponse;
+}
+
+/**
+ * Запускает один полный проход pipeline и логирует результат.
+ * При runUpTo остановке логирует номер этапа, при успехе — результат submit.
+ */
+async function runFullPipeline(slotsResponse: SlotsResponse): Promise<void> {
+  const result = await runPipeline(slotsResponse);
+  logPipelineResult(result);
+}
+
+/**
+ * Запускает этапы 2-5 (капча → решение → валидация → отправка) для конкретного слота.
+ * Используется при ретрае капчи, чтобы не выбирать слот заново.
+ */
+async function runCaptchaPhase(slotData: Slot, attemptLabel = "", signal?: AbortSignal): Promise<void> {
+  const result = await withAbort(runCaptchaPipeline(slotData, attemptLabel), signal);
+  logPipelineResult(result);
+}
+
+function logPipelineResult(result: unknown | null): void {
+  if (result !== null) {
+    const resp = result as { title?: string; eoppStatus?: number; isSuccess?: boolean };
+    const title = resp.title || (resp.isSuccess ? "Success" : "Unknown");
+    const status = resp.eoppStatus ? ` (${resp.eoppStatus})` : "";
+    log(`=== Успех: ${title}${status} ===`);
+  } else {
+    const config = useInjectorStore.getState().config;
+    log(
+      "=== Скрипт завершён (runUpTo остановка на этапе " +
+        config.runUpTo +
+        ") ===",
     );
-    useInjectorStore.getState().setUsageLogId(usageLogId);
-    setUsageIdPrefix(usageLogId);
-    log("Usage log зарегистрирован");
+  }
+}
 
-    const slotsResponse = await retrySlotsWithConfig(
-      () => getAvailableSlots(config),
-      config,
+/**
+ * Пытается ретраить слот при ошибке AllSlotsOccupiedOnInterval.
+ * Возвращает true, если ретрай выполнен (нужен continue slotRetry).
+ */
+async function tryRetrySlot(
+  err: unknown,
+  slotRetryCount: number,
+  config: InjectorConfig,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const decision = decideSlotRetry(err, slotRetryCount, config);
+  if (decision.action === "retry-slot") {
+    log(
+      `AllSlotsOccupiedOnInterval — пробуем другой слот (попытка ${slotRetryCount + 1}/${config.maxSlotRetries})`,
     );
-    log(`Этап 1 (слоты) завершён успешно, ${slotsResponse.slots.length} слотов`);
+    await withAbort(new Promise((r) => setTimeout(r, config.slotRetryDelayMs)), signal);
+    return true;
+  }
+  return false;
+}
 
-    let slotRetryCount = 0;
-    while (slotRetryCount <= config.maxSlotRetries) {
+/**
+ * Пытается ретраить капчу при ошибке (400 или timeout).
+ * Возвращает true, если ретрай выполнен (нужен continue внутреннего цикла).
+ */
+async function tryRetryCaptcha(
+  err: unknown,
+  captchaAttempt: number,
+  validateRc: InjectorConfig["retryPerEndpoint"]["validateCaptcha"],
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const decision = decideCaptchaRetry(err, captchaAttempt, validateRc);
+  if (decision.action === "retry-captcha") {
+    log(
+      `Капча не решена — перегенерация и ретрай ${captchaAttempt + 1}/${validateRc.retry400MaxRetries}`,
+    );
+    await withAbort(new Promise((r) => setTimeout(r, validateRc.retry400DelayMs)), signal);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Основной цикл выполнения pipeline с двумя уровнями retry.
+ * Внешний цикл — ретрай слота при AllSlotsOccupiedOnInterval (выбирает новый слот).
+ * Внутренний цикл — ретрай капчи при 400/timeout (перегенерирует капчу для того же слота).
+ * Первый проход всегда выполняется, ретраи только при включённых настройках.
+ */
+async function runWithRetryLoop(
+  config: InjectorConfig,
+  slotsResponse: SlotsResponse,
+  signal?: AbortSignal,
+): Promise<void> {
+  let slotRetryCount = 0;
+  const validateRc = config.retryPerEndpoint.validateCaptcha;
+
+  slotRetry: while (true) {
+    checkAbort(signal);
+    const slotData = selectBestSlot(slotsResponse.slots);
+    log(`Выбран слот: ${slotData.slotCaption} (count: ${slotData.count}, idx: ${slotData.intervalIndex})`);
+
+    let captchaAttempt = 0;
+    const maxCaptchaRetries = validateRc.retry400Enabled ? validateRc.retry400MaxRetries + 1 : 1;
+
+    while (true) {
+      checkAbort(signal);
       try {
-        const result = await runPipeline(slotsResponse);
-        if (result !== null) {
-          log("=== Скрипт завершён успешно ===", result);
-        } else {
-          log(
-            "=== Скрипт завершён (runUpTo остановка на этапе " +
-              config.runUpTo +
-              ") ===",
-          );
-        }
+        const attemptLabel = maxCaptchaRetries > 1 ? ` (попытка ${captchaAttempt + 1}/${maxCaptchaRetries})` : "";
+        await runCaptchaPhase(slotData, attemptLabel, signal);
+        await confirmUsageInBackground(config);
+        return;
+      } catch (err) {
+        checkAbort(signal);
+        const storeState = useInjectorStore.getState();
+        const captchaId = storeState.captchaId || "?";
+        const variantTiles = storeState.solvedVariantTiles;
 
-        const usageLogId = useInjectorStore.getState().usageLogId;
-        if (usageLogId != null && config.apiKey) {
-          const logs = useInjectorStore
-            .getState()
-            .logs.map((l) => `${l.ts} ${l.msg}`);
-          const captchaId = useInjectorStore.getState().captchaId;
-          const validated = useInjectorStore.getState().captchaValidated;
-          const variantIndex = useInjectorStore.getState().solvedVariantIndex;
-          try {
-            await confirmUsage(
-              usageLogId,
-              config.apiKey,
-              config.slotDate,
-              logs,
-              captchaId ?? undefined,
-              validated && variantIndex != null ? variantIndex : undefined,
-            );
-          } catch {
-            // fire-and-forget, silently swallow
+        if (isCaptchaRelatedError(err)) {
+          if (captchaId !== "?") {
+            const reason =
+              err instanceof Error && err.message.includes("Сервер вернул null")
+                ? "таймаут сервера"
+                : "неверное решение (400)";
+            log(`Капча не валидирована [${captchaId}] причина: ${reason}`);
+          } else {
+            log(`Ошибка генерации капчи: ${serializeError(err)}`);
           }
         }
 
-        return;
-      } catch (err) {
-        const error = err as { body?: string };
-        const isAllSlotsOccupied =
-          error.body && error.body.includes("AllSlotsOccupiedOnInterval");
-        if (
-          isAllSlotsOccupied &&
-          config.retryOnAllSlotsOccupied &&
-          slotRetryCount < config.maxSlotRetries
-        ) {
+        if (await tryRetrySlot(err, slotRetryCount, config, signal)) {
           slotRetryCount++;
-          log(
-            `AllSlotsOccupiedOnInterval — пробуем другой слот (попытка ${slotRetryCount}/${config.maxSlotRetries})`,
-          );
-          await new Promise((r) => setTimeout(r, config.slotRetryDelayMs));
+          continue slotRetry;
+        }
+
+        if (await tryRetryCaptcha(err, captchaAttempt, validateRc, signal)) {
+          captchaAttempt++;
           continue;
         }
+
         log("=== ОШИБКА ===", err);
         throw err;
       }
     }
-    log(
-      "=== Скрипт завершён (превышено количество попыток выбора слота) ===",
-    );
-    throw new Error("Превышено количество попыток выбора слотов");
-  } catch (err) {
-    const usageLogId = useInjectorStore.getState().usageLogId;
-    if (usageLogId != null && config.apiKey) {
-      const logs = useInjectorStore
-        .getState()
-        .logs.map((l) => `${l.ts} ${l.msg}`);
-      const captchaId = useInjectorStore.getState().captchaId;
-      const validated = useInjectorStore.getState().captchaValidated;
-      const variantIndex = useInjectorStore.getState().solvedVariantIndex;
-      try {
-        await failUsage(
-          usageLogId,
-          config.apiKey,
-          serializeError(err),
-          getErrorStage(),
-          config.slotDate,
-          logs,
-          captchaId ?? undefined,
-          validated && variantIndex != null ? variantIndex : undefined,
-        );
-      } catch {
-        // fire-and-forget
-      }
+  }
+}
+
+function checkAbort(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new DOMException("Pipeline stopped by user", "AbortError");
+  }
+}
+
+function abortPromise(signal?: AbortSignal): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Pipeline stopped by user", "AbortError"));
+      return;
     }
+    signal?.addEventListener("abort", () => {
+      reject(new DOMException("Pipeline stopped by user", "AbortError"));
+    });
+  });
+}
+
+async function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return Promise.race([promise, abortPromise(signal)]);
+}
+
+/**
+ * Точка входа инжектора. Выполняет полный цикл бронирования:
+ * 1. Сброс состояния pipeline
+ * 2. Регистрация usage log + получение слотов
+ * 3. Запуск pipeline с retry-логикой
+ * 4. При ошибке — отчёт на сервер, открытие страницы с капчами (если нужно)
+ */
+export async function main(config: InjectorConfig, signal?: AbortSignal): Promise<void> {
+  resetPipelineState(config);
+  log("=== Старт скрипта (runUpTo: " + config.runUpTo + ") ===");
+  log("<log-version>v2</log-version>");
+
+  try {
+    checkAbort(signal);
+    const slotsResponse = await withAbort(registerUsageAndFetchSlots(config), signal);
+    checkAbort(signal);
+    await withAbort(runWithRetryLoop(config, slotsResponse, signal), signal);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
+    await failUsageInBackground(config, err);
     log("=== ОШИБКА ===", err);
     const error = err as Error;
     if (error.message && error.message.includes("Откройте страницу с капчами")) {

@@ -90,6 +90,17 @@ function defaultSlotsRetryConfig(): RetryConfig {
   };
 }
 
+function defaultValidateCaptchaRetryConfig(): RetryConfig {
+  return {
+    enabled: true,
+    maxRetries: 5,
+    delayMs: 3000,
+    retry400Enabled: true,
+    retry400MaxRetries: 3,
+    retry400DelayMs: 500,
+  };
+}
+
 export function createDefaultConfig(
   reservationId: string,
   facilityId: string,
@@ -114,7 +125,7 @@ export function createDefaultConfig(
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),
       generateCaptcha: defaultRetryConfig(),
-      validateCaptcha: defaultRetryConfig(),
+      validateCaptcha: defaultValidateCaptchaRetryConfig(),
       submitReschedule: defaultRetryConfig(),
       submitCreate: defaultRetryConfig(),
     },

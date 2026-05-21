@@ -283,7 +283,7 @@ export function HistoryRow({
                   🗑
                 </button>
               )}
-              {actions.showLogs && hasLogs && (
+              {actions.showLogs && (
                 <button
                   className={`btn btn-sm ${isLogsExpanded ? "btn-primary" : "btn-outline-secondary"}`}
                   onClick={() => onToggleLogs?.(record.id)}
@@ -331,15 +331,21 @@ export function HistoryRow({
           </td>
         </tr>
       )}
-      {isLogsExpanded && hasLogs && (
+      {isLogsExpanded && (
         <tr>
           <td colSpan={columns.length} className="p-0">
             <div className="p-2" style={{ background: "var(--bs-dark)" }}>
-              {record.logs.map((line, i) => (
-                <div key={i} className="small font-monospace" style={{ fontSize: "0.6875rem", color: "#8b949e" }}>
-                  {line}
+              {hasLogs ? (
+                record.logs.map((line, i) => (
+                  <div key={i} className="small font-monospace" style={{ fontSize: "0.6875rem", color: "#8b949e" }}>
+                    {line}
+                  </div>
+                ))
+              ) : (
+                <div className="small" style={{ fontSize: "0.6875rem", color: "#6e7681" }}>
+                  Нет логов
                 </div>
-              ))}
+              )}
             </div>
           </td>
         </tr>

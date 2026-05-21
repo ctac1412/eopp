@@ -52,6 +52,7 @@ interface InjectorState {
   usageLogId: number | null;
   captchaId: string | null;
   solvedVariantIndex: number | null;
+  solvedVariantTiles: string[] | null;
   captchaValidated: boolean | null;
   isFullscreen: boolean;
   authKey: string;
@@ -61,6 +62,8 @@ interface InjectorState {
   authChecking: boolean;
   timeOrderPresets: TimeOrderPreset[];
   activePresetId: string | null;
+  abortController: AbortController | null;
+  hasReportedFailure: boolean;
 
   setConfig: (config: InjectorConfig) => void;
   updateField: <K extends keyof InjectorConfig>(
@@ -84,6 +87,7 @@ interface InjectorState {
   setUsageLogId: (id: number | null) => void;
   setCaptchaId: (id: string | null) => void;
   setSolvedVariantIndex: (idx: number | null) => void;
+  setSolvedVariantTiles: (tiles: string[] | null) => void;
   setCaptchaValidated: (val: boolean | null) => void;
   toggleFullscreen: () => void;
   reset: () => void;
@@ -95,6 +99,7 @@ interface InjectorState {
   loadTimeOrderPreset: (id: string) => void;
   deleteTimeOrderPreset: (id: string) => void;
   clearActivePreset: () => void;
+  stopPipeline: () => void;
 }
 
 const defaultCollapsed: Record<CollapsibleSection, boolean> = {
@@ -121,6 +126,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   usageLogId: null,
   captchaId: null,
   solvedVariantIndex: null,
+  solvedVariantTiles: null,
   captchaValidated: null,
   isFullscreen: (() => {
     const saved = localStorage.getItem("_fs");
@@ -150,6 +156,8 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
     }
   })(),
   activePresetId: null,
+  abortController: null,
+  hasReportedFailure: false,
 
   setConfig: (config) => set({ config }),
   updateField: (key, value) =>
@@ -215,6 +223,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   setUsageLogId: (id) => set({ usageLogId: id }),
   setCaptchaId: (id) => set({ captchaId: id }),
   setSolvedVariantIndex: (idx) => set({ solvedVariantIndex: idx }),
+  setSolvedVariantTiles: (tiles) => set({ solvedVariantTiles: tiles }),
   setCaptchaValidated: (val) => set({ captchaValidated: val }),
   toggleFullscreen: () =>
     set((state) => {
@@ -234,6 +243,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
       usageLogId: null,
       captchaId: null,
       solvedVariantIndex: null,
+      solvedVariantTiles: null,
       captchaValidated: null,
     }),
   setAuthKey: (key) => {
@@ -290,5 +300,16 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
   },
   clearActivePreset: () => {
     set({ activePresetId: null });
+  },
+  stopPipeline: () => {
+    set((state) => {
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+      return { abortController: null };
+    });
+  },
+  resetFailureFlag: () => {
+    set({ hasReportedFailure: false });
   },
 }));

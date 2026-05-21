@@ -655,6 +655,15 @@
   cursor: not-allowed;
 }
 
+.qn-modal-btn-stop {
+  background: #f44336;
+  color: #fff;
+}
+
+.qn-modal-btn-stop:hover {
+  background: #d32f2f;
+}
+
 .qn-modal-clock {
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
   font-size: 13px;
@@ -732,6 +741,12 @@
   border-color: #66bb6a;
 }
 
+.qn-time-tag-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 .qn-schedule-time-wrapper {
   display: flex;
   align-items: center;
@@ -778,6 +793,11 @@
   border-color: #ffcc00;
 }
 
+.qn-schedule-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .qn-modal-btn-schedule {
   background: #2196f3;
   color: #fff;
@@ -785,6 +805,12 @@
 
 .qn-modal-btn-schedule:hover {
   background: #1e88e5;
+}
+
+.qn-modal-btn-schedule:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #555;
 }
 
 .qn-modal-btn-cancel {

@@ -6,5 +6,15 @@
       "Bash(@find *)"
     ]
   },
+  "mcpServers": {
+    "sqlite": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite", "data/api_keys.db"]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    }
+  },
   "$version": 4
 }

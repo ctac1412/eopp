@@ -9,6 +9,7 @@ const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
   const startSchedule = useInjectorStore((s) => s.startSchedule);
   const cancelSchedule = useInjectorStore((s) => s.cancelSchedule);
+  const stopPipeline = useInjectorStore((s) => s.stopPipeline);
   const config = useInjectorStore((s) => s.config);
   const authKey = useInjectorStore((s) => s.authKey);
   const { run } = useInjector();
@@ -94,6 +95,8 @@ const Scheduler = React.memo(function Scheduler() {
     );
   }, []);
 
+  const isRunning = status === "running";
+
   return (
     <div className="qn-schedule-sticky">
       {statusMessage && (
@@ -103,20 +106,20 @@ const Scheduler = React.memo(function Scheduler() {
       )}
       <div className="qn-time-tags">
         <span
-          className="qn-time-tag"
-          onClick={() => setTimeInput("10:00:00.5")}
+          className={`qn-time-tag ${isRunning ? "qn-time-tag-disabled" : ""}`}
+          onClick={isRunning ? undefined : () => setTimeInput("10:00:00.5")}
         >
           10:00:00.5
         </span>
         <span
-          className="qn-time-tag"
-          onClick={() => setTimeInput("12:00:00.5")}
+          className={`qn-time-tag ${isRunning ? "qn-time-tag-disabled" : ""}`}
+          onClick={isRunning ? undefined : () => setTimeInput("12:00:00.5")}
         >
           12:00:00.5
         </span>
         <span
-          className="qn-time-tag qn-time-tag-now"
-          onClick={handleNowPlus10}
+          className={`qn-time-tag qn-time-tag-now ${isRunning ? "qn-time-tag-disabled" : ""}`}
+          onClick={isRunning ? undefined : handleNowPlus10}
         >
           Сейчас+10с
         </span>
@@ -131,11 +134,13 @@ const Scheduler = React.memo(function Scheduler() {
             onChange={(e) => setTimeInput(e.target.value)}
             maxLength={12}
             placeholder="ЧЧ:ММ:СС.d"
+            disabled={isRunning}
           />
           <button
             className="qn-schedule-cancel-icon"
-            onClick={handleCancel}
+            onClick={isRunning ? undefined : handleCancel}
             title="Отменить расписание"
+            disabled={isRunning}
           >
             ×
           </button>
@@ -143,15 +148,25 @@ const Scheduler = React.memo(function Scheduler() {
         <button
           className="qn-modal-btn qn-modal-btn-schedule"
           onClick={handleSchedule}
+          disabled={isRunning}
         >
           Запланировать
         </button>
-        <button
-          className="qn-modal-btn qn-modal-btn-run"
-          onClick={handleRun}
-        >
-          Запустить сейчас
-        </button>
+        {isRunning ? (
+          <button
+            className="qn-modal-btn qn-modal-btn-stop"
+            onClick={stopPipeline}
+          >
+            Остановить
+          </button>
+        ) : (
+          <button
+            className="qn-modal-btn qn-modal-btn-run"
+            onClick={handleRun}
+          >
+            Запустить сейчас
+          </button>
+        )}
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ class UpdateApiKeyBody(BaseModel):
     active: bool | None = None
     comment: str | None = None
     is_admin: bool | None = None
+    is_super_kiosk: bool | None = None
 
 
 class UpdateUsageLogBody(BaseModel):
