@@ -140,6 +140,9 @@ function inferErrorInfo(record) {
   if (text.includes("429") || text.includes("too many requests")) {
     return { category: "eopp-limit", label: "Лимит EOPP / 429", tone: "warning" };
   }
+  if (text.includes("captchanotexistfreetimeslot")) {
+    return { category: "slot-lost", label: "Слот ушёл", tone: "warning", step: 4 };
+  }
   if (text.includes("allslotsoccupiedoninterval") || text.includes("all slots occupied") || text.includes("all_slots")) {
     return { category: "slots", label: "Слот занят", tone: "warning", step: 1 };
   }
