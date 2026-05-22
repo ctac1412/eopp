@@ -267,9 +267,15 @@ export function ReportsTab({ adminToken, onError }) {
     const isPaid = record.paid === true;
     const hasPrice = record.price != null && record.price > 0;
     if (!hasPrice) return <span className="text-muted">—</span>;
-    if (isPaid) return <span className="text-success fw-semibold">Оплачено</span>;
-    return <span className="text-danger fw-semibold">Не оплачено</span>;
+    if (isPaid) return <span className="badge bg-success">Оплачено</span>;
+    return <span className="badge bg-danger">Не оплачено</span>;
   };
+
+  const renderClip = (value, className = "") => (
+    <span className={`reports-cell-clip ${className}`} title={value || "—"}>
+      {value || "—"}
+    </span>
+  );
 
   return (
     <div className="reports-page">
@@ -439,7 +445,7 @@ export function ReportsTab({ adminToken, onError }) {
         <div className="card-header fw-semibold">Журнал использования</div>
         <div className="card-body p-0">
           <div className="table-responsive">
-            <table className="table table-sm table-hover table-bordered align-middle mb-0">
+            <table className="table table-sm table-hover table-bordered align-middle mb-0 reports-log-table">
               <thead className="table-light">
                 <tr>
                   <th className="text-center" style={{ width: "40px" }}>#</th>
@@ -474,7 +480,7 @@ export function ReportsTab({ adminToken, onError }) {
                         <tr>
                           <td className="text-center">{idx + 1}</td>
                           <td className="small text-muted">{record.id}</td>
-                          <td className="small" title={record.label || "—"}>{record.label || "—"}</td>
+                          <td className="small">{renderClip(record.label)}</td>
                           <td className="text-center">
                             <span className={`badge ${opType === "Создание" ? "bg-success" : opType === "Перенос" ? "bg-info text-dark" : "bg-secondary"}`}>
                               {opType}
@@ -486,30 +492,30 @@ export function ReportsTab({ adminToken, onError }) {
                             </span>
                           </td>
                           <td className="small text-nowrap">{formatDate(record.created_at)}</td>
-                          <td className="small">{formatSlotDate(record.slot_date)}</td>
-                          <td className="small" title={getFioFull(record)}>{getFio(record)}</td>
-                          <td className="small" title={getCompanyFull(record)}>{getCompany(record)}</td>
-                          <td className="small" title={getVehicleNumberFull(record)}>{getVehicleNumber(record)}</td>
+                          <td className="small text-nowrap">{formatSlotDate(record.slot_date)}</td>
+                          <td className="small">{renderClip(getFio(record), "")}</td>
+                          <td className="small">{renderClip(getCompany(record))}</td>
+                          <td className="small">{renderClip(getVehicleNumber(record), "font-monospace")}</td>
                           <td className="small text-end text-nowrap">
                             {record.price != null ? formatMoney(record.price) : "—"}
                           </td>
                           <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
                           <td className="small" title={record.error_message || ""}>
-                            {record.status === "failed" && (
-                              <div className="mb-1">
-                                <span className={`badge ${getErrorToneClass(errorInfo)}`}>
+                            <div className="reports-error-cell">
+                              {record.status === "failed" && (
+                                <span className={`badge ${getErrorToneClass(errorInfo)} reports-error-badge`}>
                                   {errorInfo.label}
                                 </span>
-                              </div>
-                            )}
-                            {record.error_message ? (
-                              <span className="text-danger">
-                                {record.error_message.length > 80 ? `${record.error_message.slice(0, 80)}…` : record.error_message}
-                              </span>
-                            ) : (
-                              <span className="text-muted">—</span>
-                            )}
+                              )}
+                              {record.error_message ? (
+                                <span className="text-danger reports-cell-clip">
+                                  {record.error_message}
+                                </span>
+                              ) : (
+                                <span className="text-muted">—</span>
+                              )}
+                            </div>
                           </td>
                           <td className="text-center text-nowrap">
                             <button
