@@ -21,6 +21,7 @@ import {
   isTestRecord,
   matchesPreset,
 } from "../../features/admin/reports/reportUtils";
+import { OperationDetails } from "../../features/admin/reports/OperationDetails";
 
 function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
@@ -62,8 +63,10 @@ export function ReportsTab({ adminToken, onError }) {
   const [keyFilter, setKeyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [opTypeFilter, setOpTypeFilter] = useState("all");
-  const [expandedConfig, setExpandedConfig] = useState({});
-  const [expandedLogs, setExpandedLogs] = useState({});
+  const [expandedRecordId, setExpandedRecordId] = useState(null);
+  const [captchaRecords, setCaptchaRecords] = useState({});
+  const [captchaLoading, setCaptchaLoading] = useState({});
+  const [captchaErrors, setCaptchaErrors] = useState({});
   const [showEditModal, setShowEditModal] = useState(null);
   const [editForm, setEditForm] = useState({ price: "", paid: "" });
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -90,12 +93,32 @@ export function ReportsTab({ adminToken, onError }) {
     fetchRecords();
   }, [fetchRecords]);
 
-  const toggleConfig = (id) => {
-    setExpandedConfig((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const toggleDetails = async (record) => {
+    if (expandedRecordId === record.id) {
+      setExpandedRecordId(null);
+      return;
+    }
 
-  const toggleLogs = (id) => {
-    setExpandedLogs((prev) => ({ ...prev, [id]: !prev[id] }));
+    setExpandedRecordId(record.id);
+    if (captchaRecords[record.id] || captchaLoading[record.id]) return;
+
+    setCaptchaLoading((prev) => ({ ...prev, [record.id]: true }));
+    setCaptchaErrors((prev) => ({ ...prev, [record.id]: null }));
+    try {
+      const res = await fetch(`/captchas?usage_log_id=${record.id}`, {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCaptchaRecords((prev) => ({
+        ...prev,
+        [record.id]: Array.isArray(data) ? data : [],
+      }));
+    } catch (err) {
+      setCaptchaErrors((prev) => ({ ...prev, [record.id]: err.message }));
+    } finally {
+      setCaptchaLoading((prev) => ({ ...prev, [record.id]: false }));
+    }
   };
 
   const openEditModal = (record) => {
@@ -397,9 +420,7 @@ export function ReportsTab({ adminToken, onError }) {
                   </tr>
                 ) : (
                   filteredRecords.map((record, idx) => {
-                    const isExpanded = expandedConfig[record.id];
-                    const isLogsExpanded = expandedLogs[record.id];
-                    const hasLogs = record.logs && record.logs.length > 0;
+                    const isExpanded = expandedRecordId === record.id;
                     const opType = getOpType(record);
                     return (
                       <React.Fragment key={record.id}>
@@ -439,11 +460,11 @@ export function ReportsTab({ adminToken, onError }) {
                           </td>
                           <td className="text-center text-nowrap">
                             <button
-                              className={`btn btn-sm ${isLogsExpanded ? "btn-primary" : "btn-outline-secondary"} me-1`}
-                              onClick={() => toggleLogs(record.id)}
-                              title={isLogsExpanded ? "Свернуть логи" : "Показать логи"}
+                              className={`btn btn-sm ${isExpanded ? "btn-primary" : "btn-outline-secondary"} me-1`}
+                              onClick={() => toggleDetails(record)}
+                              title={isExpanded ? "Свернуть детали" : "Показать детали"}
                             >
-                              📋
+                              {isExpanded ? "Скрыть" : "Детали"}
                             </button>
                             <button
                               className="btn btn-sm btn-outline-secondary me-1"
@@ -452,38 +473,17 @@ export function ReportsTab({ adminToken, onError }) {
                             >
                               ✏️
                             </button>
-                            {record.config_json && (
-                              <button
-                                className={`btn btn-sm ${isExpanded ? "btn-secondary" : "btn-outline-secondary"}`}
-                                onClick={() => toggleConfig(record.id)}
-                                title={isExpanded ? "Свернуть конфиг" : "Показать конфиг"}
-                              >
-                                ⚙
-                              </button>
-                            )}
                           </td>
                         </tr>
-                        {isExpanded && record.config_json && (
+                        {isExpanded && (
                           <tr>
-                            <td colSpan={15}>
-                              <pre className="p-2 small m-0" style={{ maxHeight: "300px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
-                                {JSON.stringify(record.config_json, null, 2)}
-                              </pre>
-                            </td>
-                          </tr>
-                        )}
-                        {isLogsExpanded && (
-                          <tr>
-                            <td colSpan={15}>
-                              <div className="p-2 small" style={{ maxHeight: "400px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem", fontFamily: "var(--bs-font-monospace)", color: "#8b949e" }}>
-                                {hasLogs ? (
-                                  record.logs.map((line, i) => (
-                                    <div key={i} className="mb-1">{line}</div>
-                                  ))
-                                ) : (
-                                  <div className="text-muted">Нет логов</div>
-                                )}
-                              </div>
+                            <td colSpan={15} className="p-0">
+                              <OperationDetails
+                                record={record}
+                                captchaRecords={captchaRecords[record.id] || []}
+                                captchaLoading={!!captchaLoading[record.id]}
+                                captchaError={captchaErrors[record.id]}
+                              />
                             </td>
                           </tr>
                         )}
