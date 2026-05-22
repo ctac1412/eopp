@@ -1,7 +1,26 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { formatMoney } from "../../utils/format";
 import { UsageLogEditModal } from "./UsageLogEditModal";
 import { InvoiceModal } from "./InvoiceModal";
+import {
+  REPORT_PRESETS,
+  getCompany,
+  getCompanyFull,
+  getFio,
+  getFioFull,
+  getOpType,
+  getReadyForInvoiceCount,
+  getSearchText,
+  getStatusClass,
+  getStatusLabel,
+  getVehicleNumber,
+  getVehicleNumberFull,
+  groupByCompany,
+  hasMissingPrice,
+  isBillableRecord,
+  isTestRecord,
+  matchesPreset,
+} from "../../features/admin/reports/reportUtils";
 
 function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
@@ -33,99 +52,16 @@ function formatSlotDate(iso) {
   });
 }
 
-const COMPANY_ALIASES = {
-  'ООО "АРТ-ТРАНС"': "Хип-Хоп Транс Дэнс",
-};
-
-function getOpType(record) {
-  if (record.op_type === "create") return "Создание";
-  if (record.op_type === "reschedule") return "Перенос";
-  return "—";
-}
-
-function getFio(record) {
-  const fio = record.fio;
-  if (!fio || typeof fio !== "string") return "—";
-  return fio.trim().split(/\s+/).map((p) => p[0] + ".").join(" ");
-}
-
-function getFioFull(record) {
-  return record.fio || "—";
-}
-
-function getCompany(record) {
-  const name = record.company;
-  if (!name) return "—";
-  return COMPANY_ALIASES[name] || name;
-}
-
-function getCompanyFull(record) {
-  return record.company || "—";
-}
-
-function getVehicleNumber(record, short = true) {
-  const num = record.vehicle_number;
-  if (!num) return "—";
-  if (short && num.length > 4) {
-    return num.slice(0, 4) + "....";
-  }
-  return num;
-}
-
-function getVehicleNumberFull(record) {
-  return record.vehicle_number || "—";
-}
-
-function isTestRecord(record) {
-  return record.is_test === true || record.is_test === 1;
-}
-
-function isSuccessStage5(record) {
-  if (record.status !== "confirmed") return false;
-  const logs = record.logs;
-  if (!Array.isArray(logs)) return false;
-  const joined = logs.join(" ");
-  return joined.includes("Скрипт завершён успешно");
-}
-
-function groupByCompany(records) {
-  const groups = {};
-  records.forEach((r) => {
-    const company = getCompany(r);
-    if (!groups[company]) {
-      groups[company] = { reschedule: 0, create: 0, records: [] };
-    }
-    groups[company].records.push(r);
-    const opType = r.op_type;
-    if (opType === "reschedule") {
-      groups[company].reschedule++;
-    } else if (opType === "create") {
-      groups[company].create++;
-    }
-  });
-  return Object.entries(groups).map(([name, counts]) => ({
-    name,
-    reschedule: counts.reschedule,
-    create: counts.create,
-    records: counts.records,
-  }));
-}
-
-function getReadyForInvoiceCount(companyRecords) {
-  return companyRecords.filter((r) => {
-    if (isTestRecord(r)) return false;
-    const hasPrice = r.price != null && r.price > 0;
-    const isPaid = r.paid === true;
-    const noInvoice = !r.invoice_id;
-    return hasPrice && !isPaid && noInvoice;
-  }).length;
-}
-
 export function ReportsTab({ adminToken, onError }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hideTest, setHideTest] = useState(true);
-  const [showOnlySuccess5, setShowOnlySuccess5] = useState(true);
+  const [preset, setPreset] = useState("all");
+  const [search, setSearch] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("all");
+  const [keyFilter, setKeyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [opTypeFilter, setOpTypeFilter] = useState("all");
   const [expandedConfig, setExpandedConfig] = useState({});
   const [expandedLogs, setExpandedLogs] = useState({});
   const [showEditModal, setShowEditModal] = useState(null);
@@ -141,18 +77,14 @@ export function ReportsTab({ adminToken, onError }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      let records = Array.isArray(data) ? data : [];
-      if (showOnlySuccess5) {
-        records = records.filter(isSuccessStage5);
-      }
-      setRecords(records);
+      setRecords(Array.isArray(data) ? data : []);
     } catch (err) {
       onError?.(err.message);
       setRecords([]);
     } finally {
       setLoading(false);
     }
-  }, [adminToken, hideTest, showOnlySuccess5, onError]);
+  }, [adminToken, hideTest, onError]);
 
   useEffect(() => {
     fetchRecords();
@@ -205,11 +137,7 @@ export function ReportsTab({ adminToken, onError }) {
 
   const handleOpenInvoiceForCompany = (companyName, companyRecords) => {
     const unpaidLogs = companyRecords.filter((r) => {
-      if (isTestRecord(r)) return false;
-      const hasPrice = r.price != null && r.price > 0;
-      const isPaid = r.paid === true;
-      const noInvoice = !r.invoice_number;
-      return hasPrice && !isPaid && noInvoice;
+      return isBillableRecord(r);
     });
     if (unpaidLogs.length === 0) {
       const allUnpaid = companyRecords.filter((r) => {
@@ -265,9 +193,44 @@ export function ReportsTab({ adminToken, onError }) {
     }
   };
 
+  const companyOptions = useMemo(
+    () => [...new Set(records.map(getCompany).filter((name) => name !== "—"))].sort(),
+    [records],
+  );
+
+  const keyOptions = useMemo(() => {
+    const options = new Map();
+    records.forEach((record) => {
+      if (record.api_key_id == null) return;
+      options.set(String(record.api_key_id), record.label || `#${record.api_key_id}`);
+    });
+    return [...options.entries()].map(([id, label]) => ({ id, label }));
+  }, [records]);
+
+  const filteredRecords = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return records.filter((record) => {
+      if (!matchesPreset(record, preset)) return false;
+      if (statusFilter !== "all" && record.status !== statusFilter) return false;
+      if (opTypeFilter !== "all" && record.op_type !== opTypeFilter) return false;
+      if (companyFilter !== "all" && getCompany(record) !== companyFilter) return false;
+      if (keyFilter !== "all" && String(record.api_key_id) !== keyFilter) return false;
+      return !normalizedSearch || getSearchText(record).includes(normalizedSearch);
+    });
+  }, [records, preset, statusFilter, opTypeFilter, companyFilter, keyFilter, search]);
+
+  const metrics = useMemo(() => ({
+    total: filteredRecords.length,
+    success: filteredRecords.filter((record) => record.status === "confirmed").length,
+    errors: filteredRecords.filter((record) => record.status === "failed").length,
+    pending: filteredRecords.filter((record) => record.status === "pending").length,
+    readyForInvoice: filteredRecords.filter(isBillableRecord).length,
+    missingPrice: filteredRecords.filter(hasMissingPrice).length,
+  }), [filteredRecords]);
+
   if (loading) return <div className="text-center py-4">Загрузка…</div>;
 
-  const summary = groupByCompany(records);
+  const summary = groupByCompany(filteredRecords);
 
   const renderPaidStatus = (record) => {
     const isPaid = record.paid === true;
@@ -279,24 +242,82 @@ export function ReportsTab({ adminToken, onError }) {
 
   return (
     <div className="reports-page">
-      {/* Toolbar */}
-      <div className="d-flex gap-2 align-items-center mb-3">
-        <button
-          className={`btn btn-sm ${showOnlySuccess5 ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setShowOnlySuccess5(!showOnlySuccess5)}
-        >
-          Только этап 5
-        </button>
+      <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <div className="btn-group btn-group-sm" role="group" aria-label="Фильтр журнала">
+          {REPORT_PRESETS.map((item) => (
+            <button
+              key={item.id}
+              className={`btn ${preset === item.id ? "btn-primary" : "btn-outline-secondary"}`}
+              onClick={() => setPreset(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <button
           className={`btn btn-sm ${hideTest ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={() => setHideTest(!hideTest)}
         >
-          {hideTest ? "Скрыть тестовые" : "Показать тестовые"}
+          {hideTest ? "Тестовые скрыты" : "Тестовые видны"}
         </button>
         <button className="btn btn-sm btn-outline-secondary" onClick={fetchRecords}>
           Обновить
         </button>
-        <span className="text-muted small ms-2">Всего: {records.length}</span>
+        <span className="text-muted small ms-auto">
+          Показано: {filteredRecords.length} из {records.length}
+        </span>
+      </div>
+
+      <div className="row g-2 align-items-end mb-3">
+        <div className="col-12 col-xl-4">
+          <label className="form-label small mb-1">Поиск</label>
+          <input
+            className="form-control form-control-sm"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Компания, бронь, капча, ФИО, машина, ошибка"
+          />
+        </div>
+        <div className="col-6 col-md-3 col-xl-2">
+          <label className="form-label small mb-1">Компания</label>
+          <select className="form-select form-select-sm" value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)}>
+            <option value="all">Все</option>
+            {companyOptions.map((company) => <option key={company} value={company}>{company}</option>)}
+          </select>
+        </div>
+        <div className="col-6 col-md-3 col-xl-2">
+          <label className="form-label small mb-1">Ключ</label>
+          <select className="form-select form-select-sm" value={keyFilter} onChange={(event) => setKeyFilter(event.target.value)}>
+            <option value="all">Все</option>
+            {keyOptions.map((key) => <option key={key.id} value={key.id}>{key.label}</option>)}
+          </select>
+        </div>
+        <div className="col-6 col-md-3 col-xl-2">
+          <label className="form-label small mb-1">Статус</label>
+          <select className="form-select form-select-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">Все</option>
+            <option value="confirmed">Успех</option>
+            <option value="failed">Ошибка</option>
+            <option value="pending">В работе</option>
+          </select>
+        </div>
+        <div className="col-6 col-md-3 col-xl-2">
+          <label className="form-label small mb-1">Тип</label>
+          <select className="form-select form-select-sm" value={opTypeFilter} onChange={(event) => setOpTypeFilter(event.target.value)}>
+            <option value="all">Все</option>
+            <option value="create">Создание</option>
+            <option value="reschedule">Перенос</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="d-flex flex-wrap gap-2 mb-3">
+        <span className="badge text-bg-secondary">Всего: {metrics.total}</span>
+        <span className="badge text-bg-success">Успешно: {metrics.success}</span>
+        <span className="badge text-bg-danger">Ошибок: {metrics.errors}</span>
+        <span className="badge text-bg-warning">В работе: {metrics.pending}</span>
+        <span className="badge text-bg-primary">К счету: {metrics.readyForInvoice}</span>
+        <span className="badge text-bg-dark">Без цены: {metrics.missingPrice}</span>
       </div>
 
       {/* Company summary */}
@@ -311,6 +332,9 @@ export function ReportsTab({ adminToken, onError }) {
                     <th>Компания</th>
                     <th className="text-center">Переносы</th>
                     <th className="text-center">Брони</th>
+                    <th className="text-center">Ошибки</th>
+                    <th className="text-center">К счету</th>
+                    <th className="text-end">Сумма</th>
                     <th className="text-center"></th>
                   </tr>
                 </thead>
@@ -320,6 +344,9 @@ export function ReportsTab({ adminToken, onError }) {
                       <td>{row.name}</td>
                       <td className="text-center">{row.reschedule}</td>
                       <td className="text-center">{row.create}</td>
+                      <td className="text-center">{row.errors}</td>
+                      <td className="text-center">{row.readyForInvoice}</td>
+                      <td className="text-end">{formatMoney(row.invoiceAmount)}</td>
                       <td className="text-center">
                         <button
                           className="btn btn-sm btn-primary"
@@ -350,23 +377,26 @@ export function ReportsTab({ adminToken, onError }) {
                   <th>ID</th>
                   <th>Токен</th>
                   <th className="text-center">Тип</th>
+                  <th className="text-center">Статус</th>
                   <th>Дата</th>
                   <th>Дата слота</th>
                   <th>ФИО</th>
                   <th>Компания</th>
                   <th>Номер машины</th>
+                  <th className="text-end">Цена</th>
                   <th>Счёт</th>
                   <th className="text-center">Оплата</th>
+                  <th>Ошибка</th>
                   <th className="text-center" style={{ width: "80px" }}>Действия</th>
                 </tr>
               </thead>
               <tbody>
-                {records.length === 0 ? (
+                {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="text-center text-muted py-3">Нет записей</td>
+                    <td colSpan={15} className="text-center text-muted py-3">Нет записей</td>
                   </tr>
                 ) : (
-                  records.map((record, idx) => {
+                  filteredRecords.map((record, idx) => {
                     const isExpanded = expandedConfig[record.id];
                     const isLogsExpanded = expandedLogs[record.id];
                     const hasLogs = record.logs && record.logs.length > 0;
@@ -382,14 +412,32 @@ export function ReportsTab({ adminToken, onError }) {
                               {opType}
                             </span>
                           </td>
-                          <td className="small">{formatSlotDate(record.created_at)}</td>
+                          <td className="text-center">
+                            <span className={`badge ${getStatusClass(record.status)}`}>
+                              {getStatusLabel(record.status)}
+                            </span>
+                          </td>
+                          <td className="small text-nowrap">{formatDate(record.created_at)}</td>
                           <td className="small">{formatSlotDate(record.slot_date)}</td>
                           <td className="small" title={getFioFull(record)}>{getFio(record)}</td>
                           <td className="small" title={getCompanyFull(record)}>{getCompany(record)}</td>
                           <td className="small" title={getVehicleNumberFull(record)}>{getVehicleNumber(record)}</td>
+                          <td className="small text-end text-nowrap">
+                            {record.price != null ? formatMoney(record.price) : "—"}
+                          </td>
                           <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
-                           <td className="text-center text-nowrap">
+                          <td className="small" title={record.error_message || ""}>
+                            {record.error_stage && <div className="text-danger fw-semibold">{record.error_stage}</div>}
+                            {record.error_message ? (
+                              <span className="text-danger">
+                                {record.error_message.length > 80 ? `${record.error_message.slice(0, 80)}…` : record.error_message}
+                              </span>
+                            ) : (
+                              <span className="text-muted">—</span>
+                            )}
+                          </td>
+                          <td className="text-center text-nowrap">
                             <button
                               className={`btn btn-sm ${isLogsExpanded ? "btn-primary" : "btn-outline-secondary"} me-1`}
                               onClick={() => toggleLogs(record.id)}
@@ -417,7 +465,7 @@ export function ReportsTab({ adminToken, onError }) {
                         </tr>
                         {isExpanded && record.config_json && (
                           <tr>
-                            <td colSpan={12}>
+                            <td colSpan={15}>
                               <pre className="p-2 small m-0" style={{ maxHeight: "300px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
                                 {JSON.stringify(record.config_json, null, 2)}
                               </pre>
@@ -426,7 +474,7 @@ export function ReportsTab({ adminToken, onError }) {
                         )}
                         {isLogsExpanded && (
                           <tr>
-                            <td colSpan={12}>
+                            <td colSpan={15}>
                               <div className="p-2 small" style={{ maxHeight: "400px", overflow: "auto", background: "var(--bs-dark)", borderRadius: "0.5rem", fontFamily: "var(--bs-font-monospace)", color: "#8b949e" }}>
                                 {hasLogs ? (
                                   record.logs.map((line, i) => (
