@@ -275,18 +275,34 @@ class TestMock:
         """Mock капча."""
         response = client.post(
             "/reservations-api/v1/captcha",
-            json={"facilityId": "f1", "timeSlotData": "data"},
+            json={"payload": {"facilityId": "f1", "timeSlotData": "data"}},
         )
         assert response.status_code == 200
+        body = response.json()
+        assert "token" in body
+        assert "front" in body
+        assert "tiles" in body["front"]
+        assert "variantsCapture" in body["front"]
 
     def test_mock_captcha_validate(self, client):
         """Валидация капчи."""
         response = client.post(
             "/reservations-api/v1/captcha-validate",
-            json={"captchaToken": "token"},
+            json={
+                "captchaToken": "token",
+                "answer": ["tile-1"],
+                "payload": {
+                    "reservationId": "r1",
+                    "facilityId": "f1",
+                    "timeSlotData": "2026-05-26T13:00:00.000Z",
+                    "encryptedTso": None,
+                },
+            },
         )
         assert response.status_code == 200
-        assert "successToken" in response.json()
+        body = response.json()
+        assert body["isValid"] is True
+        assert "successToken" in body
 
     def test_mock_slots(self, client):
         """Mock слоты."""

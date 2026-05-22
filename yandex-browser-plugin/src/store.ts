@@ -92,14 +92,17 @@ interface InjectorState {
   toggleFullscreen: () => void;
   reset: () => void;
   setAuthKey: (key: string) => void;
+  setAuthKeyStatus: (status: ApiKeyStatusResponse | null) => void;
   clearAuthKey: () => void;
   setAuthLoading: (loading: boolean) => void;
   setAuthError: (error: string) => void;
+  setAuthChecking: (checking: boolean) => void;
   saveTimeOrderPreset: (name: string) => string;
   loadTimeOrderPreset: (id: string) => void;
   deleteTimeOrderPreset: (id: string) => void;
   clearActivePreset: () => void;
   stopPipeline: () => void;
+  resetFailureFlag: () => void;
 }
 
 const defaultCollapsed: Record<CollapsibleSection, boolean> = {

@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["chrome"],
+    "types": ["chrome", "vite/client"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

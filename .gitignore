@@ -63,3 +63,6 @@ prod/plugins/
 data/*.db
 
 prod/backups/
+
+# EOPP original JS dump
+eopp_original.js

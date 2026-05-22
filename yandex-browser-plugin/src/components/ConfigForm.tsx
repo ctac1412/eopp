@@ -9,6 +9,18 @@ import {
 } from "@/constants";
 import TimeOrderPanel from "./TimeOrderPanel";
 
+const TRANSPORT_TYPE_LABELS: Record<InjectorConfig["transportType"], string> = {
+  1: "Cargo",
+  2: "TSO",
+  3: "Special",
+  4: "TSO Special",
+};
+
+function shortId(value?: string | null): string {
+  if (!value) return "-";
+  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
 const MOCK_ENDPOINTS: {
   path: string;
   label: string;
@@ -291,6 +303,11 @@ const ConfigForm = React.memo(function ConfigForm() {
   const isLocalhost =
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1";
+  const reservationRaw = config.reservationData?.raw;
+  const facilityRaw = config.reservationData?.facilityRaw;
+  const truck = reservationRaw?.vehicleData?.find((v) => v.subTypeId === 1);
+  const facilityName = facilityRaw?.name || config.facilityId;
+  const transportLabel = TRANSPORT_TYPE_LABELS[config.transportType];
 
   function handleChange<K extends keyof InjectorConfig>(
     key: K,
@@ -492,7 +509,37 @@ const ConfigForm = React.memo(function ConfigForm() {
         style={{ gridColumn: "1 / -1" }}
       >
         <h3 className="qn-section-title">Данные запроса</h3>
-        <div className="qn-form-row">
+        <div className="qn-request-summary">
+          <div className="qn-summary-item">
+            <span className="qn-summary-label">Бронь</span>
+            <span className="qn-summary-value" title={config.reservationId}>
+              {reservationRaw?.reservationRequestCode || shortId(config.reservationId)}
+            </span>
+          </div>
+          <div className="qn-summary-item qn-summary-item-wide">
+            <span className="qn-summary-label">АПП</span>
+            <span className="qn-summary-value" title={config.facilityId}>
+              {facilityName}
+            </span>
+          </div>
+          <div className="qn-summary-item">
+            <span className="qn-summary-label">Тягач</span>
+            <span className="qn-summary-value" title={config.vehicleId}>
+              {truck?.regNumber || shortId(config.vehicleId)}
+            </span>
+          </div>
+          <div className="qn-summary-item">
+            <span className="qn-summary-label">Тип</span>
+            <span className="qn-summary-value">{transportLabel}</span>
+          </div>
+          <div className="qn-summary-item">
+            <span className="qn-summary-label">Режим АПП</span>
+            <span className="qn-summary-value">
+              {facilityRaw?.mode?.modeType ?? "-"}
+            </span>
+          </div>
+        </div>
+        <div className="qn-form-row" style={{ display: "none" }}>
           <label className="qn-form-label">
             ID бронирования
             <span className="qn-form-text qn-form-readonly">
@@ -510,7 +557,7 @@ const ConfigForm = React.memo(function ConfigForm() {
             />
           </label>
         </div>
-        <div className="qn-form-row">
+        <div className="qn-form-row" style={{ display: "none" }}>
           <label className="qn-form-label">
             Вид перевозки
             <select
@@ -518,7 +565,10 @@ const ConfigForm = React.memo(function ConfigForm() {
               className="qn-form-input"
               value={config.transportType}
               onChange={(e) =>
-                handleChange("transportType", Number(e.target.value) as 1 | 2)
+                handleChange(
+                  "transportType",
+                  Number(e.target.value) as InjectorConfig["transportType"],
+                )
               }
             >
               <option value="1">Экспорт</option>

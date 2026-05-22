@@ -105,7 +105,7 @@ export function createDefaultConfig(
   reservationId: string,
   facilityId: string,
   vehicleId: string,
-  transportType: 1 | 2,
+  transportType: 1 | 2 | 3 | 4,
   mode: "reschedule" | "create" = "reschedule",
 ): InjectorConfig {
   return {

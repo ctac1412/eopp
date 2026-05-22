@@ -1,20 +1,73 @@
 import { log } from "@/logger";
 
+function getCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  const item = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(prefix));
+  if (!item) return null;
+  return item.slice(prefix.length);
+}
+
+function getFacilityModeHeader(): string {
+  return localStorage.getItem("encryptedSettings") ? "true" : "false";
+}
+
+export function getEoppHeaders(
+  hasJsonBody: boolean,
+  extraHeaders?: Record<string, string>,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "ru,en;q=0.9",
+    FacilityMode: getFacilityModeHeader(),
+    "User-Local-Time": new Date().toISOString(),
+  };
+
+  if (hasJsonBody) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const xsrfToken = getCookie("XSRF-TOKEN");
+  if (xsrfToken) {
+    headers["X-XSRF-TOKEN"] = decodeURIComponent(xsrfToken);
+  }
+
+  return {
+    ...headers,
+    ...extraHeaders,
+  };
+}
+
+export function eoppFetch(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const hasJsonBody = init.body !== undefined;
+  const extraHeaders = Object.fromEntries(
+    new Headers(init.headers).entries(),
+  ) as Record<string, string>;
+
+  return fetch(url, {
+    ...init,
+    headers: getEoppHeaders(hasJsonBody, extraHeaders),
+    credentials: "include",
+    mode: init.mode ?? "cors",
+  });
+}
+
 export async function httpRequest(
   method: string,
   url: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
-  return fetch(url, {
+  return eoppFetch(url, {
     method,
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Content-Type": "application/json",
-      ...extraHeaders,
-    },
-    credentials: "include",
+    headers: extraHeaders,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   }).then(async (res) => {
     if (res.status === 429) {
       return Promise.reject({ status: 429, body: null });
@@ -32,23 +85,56 @@ export async function httpRequest(
   });
 }
 
+function abortError(): DOMException {
+  return new DOMException("Pipeline stopped by user", "AbortError");
+}
+
+function checkAbort(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw abortError();
+  }
+}
+
+async function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  checkAbort(signal);
+  if (!signal) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+    const handleAbort = () => {
+      clearTimeout(timeoutId);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
 export async function retryOn429<T>(
   fn: () => Promise<T>,
   retries: number,
   delayMs: number,
   label: string = "",
+  signal?: AbortSignal,
 ): Promise<T> {
   for (let i = 0; i <= retries; i++) {
+    checkAbort(signal);
     try {
       return await fn();
     } catch (err) {
+      checkAbort(signal);
       const error = err as { status?: number };
       if (error.status === 429 && i < retries) {
         const lbl = label ? ` [${label}]` : "";
         log(
           `Получен 429, повтор через ${delayMs / 1000}с (попытка ${i + 1}/${retries})${lbl}`,
         );
-        await new Promise((r) => setTimeout(r, delayMs));
+        await waitForRetry(delayMs, signal);
         continue;
       }
       throw err;
@@ -62,6 +148,7 @@ export async function retryWith429And400<T>(
   retry429: { enabled: boolean; maxRetries: number; delayMs: number },
   retry400: { enabled: boolean; maxRetries: number; delayMs: number },
   label: string = "",
+  signal?: AbortSignal,
 ): Promise<T> {
   let last429Error: unknown;
   let last400Error: unknown;
@@ -74,9 +161,11 @@ export async function retryWith429And400<T>(
   );
 
   for (let i = 0; i < maxTotalAttempts; i++) {
+    checkAbort(signal);
     try {
       return await fn();
     } catch (err) {
+      checkAbort(signal);
       const error = err as { status?: number };
       const status = error.status;
       const lbl = label ? ` [${label}]` : "";
@@ -91,7 +180,7 @@ export async function retryWith429And400<T>(
         log(
           `Получен 429, повтор через ${retry429.delayMs / 1000}с (429-попытка ${attempts429}/${retry429.maxRetries})${lbl}`,
         );
-        await new Promise((r) => setTimeout(r, retry429.delayMs));
+        await waitForRetry(retry429.delayMs, signal);
         continue;
       }
 
@@ -105,7 +194,7 @@ export async function retryWith429And400<T>(
         log(
           `Получен 400, повтор через ${retry400.delayMs / 1000}с (400-попытка ${attempts400}/${retry400.maxRetries})${lbl}`,
         );
-        await new Promise((r) => setTimeout(r, retry400.delayMs));
+        await waitForRetry(retry400.delayMs, signal);
         continue;
       }
 

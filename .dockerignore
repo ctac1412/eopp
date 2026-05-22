@@ -11,6 +11,7 @@ __pycache__
 data
 prod
 certs
+*.crt
 .ruff_cache
 .pytest_cache
 .hars
@@ -18,3 +19,4 @@ Makefile
 README.md
 AGENTS.md
 *.md
+eopp_original.js

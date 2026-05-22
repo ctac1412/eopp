@@ -28,7 +28,10 @@ build-extension:
 build-extension-dev:
 	cd yandex-browser-plugin && DEV_BUILD=true npm run build
 
-build-crx: build-extension
+typecheck-extension:
+	cd yandex-browser-plugin && npm run typecheck
+
+build-crx: typecheck-extension build-extension
 	@echo "Packing extension to CRX..."
 	@"C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/yandex-browser-plugin/dist" --no-sandbox --pack-extension-key="$(CURDIR)/data/my.pem"
 	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/my-helper-v' + $$ver + '.crx'); if (Test-Path '$(CURDIR)/yandex-browser-plugin/dist.crx') { Remove-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' }; Write-Host ('CRX created: plugins/my-helper-v' + $$ver + '.crx')"
@@ -90,6 +93,12 @@ deploy-logs:
 
 deploy-rollback:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/rollback.ps1"
+
+deploy-ssl-staging:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/setup-ssl-ip.ps1" -Staging
+
+deploy-ssl:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/setup-ssl-ip.ps1"
 
 # === Migrations ===
 

@@ -79,10 +79,11 @@ class FailUsageBody(BaseModel):
 
 
 class GenerateCaptchaBody(BaseModel):
-    facilityId: str
-    timeSlotData: str
+    facilityId: str | None = None
+    timeSlotData: str | None = None
     reservationId: str | None = None
     encryptedTso: str | None = None
+    payload: dict[str, Any] | None = None
 
 
 class AdminAuthBody(BaseModel):

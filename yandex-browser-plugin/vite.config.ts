@@ -22,7 +22,7 @@ if (fs.existsSync(envServerPath)) {
 const copyStaticFiles = () => ({
   name: "copy-static",
   closeBundle() {
-    const staticFiles = ["icon.png", "icon128.png"];
+    const staticFiles = ["icon.png", "icon128.png", "page-interceptor.js"];
     const cssSrc = resolve(__dirname, "src", "content.css");
     const bgSrc = resolve(__dirname, "background.js");
     const outDir = resolve(__dirname, "dist");
@@ -54,7 +54,7 @@ const copyStaticFiles = () => ({
     const manifest = {
       manifest_version: 3,
       name: "Помощник",
-      version: "1.3.4",
+      version: "1.3.7",
       description: "Быстрые заметки прямо на странице",
       icons: {
         "48": "icon.png",
@@ -87,7 +87,19 @@ const copyStaticFiles = () => ({
           ],
           js: ["content.js"],
           css: ["content.css"],
-          run_at: "document_idle",
+          run_at: "document_start",
+        },
+      ],
+      web_accessible_resources: [
+        {
+          resources: ["page-interceptor.js"],
+          matches: [
+            "https://eopp.epd-portal.ru/*",
+            `*://${serverNoProtocol}/*`,
+            "http://localhost:8765/*",
+            "http://127.0.0.1:8765/*",
+            "http://127.0.0.1:8766/*",
+          ],
         },
       ],
     };

@@ -26,8 +26,58 @@ export type EndpointName =
   | "submitReschedule"
   | "submitCreate";
 
+export interface EoppVehicleData {
+  vehicleId?: string;
+  vehicleTypeId?: number;
+  vehicleType?: string;
+  subTypeId?: number;
+  subType?: string;
+  regNumber?: string;
+  status?: number;
+  isArchive?: boolean;
+}
+
+export interface EoppReservationRaw {
+  id?: string;
+  reservationRequestCode?: string;
+  status?: number;
+  facilityId?: string;
+  vehicleData?: EoppVehicleData[];
+  isSpecialCargo?: boolean;
+  typeOfTransportation?: number;
+  reservedSlots?: string[] | null;
+}
+
+export interface EoppFacilityRaw {
+  id?: string;
+  name?: string;
+  tz?: number;
+  isWorks?: boolean;
+  isReadonly?: boolean;
+  settings?: {
+    approveReservation?: {
+      cargo?: boolean;
+      specialCargo?: boolean;
+    };
+    nonArrival?: {
+      tsoBooking?: boolean;
+    };
+  };
+  mode?: {
+    facilityId?: string;
+    modeType?: number;
+    reservationLock?: {
+      eopp?: boolean;
+      epgu?: boolean;
+      tso?: boolean;
+    };
+    isFacilityStopped?: boolean;
+  };
+}
+
 export interface ReservationData {
-  raw: Record<string, unknown>;
+  raw: EoppReservationRaw;
+  facilityRaw?: EoppFacilityRaw;
 }
 
 export interface InjectorConfig {
@@ -35,7 +85,7 @@ export interface InjectorConfig {
   facilityId: string;
   vehicleId: string;
   reservationId: string;
-  transportType: 1 | 2;
+  transportType: 1 | 2 | 3 | 4;
   slotDate: string;
   mode: "reschedule" | "create";
   timeOrder: string[][];
@@ -70,16 +120,27 @@ export interface Slot {
   count: number;
   slotCaption: string;
   intervalIndex: number;
+  reservedSlots?: string[];
 }
 
 export interface SlotsResponse {
   slots: Slot[];
 }
 
+export type AvailableDatesResponse = string[];
+
+export interface CaptchaTile {
+  tileId: string;
+  imageData: string;
+}
+
 export interface CaptchaResponse {
   token: string;
-  image: string;
-  variants: Array<{ tiles: string[] }>;
+  puzzle: {
+    tiles: CaptchaTile[];
+    variantsCapture: string[][];
+  };
+  type?: number;
 }
 
 export interface SolvedAnswer {
@@ -98,6 +159,7 @@ export interface ApiKeyStatusResponse {
 }
 
 export interface CaptchaValidationResponse {
+  isValid?: boolean;
   successToken: string;
 }
 
@@ -118,6 +180,7 @@ export interface SlotDict {
   count: number;
   slotCaption: string;
   intervalIndex: number;
+  reservedSlots?: string[];
 }
 
 export interface TimeOrderPreset {

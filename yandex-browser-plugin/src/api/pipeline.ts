@@ -134,13 +134,14 @@ function serializeError(err: unknown): string {
 async function retryWithConfig<T>(
   fn: () => Promise<T>,
   endpoint: EndpointName,
+  signal?: AbortSignal,
 ): Promise<T> {
   const config = useInjectorStore.getState().config;
   const rc = getEndpointRetry(config, endpoint);
   if (!rc.enabled) {
     return fn();
   }
-  return retryOn429(fn, rc.maxRetries, rc.delayMs, endpoint);
+  return retryOn429(fn, rc.maxRetries, rc.delayMs, endpoint, signal);
 }
 
 /**
@@ -150,6 +151,7 @@ async function retryWithConfig<T>(
 async function retrySlotsWithConfig<T>(
   fn: () => Promise<T>,
   config: InjectorConfig,
+  signal?: AbortSignal,
 ): Promise<T> {
   const rc = config.retryPerEndpoint.getAvailableSlots;
   const retry429 = {
@@ -162,7 +164,7 @@ async function retrySlotsWithConfig<T>(
     maxRetries: rc.retry400MaxRetries,
     delayMs: rc.retry400DelayMs,
   };
-  return retryWith429And400(fn, retry429, retry400, "getAvailableSlots");
+  return retryWith429And400(fn, retry429, retry400, "getAvailableSlots", signal);
 }
 
 /**
@@ -182,7 +184,7 @@ async function runCaptchaPipeline(
   }
 
   const captchaResponse = await withAbort(
-    retryWithConfig(() => generateCaptcha(config, slotData), "generateCaptcha"),
+    retryWithConfig(() => generateCaptcha(config, slotData, signal), "generateCaptcha", signal),
     signal,
   );
 
@@ -213,6 +215,7 @@ async function runCaptchaPipeline(
     retryWithConfig(
       () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
       "validateCaptcha",
+      signal,
     ),
     signal,
   );
@@ -228,7 +231,7 @@ async function runCaptchaPipeline(
     ? "submitCreate"
     : "submitReschedule";
   const submitResponse = await withAbort(
-    retryWithConfig(() => submitFn(config, slotData, validationResponse), endpointName),
+    retryWithConfig(() => submitFn(config, slotData, validationResponse, signal), endpointName, signal),
     signal,
   );
 
@@ -386,6 +389,7 @@ function resetPipelineState(config: InjectorConfig): void {
  */
 async function registerUsageAndFetchSlots(
   config: InjectorConfig,
+  signal?: AbortSignal,
 ): Promise<SlotsResponse> {
   if (!config.apiKey) {
     throw new Error("apiKey обязателен");
@@ -400,8 +404,9 @@ async function registerUsageAndFetchSlots(
   log("Usage log зарегистрирован");
 
   const slotsResponse = await retrySlotsWithConfig(
-    () => getAvailableSlots(config),
+    () => getAvailableSlots(config, signal),
     config,
+    signal,
   );
   return slotsResponse;
 }
@@ -583,7 +588,7 @@ export async function main(config: InjectorConfig, signal?: AbortSignal): Promis
 
   try {
     checkAbort(signal);
-    const slotsResponse = await withAbort(registerUsageAndFetchSlots(config), signal);
+    const slotsResponse = await withAbort(registerUsageAndFetchSlots(config, signal), signal);
     checkAbort(signal);
     await withAbort(runWithRetryLoop(config, slotsResponse, signal), signal);
   } catch (err) {

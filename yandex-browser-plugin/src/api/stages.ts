@@ -2,6 +2,7 @@ import type {
   InjectorConfig,
   Slot,
   SlotsResponse,
+  AvailableDatesResponse,
   CaptchaResponse,
   CaptchaValidationResponse,
   SolvedAnswer,
@@ -10,23 +11,76 @@ import { httpRequest } from "./client";
 import { sendMessageToBackground } from "./background";
 import { log } from "@/logger";
 import { useInjectorStore } from "@/store";
+import {
+  buildCaptchaContext,
+  buildReschedulePayload,
+  buildSubmitDraftPayload,
+  getEoppTransportType,
+} from "./eopp-contract";
+
+type LegacyCaptchaResponse = {
+  token?: string;
+  variants?: Array<{ tiles: string[] }>;
+  puzzle?: CaptchaResponse["puzzle"];
+};
+
+type EoppCaptchaResponseV2 = {
+  token?: string;
+  front?: {
+    tiles?: CaptchaResponse["puzzle"]["tiles"];
+    variantsCapture?: string[][];
+    type?: number;
+  };
+};
+
+function normalizeCaptchaResponse(raw: unknown): CaptchaResponse {
+  const response = raw as LegacyCaptchaResponse & EoppCaptchaResponseV2;
+
+  if (response.front?.tiles && response.front?.variantsCapture) {
+    return {
+      token: response.token || "",
+      puzzle: {
+        tiles: response.front.tiles,
+        variantsCapture: response.front.variantsCapture,
+      },
+      type: response.front.type,
+    };
+  }
+
+  if (response.puzzle?.tiles && response.puzzle?.variantsCapture) {
+    return {
+      token: response.token || "",
+      puzzle: response.puzzle,
+    };
+  }
+
+  if (response.variants) {
+    return {
+      token: response.token || "",
+      puzzle: {
+        tiles: [],
+        variantsCapture: response.variants.map((variant) => variant.tiles),
+      },
+    };
+  }
+
+  throw new Error("Unexpected captcha generation response format");
+}
 
 export async function getAvailableSlots(
   config: InjectorConfig,
+  signal?: AbortSignal,
 ): Promise<SlotsResponse> {
   useInjectorStore.getState().setStage("slots");
 
   const isCreateReservation = config.mode === "create";
-  // const transportType = config.transportType;
-  const transportType = 1;
+  const transportType = getEoppTransportType(config);
   let url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${config.facilityId}&vehicleId=${config.vehicleId}&date=${config.slotDate}&transportType=${transportType}&isCreateReservation=${isCreateReservation}`;
   if (config.mode !== "create") {
     url += `&reservationId=${config.reservationId}`;
   }
 
-  const response = await httpRequest("GET", url, undefined, {
-    FacilityMode: "false",
-  });
+  const response = await httpRequest("GET", url, undefined, undefined, signal);
 
   const slotsResponse = response as SlotsResponse;
   const slots = slotsResponse.slots || [];
@@ -35,29 +89,40 @@ export async function getAvailableSlots(
   return slotsResponse;
 }
 
+export async function getAvailableDates(
+  config: InjectorConfig,
+  signal?: AbortSignal,
+): Promise<AvailableDatesResponse> {
+  const transportType = getEoppTransportType(config);
+  let url = `/reservations-api/v1/timeslot/AvailableDates?facilityId=${config.facilityId}&fromDate=${config.slotDate}&transportType=${transportType}`;
+  if (config.vehicleId) {
+    url += `&vehicleId=${config.vehicleId}`;
+  }
+
+  const response = await httpRequest("GET", url, undefined, undefined, signal);
+  return response as AvailableDatesResponse;
+}
+
 export async function generateCaptcha(
   config: InjectorConfig,
   slot: { time: string },
+  signal?: AbortSignal,
 ): Promise<CaptchaResponse> {
   useInjectorStore.getState().setStage("captcha");
 
   const payload = {
-    facilityId: config.facilityId,
-    timeSlotData: `${config.slotDate}T${slot.time}.000Z`,
-    reservationId: config.reservationId,
-    encryptedTso: null,
+    payload: buildCaptchaContext(config, slot),
   };
 
   const response = await httpRequest(
     "POST",
     "/reservations-api/v1/captcha",
     payload,
-    {
-      FacilityMode: "false",
-    },
+    undefined,
+    signal,
   );
   log("Капча сгенерирована");
-  return response as CaptchaResponse;
+  return normalizeCaptchaResponse(response);
 }
 
 export async function solveCaptcha(
@@ -109,25 +174,22 @@ export async function validateCaptcha(
   captchaData: CaptchaResponse,
   slot: { time: string },
   solvedAnswer: SolvedAnswer,
+  signal?: AbortSignal,
 ): Promise<CaptchaValidationResponse> {
   useInjectorStore.getState().setStage("validating");
 
   const payload = {
     captchaToken: captchaData.token,
     answer: solvedAnswer.variantTiles,
-    facilityId: config.facilityId,
-    timeSlotData: `${config.slotDate}T${slot.time}.000Z`,
-    reservationId: config.reservationId,
-    encryptedTso: null,
+    payload: buildCaptchaContext(config, slot),
   };
 
   const response = await httpRequest(
     "POST",
     "/reservations-api/v1/captcha-validate",
     payload,
-    {
-      FacilityMode: "false",
-    },
+    undefined,
+    signal,
   );
   useInjectorStore.getState().setCaptchaValidated(true);
   const storeState = useInjectorStore.getState();
@@ -137,27 +199,24 @@ export async function validateCaptcha(
 
 export async function submitReschedule(
   config: InjectorConfig,
-  slot: { slotCaption: string; intervalIndex: number },
+  slot: Slot,
   captchaValidation: CaptchaValidationResponse,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   useInjectorStore.getState().setStage("submitting");
 
-  const payload = {
-    reservationRequestId: config.reservationId,
-    timeslot: `${config.slotDate.split("-").slice(1).reverse().join(".")}, ${slot.slotCaption}`,
-    date: config.slotDate,
-    // transportType: config.transportType,
-    transportType: 1,
-    intervalIndex: slot.intervalIndex,
-    facilityId: config.facilityId,
-    captchaToken: captchaValidation.successToken,
-    encryptedTso: null,
-  };
+  const payload = buildReschedulePayload(
+    config,
+    slot,
+    captchaValidation.successToken,
+  );
 
   const response = await httpRequest(
     "POST",
     "/reservations-api/v1/Reschedule",
     payload,
+    undefined,
+    signal,
   );
   const resp = response as {
     title?: string;
@@ -179,29 +238,22 @@ export async function submitCreate(
   config: InjectorConfig,
   slot: { intervalIndex: number },
   captchaValidation: CaptchaValidationResponse,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   useInjectorStore.getState().setStage("submitting");
 
-  const payload = {
-    arrivalDatePlan: config.slotDate,
-    captchaToken: captchaValidation.successToken,
-    encryptedTso: null,
-    facilityId: config.facilityId,
-    intervalIndex: slot.intervalIndex,
-    isTso: false,
-    modeType: 1,
-    reservationId: config.reservationId,
-    transportType: 1,
-    // transportType: config.transportType,
-  };
+  const payload = buildSubmitDraftPayload(
+    config,
+    slot,
+    captchaValidation.successToken,
+  );
 
   const response = await httpRequest(
     "POST",
     "/reservations-api/v1/SubmitDraft",
     payload,
-    {
-      FacilityMode: "false",
-    },
+    undefined,
+    signal,
   );
   const resp = response as {
     title?: string;

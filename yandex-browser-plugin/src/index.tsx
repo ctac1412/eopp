@@ -1,14 +1,137 @@
 import { createRoot } from "react-dom/client";
 import { App } from "@/App";
 import { useInjectorStore } from "@/store";
-import type { InjectorConfig, PageInfo } from "@/types";
+import { eoppFetch } from "@/api/client";
+import type {
+  EoppFacilityRaw,
+  EoppReservationRaw,
+  InjectorConfig,
+  PageInfo,
+} from "@/types";
+import { EoppTransportType, getPrimaryVehicleId } from "@/api/eopp-contract";
 import {
   shouldInject,
   createDefaultConfig,
-  getDefaultSlotDate,
   loadSavedConfig,
 } from "@/constants";
 import cssContent from "@/content.css?inline";
+
+const USE_PAGE_REQUEST_CACHE = true;
+const INTERCEPTOR_SOURCE = "eopp-helper-page-interceptor";
+
+const cachedReservationRawById = new Map<string, EoppReservationRaw>();
+const cachedFacilityRawById = new Map<string, EoppFacilityRaw>();
+
+type InterceptorMessage = {
+  source?: string;
+  kind?: "reservationRaw" | "facilityRaw";
+  id?: string;
+  payload?: unknown;
+};
+
+function installPageRequestCache(): void {
+  if (!USE_PAGE_REQUEST_CACHE || window.location.hostname !== "eopp.epd-portal.ru") {
+    return;
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || event.origin !== window.location.origin) return;
+
+    const data = event.data as InterceptorMessage;
+    if (data?.source !== INTERCEPTOR_SOURCE || !data.id || !data.payload) {
+      return;
+    }
+
+    if (data.kind === "reservationRaw") {
+      cachedReservationRawById.set(data.id, data.payload as EoppReservationRaw);
+    }
+    if (data.kind === "facilityRaw") {
+      cachedFacilityRawById.set(data.id, data.payload as EoppFacilityRaw);
+    }
+  });
+
+  const injectScript = () => {
+    const target = document.documentElement || document.head || document.body;
+    if (!target) {
+      console.warn("[EOPP Helper] cannot inject interceptor yet: no document target");
+      return false;
+    }
+
+    const script = document.createElement("script");
+    script.src = chrome.runtime.getURL("page-interceptor.js");
+    script.onload = () => {
+      script.remove();
+    };
+    script.onerror = (error) => {
+      console.warn("[EOPP Helper] page interceptor script failed", error);
+    };
+    target.appendChild(script);
+    return true;
+  };
+
+  if (!injectScript()) {
+    window.addEventListener("DOMContentLoaded", injectScript, { once: true });
+  }
+}
+
+async function fetchFacilityRaw(
+  facilityId: string,
+): Promise<EoppFacilityRaw | null> {
+  if (!facilityId) return null;
+
+  try {
+    const response = await eoppFetch(
+      `https://eopp.epd-portal.ru/facility/Facility/get-facility/${facilityId}`,
+      {
+        method: "GET",
+      },
+    );
+
+    if (!response.ok) {
+      console.warn("[EOPP Helper] Failed to fetch facility raw", {
+        facilityId,
+        status: response.status,
+      });
+      return null;
+    }
+
+    return (await response.json()) as EoppFacilityRaw;
+  } catch (error) {
+    console.warn("[EOPP Helper] Failed to fetch facility raw", error);
+    return null;
+  }
+}
+
+async function fetchReservationRaw(
+  reservationId: string,
+): Promise<EoppReservationRaw> {
+  const cached = USE_PAGE_REQUEST_CACHE
+    ? cachedReservationRawById.get(reservationId)
+    : null;
+  if (cached) {
+    return cached;
+  }
+
+  const apiResponse = await eoppFetch(
+    `https://eopp.epd-portal.ru/reservations-api/v1/${reservationId}`,
+    {
+      method: "GET",
+    },
+  );
+  return (await apiResponse.json()) as EoppReservationRaw;
+}
+
+async function getFacilityRaw(
+  facilityId: string,
+): Promise<EoppFacilityRaw | null> {
+  const cached = USE_PAGE_REQUEST_CACHE
+    ? cachedFacilityRawById.get(facilityId)
+    : null;
+  if (cached) {
+    return cached;
+  }
+  return fetchFacilityRaw(facilityId);
+}
 
 function injectButton(info: PageInfo): void {
   const btn = document.createElement("button");
@@ -22,36 +145,29 @@ function injectButton(info: PageInfo): void {
       return;
     }
 
-    let params: { facilityId: string; vehicleId: string; transportType: 1 | 2 };
-    let reservationRaw: Record<string, unknown> | null = null;
+    let params: {
+      facilityId: string;
+      vehicleId: string;
+      transportType: EoppTransportType;
+    };
+    let reservationRaw: EoppReservationRaw | null = null;
+    let facilityRaw: EoppFacilityRaw | null = null;
 
     if (actualInfo.isLocalhost) {
       params = {
         facilityId: "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
         vehicleId: "test-vehicle-id",
-        transportType: 1,
+        transportType: EoppTransportType.Cargo,
       };
     } else {
-      const apiResponse = await fetch(
-        `https://eopp.epd-portal.ru/reservations-api/v1/${actualInfo.reservationId}`,
-        {
-          credentials: "include",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Accept-Language": "ru,en;q=0.9",
-            FacilityMode: "false",
-          },
-          method: "GET",
-          mode: "cors",
-        },
-      );
-      const json = await apiResponse.json();
+      const json = await fetchReservationRaw(actualInfo.reservationId);
       reservationRaw = json;
       params = {
-        facilityId: json.facilityId,
-        vehicleId: json.vehicleData[0].vehicleId,
-        transportType: 1,
+        facilityId: json.facilityId || "",
+        vehicleId: getPrimaryVehicleId(json, ""),
+        transportType: EoppTransportType.Cargo,
       };
+      facilityRaw = await getFacilityRaw(params.facilityId);
     }
 
     const savedApiKey = localStorage.getItem("_k") || "";
@@ -72,7 +188,9 @@ function injectButton(info: PageInfo): void {
     }
     defaultConfig.mode = mode;
     defaultConfig.apiKey = savedApiKey;
-    defaultConfig.reservationData = reservationRaw ? { raw: reservationRaw } : null;
+    defaultConfig.reservationData = reservationRaw
+      ? { raw: reservationRaw, facilityRaw: facilityRaw || undefined }
+      : null;
 
     useInjectorStore.setState({ config: defaultConfig });
 
@@ -126,5 +244,12 @@ function injectButton(info: PageInfo): void {
 
 const info = shouldInject(window.location.href);
 if (info) {
-  injectButton(info);
+  installPageRequestCache();
+  if (document.body) {
+    injectButton(info);
+  } else {
+    window.addEventListener("DOMContentLoaded", () => injectButton(info), {
+      once: true,
+    });
+  }
 }

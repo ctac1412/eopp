@@ -80,6 +80,18 @@ def _load_random_captcha() -> dict:
         return f.read()
 
 
+def _as_eopp_captcha_v2(data: dict) -> dict:
+    puzzle = data.get("puzzle", data)
+    return {
+        "token": data.get("token", "mock-captcha-token"),
+        "front": {
+            "tiles": puzzle.get("tiles", []),
+            "variantsCapture": puzzle.get("variantsCapture", []),
+            "type": puzzle.get("type", 2),
+        },
+    }
+
+
 def register_mock_routes(app):
     @app.post("/mock-config")
     async def set_mock_config(body: MockConfigBody):
@@ -134,7 +146,7 @@ def register_mock_routes(app):
             data = json.loads(data)
         if isinstance(data, dict) and "error" in data:
             return JSONResponse(status_code=500, content=data)
-        return JSONResponse(content=data)
+        return JSONResponse(content=_as_eopp_captcha_v2(data))
 
     @app.post("/reservations-api/v1/captcha-validate")
     async def mock_captcha_validate(request: Request):
@@ -150,6 +162,7 @@ def register_mock_routes(app):
             return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
         return JSONResponse(
             content={
+                "isValid": True,
                 "successToken": "mock-success-token-" + (body.get("captchaToken", "") or "")[:10],
             }
         )
