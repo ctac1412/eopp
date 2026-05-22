@@ -267,8 +267,8 @@ export function ReportsTab({ adminToken, onError }) {
     const isPaid = record.paid === true;
     const hasPrice = record.price != null && record.price > 0;
     if (!hasPrice) return <span className="text-muted">—</span>;
-    if (isPaid) return <span className="badge bg-success">Оплачено</span>;
-    return <span className="badge bg-danger">Не оплачено</span>;
+    if (isPaid) return <span className="badge bg-success reports-paid-badge" title="Оплачено">Опл.</span>;
+    return <span className="badge bg-danger reports-paid-badge" title="Не оплачено">Нет</span>;
   };
 
   const renderClip = (value, className = "") => (
@@ -454,15 +454,15 @@ export function ReportsTab({ adminToken, onError }) {
                   <th className="text-center">Тип</th>
                   <th className="text-center">Статус</th>
                   <th>Дата</th>
-                  <th>Дата слота</th>
+                  <th>Слот</th>
                   <th>ФИО</th>
                   <th>Компания</th>
-                  <th>Номер машины</th>
+                  <th>Машина</th>
                   <th className="text-end">Цена</th>
                   <th>Счёт</th>
-                  <th className="text-center">Оплата</th>
+                  <th className="text-center">Опл.</th>
                   <th>Ошибка</th>
-                  <th className="text-center" style={{ width: "80px" }}>Действия</th>
+                  <th className="text-center"></th>
                 </tr>
               </thead>
               <tbody>
@@ -518,7 +518,7 @@ export function ReportsTab({ adminToken, onError }) {
                               onClick={() => toggleDetails(record)}
                               title={isExpanded ? "Свернуть детали" : "Показать детали"}
                             >
-                              {isExpanded ? "Скрыть" : "Детали"}
+                              {isExpanded ? "Скр." : "Дет."}
                             </button>
                             <button
                               className="btn btn-sm btn-outline-secondary me-1"

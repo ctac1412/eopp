@@ -112,22 +112,22 @@ export function groupByCompany(records) {
 }
 
 const ERROR_STAGE_INFO = {
-  slots: { category: "slots", label: "Получение слотов", tone: "danger", step: 1 },
-  stage1: { category: "slots", label: "Получение слотов", tone: "danger", step: 1 },
-  captcha: { category: "captcha", label: "Генерация капчи", tone: "danger", step: 2 },
-  stage2: { category: "captcha", label: "Генерация капчи", tone: "danger", step: 2 },
-  solving: { category: "captcha", label: "Решение капчи", tone: "danger", step: 3 },
-  stage3: { category: "captcha", label: "Решение капчи", tone: "danger", step: 3 },
-  validating: { category: "captcha", label: "Проверка капчи", tone: "danger", step: 4 },
-  stage4: { category: "captcha", label: "Проверка капчи", tone: "danger", step: 4 },
-  submitting: { category: "submit", label: "Отправка брони", tone: "danger", step: 5 },
-  stage5: { category: "submit", label: "Отправка брони", tone: "danger", step: 5 },
-  api: { category: "api", label: "EOPP API", tone: "danger" },
-  server: { category: "server", label: "Сервер", tone: "danger" },
-  network: { category: "network", label: "Сеть", tone: "warning" },
-  timeout: { category: "timeout", label: "Таймаут", tone: "warning" },
+  slots: { category: "slots", label: "Не нашли слоты", tone: "danger", step: 1 },
+  stage1: { category: "slots", label: "Не нашли слоты", tone: "danger", step: 1 },
+  captcha: { category: "captcha", label: "Не получили капчу", tone: "danger", step: 2 },
+  stage2: { category: "captcha", label: "Не получили капчу", tone: "danger", step: 2 },
+  solving: { category: "captcha", label: "Не решили капчу", tone: "danger", step: 3 },
+  stage3: { category: "captcha", label: "Не решили капчу", tone: "danger", step: 3 },
+  validating: { category: "captcha", label: "Провалили капчу", tone: "danger", step: 4 },
+  stage4: { category: "captcha", label: "Провалили капчу", tone: "danger", step: 4 },
+  submitting: { category: "submit", label: "EOPP не принял запрос", tone: "danger", step: 5 },
+  stage5: { category: "submit", label: "EOPP не принял запрос", tone: "danger", step: 5 },
+  api: { category: "api", label: "EOPP отказал", tone: "danger" },
+  server: { category: "server", label: "Сервер упал", tone: "danger" },
+  network: { category: "network", label: "Не было сети", tone: "warning" },
+  timeout: { category: "timeout", label: "Не дождались ответа", tone: "warning" },
   test: { category: "test", label: "Тест", tone: "secondary" },
-  other: { category: "other", label: "Другое", tone: "secondary" },
+  other: { category: "other", label: "Не распознали ошибку", tone: "secondary" },
 };
 
 function normalizeErrorText(value) {
@@ -138,28 +138,28 @@ function inferErrorInfo(record) {
   const text = normalizeErrorText(`${record.error_message || ""} ${record.error_stage || ""}`);
 
   if (text.includes("429") || text.includes("too many requests")) {
-    return { category: "eopp-limit", label: "Лимит EOPP / 429", tone: "warning" };
+    return { category: "eopp-limit", label: "Уперлись в лимит", tone: "warning" };
   }
   if (text.includes("captchanotexistfreetimeslot")) {
     return { category: "slot-lost", label: "Слот ушёл", tone: "warning", step: 4 };
   }
   if (text.includes("allslotsoccupiedoninterval") || text.includes("all slots occupied") || text.includes("all_slots")) {
-    return { category: "slots", label: "Слот занят", tone: "warning", step: 1 };
+    return { category: "slots", label: "Слот был занят", tone: "warning", step: 1 };
   }
   if (text.includes("timeout") || text.includes("тайм")) {
-    return { category: "timeout", label: "Таймаут", tone: "warning" };
+    return { category: "timeout", label: "Не дождались ответа", tone: "warning" };
   }
   if (text.includes("network") || text.includes("failed to fetch") || text.includes("fetch failed")) {
-    return { category: "network", label: "Сеть", tone: "warning" };
+    return { category: "network", label: "Не было сети", tone: "warning" };
   }
   if (text.includes("401") || text.includes("403") || text.includes("api key") || text.includes("ключ")) {
-    return { category: "auth", label: "Ключ / доступ", tone: "danger" };
+    return { category: "auth", label: "Не было доступа", tone: "danger" };
   }
   if (text.includes("captcha") || text.includes("капч")) {
-    return { category: "captcha", label: "Капча", tone: "danger" };
+    return { category: "captcha", label: "Ошибка капчи", tone: "danger" };
   }
   if (text.includes("400")) {
-    return { category: "api", label: "EOPP API / 400", tone: "danger" };
+    return { category: "api", label: "EOPP отклонил", tone: "danger" };
   }
   return null;
 }
@@ -171,10 +171,14 @@ export function getErrorInfo(record) {
 
   const stage = normalizeErrorText(record.error_stage);
   const knownStage = ERROR_STAGE_INFO[stage];
-  if (knownStage) return { rawStage: record.error_stage, ...knownStage };
+  if (knownStage && stage !== "other") {
+    return { rawStage: record.error_stage, ...knownStage };
+  }
 
   const inferred = inferErrorInfo(record);
   if (inferred) return { rawStage: record.error_stage, ...inferred };
+
+  if (knownStage) return { rawStage: record.error_stage, ...knownStage };
 
   if (stage) {
     return {
@@ -185,7 +189,7 @@ export function getErrorInfo(record) {
     };
   }
 
-  return { category: "other", label: "Другое", tone: "secondary" };
+  return { category: "other", label: "Не распознали ошибку", tone: "secondary" };
 }
 
 export function getErrorToneClass(errorInfo) {

@@ -252,5 +252,6 @@ def register_admin_routes(app):
                     key_label = key_info["label"]
             entry = dict(r)
             entry["key_label"] = key_label
+            entry["api_key_id"] = ul["api_key_id"] if ul else None
             result.append(entry)
         return JSONResponse(content=result)

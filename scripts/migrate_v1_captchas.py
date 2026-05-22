@@ -52,6 +52,12 @@ def is_v1_log(logs: list[str] | None) -> bool:
     return not bool(_V2_VERSION_RE.search(logs[0]))
 
 
+def is_v2_log(logs: list[str] | None) -> bool:
+    if not logs:
+        return False
+    return bool(_V2_VERSION_RE.search(logs[0]))
+
+
 def extract_v1_captchas(logs: list[str]) -> list[tuple[str, str, str | None, str | None]]:
     """Парсер v1 логов — эвристический, по контексту."""
     if not logs:
@@ -145,9 +151,11 @@ def migrate(db_path: str = DEV_DB):
         if is_v1_log(logs):
             v1_count += 1
             parsed = extract_v1_captchas(logs)
-        else:
+        elif is_v2_log(logs):
             v2_count += 1
             continue
+        else:
+            parsed = []
 
         if not parsed:
             parsed = [(row["captcha_id"], "passed" if row["status"] == "confirmed" else "failed", None, None)]
