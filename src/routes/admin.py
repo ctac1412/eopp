@@ -183,7 +183,12 @@ def register_admin_routes(app):
         import time
 
         from src.constants import NO_VALID_DIR, VALID_DIR
-        from src.utils import push_sse, assemble_captchas, get_connected_streams
+        from src.utils import (
+            assemble_captchas,
+            get_connected_streams,
+            get_valid_variant_index,
+            push_sse,
+        )
 
         captcha_ids = body.get("captcha_ids", [])
         if not captcha_ids:
@@ -204,7 +209,7 @@ def register_admin_routes(app):
                             puzzle = data.get("puzzle", data)
                             tiles = puzzle.get("tiles", [])
                             variants = puzzle.get("variantsCapture", [])
-                            valid_index = data.get("valid_index")
+                            valid_index = get_valid_variant_index(data)
                             generated = assemble_captchas(tiles, variants, valid_index)
                             push_sse({
                                 "type": "new_captcha",

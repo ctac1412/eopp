@@ -41,6 +41,7 @@ from src.utils import (
     assemble_captchas,
     captcha_hash,
     get_top3_from_solver,
+    get_valid_variant_index,
     next_result_id,
     push_sse,
     source_files,
@@ -68,7 +69,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         data = body.model_dump(exclude={"api_key", "auto_solve", "reservation_id"})
 
         puzzle = data.get("puzzle", data)
-        valid_index = data.get("valid_index")
+        valid_index = get_valid_variant_index(data)
         tiles = puzzle.get("tiles", [])
         variants = puzzle.get("variantsCapture", [])
 
@@ -81,7 +82,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             captcha_id,
         )
 
-        has_valid_index = "valid_index" in data
+        has_valid_index = valid_index is not None
         target_dir = VALID_DIR if has_valid_index else NO_VALID_DIR
         os.makedirs(target_dir, exist_ok=True)
         existing_file = os.path.join(target_dir, f"{captcha_id}.json")

@@ -24,6 +24,7 @@ from captcha_solver import (
     calculate_sobel_continuity,
     prepare_clean_tiles,
 )
+from src.utils import get_valid_variant_index
 
 TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "captcha_examples", "valid")
 TEST_FILES = sorted(glob.glob(os.path.join(TEST_DIR, "*.json")))
@@ -37,8 +38,10 @@ def load_all_data():
         tiles = data["puzzle"].get("tiles", [])
         if not tiles:
             continue
-        expected = data["valid_index"]
         variants = data["puzzle"]["variantsCapture"]
+        expected = get_valid_variant_index(data)
+        if expected is None:
+            continue
         images_dict = prepare_clean_tiles(tiles)
         if not images_dict:
             continue

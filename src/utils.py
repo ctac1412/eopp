@@ -85,6 +85,19 @@ def captcha_hash(data):
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
+def get_valid_variant_index(data: dict) -> int | None:
+    """Return a usable captcha label, or None for unlabeled/invalid examples."""
+    puzzle = data.get("puzzle", data)
+    variants = puzzle.get("variantsCapture", [])
+    valid_index = data.get("valid_index")
+
+    if not isinstance(valid_index, int):
+        return None
+    if valid_index < 0 or valid_index >= len(variants):
+        return None
+    return valid_index
+
+
 def assemble_captchas(tiles, variants, valid_index=None):
     tile_map = {}
     for t in tiles:
@@ -265,12 +278,24 @@ def _run_benchmark_sync():
         }
 
     all_data = []
+    skipped = []
     for filepath in test_files:
         with open(filepath) as f:
             data = json.load(f)
-        expected = data["valid_index"]
-        variants = data["puzzle"]["variantsCapture"]
-        images_dict = prepare_clean_tiles(data["puzzle"]["tiles"])
+        expected = get_valid_variant_index(data)
+        if expected is None:
+            skipped.append(os.path.basename(filepath))
+            continue
+        puzzle = data.get("puzzle", {})
+        variants = puzzle.get("variantsCapture", [])
+        tiles = puzzle.get("tiles", [])
+        if not variants or not tiles:
+            skipped.append(os.path.basename(filepath))
+            continue
+        images_dict = prepare_clean_tiles(tiles)
+        if not images_dict:
+            skipped.append(os.path.basename(filepath))
+            continue
         nv = len(variants)
         metrics = np.zeros((5, nv, 4))
         for et in range(5):
@@ -287,6 +312,16 @@ def _run_benchmark_sync():
                     sobel if not np.isnan(sobel) else float("inf"),
                 ]
         all_data.append((os.path.basename(filepath), expected, nv, metrics))
+
+    total = len(all_data)
+    if total == 0:
+        return {
+            "total": 0,
+            "passed": 0,
+            "coverage_percent": 0,
+            "best_config": None,
+            "skipped": skipped,
+        }
 
     best_correct = 0
     best_config = None
@@ -316,6 +351,7 @@ def _run_benchmark_sync():
             "passed": 0,
             "coverage_percent": 0,
             "best_config": None,
+            "skipped": skipped,
         }
 
     et, wd, ws, wc, wb = best_config
@@ -331,6 +367,7 @@ def _run_benchmark_sync():
             "W_COH": wc,
             "W_SOBEL": wb,
         },
+        "skipped": skipped,
     }
 
 

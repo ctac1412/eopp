@@ -6,11 +6,11 @@
 
 | ID | Задача | Статус | Основные файлы | Заметки |
 | --- | --- | --- | --- | --- |
-| F1 | Счета: фильтры и сводная аналитика | pending | `frontend/src/components/admin/InvoicesTab.jsx`, `src/routes/admin.py`, `src/services/billing_service.py` | Делать как журнал: поиск, статус, период, summary cards. |
-| F2 | Расходы: фильтры и сводная аналитика | pending | `frontend/src/components/admin/ExpensesTab.jsx`, `src/db/expenses.py` | Если API уже отдает все поля, начать с frontend. |
-| F3 | Выплаты: новый визуал, фильтры, аналитика | pending | `frontend/src/components/admin/PayoutsTab.jsx`, `frontend/src/components/admin/PayoutModal.jsx`, `src/db/payouts.py` | Сначала изучить доступные поля. |
-| C1 | Benchmark/captcha examples audit | pending | `tests/test_solve_captcha.py`, `src/utils.py`, `data/captcha_examples/**` | Проверить JSON, `valid_index`, диапазоны, переместить ошибочные. |
-| C2 | Починить сохранение valid example без варианта | pending | `src/utils.py`, routes captcha/admin | Найти, почему пример может стать valid без выбранного ответа. |
+| F1 | Счета: фильтры и сводная аналитика | done | `frontend/src/components/admin/InvoicesTab.jsx` | Добавлены поиск, фильтры, summary cards, улучшенная таблица. |
+| F2 | Расходы: фильтры и сводная аналитика | done | `frontend/src/components/admin/ExpensesTab.jsx` | Добавлены поиск, фильтры, summary cards, распределение. |
+| F3 | Выплаты: новый визуал, фильтры, аналитика | done | `frontend/src/components/admin/PayoutsTab.jsx` | Добавлены фильтры, сводки, участники, детали счетов/расходов. |
+| C1 | Benchmark/captcha examples audit | done | `tests/test_solve_captcha.py`, `src/utils.py`, `data/captcha_examples/**` | Valid set now contains only examples with integer in-range `valid_index`; 41 `null` examples moved to `no_valid`. |
+| C2 | Починить сохранение valid example без варианта | done | `src/utils.py`, routes captcha/admin | `valid_index` is accepted only when it is an integer inside `variantsCapture`; `0` remains a valid first-variant label. |
 | C3 | Frontend labeling mode для капч | planned-only | frontend/admin + backend route TBD | По просьбе можно пока только спланировать. |
 | E1 | UI расширения: обзор и улучшения | pending | `yandex-browser-plugin/src/**` | Предложить/сделать компактнее, скрыть дефолтные настройки. |
 | E2 | Shared slots под feature toggle | done | `src/routes/slots.py`, `src/services/slots_group_service.py`, `yandex-browser-plugin/src/api/**`, `ConfigForm.tsx`, store/types | Реализовано через claim/wait/publish/fail, toggle выключен по умолчанию, fallback сохраняет старое поведение. |
@@ -30,7 +30,6 @@
 
 ## Вопросы к пользователю позже
 
-- Нужно ли считать `valid_index: 0` легитимным ответом, если первый вариант действительно правильный, или в старых файлах это всегда признак "не размечено"?
 - Для тарифа "бронь в 12" точное окно: только 12:00-12:59 или весь высокий период вокруг 12?
 - Telegram: один общий чат администратора или уведомления по компаниям/клиентам тоже нужны?
 
