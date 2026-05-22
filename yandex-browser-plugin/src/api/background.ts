@@ -1,6 +1,8 @@
 import type {
   ApiKeyStatusResponse,
   InjectorConfig,
+  SharedSlotsClaimResponse,
+  SlotsResponse,
 } from "@/types";
 import { CAPTCHA_SERVER, getDefaultScheduleTime } from "@/constants";
 
@@ -134,4 +136,56 @@ export async function registerUsage(
     }
     throw err;
   }
+}
+
+export async function claimSharedSlots(
+  groupKey: string,
+  clientId: string,
+  meta?: Record<string, unknown>,
+): Promise<SharedSlotsClaimResponse> {
+  const response = await sendMessageToBackground("sharedSlotsClaim", {
+    groupKey,
+    clientId,
+    meta,
+  });
+  return response as SharedSlotsClaimResponse;
+}
+
+export async function waitSharedSlots(
+  groupKey: string,
+  clientId: string,
+  waitMs: number,
+): Promise<SharedSlotsClaimResponse> {
+  const response = await sendMessageToBackground("sharedSlotsWait", {
+    groupKey,
+    clientId,
+    waitMs,
+  });
+  return response as SharedSlotsClaimResponse;
+}
+
+export async function publishSharedSlots(
+  groupKey: string,
+  clientId: string,
+  slotsResponse: SlotsResponse,
+): Promise<SharedSlotsClaimResponse> {
+  const response = await sendMessageToBackground("sharedSlotsPublish", {
+    groupKey,
+    clientId,
+    slotsResponse,
+  });
+  return response as SharedSlotsClaimResponse;
+}
+
+export async function failSharedSlots(
+  groupKey: string,
+  clientId: string,
+  error: string,
+): Promise<SharedSlotsClaimResponse> {
+  const response = await sendMessageToBackground("sharedSlotsFail", {
+    groupKey,
+    clientId,
+    error,
+  });
+  return response as SharedSlotsClaimResponse;
 }

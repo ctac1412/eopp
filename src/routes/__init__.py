@@ -18,6 +18,7 @@ from src.routes.api_keys import register_api_key_routes
 from src.routes.usage import register_usage_routes
 from src.routes.captchas import register_captchas_routes
 from src.routes.mock import register_mock_routes
+from src.routes.slots import register_slots_routes
 from src.routes.admin import register_admin_routes
 from src.routes.frontend import register_frontend_routes, register_test_pages
 from src.routes.plugin_files import register_plugin_static_routes
@@ -28,6 +29,7 @@ def register_all_routes(app, captcha_timeout):
     register_captcha_routes(app, captcha_timeout)
     register_api_key_routes(app)
     register_usage_routes(app)
+    register_slots_routes(app)
     register_captchas_routes(app)
     register_admin_routes(app)
     register_mock_routes(app)

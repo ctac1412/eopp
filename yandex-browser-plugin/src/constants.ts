@@ -122,6 +122,8 @@ export function createDefaultConfig(
     retryOnAllSlotsOccupied: true,
     maxSlotRetries: 8,
     slotRetryDelayMs: 500,
+    sharedSlotsEnabled: false,
+    sharedSlotsWaitMs: 1600,
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),
       generateCaptcha: defaultRetryConfig(),

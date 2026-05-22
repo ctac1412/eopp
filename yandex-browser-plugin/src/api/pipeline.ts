@@ -19,14 +19,13 @@ import type {
   InjectorConfig,
   Slot,
   SlotsResponse,
-  CaptchaResponse,
-  SolvedAnswer,
   EndpointName,
-  RetryConfig,
 } from "@/types";
-import { httpRequest, retryOn429, retryWith429And400 } from "./client";
+import { retryOn429, retryWith429And400 } from "./client";
 import {
   getAvailableSlots,
+  getAvailableSlotsUrl,
+  logSlotsResponse,
   generateCaptcha,
   solveCaptcha,
   validateCaptcha,
@@ -34,9 +33,13 @@ import {
   submitCreate,
 } from "./stages";
 import {
+  claimSharedSlots,
   confirmUsage,
+  failSharedSlots,
   failUsage,
+  publishSharedSlots,
   registerUsage,
+  waitSharedSlots,
   openServerUrl,
 } from "./background";
 import { log, setUsageIdPrefix } from "@/logger";
@@ -165,6 +168,104 @@ async function retrySlotsWithConfig<T>(
     delayMs: rc.retry400DelayMs,
   };
   return retryWith429And400(fn, retry429, retry400, "getAvailableSlots", signal);
+}
+
+function getSharedSlotsClientId(): string {
+  const key = "_ss_client_id";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+
+  const generated =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem(key, generated);
+  return generated;
+}
+
+function getSharedSlotsGroupKey(config: InjectorConfig): string {
+  return `available-slots:${getAvailableSlotsUrl(config)}`;
+}
+
+async function fetchSlotsDirect(
+  config: InjectorConfig,
+  signal?: AbortSignal,
+): Promise<SlotsResponse> {
+  return retrySlotsWithConfig(
+    () => getAvailableSlots(config, signal),
+    config,
+    signal,
+  );
+}
+
+async function fetchSlotsWithSharedGroup(
+  config: InjectorConfig,
+  signal?: AbortSignal,
+): Promise<SlotsResponse> {
+  if (!config.sharedSlotsEnabled) {
+    return fetchSlotsDirect(config, signal);
+  }
+
+  const groupKey = getSharedSlotsGroupKey(config);
+  const clientId = getSharedSlotsClientId();
+  const waitMs = Math.max(0, config.sharedSlotsWaitMs || 1600);
+
+  try {
+    const claim = await withAbort(
+      claimSharedSlots(groupKey, clientId, {
+        facilityId: config.facilityId,
+        vehicleId: config.vehicleId,
+        slotDate: config.slotDate,
+        mode: config.mode,
+        reservationId: config.reservationId,
+      }),
+      signal,
+    );
+
+    if (claim.status === "ready" && claim.slots_response) {
+      log(`Общие слоты: использую опубликованный ответ группы (${claim.waiters || 0} ожидали)`);
+      logSlotsResponse(claim.slots_response);
+      return claim.slots_response;
+    }
+
+    if (claim.role === "master") {
+      log("Общие слоты: этот клиент мастер, запрашиваю EOPP и публикую результат");
+      try {
+        const slotsResponse = await fetchSlotsDirect(config, signal);
+        try {
+          await withAbort(publishSharedSlots(groupKey, clientId, slotsResponse), signal);
+          log("Общие слоты: результат опубликован для соседних клиентов");
+        } catch (publishErr) {
+          log(`Общие слоты: не удалось опубликовать результат (${serializeError(publishErr)})`);
+        }
+        return slotsResponse;
+      } catch (err) {
+        await failSharedSlots(groupKey, clientId, serializeError(err)).catch(() => {});
+        throw err;
+      }
+    }
+
+    log(`Общие слоты: жду ответ мастера до ${waitMs} мс`);
+    const waited = await withAbort(waitSharedSlots(groupKey, clientId, waitMs), signal);
+    if (waited.status === "ready" && waited.slots_response) {
+      log("Общие слоты: получил ответ мастера, EOPP не запрашиваю");
+      logSlotsResponse(waited.slots_response);
+      return waited.slots_response;
+    }
+
+    if (waited.status === "failed") {
+      log(`Общие слоты: мастер не получил слоты (${waited.error || "unknown"}), fallback на прямой запрос`);
+    } else {
+      log("Общие слоты: мастер не успел ответить, fallback на прямой запрос");
+    }
+    return fetchSlotsDirect(config, signal);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
+    log(`Общие слоты: координация недоступна, fallback на прямой запрос (${serializeError(err)})`);
+    return fetchSlotsDirect(config, signal);
+  }
 }
 
 /**
@@ -403,12 +504,7 @@ async function registerUsageAndFetchSlots(
   setUsageIdPrefix(usageLogId);
   log("Usage log зарегистрирован");
 
-  const slotsResponse = await retrySlotsWithConfig(
-    () => getAvailableSlots(config, signal),
-    config,
-    signal,
-  );
-  return slotsResponse;
+  return fetchSlotsWithSharedGroup(config, signal);
 }
 
 /**

@@ -73,20 +73,28 @@ export async function getAvailableSlots(
 ): Promise<SlotsResponse> {
   useInjectorStore.getState().setStage("slots");
 
+  const url = getAvailableSlotsUrl(config);
+  const response = await httpRequest("GET", url, undefined, undefined, signal);
+
+  const slotsResponse = response as SlotsResponse;
+  logSlotsResponse(slotsResponse);
+  return slotsResponse;
+}
+
+export function getAvailableSlotsUrl(config: InjectorConfig): string {
   const isCreateReservation = config.mode === "create";
   const transportType = getEoppTransportType(config);
   let url = `/reservations-api/v1/timeslot/AvailableSlots?facilityId=${config.facilityId}&vehicleId=${config.vehicleId}&date=${config.slotDate}&transportType=${transportType}&isCreateReservation=${isCreateReservation}`;
   if (config.mode !== "create") {
     url += `&reservationId=${config.reservationId}`;
   }
+  return url;
+}
 
-  const response = await httpRequest("GET", url, undefined, undefined, signal);
-
-  const slotsResponse = response as SlotsResponse;
+export function logSlotsResponse(slotsResponse: SlotsResponse): void {
   const slots = slotsResponse.slots || [];
   const slotsStr = slots.map((s) => `${s.time}(${s.count})`).join(", ");
   log(`Получено ${slots.length} доступных слотов: ${slotsStr}`);
-  return slotsResponse;
 }
 
 export async function getAvailableDates(

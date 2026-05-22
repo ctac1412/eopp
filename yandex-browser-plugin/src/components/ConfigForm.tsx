@@ -686,6 +686,56 @@ const ConfigForm = React.memo(function ConfigForm() {
         )}
       </div>
 
+      <div className="qn-form-section">
+        <h3
+          className="qn-section-title qn-collapsible"
+          onClick={() => toggleSection("sharedSlots")}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          <span className="qn-collapse-icon">
+            {collapsed.sharedSlots ? "▶" : "▼"}
+          </span>{" "}
+          Общие слоты
+        </h3>
+        {!collapsed.sharedSlots && (
+          <>
+            <label className="qn-form-label qn-checkbox-label">
+              <input
+                id="shared-slots-enabled"
+                type="checkbox"
+                checked={config.sharedSlotsEnabled || false}
+                onChange={(e) =>
+                  handleChange("sharedSlotsEnabled", e.target.checked)
+                }
+              />
+              Получать слоты через группу клиентов
+            </label>
+            <div className="qn-form-row">
+              <label className="qn-form-label">
+                Ожидание мастера (мс)
+                <input
+                  id="shared-slots-wait-ms"
+                  className="qn-form-input qn-form-number"
+                  type="number"
+                  min={0}
+                  max={5000}
+                  value={config.sharedSlotsWaitMs || 1600}
+                  onChange={(e) =>
+                    handleChange("sharedSlotsWaitMs", Number(e.target.value))
+                  }
+                  disabled={!config.sharedSlotsEnabled}
+                />
+              </label>
+            </div>
+            <div className="qn-help-text">
+              Первый клиент с теми же параметрами запроса забирает слоты с EOPP
+              и публикует их на сервере. Остальные ждут ответ и продолжают
+              pipeline без своего запроса к EOPP.
+            </div>
+          </>
+        )}
+      </div>
+
       {(
         Object.keys(ENDPOINT_LABELS) as Array<
           keyof InjectorConfig["retryPerEndpoint"]

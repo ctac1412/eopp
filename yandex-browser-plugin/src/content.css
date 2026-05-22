@@ -529,6 +529,13 @@
   margin-bottom: 0;
 }
 
+.qn-help-text {
+  margin-top: 8px;
+  color: #8a94a6;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .qn-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -74,6 +74,58 @@ chrome.runtime.onConnect.addListener((port) => {
             config_json: msg.payload.configJson,
           }),
         });
+      } else if (msg.action === "sharedSlotsClaim") {
+        res = await fetch(`${serverUrl}/slots-group/claim`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            group_key: msg.payload.groupKey,
+            client_id: msg.payload.clientId,
+            meta: msg.payload.meta,
+          }),
+        });
+      } else if (msg.action === "sharedSlotsWait") {
+        res = await fetch(`${serverUrl}/slots-group/wait`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            group_key: msg.payload.groupKey,
+            client_id: msg.payload.clientId,
+            wait_ms: msg.payload.waitMs,
+          }),
+        });
+      } else if (msg.action === "sharedSlotsPublish") {
+        res = await fetch(`${serverUrl}/slots-group/publish`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            group_key: msg.payload.groupKey,
+            client_id: msg.payload.clientId,
+            slots_response: msg.payload.slotsResponse,
+          }),
+        });
+      } else if (msg.action === "sharedSlotsFail") {
+        res = await fetch(`${serverUrl}/slots-group/fail`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            group_key: msg.payload.groupKey,
+            client_id: msg.payload.clientId,
+            error: msg.payload.error,
+          }),
+        });
       } else if (msg.action === "checkStream") {
         res = await fetch(
           `${serverUrl}/check-stream?api_key=${encodeURIComponent(msg.payload.apiKey)}`,

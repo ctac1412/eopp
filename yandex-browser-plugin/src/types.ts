@@ -95,6 +95,8 @@ export interface InjectorConfig {
   retryOnAllSlotsOccupied: boolean;
   maxSlotRetries: number;
   slotRetryDelayMs: number;
+  sharedSlotsEnabled: boolean;
+  sharedSlotsWaitMs: number;
   retryPerEndpoint: {
     getAvailableSlots: RetryConfig;
     generateCaptcha: RetryConfig;
@@ -105,6 +107,17 @@ export interface InjectorConfig {
   maxRetries?: number;
   retryDelayMs?: number;
   reservationData: ReservationData | null;
+}
+
+export interface SharedSlotsClaimResponse {
+  group_key: string;
+  role: "master" | "slave";
+  status: "claimed" | "pending" | "ready" | "failed" | "expired";
+  master_id?: string;
+  expires_at?: number;
+  slots_response?: SlotsResponse | null;
+  error?: string | null;
+  waiters?: number;
 }
 
 export type PipelineStage =

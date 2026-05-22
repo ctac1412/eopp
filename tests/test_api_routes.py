@@ -669,5 +669,74 @@ class TestGenerateInvoice:
         assert response.status_code in [400, 500]
 
 
+class TestSlotsGroup:
+    """Tests for shared AvailableSlots coordination."""
+
+    def test_master_claims_and_slave_waits_for_slots(self, client):
+        group_key = "available-slots:test"
+        master = client.post(
+            "/slots-group/claim",
+            json={"group_key": group_key, "client_id": "master-1"},
+        )
+        assert master.status_code == 200
+        assert master.json()["role"] == "master"
+        assert master.json()["status"] == "claimed"
+
+        slave = client.post(
+            "/slots-group/claim",
+            json={"group_key": group_key, "client_id": "slave-1"},
+        )
+        assert slave.status_code == 200
+        assert slave.json()["role"] == "slave"
+        assert slave.json()["status"] == "pending"
+
+        slots_response = {
+            "slots": [
+                {
+                    "id": "slot-1",
+                    "time": "12:00",
+                    "count": 3,
+                    "slotCaption": "12:00",
+                    "intervalIndex": 1,
+                }
+            ]
+        }
+        publish = client.post(
+            "/slots-group/publish",
+            json={
+                "group_key": group_key,
+                "client_id": "master-1",
+                "slots_response": slots_response,
+            },
+        )
+        assert publish.status_code == 200
+        assert publish.json()["status"] == "ready"
+
+        waited = client.post(
+            "/slots-group/wait",
+            json={"group_key": group_key, "client_id": "slave-1", "wait_ms": 10},
+        )
+        assert waited.status_code == 200
+        assert waited.json()["status"] == "ready"
+        assert waited.json()["slots_response"] == slots_response
+
+    def test_non_master_cannot_publish(self, client):
+        group_key = "available-slots:not-master"
+        client.post(
+            "/slots-group/claim",
+            json={"group_key": group_key, "client_id": "master-1"},
+        )
+        response = client.post(
+            "/slots-group/publish",
+            json={
+                "group_key": group_key,
+                "client_id": "slave-1",
+                "slots_response": {"slots": []},
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["error"] == "not_master"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
