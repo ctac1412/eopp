@@ -536,6 +536,40 @@
   line-height: 1.45;
 }
 
+.qn-nested-section {
+  margin-top: 12px;
+  border-top: 1px solid #333;
+  padding-top: 10px;
+}
+
+.qn-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.qn-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #1f1f1f;
+  color: #b8b8b8;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.qn-quick-chip-active {
+  border-color: rgba(76, 175, 80, 0.55);
+  background: rgba(76, 175, 80, 0.12);
+  color: #9be29f;
+}
+
 .qn-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

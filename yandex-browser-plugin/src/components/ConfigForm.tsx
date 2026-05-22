@@ -16,6 +16,14 @@ const TRANSPORT_TYPE_LABELS: Record<InjectorConfig["transportType"], string> = {
   4: "TSO Special",
 };
 
+const RUN_UP_TO_LABELS: Record<number, string> = {
+  1: "Слоты",
+  2: "Капча",
+  3: "Решение",
+  4: "Валидация",
+  5: "Отправка",
+};
+
 function shortId(value?: string | null): string {
   if (!value) return "-";
   return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
@@ -308,6 +316,13 @@ const ConfigForm = React.memo(function ConfigForm() {
   const truck = reservationRaw?.vehicleData?.find((v) => v.subTypeId === 1);
   const facilityName = facilityRaw?.name || config.facilityId;
   const transportLabel = TRANSPORT_TYPE_LABELS[config.transportType];
+  const modeLabel = config.mode === "create" ? "Создание" : "Перенос";
+  const solveModeLabel = config.autoSolve ? "Авто-капча" : "Ручная капча";
+  const sharedSlotsLabel = config.sharedSlotsEnabled
+    ? "Общие слоты"
+    : "Прямой запрос";
+  const runUpToLabel =
+    RUN_UP_TO_LABELS[config.runUpTo] || `Этап ${config.runUpTo}`;
 
   function handleChange<K extends keyof InjectorConfig>(
     key: K,
@@ -462,7 +477,7 @@ const ConfigForm = React.memo(function ConfigForm() {
             ↺
           </button>
         </div>
-        <div className="qn-form-row qn-form-row-3">
+        <div className="qn-form-row">
           <label className="qn-form-label">
             Режим
             <select
@@ -478,29 +493,69 @@ const ConfigForm = React.memo(function ConfigForm() {
             </select>
           </label>
           <label className="qn-form-label">
-            Остановиться на этапе
-            <select
-              id="runUpTo-select"
-              className="qn-form-input"
-              value={config.runUpTo}
-              onChange={(e) => handleChange("runUpTo", Number(e.target.value))}
-            >
-              <option value="1">1 — слоты</option>
-              <option value="2">2 — капча</option>
-              <option value="3">3 — решение капчи</option>
-              <option value="4">4 — валидация</option>
-              <option value="5">5 — отправка</option>
-            </select>
-          </label>
-          <label className="qn-form-label qn-checkbox-label">
+            Дата пропуска
             <input
-              id="autoSolve-checkbox"
-              type="checkbox"
-              checked={config.autoSolve}
-              onChange={(e) => handleChange("autoSolve", e.target.checked)}
+              id="slotDate-input"
+              className="qn-form-input"
+              type="date"
+              value={config.slotDate}
+              onChange={(e) => handleChange("slotDate", e.target.value)}
             />
-            Авто-решение капчи
           </label>
+        </div>
+        <div className="qn-quick-chips">
+          <span className="qn-quick-chip">{modeLabel}</span>
+          <span className="qn-quick-chip">{solveModeLabel}</span>
+          <span
+            className={`qn-quick-chip ${
+              config.sharedSlotsEnabled ? "qn-quick-chip-active" : ""
+            }`}
+          >
+            {sharedSlotsLabel}
+          </span>
+          <span className="qn-quick-chip">До: {runUpToLabel}</span>
+        </div>
+        <div className="qn-nested-section">
+          <h3
+            className="qn-section-title qn-collapsible"
+            onClick={() => toggleSection("advancedMain")}
+            style={{ cursor: "pointer", userSelect: "none" }}
+          >
+            <span className="qn-collapse-icon">
+              {collapsed.advancedMain ? "▶" : "▼"}
+            </span>{" "}
+            Расширенные настройки запуска
+          </h3>
+          {!collapsed.advancedMain && (
+            <div className="qn-form-row">
+              <label className="qn-form-label">
+                Остановиться на этапе
+                <select
+                  id="runUpTo-select"
+                  className="qn-form-input"
+                  value={config.runUpTo}
+                  onChange={(e) =>
+                    handleChange("runUpTo", Number(e.target.value))
+                  }
+                >
+                  <option value="1">1 — слоты</option>
+                  <option value="2">2 — капча</option>
+                  <option value="3">3 — решение капчи</option>
+                  <option value="4">4 — валидация</option>
+                  <option value="5">5 — отправка</option>
+                </select>
+              </label>
+              <label className="qn-form-label qn-checkbox-label">
+                <input
+                  id="autoSolve-checkbox"
+                  type="checkbox"
+                  checked={config.autoSolve}
+                  onChange={(e) => handleChange("autoSolve", e.target.checked)}
+                />
+                Авто-решение капчи
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
@@ -589,18 +644,6 @@ const ConfigForm = React.memo(function ConfigForm() {
                 </option>
               ))}
             </select>
-          </label>
-        </div>
-        <div className="qn-form-row">
-          <label className="qn-form-label">
-            Дата пропуска
-            <input
-              id="slotDate-input"
-              className="qn-form-input"
-              type="date"
-              value={config.slotDate}
-              onChange={(e) => handleChange("slotDate", e.target.value)}
-            />
           </label>
         </div>
         <TimeOrderPanel />

@@ -30,6 +30,7 @@ export type InjectorStatus =
   | "error";
 
 type CollapsibleSection =
+  | "advancedMain"
   | "slotRetry"
   | "retryGetAvailableSlots"
   | "retryGenerateCaptcha"
@@ -107,6 +108,7 @@ interface InjectorState {
 }
 
 const defaultCollapsed: Record<CollapsibleSection, boolean> = {
+  advancedMain: true,
   slotRetry: true,
   retryGetAvailableSlots: true,
   retryGenerateCaptcha: true,
