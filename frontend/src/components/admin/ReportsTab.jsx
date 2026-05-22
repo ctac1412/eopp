@@ -6,6 +6,8 @@ import {
   REPORT_PRESETS,
   getCompany,
   getCompanyFull,
+  getErrorInfo,
+  getErrorToneClass,
   getFio,
   getFioFull,
   getOpType,
@@ -16,6 +18,7 @@ import {
   getVehicleNumber,
   getVehicleNumberFull,
   groupByCompany,
+  groupFailuresByCategory,
   hasMissingPrice,
   isBillableRecord,
   isTestRecord,
@@ -251,6 +254,11 @@ export function ReportsTab({ adminToken, onError }) {
     missingPrice: filteredRecords.filter(hasMissingPrice).length,
   }), [filteredRecords]);
 
+  const failureSummary = useMemo(
+    () => groupFailuresByCategory(filteredRecords),
+    [filteredRecords],
+  );
+
   if (loading) return <div className="text-center py-4">Загрузка…</div>;
 
   const summary = groupByCompany(filteredRecords);
@@ -343,6 +351,44 @@ export function ReportsTab({ adminToken, onError }) {
         <span className="badge text-bg-dark">Без цены: {metrics.missingPrice}</span>
       </div>
 
+      {failureSummary.length > 0 && (
+        <div className="card mb-3">
+          <div className="card-header fw-semibold">Где ломается pipeline</div>
+          <div className="card-body p-0">
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Категория</th>
+                    <th className="text-center">Pipeline step</th>
+                    <th className="text-center">Ошибок</th>
+                    <th>Пример</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {failureSummary.map((row) => (
+                    <tr key={row.category}>
+                      <td>
+                        <span className={`badge ${getErrorToneClass(row)}`}>{row.label}</span>
+                      </td>
+                      <td className="text-center">{row.step ? `#${row.step}` : "—"}</td>
+                      <td className="text-center fw-semibold">{row.count}</td>
+                      <td className="small text-muted" title={row.lastMessage || ""}>
+                        {row.lastMessage
+                          ? row.lastMessage.length > 120
+                            ? `${row.lastMessage.slice(0, 120)}…`
+                            : row.lastMessage
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Company summary */}
       {summary.length > 0 && (
         <div className="card mb-3">
@@ -422,6 +468,7 @@ export function ReportsTab({ adminToken, onError }) {
                   filteredRecords.map((record, idx) => {
                     const isExpanded = expandedRecordId === record.id;
                     const opType = getOpType(record);
+                    const errorInfo = getErrorInfo(record);
                     return (
                       <React.Fragment key={record.id}>
                         <tr>
@@ -449,7 +496,13 @@ export function ReportsTab({ adminToken, onError }) {
                           <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
                           <td className="small" title={record.error_message || ""}>
-                            {record.error_stage && <div className="text-danger fw-semibold">{record.error_stage}</div>}
+                            {record.status === "failed" && (
+                              <div className="mb-1">
+                                <span className={`badge ${getErrorToneClass(errorInfo)}`}>
+                                  {errorInfo.label}
+                                </span>
+                              </div>
+                            )}
                             {record.error_message ? (
                               <span className="text-danger">
                                 {record.error_message.length > 80 ? `${record.error_message.slice(0, 80)}…` : record.error_message}

@@ -111,6 +111,111 @@ export function groupByCompany(records) {
   return Object.entries(groups).map(([name, counts]) => ({ name, ...counts }));
 }
 
+const ERROR_STAGE_INFO = {
+  slots: { category: "slots", label: "Получение слотов", tone: "danger", step: 1 },
+  stage1: { category: "slots", label: "Получение слотов", tone: "danger", step: 1 },
+  captcha: { category: "captcha", label: "Генерация капчи", tone: "danger", step: 2 },
+  stage2: { category: "captcha", label: "Генерация капчи", tone: "danger", step: 2 },
+  solving: { category: "captcha", label: "Решение капчи", tone: "danger", step: 3 },
+  stage3: { category: "captcha", label: "Решение капчи", tone: "danger", step: 3 },
+  validating: { category: "captcha", label: "Проверка капчи", tone: "danger", step: 4 },
+  stage4: { category: "captcha", label: "Проверка капчи", tone: "danger", step: 4 },
+  submitting: { category: "submit", label: "Отправка брони", tone: "danger", step: 5 },
+  stage5: { category: "submit", label: "Отправка брони", tone: "danger", step: 5 },
+  api: { category: "api", label: "EOPP API", tone: "danger" },
+  server: { category: "server", label: "Сервер", tone: "danger" },
+  network: { category: "network", label: "Сеть", tone: "warning" },
+  timeout: { category: "timeout", label: "Таймаут", tone: "warning" },
+  test: { category: "test", label: "Тест", tone: "secondary" },
+  other: { category: "other", label: "Другое", tone: "secondary" },
+};
+
+function normalizeErrorText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function inferErrorInfo(record) {
+  const text = normalizeErrorText(`${record.error_message || ""} ${record.error_stage || ""}`);
+
+  if (text.includes("429") || text.includes("too many requests")) {
+    return { category: "eopp-limit", label: "Лимит EOPP / 429", tone: "warning" };
+  }
+  if (text.includes("allslotsoccupiedoninterval") || text.includes("all slots occupied") || text.includes("all_slots")) {
+    return { category: "slots", label: "Слот занят", tone: "warning", step: 1 };
+  }
+  if (text.includes("timeout") || text.includes("тайм")) {
+    return { category: "timeout", label: "Таймаут", tone: "warning" };
+  }
+  if (text.includes("network") || text.includes("failed to fetch") || text.includes("fetch failed")) {
+    return { category: "network", label: "Сеть", tone: "warning" };
+  }
+  if (text.includes("401") || text.includes("403") || text.includes("api key") || text.includes("ключ")) {
+    return { category: "auth", label: "Ключ / доступ", tone: "danger" };
+  }
+  if (text.includes("captcha") || text.includes("капч")) {
+    return { category: "captcha", label: "Капча", tone: "danger" };
+  }
+  if (text.includes("400")) {
+    return { category: "api", label: "EOPP API / 400", tone: "danger" };
+  }
+  return null;
+}
+
+export function getErrorInfo(record) {
+  if (!record || record.status !== "failed") {
+    return { category: "none", label: "—", tone: "secondary" };
+  }
+
+  const stage = normalizeErrorText(record.error_stage);
+  const knownStage = ERROR_STAGE_INFO[stage];
+  if (knownStage) return { rawStage: record.error_stage, ...knownStage };
+
+  const inferred = inferErrorInfo(record);
+  if (inferred) return { rawStage: record.error_stage, ...inferred };
+
+  if (stage) {
+    return {
+      category: stage,
+      label: record.error_stage,
+      tone: "secondary",
+      rawStage: record.error_stage,
+    };
+  }
+
+  return { category: "other", label: "Другое", tone: "secondary" };
+}
+
+export function getErrorToneClass(errorInfo) {
+  if (errorInfo.tone === "warning") return "bg-warning text-dark";
+  if (errorInfo.tone === "danger") return "bg-danger";
+  if (errorInfo.tone === "success") return "bg-success";
+  return "bg-secondary";
+}
+
+export function groupFailuresByCategory(records) {
+  const groups = {};
+  records
+    .filter((record) => record.status === "failed")
+    .forEach((record) => {
+      const info = getErrorInfo(record);
+      if (!groups[info.category]) {
+        groups[info.category] = {
+          ...info,
+          count: 0,
+          records: [],
+          lastMessage: "",
+        };
+      }
+      groups[info.category].count++;
+      groups[info.category].records.push(record);
+      if (!groups[info.category].lastMessage && record.error_message) {
+        groups[info.category].lastMessage = record.error_message;
+      }
+    });
+
+  return Object.values(groups).sort((a, b) => b.count - a.count);
+}
+
 export function getReadyForInvoiceCount(companyRecords) {
   return companyRecords.filter(isBillableRecord).length;
 }

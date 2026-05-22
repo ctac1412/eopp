@@ -2,6 +2,8 @@ import React from "react";
 import { formatMoney } from "../../../utils/format";
 import {
   getCompanyFull,
+  getErrorInfo,
+  getErrorToneClass,
   getFioFull,
   getOpType,
   getStatusClass,
@@ -30,6 +32,7 @@ export function OperationDetails({
   captchaError,
 }) {
   const logs = Array.isArray(record.logs) ? record.logs : [];
+  const errorInfo = getErrorInfo(record);
 
   return (
     <div className="p-3" style={{ background: "var(--surface)", borderTop: "1px solid var(--border)" }}>
@@ -55,8 +58,13 @@ export function OperationDetails({
         <div className="col-12 col-xl-4">
           <h6 className="mb-2">Диагностика</h6>
           <div className="row g-2 mb-3">
-            <div className="col-6"><Field label="Error stage" value={record.error_stage} /></div>
+            <div className="col-6">
+              <div className="text-muted small">Категория</div>
+              <span className={`badge ${getErrorToneClass(errorInfo)}`}>{errorInfo.label}</span>
+            </div>
             <div className="col-6"><Field label="Дата слота" value={record.slot_date} /></div>
+            <div className="col-6"><Field label="Pipeline step" value={errorInfo.step ? `#${errorInfo.step}` : "—"} /></div>
+            <div className="col-6"><Field label="Raw stage" value={record.error_stage} /></div>
             <div className="col-12">
               <Field label="Ошибка" value={record.error_message} />
             </div>
