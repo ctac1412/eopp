@@ -80,7 +80,7 @@
 .reports-log-table th:nth-child(11) { width: 76px; }
 .reports-log-table th:nth-child(12) { width: 52px; }
 .reports-log-table th:nth-child(13) { width: 92px; }
-.reports-log-table th:nth-child(14) { width: 420px; }
+.reports-log-table th:nth-child(14) { width: 150px; }
 .reports-log-table th:nth-child(15) { width: 112px; }
 
 .reports-log-table .badge {

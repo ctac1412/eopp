@@ -501,16 +501,11 @@ export function ReportsTab({ adminToken, onError }) {
                           </td>
                           <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
-                          <td className="small" title={record.error_message || ""}>
+                          <td className="small">
                             <div className="reports-error-cell">
-                              {record.status === "failed" && (
+                              {record.status === "failed" ? (
                                 <span className={`badge ${getErrorToneClass(errorInfo)} reports-error-badge`}>
                                   {errorInfo.label}
-                                </span>
-                              )}
-                              {record.error_message ? (
-                                <span className="text-danger reports-cell-clip">
-                                  {record.error_message}
                                 </span>
                               ) : (
                                 <span className="text-muted">—</span>
