@@ -25,6 +25,9 @@ export function PrepaidPackagesTab({
   const [form, setForm] = useState({ api_key_id: "", balance_amount: "", active: true });
   const [topUpPackage, setTopUpPackage] = useState(null);
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [deductionKeyFilter, setDeductionKeyFilter] = useState("all");
+  const [deductionDateFrom, setDeductionDateFrom] = useState("");
+  const [deductionDateTo, setDeductionDateTo] = useState("");
 
   const keyOptions = useMemo(
     () => (keys || []).map((key) => ({ id: key.id, label: key.label || `#${key.id}` })),
@@ -43,6 +46,18 @@ export function PrepaidPackagesTab({
     const deducted = deductions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return { active: active.length, balance, deducted };
   }, [packages, deductions]);
+
+  const filteredDeductions = useMemo(() => {
+    const from = deductionDateFrom ? new Date(`${deductionDateFrom}T00:00:00`) : null;
+    const to = deductionDateTo ? new Date(`${deductionDateTo}T23:59:59`) : null;
+    return deductions.filter((item) => {
+      const createdAt = item.created_at ? new Date(item.created_at) : null;
+      if (deductionKeyFilter !== "all" && String(item.api_key_id || "") !== deductionKeyFilter) return false;
+      if (from && createdAt && createdAt < from) return false;
+      if (to && createdAt && createdAt > to) return false;
+      return true;
+    });
+  }, [deductions, deductionKeyFilter, deductionDateFrom, deductionDateTo]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -201,7 +216,45 @@ export function PrepaidPackagesTab({
         </table>
       </div>
 
-      <h6 className="mb-2">Журнал списаний</h6>
+      <div className="d-flex justify-content-between align-items-center mb-2">
+        <h6 className="mb-0">Журнал списаний</h6>
+        <span className="text-muted small">Показано: {filteredDeductions.length} из {deductions.length}</span>
+      </div>
+      <div className="row g-2 align-items-end mb-3">
+        <div className="col-12 col-lg-4">
+          <label className="form-label small mb-1">Ключ</label>
+          <select
+            className="form-select form-select-sm"
+            value={deductionKeyFilter}
+            onChange={(e) => setDeductionKeyFilter(e.target.value)}
+          >
+            <option value="all">Все</option>
+            {keyOptions.map((key) => (
+              <option key={key.id} value={key.id}>
+                {key.label} (#{key.id})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-6 col-lg-2">
+          <label className="form-label small mb-1">С даты</label>
+          <input
+            className="form-control form-control-sm"
+            type="date"
+            value={deductionDateFrom}
+            onChange={(e) => setDeductionDateFrom(e.target.value)}
+          />
+        </div>
+        <div className="col-6 col-lg-2">
+          <label className="form-label small mb-1">По дату</label>
+          <input
+            className="form-control form-control-sm"
+            type="date"
+            value={deductionDateTo}
+            onChange={(e) => setDeductionDateTo(e.target.value)}
+          />
+        </div>
+      </div>
       <div className="table-responsive">
         <table className="table table-sm table-hover table-bordered align-middle mb-0">
           <thead className="table-light">
@@ -216,14 +269,14 @@ export function PrepaidPackagesTab({
             </tr>
           </thead>
           <tbody>
-            {deductions.length === 0 ? (
+            {filteredDeductions.length === 0 ? (
               <tr>
                 <td colSpan={7} className="text-center text-muted py-3">
                   Списаний пока нет
                 </td>
               </tr>
             ) : (
-              deductions.map((item) => (
+              filteredDeductions.map((item) => (
                 <tr key={item.id}>
                   <td>{item.id}</td>
                   <td className="small text-nowrap">{formatDate(item.created_at)}</td>
