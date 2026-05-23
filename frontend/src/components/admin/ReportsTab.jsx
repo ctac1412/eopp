@@ -56,7 +56,7 @@ function formatSlotDate(iso) {
   });
 }
 
-export function ReportsTab({ adminToken, onError }) {
+export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hideTest, setHideTest] = useState(true);
@@ -220,6 +220,7 @@ export function ReportsTab({ adminToken, onError }) {
       setInvoiceSelectedLogs([]);
       setSelectedLogIds([]);
       fetchRecords();
+      onInvoiceGenerated?.(data.invoice_id);
     } catch (err) {
       onError?.(err.message);
     }

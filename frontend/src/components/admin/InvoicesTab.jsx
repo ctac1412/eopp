@@ -60,6 +60,7 @@ function invoiceSearchText(invoice, users) {
     invoice.id,
     invoice.invoice_number,
     invoice.comment,
+    invoice.company,
     invoice.total_amount,
     invoice.debt_amount,
     findUserName(users, invoice.commission_user_id),
@@ -70,13 +71,18 @@ function invoiceSearchText(invoice, users) {
     .toLowerCase();
 }
 
-export function InvoicesTab({ adminToken, onError, users }) {
+export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const [invoices, setInvoices] = useState([]);
+  const [companySettings, setCompanySettings] = useState([]);
+  const [companyAliases, setCompanyAliases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+  const [autoCompany, setAutoCompany] = useState("");
+  const [autoIssueComment, setAutoIssueComment] = useState("");
+  const [aliasForm, setAliasForm] = useState({ alias: "", company: "" });
   const [paidFilter, setPaidFilter] = useState("all");
   const [allocationFilter, setAllocationFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -102,9 +108,35 @@ export function InvoicesTab({ adminToken, onError, users }) {
     }
   }, [adminToken, onError]);
 
+  const fetchCompanySettings = useCallback(async () => {
+    try {
+      const [settingsRes, aliasesRes] = await Promise.all([
+        fetch("/admin/company-billing-settings", { headers: adminHeadersJson(adminToken) }),
+        fetch("/admin/company-aliases", { headers: adminHeadersJson(adminToken) }),
+      ]);
+      if (settingsRes.ok) {
+        const data = await settingsRes.json();
+        setCompanySettings(Array.isArray(data) ? data : []);
+      }
+      if (aliasesRes.ok) {
+        const data = await aliasesRes.json();
+        setCompanyAliases(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      onError?.(err.message);
+    }
+  }, [adminToken, onError]);
+
   useEffect(() => {
     fetchInvoices();
-  }, [fetchInvoices]);
+    fetchCompanySettings();
+  }, [fetchInvoices, fetchCompanySettings]);
+
+  useEffect(() => {
+    if (focusInvoiceId) {
+      setSearch(String(focusInvoiceId));
+    }
+  }, [focusInvoiceId]);
 
   const togglePaid = async (invoice) => {
     const newPaid = !invoice.paid;
@@ -150,6 +182,94 @@ export function InvoicesTab({ adminToken, onError, users }) {
     setInvoices((prev) => [newInvoice, ...prev]);
   };
 
+  const refreshBilling = async () => {
+    await Promise.all([fetchInvoices(), fetchCompanySettings()]);
+  };
+
+  const openAutoInvoice = async () => {
+    if (!autoCompany.trim()) return;
+    try {
+      const res = await fetch("/admin/auto-invoices/open", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ company: autoCompany.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await refreshBilling();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
+  const issueAutoInvoice = async () => {
+    if (!autoCompany.trim()) return;
+    try {
+      const res = await fetch("/admin/open-invoices/issue", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ company: autoCompany.trim(), comment: autoIssueComment }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setAutoIssueComment("");
+      await refreshBilling();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
+  const setAutoReopen = async (company, enabled) => {
+    try {
+      const res = await fetch(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ auto_invoice_reopen: enabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchCompanySettings();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
+  const saveAlias = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/admin/company-aliases", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(aliasForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setAliasForm({ alias: "", company: "" });
+      await fetchCompanySettings();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
+  const deleteAlias = async (alias) => {
+    try {
+      const res = await fetch(`/admin/company-aliases/${encodeURIComponent(alias)}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchCompanySettings();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
   const userOptions = useMemo(() => {
     const options = new Map();
     users?.forEach((user) => options.set(String(user.id), user.name));
@@ -163,6 +283,47 @@ export function InvoicesTab({ adminToken, onError, users }) {
     });
     return [...options.entries()].map(([id, name]) => ({ id, name }));
   }, [invoices, users]);
+
+  const companyRows = useMemo(() => {
+    const rows = new Map();
+    invoices.forEach((invoice) => {
+      if (!invoice.company) return;
+      const current = rows.get(invoice.company) || {
+        company: invoice.company,
+        activeInvoice: null,
+        closedCount: 0,
+      };
+      if (invoice.is_open) current.activeInvoice = invoice;
+      else current.closedCount += 1;
+      rows.set(invoice.company, current);
+    });
+    companySettings.forEach((setting) => {
+      const current = rows.get(setting.company) || {
+        company: setting.company,
+        activeInvoice: null,
+        closedCount: 0,
+      };
+      current.auto_invoice_reopen = !!setting.auto_invoice_reopen;
+      rows.set(setting.company, current);
+    });
+    companyAliases.forEach((alias) => {
+      if (!rows.has(alias.company)) {
+        rows.set(alias.company, {
+          company: alias.company,
+          activeInvoice: null,
+          closedCount: 0,
+          auto_invoice_reopen: false,
+        });
+      }
+    });
+    return [...rows.values()].sort((a, b) => a.company.localeCompare(b.company, "ru"));
+  }, [invoices, companySettings, companyAliases]);
+
+  useEffect(() => {
+    if (!autoCompany && companyRows.length > 0) {
+      setAutoCompany(companyRows[0].company);
+    }
+  }, [autoCompany, companyRows]);
 
   const filteredInvoices = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -228,6 +389,130 @@ export function InvoicesTab({ adminToken, onError, users }) {
         <div className="col-6 col-xl-2"><SummaryCard label="Комиссия" value={formatMoney(metrics.commission)} tone="info" /></div>
         <div className="col-6 col-xl-2"><SummaryCard label="Налог" value={formatMoney(metrics.tax)} tone="warning" /></div>
         <div className="col-6 col-xl-2"><SummaryCard label="Не оплачено" value={`${metrics.unpaidCount} / ${formatMoney(metrics.unpaidTotal)}`} tone="danger" /></div>
+      </div>
+
+      <div className="border rounded bg-dark-subtle p-3 mb-3">
+        <div className="d-flex justify-content-between align-items-center mb-2">
+          <h6 className="mb-0">Авто-счета по компаниям</h6>
+          <span className="text-muted small">Активных: {companyRows.filter((row) => row.activeInvoice).length}</span>
+        </div>
+
+        <div className="row g-2 align-items-end mb-3">
+          <div className="col-12 col-lg-4">
+            <label className="form-label small mb-1">Компания</label>
+            <input
+              className="form-control form-control-sm"
+              list="auto-invoice-companies"
+              value={autoCompany}
+              onChange={(e) => setAutoCompany(e.target.value)}
+              placeholder="Название компании"
+            />
+            <datalist id="auto-invoice-companies">
+              {companyRows.map((row) => (
+                <option key={row.company} value={row.company} />
+              ))}
+            </datalist>
+          </div>
+          <div className="col-12 col-lg-4">
+            <label className="form-label small mb-1">Комментарий фиксации</label>
+            <input
+              className="form-control form-control-sm"
+              value={autoIssueComment}
+              onChange={(e) => setAutoIssueComment(e.target.value)}
+              placeholder="Например: май 2026"
+            />
+          </div>
+          <div className="col-6 col-lg-2">
+            <button className="btn btn-sm btn-outline-primary w-100" onClick={openAutoInvoice}>
+              Создать авто-счет
+            </button>
+          </div>
+          <div className="col-6 col-lg-2">
+            <button className="btn btn-sm btn-primary w-100" onClick={issueAutoInvoice}>
+              Зафиксировать
+            </button>
+          </div>
+        </div>
+
+        <div className="table-responsive mb-3">
+          <table className="table table-sm table-bordered align-middle mb-0">
+            <thead className="table-light">
+              <tr>
+                <th>Компания</th>
+                <th>Активный авто-счет</th>
+                <th className="text-end">Долг</th>
+                <th className="text-center">Автооткрытие</th>
+                <th className="text-center">История</th>
+              </tr>
+            </thead>
+            <tbody>
+              {companyRows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center text-muted py-3">
+                    Компаний пока нет
+                  </td>
+                </tr>
+              ) : (
+                companyRows.map((row) => (
+                  <tr key={row.company}>
+                    <td>{row.company}</td>
+                    <td>{row.activeInvoice ? `#${row.activeInvoice.id}` : "—"}</td>
+                    <td className="text-end">{formatMoney(row.activeInvoice?.debt_amount || 0)}</td>
+                    <td className="text-center">
+                      <button
+                        className={`btn btn-sm ${row.auto_invoice_reopen ? "btn-success" : "btn-outline-secondary"}`}
+                        onClick={() => setAutoReopen(row.company, !row.auto_invoice_reopen)}
+                      >
+                        {row.auto_invoice_reopen ? "Вкл" : "Выкл"}
+                      </button>
+                    </td>
+                    <td className="text-center small">{row.closedCount}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <form className="row g-2 align-items-end" onSubmit={saveAlias}>
+          <div className="col-12 col-lg-4">
+            <label className="form-label small mb-1">Алиас компании</label>
+            <input
+              className="form-control form-control-sm"
+              value={aliasForm.alias}
+              onChange={(e) => setAliasForm((prev) => ({ ...prev, alias: e.target.value }))}
+              placeholder="Как приходит из логов"
+            />
+          </div>
+          <div className="col-12 col-lg-4">
+            <label className="form-label small mb-1">Нормальное название</label>
+            <input
+              className="form-control form-control-sm"
+              value={aliasForm.company}
+              onChange={(e) => setAliasForm((prev) => ({ ...prev, company: e.target.value }))}
+              placeholder="Как вести биллинг"
+            />
+          </div>
+          <div className="col-12 col-lg-2">
+            <button className="btn btn-sm btn-outline-primary w-100" type="submit">
+              Сохранить алиас
+            </button>
+          </div>
+          <div className="col-12 col-lg-2">
+            <select
+              className="form-select form-select-sm"
+              value=""
+              onChange={(e) => e.target.value && deleteAlias(e.target.value)}
+            >
+              <option value="">Удалить алиас</option>
+              {companyAliases.map((alias) => (
+                <option key={alias.alias} value={alias.alias}>
+                  {alias.alias} → {alias.company}
+                </option>
+              ))}
+            </select>
+          </div>
+        </form>
       </div>
 
       <div className="row g-2 align-items-end mb-3">
