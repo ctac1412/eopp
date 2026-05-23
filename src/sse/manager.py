@@ -85,16 +85,16 @@ def unregister_sse_connection(q: asyncio.Queue, api_key_id: int | None):
 
 
 def get_connected_streams() -> list[dict]:
-    from src.db import get_key_by_id
+    from src.repositories import api_key_repo
 
     with lock:
         result = []
         for c in sse_connections:
-            key_info = get_key_by_id(c["api_key_id"]) if c["api_key_id"] else None
+            key_info = api_key_repo.get_key_by_id(c["api_key_id"]) if c["api_key_id"] else None
             result.append(
                 {
                     "api_key_id": c["api_key_id"],
-                    "api_key_label": key_info["label"] if key_info else None,
+                    "api_key_label": key_info.label if key_info else None,
                     "ip": c["ip"],
                     "connected_at": c["connected_at"],
                     "connected_at_iso": (

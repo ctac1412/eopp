@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from zoneinfo._common import ZoneInfoNotFoundError
 
-from src.db import list_usages
+from src.repositories import usage_log_repo
 
 try:
     MSK = ZoneInfo("Europe/Moscow")
@@ -30,28 +30,28 @@ def _parse_iso(value: str | None) -> datetime | None:
     return dt
 
 
-def _usage_in_day(entries: list[dict], day: date) -> list[dict]:
+def _usage_in_day(entries, day: date) -> list:
     start_utc, end_utc = _msk_day_bounds(day)
     result = []
     for item in entries:
-        created = _parse_iso(item.get("created_at"))
+        created = _parse_iso(item.created_at)
         if created and start_utc <= created < end_utc:
             result.append(item)
     return result
 
 
-def _company_totals(entries: list[dict]) -> list[dict]:
+def _company_totals(entries) -> list[dict]:
     grouped: dict[str, dict] = {}
     for row in entries:
-        company = row.get("company") or "—"
+        company = row.company or "—"
         node = grouped.setdefault(
             company,
             {"company": company, "success": 0, "failed": 0, "pending": 0, "revenue": 0},
         )
-        status = row.get("status")
+        status = row.status
         if status == "confirmed":
             node["success"] += 1
-            node["revenue"] += row.get("price") or 0
+            node["revenue"] += row.price or 0
         elif status == "failed":
             node["failed"] += 1
         else:
@@ -61,7 +61,7 @@ def _company_totals(entries: list[dict]) -> list[dict]:
 
 def build_daily_report(day: date | None = None) -> dict:
     target_day = day or datetime.now(MSK).date()
-    all_rows = [row for row in list_usages() if not row.get("is_test")]
+    all_rows = [row for row in usage_log_repo.list_usage() if not row.is_test]
     rows = _usage_in_day(all_rows, target_day)
     success = [row for row in rows if row.get("status") == "confirmed"]
     failed = [row for row in rows if row.get("status") == "failed"]

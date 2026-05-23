@@ -7,7 +7,7 @@ whether a request must present an admin token before it reaches the route.
 from dataclasses import dataclass
 from typing import Literal
 
-from src.db import check_admin_token
+from src.repositories import api_key_repo
 
 MatchKind = Literal["exact", "prefix"]
 
@@ -37,7 +37,7 @@ ADMIN_RULES = (
 
 
 def is_admin_token(token: str | None) -> bool:
-    return bool(token and check_admin_token(token))
+    return bool(token and api_key_repo.check_admin_token(token))
 
 
 def requires_admin(method: str, path: str) -> bool:

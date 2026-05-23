@@ -73,13 +73,13 @@ def get_test_api_key():
     if _TEST_API_KEY is not None:
         return _TEST_API_KEY
 
-    from src.db import create_key, get_key_by_label
+    from src.repositories import api_key_repo
 
-    existing = get_key_by_label("__test_key__")
+    existing = api_key_repo.get_key_by_label("__test_key__")
     if existing:
-        _TEST_API_KEY = existing["key"]
+        _TEST_API_KEY = existing.key
         return _TEST_API_KEY
 
-    row = create_key("__test_key__", max_uses=None)
-    _TEST_API_KEY = row["key"]
+    row = api_key_repo.create_key("__test_key__", max_uses=None)
+    _TEST_API_KEY = row.key
     return _TEST_API_KEY

@@ -5,14 +5,13 @@ import time
 
 from src.captcha_assembly import assemble_captchas, get_valid_variant_index
 from src.constants import NO_VALID_DIR, VALID_DIR
-from src.db import check_admin_token
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
 from src.sse import get_connected_streams, push_sse
 
 
 def authorize_broadcast(admin_token: str | None) -> tuple[int, dict] | None:
-    if admin_token and check_admin_token(admin_token):
+    if admin_token and api_key_repo.check_admin_token(admin_token):
         return None
     return 401, {"error": "Unauthorized"}
 

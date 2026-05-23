@@ -10,7 +10,6 @@ from datetime import datetime
 from fastapi.responses import JSONResponse
 
 from src.benchmark import run_benchmark_cached
-from src.db import check_admin_token as db_check_admin_token
 from src.models import (
     AdminAuthBody,
     CaptchaLabelSaveBody,
@@ -38,6 +37,7 @@ from src.models import (
     UpdateUserBody,
 )
 from src.policies.access_policy import requires_admin
+from src.repositories import api_key_repo, usage_log_repo
 from src.services import billing_service, captcha_service, reporting_service
 from src.sse import get_connected_streams
 from src.test_runner import get_test_stats
@@ -49,7 +49,7 @@ def admin_auth_middleware_factory(app):
         path = request.url.path
         if requires_admin(request.method, path):
             token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
-            if not token or not db_check_admin_token(token):
+            if not token or not api_key_repo.check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         response = await call_next(request)
         return response
@@ -65,7 +65,7 @@ def _json_result(result):
 def register_admin_routes(app):
     @app.post("/admin/auth")
     async def admin_auth(body: AdminAuthBody):
-        if db_check_admin_token(body.token):
+        if api_key_repo.check_admin_token(body.token):
             return JSONResponse(content={"ok": True})
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
@@ -304,7 +304,6 @@ def register_admin_routes(app):
         status: str | None = None,
         api_key_id: int | None = None,
     ):
-        from src.db import get_key_by_id, get_usage_log_entry
         from src.db.captchas import list_captchas
 
         rows = list_captchas()
@@ -312,15 +311,15 @@ def register_admin_routes(app):
         for r in rows:
             if status and r["status"] != status:
                 continue
-            ul = get_usage_log_entry(r["usage_log_id"])
+            ul = usage_log_repo.get_usage_log(r["usage_log_id"])
             if api_key_id:
                 if not ul or ul["api_key_id"] != api_key_id:
                     continue
             key_label = None
             if ul:
-                key_info = get_key_by_id(ul["api_key_id"])
+                key_info = api_key_repo.get_key_by_id(ul["api_key_id"])
                 if key_info:
-                    key_label = key_info["label"]
+                    key_label = key_info.label
             entry = dict(r)
             entry["key_label"] = key_label
             entry["api_key_id"] = ul["api_key_id"] if ul else None
@@ -337,10 +336,9 @@ def register_admin_routes(app):
     async def admin_slots_stream(admin_token: str | None = None):
         from fastapi.responses import StreamingResponse
 
-        from src.db import check_admin_token
         from src.services.slots_group_service import get_events_since, stats
 
-        if not admin_token or not check_admin_token(admin_token):
+        if not admin_token or not api_key_repo.check_admin_token(admin_token):
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
         async def event_generator():
