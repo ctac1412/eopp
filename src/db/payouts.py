@@ -7,11 +7,7 @@ CRUD для выплат с FIFO компенсацией расходов.
 from datetime import UTC, datetime
 
 from src.db.connection import get_connection
-
-
-def _row_to_dict(row):
-    return dict(zip(row.keys(), row))
-
+from src.db.connection import row_to_dict as _row_to_dict
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Низкоуровневые CRUD для payout_invoices / payout_expenses

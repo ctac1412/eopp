@@ -13,6 +13,10 @@ DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "data", "a
 DB_DIR = os.path.dirname(DB_PATH) or os.path.join(PROJECT_DIR, "data")
 
 
+def row_to_dict(row: sqlite3.Row) -> dict:
+    return dict(zip(row.keys(), row))
+
+
 def get_connection():
     db_dir = os.path.dirname(DB_PATH) or DB_DIR
     os.makedirs(db_dir, exist_ok=True)

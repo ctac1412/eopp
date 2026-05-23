@@ -18,11 +18,7 @@ Table: invoices
 from datetime import UTC, datetime
 
 from src.db.connection import get_connection
-
-
-def _row_to_dict(r):
-    """Convert sqlite3.Row to dict."""
-    return dict(zip(r.keys(), r))
+from src.db.connection import row_to_dict as _row_to_dict
 
 
 def insert_invoice(

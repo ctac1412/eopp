@@ -9,10 +9,7 @@ Table: invoice_items
 """
 
 from src.db.connection import get_connection
-
-
-def _row_to_dict(r):
-    return dict(zip(r.keys(), r))
+from src.db.connection import row_to_dict as _row_to_dict
 
 
 def add_item(invoice_id: int, description: str, amount: int, sort_order: int = 0) -> int:
