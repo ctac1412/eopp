@@ -24,30 +24,8 @@ from src.db.api_keys import (
     update_key,
     validate_key,
 )
-from src.db.captchas import (
-    create_captcha_records,
-    list_captchas,
-)
 from src.db.connection import DB_PATH, get_connection
-from src.db.expenses import (
-    get_total_expenses,
-    list_expenses,
-)
 from src.db.init import init_db
-from src.db.payouts import (
-    calculate_payout,
-    delete_payout,
-    get_payout_by_id,
-    list_payouts,
-    recalculate_payout,
-    set_payout_status,
-    update_payout,
-)
-from src.db.prepaid import (
-    create_prepaid_package,
-    delete_prepaid_package,
-    list_prepaid_packages,
-)
 from src.db.tariffs import (
     create_tariff,
     delete_tariff,
@@ -66,8 +44,8 @@ from src.db.usage_log import (
 )
 
 __all__ = [
-    "get_connection",
     "DB_PATH",
+    "get_connection",
     "init_db",
     "create_key",
     "list_keys",
@@ -89,22 +67,8 @@ __all__ = [
     "list_usages",
     "calc_debt",
     "update_usage_log",
-    "list_captchas",
-    "create_captcha_records",
     "get_tariff",
     "create_tariff",
     "update_tariff",
     "delete_tariff",
-    "list_expenses",
-    "get_total_expenses",
-    "list_payouts",
-    "get_payout_by_id",
-    "update_payout",
-    "set_payout_status",
-    "delete_payout",
-    "calculate_payout",
-    "recalculate_payout",
-    "list_prepaid_packages",
-    "create_prepaid_package",
-    "delete_prepaid_package",
 ]
