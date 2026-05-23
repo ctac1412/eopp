@@ -232,6 +232,18 @@ def register_admin_routes(app):
     async def update_admin_company_billing_settings(company: str, body: dict):
         return _json_result(billing_service.update_company_billing_settings(company, body or {}))
 
+    @app.get("/admin/company-aliases")
+    async def list_admin_company_aliases():
+        return _json_result(billing_service.list_company_aliases())
+
+    @app.post("/admin/company-aliases")
+    async def upsert_admin_company_alias(body: dict):
+        return _json_result(billing_service.upsert_company_alias(body or {}))
+
+    @app.delete("/admin/company-aliases/{alias}")
+    async def delete_admin_company_alias(alias: str):
+        return _json_result(billing_service.delete_company_alias(alias))
+
     @app.get("/admin/expenses")
     async def list_admin_expenses():
         return _json_result(billing_service.list_expenses())
@@ -311,6 +323,14 @@ def register_admin_routes(app):
     @app.delete("/admin/prepaid-packages/{id}")
     async def delete_admin_prepaid_package(id: int):
         return _json_result(billing_service.delete_prepaid_package(id))
+
+    @app.post("/admin/prepaid-packages/{id}/top-up")
+    async def top_up_admin_prepaid_package(id: int, body: dict):
+        return _json_result(billing_service.top_up_prepaid_package(id, body or {}))
+
+    @app.get("/admin/prepaid-deductions")
+    async def list_admin_prepaid_deductions(package_id: int | None = None, api_key_id: int | None = None):
+        return _json_result(billing_service.list_prepaid_deductions(package_id, api_key_id))
 
     @app.post("/admin/captchas/send-selected")
     async def send_selected_captchas(body: dict):

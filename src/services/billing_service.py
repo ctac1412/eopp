@@ -210,6 +210,28 @@ def update_company_billing_settings(company: str, body: dict) -> tuple[int, dict
     return 200, billing_repo.upsert_company_billing_settings(company, auto_invoice_reopen)
 
 
+def list_company_aliases() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_company_aliases()
+
+
+def upsert_company_alias(body: dict) -> tuple[int, dict]:
+    alias = (body or {}).get("alias", "")
+    company = (body or {}).get("company", "")
+    if not isinstance(alias, str) or not alias.strip():
+        return 400, {"error": "alias required"}
+    if not isinstance(company, str) or not company.strip():
+        return 400, {"error": "company required"}
+    return 200, billing_repo.upsert_company_alias(alias, company)
+
+
+def delete_company_alias(alias: str) -> tuple[int, dict]:
+    if not alias:
+        return 400, {"error": "alias required"}
+    if not billing_repo.delete_company_alias(alias):
+        return 404, {"error": "Company alias not found"}
+    return 200, {"ok": True}
+
+
 def list_expenses() -> tuple[int, dict]:
     return 200, {
         "expenses": billing_repo.list_expenses(),
@@ -369,3 +391,17 @@ def delete_prepaid_package(package_id: int) -> tuple[int, dict]:
     if not billing_repo.delete_prepaid_package(package_id):
         return 404, {"error": "Prepaid package not found"}
     return 200, {"ok": True}
+
+
+def top_up_prepaid_package(package_id: int, body: dict) -> tuple[int, dict]:
+    amount = (body or {}).get("amount")
+    if not isinstance(amount, int) or amount <= 0:
+        return 400, {"error": "amount must be positive integer"}
+    updated = billing_repo.top_up_prepaid_package(package_id, amount)
+    if not updated:
+        return 404, {"error": "Prepaid package not found"}
+    return 200, updated
+
+
+def list_prepaid_deductions(package_id: int | None = None, api_key_id: int | None = None) -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_prepaid_deductions(package_id=package_id, api_key_id=api_key_id)

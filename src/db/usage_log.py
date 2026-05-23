@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from zoneinfo._common import ZoneInfoNotFoundError
 
+from src.db.company_aliases import normalize_company
 from src.db.connection import get_connection
 from src.db.invoices import link_usage_to_open_invoice
 from src.db.prepaid import deduct_prepaid_for_usage_tx
@@ -34,7 +35,7 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
             "vehicle_number": None,
         }
     op_type = config_json.get("mode")
-    company = get_by_path(config_json, "reservationData", "raw", "userData", "organizationName")
+    company = normalize_company(get_by_path(config_json, "reservationData", "raw", "userData", "organizationName"))
     fio = get_by_path(config_json, "reservationData", "raw", "userData", "fio")
     vehicle_number = None
     vehicle_data = get_by_path(config_json, "reservationData", "raw", "vehicleData", default=[])

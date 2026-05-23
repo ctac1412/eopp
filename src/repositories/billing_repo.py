@@ -21,6 +21,15 @@ from src.db import (
 from src.db import (
     update_usage_log as db_update_usage_log,
 )
+from src.db.company_aliases import (
+    delete_company_alias as db_delete_company_alias,
+)
+from src.db.company_aliases import (
+    list_company_aliases as db_list_company_aliases,
+)
+from src.db.company_aliases import (
+    upsert_company_alias as db_upsert_company_alias,
+)
 from src.db.company_billing_settings import (
     get_company_billing_settings as db_get_company_billing_settings,
 )
@@ -102,7 +111,13 @@ from src.db.prepaid import (
     delete_prepaid_package as db_delete_prepaid_package,
 )
 from src.db.prepaid import (
+    list_prepaid_deductions as db_list_prepaid_deductions,
+)
+from src.db.prepaid import (
     list_prepaid_packages as db_list_prepaid_packages,
+)
+from src.db.prepaid import (
+    top_up_prepaid_package as db_top_up_prepaid_package,
 )
 from src.db.prepaid import (
     update_prepaid_package as db_update_prepaid_package,
@@ -242,6 +257,18 @@ def upsert_company_billing_settings(company: str, auto_invoice_reopen: bool) -> 
     return db_upsert_company_billing_settings(company, auto_invoice_reopen)
 
 
+def list_company_aliases() -> list[dict]:
+    return db_list_company_aliases()
+
+
+def upsert_company_alias(alias: str, company: str) -> dict:
+    return db_upsert_company_alias(alias, company)
+
+
+def delete_company_alias(alias: str) -> bool:
+    return db_delete_company_alias(alias)
+
+
 def list_expenses() -> list[dict]:
     return db_list_expenses()
 
@@ -320,6 +347,17 @@ def update_prepaid_package(
     active: bool | None = None,
 ) -> dict | None:
     return db_update_prepaid_package(package_id, balance_amount, active)
+
+
+def top_up_prepaid_package(package_id: int, amount: int) -> dict | None:
+    return db_top_up_prepaid_package(package_id, amount)
+
+
+def list_prepaid_deductions(
+    package_id: int | None = None,
+    api_key_id: int | None = None,
+) -> list[dict]:
+    return db_list_prepaid_deductions(package_id=package_id, api_key_id=api_key_id)
 
 
 def delete_prepaid_package(package_id: int) -> bool:

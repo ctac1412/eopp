@@ -899,6 +899,73 @@ class TestPrepaidPackagesApi:
         )
         assert deleted.status_code == 200
 
+    def test_prepaid_top_up_and_deductions_list(self, client, admin_token):
+        from src.db import confirm_usage, create_tariff, log_usage
+
+        key = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "prepaid_top_up_key"},
+        ).json()
+        create_tariff(key["id"], price_create=200, price_reschedule=100)
+        created = client.post(
+            "/admin/prepaid-packages",
+            headers={"X-Admin-Token": admin_token},
+            json={"api_key_id": key["id"], "balance_amount": 300, "active": True},
+        ).json()
+
+        topped_up = client.post(
+            f"/admin/prepaid-packages/{created['id']}/top-up",
+            headers={"X-Admin-Token": admin_token},
+            json={"amount": 500},
+        )
+        assert topped_up.status_code == 200
+        assert topped_up.json()["balance_amount"] == 800
+
+        log_id = log_usage(key["key"], "real-prepaid-top-up", "capt-top-up", config_json={"mode": "create"})
+        confirm_usage(log_id)
+
+        deductions = client.get("/admin/prepaid-deductions", headers={"X-Admin-Token": admin_token})
+        assert deductions.status_code == 200
+        assert any(item["usage_log_id"] == log_id and item["amount"] == 200 for item in deductions.json())
+
+
+class TestCompanyBillingApi:
+    def test_company_alias_normalizes_usage_company(self, client, admin_token):
+        from src.db import confirm_usage, create_tariff, get_usage_log_entry, log_usage
+
+        key = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "company_alias_key"},
+        ).json()
+        create_tariff(key["id"], price_create=100, price_reschedule=70)
+
+        created_alias = client.post(
+            "/admin/company-aliases",
+            headers={"X-Admin-Token": admin_token},
+            json={"alias": "ООО Тест", "company": "ООО Тестовая Компания"},
+        )
+        assert created_alias.status_code == 200
+
+        log_id = log_usage(
+            key["key"],
+            "real-company-alias",
+            "capt-company-alias",
+            config_json={
+                "mode": "create",
+                "reservationData": {"raw": {"userData": {"organizationName": "ООО Тест"}}},
+            },
+        )
+        confirm_usage(log_id)
+
+        log = get_usage_log_entry(log_id)
+        assert log["company"] == "ООО Тестовая Компания"
+
+        listed = client.get("/admin/company-aliases", headers={"X-Admin-Token": admin_token})
+        assert listed.status_code == 200
+        assert any(item["alias"] == "ООО Тест" for item in listed.json())
+
 
 class TestCaptchaLabelingApi:
     """Backend labeling flow for unlabeled captchas."""
