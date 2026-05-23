@@ -5,14 +5,11 @@ Business rules live in services; storage calls live behind repositories.
 """
 
 import json
-import os
 from datetime import datetime
 
 from fastapi.responses import JSONResponse
 
 from src.benchmark import run_benchmark_cached
-from src.captcha_assembly import assemble_captchas, get_valid_variant_index
-from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token as db_check_admin_token
 from src.models import (
     AdminAuthBody,
@@ -41,8 +38,8 @@ from src.models import (
     UpdateUserBody,
 )
 from src.policies.access_policy import requires_admin
-from src.services import billing_service, reporting_service
-from src.sse import get_connected_streams, push_sse
+from src.services import billing_service, captcha_service, reporting_service
+from src.sse import get_connected_streams
 from src.test_runner import get_test_stats
 
 
@@ -121,64 +118,15 @@ def register_admin_routes(app):
 
     @app.get("/admin/captcha-label/next")
     async def admin_captcha_label_next():
-        if not os.path.isdir(NO_VALID_DIR):
+        result = captcha_service.read_label_next_captcha()
+        if not result:
             return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
-        files = sorted(f for f in os.listdir(NO_VALID_DIR) if f.endswith(".json"))
-        if not files:
-            return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
-        filename = files[0]
-        path = os.path.join(NO_VALID_DIR, filename)
-        try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            return JSONResponse(status_code=500, content={"error": "failed to read captcha file"})
-        puzzle = data.get("puzzle", data)
-        tiles = puzzle.get("tiles", [])
-        variants = puzzle.get("variantsCapture", [])
-        if not tiles or not variants:
-            return JSONResponse(status_code=422, content={"error": "invalid captcha structure"})
-        valid_index = get_valid_variant_index(data)
-        generated = assemble_captchas(tiles, variants, valid_index)
-        captcha_id = os.path.splitext(filename)[0]
-        return JSONResponse(
-            content={
-                "captcha_id": captcha_id,
-                "filename": filename,
-                "variants_count": len(generated),
-                "images": {str(item["index"]): item["image"] for item in generated},
-            }
-        )
+        return JSONResponse(content=result)
 
     @app.post("/admin/captcha-label/save")
     async def admin_captcha_label_save(body: CaptchaLabelSaveBody):
-        source_path = os.path.join(NO_VALID_DIR, f"{body.captcha_id}.json")
-        if not os.path.exists(source_path):
-            return JSONResponse(status_code=404, content={"error": "captcha file not found"})
-        try:
-            with open(source_path, encoding="utf-8") as f:
-                data = json.load(f)
-            puzzle = data.get("puzzle", data)
-            variants = puzzle.get("variantsCapture", [])
-            if body.variant_index < 0 or body.variant_index >= len(variants):
-                return JSONResponse(
-                    status_code=422, content={"error": "variant_index out of range"}
-                )
-            data["valid_index"] = body.variant_index
-            os.makedirs(VALID_DIR, exist_ok=True)
-            target_path = os.path.join(VALID_DIR, f"{body.captcha_id}.json")
-            with open(target_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.remove(source_path)
-            return JSONResponse(
-                content={
-                    "ok": True,
-                    "captcha_id": body.captcha_id,
-                    "valid_index": body.variant_index,
-                }
-            )
-        except Exception as exc:
-            return JSONResponse(status_code=500, content={"error": f"save failed: {exc}"})
+        status, content = captcha_service.save_captcha_label(body.captcha_id, body.variant_index)
+        return JSONResponse(status_code=status, content=content)
 
     @app.get("/admin/tariffs/{api_key_id}")
     async def get_admin_tariff(api_key_id: int):
@@ -344,59 +292,12 @@ def register_admin_routes(app):
 
     @app.post("/admin/captchas/send-selected")
     async def send_selected_captchas(body: SendSelectedCaptchasBody):
-        import json
-        import os
-        import threading
-        import time
-
-        from src.captcha_assembly import assemble_captchas, get_valid_variant_index
-        from src.constants import NO_VALID_DIR, VALID_DIR
-        from src.sse import get_connected_streams
-
-        captcha_ids = body.captcha_ids
-        if not captcha_ids:
+        if not body.captcha_ids:
             return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
-
-        streams = get_connected_streams()
-        if not streams:
+        sent = captcha_service.replay_captchas(body.captcha_ids)
+        if sent is None:
             return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
-
-        def send_captchas():
-            for cid in captcha_ids:
-                for d in [VALID_DIR, NO_VALID_DIR]:
-                    filepath = os.path.join(d, f"{cid}.json")
-                    if os.path.exists(filepath):
-                        try:
-                            with open(filepath) as f:
-                                data = json.load(f)
-                            puzzle = data.get("puzzle", data)
-                            tiles = puzzle.get("tiles", [])
-                            variants = puzzle.get("variantsCapture", [])
-                            valid_index = get_valid_variant_index(data)
-                            generated = assemble_captchas(tiles, variants, valid_index)
-                            push_sse(
-                                {
-                                    "type": "new_captcha",
-                                    "captcha_id": cid,
-                                    "images": {str(g["index"]): g["image"] for g in generated},
-                                    "count": len(generated),
-                                    "top3": [],
-                                    "created_at": time.time(),
-                                    "timeout": 30,
-                                    "owner_label": "replay",
-                                    "owner_api_key_id": -1,
-                                }
-                            )
-                            print(f"Sent replay captcha {cid}")
-                            time.sleep(1)
-                        except Exception as e:
-                            print(f"Error sending replay captcha {cid}: {e}")
-                        break
-
-        t = threading.Thread(target=send_captchas, daemon=True)
-        t.start()
-
-        return JSONResponse(content={"sent": len(captcha_ids)})
+        return JSONResponse(content={"sent": sent})
 
     @app.get("/admin/captchas")
     async def list_admin_captchas(
