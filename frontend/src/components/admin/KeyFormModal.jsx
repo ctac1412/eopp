@@ -91,6 +91,17 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
                         min="0"
                       />
                     </div>
+                    <div className="col">
+                      <label className="form-label">Бронь 12:00 (₽)</label>
+                      <input
+                        type="number"
+                        value={form.priceCreatePeak}
+                        onChange={(e) => setForm((p) => ({ ...p, priceCreatePeak: e.target.value }))}
+                        placeholder="как перенос"
+                        className="form-control"
+                        min="0"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

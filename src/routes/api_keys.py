@@ -112,6 +112,7 @@ def register_api_key_routes(app):
                 if tariff:
                     result["price_create"] = tariff["price_create"]
                     result["price_reschedule"] = tariff["price_reschedule"]
+                    result["price_create_peak"] = tariff["price_create_peak"]
         return JSONResponse(content=result)
 
     @app.get("/api-key-status")

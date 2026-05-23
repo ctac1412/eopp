@@ -37,7 +37,12 @@ def get_tariff(api_key_id: int) -> tuple[int, dict]:
 
 
 def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
-    return 200, billing_repo.upsert_tariff(api_key_id, body.price_create, body.price_reschedule)
+    return 200, billing_repo.upsert_tariff(
+        api_key_id,
+        body.price_create,
+        body.price_reschedule,
+        body.price_create_peak,
+    )
 
 
 def delete_tariff(api_key_id: int) -> tuple[int, dict]:
@@ -174,6 +179,21 @@ def delete_invoice(invoice_id: int) -> tuple[int, dict]:
     return 200, {"ok": True}
 
 
+def ensure_open_invoice(company: str) -> tuple[int, dict]:
+    if not company:
+        return 400, {"error": "company required"}
+    return 200, billing_repo.ensure_open_invoice(company)
+
+
+def issue_open_invoice(company: str, comment: str = "") -> tuple[int, dict]:
+    if not company:
+        return 400, {"error": "company required"}
+    result = billing_repo.issue_open_invoice(company, comment)
+    if not result:
+        return 404, {"error": "Open invoice not found"}
+    return 200, result
+
+
 def list_expenses() -> tuple[int, dict]:
     return 200, {
         "expenses": billing_repo.list_expenses(),
@@ -298,4 +318,38 @@ def update_user(user_id: int, body) -> tuple[int, dict]:
 def delete_user(user_id: int) -> tuple[int, dict]:
     if not billing_repo.delete_user(user_id):
         return 404, {"error": "User not found"}
+    return 200, {"ok": True}
+
+
+def list_prepaid_packages() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_prepaid_packages()
+
+
+def create_prepaid_package(body: dict) -> tuple[int, dict]:
+    api_key_id = body.get("api_key_id")
+    balance_amount = body.get("balance_amount")
+    active = body.get("active", True)
+    if not isinstance(api_key_id, int):
+        return 400, {"error": "api_key_id required"}
+    if not isinstance(balance_amount, int) or balance_amount < 0:
+        return 400, {"error": "balance_amount must be non-negative integer"}
+    return 200, billing_repo.create_prepaid_package(api_key_id, balance_amount, bool(active))
+
+
+def update_prepaid_package(package_id: int, body: dict) -> tuple[int, dict]:
+    balance_amount = body.get("balance_amount")
+    active = body.get("active")
+    if balance_amount is not None and (not isinstance(balance_amount, int) or balance_amount < 0):
+        return 400, {"error": "balance_amount must be non-negative integer"}
+    if active is not None and not isinstance(active, bool):
+        return 400, {"error": "active must be boolean"}
+    updated = billing_repo.update_prepaid_package(package_id, balance_amount, active)
+    if not updated:
+        return 404, {"error": "Prepaid package not found"}
+    return 200, updated
+
+
+def delete_prepaid_package(package_id: int) -> tuple[int, dict]:
+    if not billing_repo.delete_prepaid_package(package_id):
+        return 404, {"error": "Prepaid package not found"}
     return 200, {"ok": True}

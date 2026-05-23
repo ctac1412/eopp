@@ -61,6 +61,7 @@ def upgrade() -> None:
             api_key_id INTEGER UNIQUE NOT NULL,
             price_create INTEGER NOT NULL,
             price_reschedule INTEGER NOT NULL,
+            price_create_peak INTEGER,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (api_key_id) REFERENCES api_keys(id)

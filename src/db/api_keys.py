@@ -57,6 +57,7 @@ def list_keys() -> list[dict]:
         tariff_map = {r["api_key_id"]: {
             "price_create": r["price_create"],
             "price_reschedule": r["price_reschedule"],
+            "price_create_peak": r["price_create_peak"],
         } for r in tariff_rows}
         for k in keys:
             k["tariff"] = tariff_map.get(k["id"])

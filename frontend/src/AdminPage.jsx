@@ -30,6 +30,7 @@ import {
   UsersTab,
   UserModal,
   CaptchasTab,
+  CaptchaLabelingTab,
 } from "./components/admin";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
@@ -59,6 +60,7 @@ function AdminPage() {
     comment: "",
     priceCreate: "",
     priceReschedule: "",
+    priceCreatePeak: "",
   });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
@@ -442,7 +444,11 @@ function AdminPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      if (editForm.priceCreate !== "" || editForm.priceReschedule !== "") {
+      if (
+        editForm.priceCreate !== "" ||
+        editForm.priceReschedule !== "" ||
+        editForm.priceCreatePeak !== ""
+      ) {
         const tariffBody = {};
         if (editForm.priceCreate !== "") {
           tariffBody.price_create = parseInt(editForm.priceCreate, 10);
@@ -450,6 +456,8 @@ function AdminPage() {
         if (editForm.priceReschedule !== "") {
           tariffBody.price_reschedule = parseInt(editForm.priceReschedule, 10);
         }
+        tariffBody.price_create_peak =
+          editForm.priceCreatePeak !== "" ? parseInt(editForm.priceCreatePeak, 10) : null;
         await fetch(`/admin/tariffs/${showEdit}`, {
           method: "PUT",
           headers: adminHeaders(adminToken),
@@ -514,6 +522,8 @@ function AdminPage() {
       comment: keyObj.comment || "",
       priceCreate: tariff ? String(tariff.price_create) : "1000",
       priceReschedule: tariff ? String(tariff.price_reschedule) : "7000",
+      priceCreatePeak:
+        tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
     });
     setShowEdit(keyObj.id);
   };
@@ -1047,6 +1057,13 @@ function AdminPage() {
         />
       )}
 
+      {activeTab === "labeling" && (
+        <CaptchaLabelingTab
+          adminToken={adminToken}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
       {activeTab === "invoices" && (
         <InvoicesTab adminToken={adminToken} onError={(msg) => setError(msg)} users={users} />
       )}
@@ -1102,7 +1119,7 @@ function AdminPage() {
       )}
 
       {activeTab === "streams" && (
-        <StreamsTab streams={streams} streamsLoading={streamsLoading} />
+        <StreamsTab streams={streams} streamsLoading={streamsLoading} adminToken={adminToken} />
       )}
 
       <KeyFormModal

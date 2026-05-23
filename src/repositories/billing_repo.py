@@ -20,6 +20,8 @@ from src.db.expenses import (
 from src.db.invoice_items import add_item, delete_items_for_invoice
 from src.db.invoices import (
     delete_invoice as db_delete_invoice,
+    ensure_open_invoice as db_ensure_open_invoice,
+    issue_open_invoice as db_issue_open_invoice,
     insert_invoice as db_insert_invoice,
     insert_invoice_with_items as db_insert_invoice_with_items,
     list_invoices as db_list_invoices,
@@ -42,16 +44,37 @@ from src.db.users import (
     list_users as db_list_users,
     update_user as db_update_user,
 )
+from src.db.prepaid import (
+    create_prepaid_package as db_create_prepaid_package,
+    delete_prepaid_package as db_delete_prepaid_package,
+    list_prepaid_packages as db_list_prepaid_packages,
+    update_prepaid_package as db_update_prepaid_package,
+)
 
 
 def get_tariff(api_key_id: int) -> dict | None:
     return db_get_tariff(api_key_id)
 
 
-def upsert_tariff(api_key_id: int, price_create: int, price_reschedule: int) -> dict:
+def upsert_tariff(
+    api_key_id: int,
+    price_create: int,
+    price_reschedule: int,
+    price_create_peak: int | None = None,
+) -> dict:
     if db_get_tariff(api_key_id):
-        return db_update_tariff(api_key_id, price_create, price_reschedule)
-    return db_create_tariff(api_key_id, price_create, price_reschedule)
+        return db_update_tariff(
+            api_key_id,
+            price_create,
+            price_reschedule,
+            price_create_peak,
+        )
+    return db_create_tariff(
+        api_key_id,
+        price_create,
+        price_reschedule,
+        price_create_peak,
+    )
 
 
 def delete_tariff(api_key_id: int) -> bool:
@@ -130,6 +153,14 @@ def delete_invoice(invoice_id: int) -> bool:
     return db_delete_invoice(invoice_id)
 
 
+def ensure_open_invoice(company: str) -> dict:
+    return db_ensure_open_invoice(company)
+
+
+def issue_open_invoice(company: str, comment: str = "") -> dict | None:
+    return db_issue_open_invoice(company, comment)
+
+
 def list_expenses() -> list[dict]:
     return db_list_expenses()
 
@@ -192,3 +223,23 @@ def update_user(user_id: int, name: str) -> dict | None:
 
 def delete_user(user_id: int) -> bool:
     return db_delete_user(user_id)
+
+
+def list_prepaid_packages() -> list[dict]:
+    return db_list_prepaid_packages()
+
+
+def create_prepaid_package(api_key_id: int, balance_amount: int, active: bool = True) -> dict:
+    return db_create_prepaid_package(api_key_id, balance_amount, active)
+
+
+def update_prepaid_package(
+    package_id: int,
+    balance_amount: int | None = None,
+    active: bool | None = None,
+) -> dict | None:
+    return db_update_prepaid_package(package_id, balance_amount, active)
+
+
+def delete_prepaid_package(package_id: int) -> bool:
+    return db_delete_prepaid_package(package_id)

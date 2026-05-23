@@ -98,6 +98,7 @@ export function ApiKeysTab({
               <th>Комментарий</th>
               <th style={{ width: "80px" }}>Бронь</th>
               <th style={{ width: "80px" }}>Перенос</th>
+              <th style={{ width: "95px" }}>Бронь 12:00</th>
               <th style={{ width: "90px" }}>Использование</th>
               <th style={{ width: "80px" }}>Долг</th>
               <th style={{ width: "40px" }}>Актив</th>
@@ -134,6 +135,11 @@ export function ApiKeysTab({
                     </td>
                     <td className="text-center">
                       {tariff ? formatMoney(tariff.price_reschedule) : "—"}
+                    </td>
+                    <td className="text-center">
+                      {tariff && tariff.price_create_peak != null
+                        ? formatMoney(tariff.price_create_peak)
+                        : "—"}
                     </td>
                     <td className="text-center">
                       {k.usage_count ?? 0}{k.max_uses != null ? ` / ${k.max_uses}` : ""}
@@ -177,7 +183,7 @@ export function ApiKeysTab({
 
                   {isExpanded && (
                     <tr>
-                      <td colSpan={11} className="p-0">
+                      <td colSpan={12} className="p-0">
                         <div className="p-3" style={{ background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
                         <UsageHistory
                           keyId={k.id}

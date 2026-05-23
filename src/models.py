@@ -116,6 +116,7 @@ class MockConfigBody(BaseModel):
 class TariffBody(BaseModel):
     price_create: int
     price_reschedule: int
+    price_create_peak: int | None = None
 
 
 class CreateInvoiceBody(BaseModel):
