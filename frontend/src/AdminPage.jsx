@@ -31,6 +31,7 @@ import {
   UserModal,
   CaptchasTab,
   CaptchaLabelingTab,
+  PrepaidPackagesTab,
 } from "./components/admin";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
@@ -87,6 +88,7 @@ function AdminPage() {
   const [payoutPreviewLoading, setPayoutPreviewLoading] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState([]);
   const [availableExpenses, setAvailableExpenses] = useState([]);
+  const [prepaidPackages, setPrepaidPackages] = useState([]);
 
   // Users
   const [users, setUsers] = useState([]);
@@ -176,6 +178,24 @@ function AdminPage() {
         setPayouts(Array.isArray(data) ? data : []);
       } catch (err) {
         setPayouts([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchPrepaidPackages = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/prepaid-packages", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setPrepaidPackages(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setPrepaidPackages([]);
       }
     },
     [adminToken],
@@ -351,6 +371,13 @@ function AdminPage() {
       fetchPayouts(adminToken);
     }
   }, [adminToken, activeTab, fetchPayouts]);
+
+  useEffect(() => {
+    if (adminToken && activeTab === "prepaid") {
+      fetchPrepaidPackages(adminToken);
+      fetchKeys(adminToken);
+    }
+  }, [adminToken, activeTab, fetchPrepaidPackages, fetchKeys]);
 
   useEffect(() => {
     if (adminToken && activeTab === "users") {
@@ -719,6 +746,47 @@ function AdminPage() {
     }
   };
 
+  const handleCreatePrepaidPackage = async (payload) => {
+    try {
+      const res = await fetch("/admin/prepaid-packages", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchPrepaidPackages(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleUpdatePrepaidPackage = async (id, payload) => {
+    try {
+      const res = await fetch(`/admin/prepaid-packages/${id}`, {
+        method: "PATCH",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchPrepaidPackages(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeletePrepaidPackage = async (id) => {
+    try {
+      const res = await fetch(`/admin/prepaid-packages/${id}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchPrepaidPackages(adminToken);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleSetPayoutStatus = async (id, status) => {
     try {
       const res = await fetch(`/admin/payouts/${id}`, {
@@ -1044,6 +1112,17 @@ function AdminPage() {
 
       {activeTab === "invoices" && (
         <InvoicesTab adminToken={adminToken} onError={(msg) => setError(msg)} users={users} />
+      )}
+
+      {activeTab === "prepaid" && (
+        <PrepaidPackagesTab
+          packages={prepaidPackages}
+          keys={keys}
+          onRefresh={() => fetchPrepaidPackages(adminToken)}
+          onCreate={handleCreatePrepaidPackage}
+          onUpdate={handleUpdatePrepaidPackage}
+          onDelete={handleDeletePrepaidPackage}
+        />
       )}
 
       {activeTab === "expenses" && (

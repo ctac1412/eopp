@@ -4,6 +4,7 @@
   { id: "captchas", label: "Капчи" },
   { id: "labeling", label: "Разметка" },
   { id: "invoices", label: "Счета" },
+  { id: "prepaid", label: "Предоплата" },
   { id: "expenses", label: "Расходы" },
   { id: "payouts", label: "Выплаты" },
   { id: "users", label: "Пользователи" },
