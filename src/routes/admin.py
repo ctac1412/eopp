@@ -1,4 +1,4 @@
-"""Admin routes.
+﻿"""Admin routes.
 
 HTTP adapters for admin auth, monitoring, billing, users, and captcha replay.
 Business rules live in services; storage calls live behind repositories.
@@ -317,11 +317,11 @@ def register_admin_routes(app):
 
         captcha_ids = body.get("captcha_ids", [])
         if not captcha_ids:
-            return JSONResponse(status_code=400, content={"error": "РќРµС‚ РІС‹Р±СЂР°РЅРЅС‹С… РєР°РїС‡"})
+            return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
 
         streams = get_connected_streams()
         if not streams:
-            return JSONResponse(status_code=400, content={"error": "РќРµС‚ Р°РєС‚РёРІРЅС‹С… SSE РїРѕРґРєР»СЋС‡РµРЅРёР№"})
+            return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
 
         def send_captchas():
             for cid in captcha_ids:
@@ -426,3 +426,4 @@ def register_admin_routes(app):
                 "X-Accel-Buffering": "no",
             },
         )
+

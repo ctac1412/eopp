@@ -35,7 +35,7 @@ function adminHeadersJson(token) {
 }
 
 function formatDate(iso) {
-  if (!iso) return "вЂ”";
+  if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("ru-RU", {
     day: "2-digit",
@@ -47,7 +47,7 @@ function formatDate(iso) {
 }
 
 function formatSlotDate(iso) {
-  if (!iso) return "вЂ”";
+  if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("ru-RU", {
     day: "2-digit",
@@ -190,7 +190,7 @@ export function ReportsTab({ adminToken, onError }) {
   const handleGenerateInvoice = async (invoiceData) => {
     try {
       if (!invoiceData.logs || invoiceData.logs.length === 0) {
-        onError?.("РќРµС‚ Р·Р°РїРёСЃРµР№ РґР»СЏ СЃС‡С‘С‚Р°");
+        onError?.("Нет записей для счёта");
         return;
       }
 
@@ -214,7 +214,7 @@ export function ReportsTab({ adminToken, onError }) {
         throw new Error(errData.error || errData.detail || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      alert(`РЎС‡С‘С‚ ${data.invoice_number} СЃРѕР·РґР°РЅ! РС‚РѕРіРѕ: ${formatMoney(data.total_amount)}`);
+      alert(`Счёт ${data.invoice_number} создан! Итого: ${formatMoney(data.total_amount)}`);
       setShowInvoiceModal(false);
       setInvoiceSelectedLogs([]);
       fetchRecords();
@@ -224,7 +224,7 @@ export function ReportsTab({ adminToken, onError }) {
   };
 
   const companyOptions = useMemo(
-    () => [...new Set(records.map(getCompany).filter((name) => name !== "вЂ”"))].sort(),
+    () => [...new Set(records.map(getCompany).filter((name) => name !== "—"))].sort(),
     [records],
   );
 
@@ -263,27 +263,27 @@ export function ReportsTab({ adminToken, onError }) {
     [filteredRecords],
   );
 
-  if (loading) return <div className="text-center py-4">Р—Р°РіСЂСѓР·РєР°вЂ¦</div>;
+  if (loading) return <div className="text-center py-4">Загрузка…</div>;
 
   const summary = groupByCompany(filteredRecords);
 
   const renderPaidStatus = (record) => {
     const isPaid = record.paid === true;
-    if (isPaid) return <span className="badge bg-success reports-paid-badge" title="РћРїР»Р°С‡РµРЅРѕ">РћРїР».</span>;
-    if (!record.invoice_id) return <span className="text-muted">вЂ”</span>;
-    return <span className="badge bg-danger reports-paid-badge" title="РќРµ РѕРїР»Р°С‡РµРЅРѕ">РќРµС‚</span>;
+    if (isPaid) return <span className="badge bg-success reports-paid-badge" title="Оплачено">Опл.</span>;
+    if (!record.invoice_id) return <span className="text-muted">—</span>;
+    return <span className="badge bg-danger reports-paid-badge" title="Не оплачено">Нет</span>;
   };
 
   const renderClip = (value, className = "") => (
-    <span className={`reports-cell-clip ${className}`} title={value || "вЂ”"}>
-      {value || "вЂ”"}
+    <span className={`reports-cell-clip ${className}`} title={value || "—"}>
+      {value || "—"}
     </span>
   );
 
   return (
     <div className="reports-page">
       <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
-        <div className="btn-group btn-group-sm" role="group" aria-label="Р¤РёР»СЊС‚СЂ Р¶СѓСЂРЅР°Р»Р°">
+        <div className="btn-group btn-group-sm" role="group" aria-label="Фильтр журнала">
           {REPORT_PRESETS.map((item) => (
             <button
               key={item.id}
@@ -298,80 +298,80 @@ export function ReportsTab({ adminToken, onError }) {
           className={`btn btn-sm ${hideTest ? "btn-primary" : "btn-outline-secondary"}`}
           onClick={() => setHideTest(!hideTest)}
         >
-          {hideTest ? "РўРµСЃС‚РѕРІС‹Рµ СЃРєСЂС‹С‚С‹" : "РўРµСЃС‚РѕРІС‹Рµ РІРёРґРЅС‹"}
+          {hideTest ? "Тестовые скрыты" : "Тестовые видны"}
         </button>
         <button className="btn btn-sm btn-outline-secondary" onClick={fetchRecords}>
-          РћР±РЅРѕРІРёС‚СЊ
+          Обновить
         </button>
         <span className="text-muted small ms-auto">
-          РџРѕРєР°Р·Р°РЅРѕ: {filteredRecords.length} РёР· {records.length}
+          Показано: {filteredRecords.length} из {records.length}
         </span>
       </div>
 
       <div className="row g-2 align-items-end mb-3">
         <div className="col-12 col-xl-4">
-          <label className="form-label small mb-1">РџРѕРёСЃРє</label>
+          <label className="form-label small mb-1">Поиск</label>
           <input
             className="form-control form-control-sm"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="РљРѕРјРїР°РЅРёСЏ, Р±СЂРѕРЅСЊ, РєР°РїС‡Р°, Р¤РРћ, РјР°С€РёРЅР°, РѕС€РёР±РєР°"
+            placeholder="Компания, бронь, капча, ФИО, машина, ошибка"
           />
         </div>
         <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">РљРѕРјРїР°РЅРёСЏ</label>
+          <label className="form-label small mb-1">Компания</label>
           <select className="form-select form-select-sm" value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)}>
-            <option value="all">Р’СЃРµ</option>
+            <option value="all">Все</option>
             {companyOptions.map((company) => <option key={company} value={company}>{company}</option>)}
           </select>
         </div>
         <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">РљР»СЋС‡</label>
+          <label className="form-label small mb-1">Ключ</label>
           <select className="form-select form-select-sm" value={keyFilter} onChange={(event) => setKeyFilter(event.target.value)}>
-            <option value="all">Р’СЃРµ</option>
+            <option value="all">Все</option>
             {keyOptions.map((key) => <option key={key.id} value={key.id}>{key.label}</option>)}
           </select>
         </div>
         <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">РЎС‚Р°С‚СѓСЃ</label>
+          <label className="form-label small mb-1">Статус</label>
           <select className="form-select form-select-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">Р’СЃРµ</option>
-            <option value="confirmed">РЈСЃРїРµС…</option>
-            <option value="failed">РћС€РёР±РєР°</option>
-            <option value="pending">Р’ СЂР°Р±РѕС‚Рµ</option>
+            <option value="all">Все</option>
+            <option value="confirmed">Успех</option>
+            <option value="failed">Ошибка</option>
+            <option value="pending">В работе</option>
           </select>
         </div>
         <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">РўРёРї</label>
+          <label className="form-label small mb-1">Тип</label>
           <select className="form-select form-select-sm" value={opTypeFilter} onChange={(event) => setOpTypeFilter(event.target.value)}>
-            <option value="all">Р’СЃРµ</option>
-            <option value="create">РЎРѕР·РґР°РЅРёРµ</option>
-            <option value="reschedule">РџРµСЂРµРЅРѕСЃ</option>
+            <option value="all">Все</option>
+            <option value="create">Создание</option>
+            <option value="reschedule">Перенос</option>
           </select>
         </div>
       </div>
 
       <div className="d-flex flex-wrap gap-2 mb-3">
-        <span className="badge text-bg-secondary">Р’СЃРµРіРѕ: {metrics.total}</span>
-        <span className="badge text-bg-success">РЈСЃРїРµС€РЅРѕ: {metrics.success}</span>
-        <span className="badge text-bg-danger">РћС€РёР±РѕРє: {metrics.errors}</span>
-        <span className="badge text-bg-warning">Р’ СЂР°Р±РѕС‚Рµ: {metrics.pending}</span>
-        <span className="badge text-bg-primary">Рљ СЃС‡РµС‚Сѓ: {metrics.readyForInvoice}</span>
-        <span className="badge text-bg-dark">Р‘РµР· С†РµРЅС‹: {metrics.missingPrice}</span>
+        <span className="badge text-bg-secondary">Всего: {metrics.total}</span>
+        <span className="badge text-bg-success">Успешно: {metrics.success}</span>
+        <span className="badge text-bg-danger">Ошибок: {metrics.errors}</span>
+        <span className="badge text-bg-warning">В работе: {metrics.pending}</span>
+        <span className="badge text-bg-primary">К счёту: {metrics.readyForInvoice}</span>
+        <span className="badge text-bg-dark">Без цены: {metrics.missingPrice}</span>
       </div>
 
       {failureSummary.length > 0 && (
         <div className="card mb-3">
-          <div className="card-header fw-semibold">Р“РґРµ Р»РѕРјР°РµС‚СЃСЏ pipeline</div>
+          <div className="card-header fw-semibold">Где ломается pipeline</div>
           <div className="card-body p-0">
             <div className="table-responsive">
               <table className="table table-sm table-bordered mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>РљР°С‚РµРіРѕСЂРёСЏ</th>
+                    <th>Категория</th>
                     <th className="text-center">Pipeline step</th>
-                    <th className="text-center">РћС€РёР±РѕРє</th>
-                    <th>РџСЂРёРјРµСЂ</th>
+                    <th className="text-center">Ошибок</th>
+                    <th>Пример</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -380,14 +380,14 @@ export function ReportsTab({ adminToken, onError }) {
                       <td>
                         <span className={`badge ${getErrorToneClass(row)}`}>{row.label}</span>
                       </td>
-                      <td className="text-center">{row.step ? `#${row.step}` : "вЂ”"}</td>
+                      <td className="text-center">{row.step ? `#${row.step}` : "—"}</td>
                       <td className="text-center fw-semibold">{row.count}</td>
                       <td className="small text-muted" title={row.lastMessage || ""}>
                         {row.lastMessage
                           ? row.lastMessage.length > 120
-                            ? `${row.lastMessage.slice(0, 120)}вЂ¦`
+                            ? `${row.lastMessage.slice(0, 120)}…`
                             : row.lastMessage
-                          : "вЂ”"}
+                          : "—"}
                       </td>
                     </tr>
                   ))}
@@ -401,18 +401,18 @@ export function ReportsTab({ adminToken, onError }) {
       {/* Company summary */}
       {summary.length > 0 && (
         <div className="card mb-3">
-          <div className="card-header fw-semibold">РЎРІРѕРґРєР° РїРѕ РєРѕРјРїР°РЅРёСЏРј</div>
+          <div className="card-header fw-semibold">Сводка по компаниям</div>
           <div className="card-body p-0">
             <div className="table-responsive">
               <table className="table table-sm table-bordered mb-0">
                 <thead className="table-light">
                   <tr>
-                    <th>РљРѕРјРїР°РЅРёСЏ</th>
-                    <th className="text-center">РџРµСЂРµРЅРѕСЃС‹</th>
-                    <th className="text-center">Р‘СЂРѕРЅРё</th>
-                    <th className="text-center">РћС€РёР±РєРё</th>
-                    <th className="text-center">Рљ СЃС‡РµС‚Сѓ</th>
-                    <th className="text-end">РЎСѓРјРјР°</th>
+                    <th>Компания</th>
+                    <th className="text-center">Переносы</th>
+                    <th className="text-center">Брони</th>
+                    <th className="text-center">Ошибки</th>
+                    <th className="text-center">К счёту</th>
+                    <th className="text-end">Сумма</th>
                     <th className="text-center"></th>
                   </tr>
                 </thead>
@@ -445,7 +445,7 @@ export function ReportsTab({ adminToken, onError }) {
 
       {/* Main records table */}
       <div className="card">
-        <div className="card-header fw-semibold">Р–СѓСЂРЅР°Р» РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ</div>
+        <div className="card-header fw-semibold">Журнал использования</div>
         <div className="card-body p-0">
           <div className="table-responsive">
             <table className="table table-sm table-hover table-bordered align-middle mb-0 reports-log-table">
@@ -453,25 +453,25 @@ export function ReportsTab({ adminToken, onError }) {
                 <tr>
                   <th className="text-center" style={{ width: "40px" }}>#</th>
                   <th>ID</th>
-                  <th>РўРѕРєРµРЅ</th>
-                  <th className="text-center">РўРёРї</th>
-                  <th className="text-center">РЎС‚Р°С‚СѓСЃ</th>
-                  <th>Р”Р°С‚Р°</th>
-                  <th>РЎР»РѕС‚</th>
-                  <th>Р¤РРћ</th>
-                  <th>РљРѕРјРїР°РЅРёСЏ</th>
-                  <th>РњР°С€РёРЅР°</th>
-                  <th className="text-end">Р¦РµРЅР°</th>
-                  <th>РЎС‡С‘С‚</th>
-                  <th className="text-center">РћРїР».</th>
-                  <th>РћС€РёР±РєР°</th>
+                  <th>Токен</th>
+                  <th className="text-center">Тип</th>
+                  <th className="text-center">Статус</th>
+                  <th>Дата</th>
+                  <th>Слот</th>
+                  <th>ФИО</th>
+                  <th>Компания</th>
+                  <th>Машина</th>
+                  <th className="text-end">Цена</th>
+                  <th>Счёт</th>
+                  <th className="text-center">Опл.</th>
+                  <th>Ошибка</th>
                   <th className="text-center"></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="text-center text-muted py-3">РќРµС‚ Р·Р°РїРёСЃРµР№</td>
+                    <td colSpan={15} className="text-center text-muted py-3">Нет записей</td>
                   </tr>
                 ) : (
                   filteredRecords.map((record, idx) => {
@@ -485,7 +485,7 @@ export function ReportsTab({ adminToken, onError }) {
                           <td className="small text-muted">{record.id}</td>
                           <td className="small">{renderClip(record.label)}</td>
                           <td className="text-center">
-                            <span className={`badge ${opType === "РЎРѕР·РґР°РЅРёРµ" ? "bg-success" : opType === "РџРµСЂРµРЅРѕСЃ" ? "bg-info text-dark" : "bg-secondary"}`}>
+                            <span className={`badge ${opType === "Создание" ? "bg-success" : opType === "Перенос" ? "bg-info text-dark" : "bg-secondary"}`}>
                               {opType}
                             </span>
                           </td>
@@ -500,9 +500,9 @@ export function ReportsTab({ adminToken, onError }) {
                           <td className="small">{renderClip(getCompany(record))}</td>
                           <td className="small">{renderClip(getVehicleNumber(record), "font-monospace")}</td>
                           <td className="small text-end text-nowrap">
-                            {record.price != null ? formatMoney(record.price) : "вЂ”"}
+                            {record.price != null ? formatMoney(record.price) : "—"}
                           </td>
-                          <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "вЂ”"}</td>
+                          <td className="small">{record.invoice_id ? `#${record.invoice_id}` : "—"}</td>
                           <td className="text-center">{renderPaidStatus(record)}</td>
                           <td className="small">
                             <div className="reports-error-cell">
@@ -511,7 +511,7 @@ export function ReportsTab({ adminToken, onError }) {
                                   {errorInfo.label}
                                 </span>
                               ) : (
-                                <span className="text-muted">вЂ”</span>
+                                <span className="text-muted">—</span>
                               )}
                             </div>
                           </td>
@@ -519,16 +519,16 @@ export function ReportsTab({ adminToken, onError }) {
                             <button
                               className={`btn btn-sm ${isExpanded ? "btn-primary" : "btn-outline-secondary"} me-1`}
                               onClick={() => toggleDetails(record)}
-                              title={isExpanded ? "РЎРІРµСЂРЅСѓС‚СЊ РґРµС‚Р°Р»Рё" : "РџРѕРєР°Р·Р°С‚СЊ РґРµС‚Р°Р»Рё"}
+                              title={isExpanded ? "Свернуть детали" : "Показать детали"}
                             >
-                              {isExpanded ? "РЎРєСЂ." : "Р”РµС‚."}
+                              {isExpanded ? "Скр." : "Дет."}
                             </button>
                             <button
                               className="btn btn-sm btn-outline-secondary me-1"
                               onClick={() => openEditModal(record)}
-                              title="Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ"
+                              title="Редактировать"
                             >
-                              вњЏпёЏ
+                              ✏️
                             </button>
                           </td>
                         </tr>

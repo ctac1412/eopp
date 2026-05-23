@@ -1,8 +1,8 @@
-export const ADMIN_TABS = [
+﻿export const ADMIN_TABS = [
   { id: "reports", label: "Журнал" },
   { id: "keys", label: "API Keys" },
   { id: "captchas", label: "Капчи" },
-  { id: "labeling", label: "��������" },
+  { id: "labeling", label: "Разметка" },
   { id: "invoices", label: "Счета" },
   { id: "expenses", label: "Расходы" },
   { id: "payouts", label: "Выплаты" },

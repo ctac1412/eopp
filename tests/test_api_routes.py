@@ -17,17 +17,17 @@ from fastapi.testclient import TestClient
 # === Fixtures ===
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    """РР·РѕР»РёСЂСѓРµРј Р‘Р” РґР»СЏ РєР°Р¶РґРѕРіРѕ С‚РµСЃС‚Р° - РёСЃРїРѕР»СЊР·СѓРµРј РІСЂРµРјРµРЅРЅС‹Р№ С„Р°Р№Р»."""
+    """doc"""
     import src.db.connection as conn_module
     import src.db.init as init_module
 
-    # РЎРѕР·РґР°С‘Рј СѓРЅРёРєР°Р»СЊРЅС‹Р№ temp С„Р°Р№Р»
+    # comment
     test_db = tempfile.mktemp(suffix=".db")
     
-    # РџР°С‚С‡РёРј РїСѓС‚СЊ Рє Р‘Р”
+    # comment
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
     
-    # РџРµСЂРµРёРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј Р‘Р”
+    # comment
     init_module.init_db()
 
     yield
@@ -46,7 +46,7 @@ def isolate_db(monkeypatch):
 
 @pytest.fixture
 def client(isolate_db):
-    """РЎРѕР·РґР°РЅРёРµ С‚РµСЃС‚РѕРІРѕРіРѕ РєР»РёРµРЅС‚Р°."""
+    """doc"""
     from src.app import create_app
 
     app = create_app(use_tests=False)
@@ -55,7 +55,7 @@ def client(isolate_db):
 
 @pytest.fixture
 def admin_token():
-    """Р’РѕР·РІСЂР°С‰Р°РµС‚ С‚РѕРєРµРЅ Р°РґРјРёРЅСЃРєРѕРіРѕ РєР»СЋС‡Р° РёР· Р‘Р” (is_admin=1)."""
+    """doc"""
     from src.db import list_keys
 
     keys = list_keys()
@@ -66,7 +66,7 @@ def admin_token():
 
 @pytest.fixture
 def api_key(client, admin_token):
-    """РЎРѕР·РґР°С‚СЊ API РєР»СЋС‡ РґР»СЏ С‚РµСЃС‚РѕРІ."""
+    """doc"""
     response = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
@@ -77,10 +77,10 @@ def api_key(client, admin_token):
 
 # === API Keys Tests ===
 class TestAPIKeys:
-    """РўРµСЃС‚С‹ API Keys СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_create_key(self, client, admin_token):
-        """РЎРѕР·РґР°РЅРёРµ РєР»СЋС‡Р°."""
+        """doc"""
         response = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
@@ -92,14 +92,14 @@ class TestAPIKeys:
         assert data["max_uses"] == 10
 
     def test_list_keys(self, client, admin_token):
-        """РЎРїРёСЃРѕРє РєР»СЋС‡РµР№."""
+        """doc"""
         client.post("/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "test2"})
         response = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
     def test_validate_key_includes_peak_create_price(self, client, admin_token):
-        """Р’Р°Р»РёРґР°С†РёСЏ РєР»СЋС‡Р° РІРѕР·РІСЂР°С‰Р°РµС‚ РїРѕР»РЅС‹Р№ С‚Р°СЂРёС„ РґР»СЏ РєР»РёРµРЅС‚Р°."""
+        """doc"""
         create = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
@@ -120,7 +120,7 @@ class TestAPIKeys:
         assert data["price_create_peak"] == 9000
 
     def test_update_key(self, client, admin_token):
-        """РћР±РЅРѕРІР»РµРЅРёРµ РєР»СЋС‡Р°."""
+        """doc"""
         create = client.post(
             "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "upd"}
         )
@@ -134,7 +134,7 @@ class TestAPIKeys:
         assert response.json()["label"] == "updated"
 
     def test_delete_key(self, client, admin_token):
-        """РЈРґР°Р»РµРЅРёРµ РєР»СЋС‡Р°."""
+        """doc"""
         create = client.post(
             "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "del"}
         )
@@ -143,19 +143,19 @@ class TestAPIKeys:
         assert response.status_code == 200
 
     def test_validate_key_valid(self, client, admin_token, api_key):
-        """Р’Р°Р»РёРґР°С†РёСЏ РІР°Р»РёРґРЅРѕРіРѕ РєР»СЋС‡Р°."""
+        """doc"""
         response = client.get(f"/validate-key?api_key={api_key}")
         assert response.status_code == 200
         assert response.json()["valid"] is True
 
     def test_validate_key_invalid(self, client):
-        """Р’Р°Р»РёРґР°С†РёСЏ РЅРµРІР°Р»РёРґРЅРѕРіРѕ РєР»СЋС‡Р°."""
+        """doc"""
         response = client.get("/validate-key?api_key=invalid")
         assert response.status_code == 200
         assert response.json()["valid"] is False
 
     def test_key_status(self, client, admin_token, api_key):
-        """РЎС‚Р°С‚СѓСЃ РєР»СЋС‡Р°."""
+        """doc"""
         response = client.get(f"/api-key-status?key={api_key}")
         assert response.status_code == 200
         data = response.json()
@@ -163,7 +163,7 @@ class TestAPIKeys:
         assert data["valid"] is True
 
     def test_reset_usage(self, client, admin_token):
-        """РЎР±СЂРѕСЃ СЃС‡С‘С‚С‡РёРєР°."""
+        """doc"""
         create = client.post(
             "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "rst"}
         )
@@ -177,10 +177,10 @@ class TestAPIKeys:
 
 # === Usage Tests ===
 class TestUsage:
-    """РўРµСЃС‚С‹ Usage СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_register_usage(self, client, api_key):
-        """Р РµРіРёСЃС‚СЂР°С†РёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """doc"""
         response = client.post(
             "/register-usage",
             json={
@@ -193,7 +193,7 @@ class TestUsage:
         assert "usage_log_id" in response.json()
 
     def test_register_usage_with_config(self, client, api_key):
-        """Р РµРіРёСЃС‚СЂР°С†РёСЏ СЃ РєРѕРЅС„РёРіРѕРј."""
+        """doc"""
         response = client.post(
             "/register-usage",
             json={
@@ -207,22 +207,22 @@ class TestUsage:
         assert "usage_log_id" in data
 
     def test_confirm_usage(self, client, api_key):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
-        # Р РµРіРёСЃС‚СЂРёСЂСѓРµРј
+        """doc"""
+        # comment
         reg = client.post(
             "/register-usage",
             json={"api_key": api_key, "reservation_id": "res-conf"},
         )
         uid = reg.json()["usage_log_id"]
 
-        # РџРѕРґС‚РІРµСЂР¶РґР°РµРј
+        # comment
         response = client.post("/confirm-usage", json={"api_key": api_key, "usage_log_id": uid})
         assert response.status_code == 200
 
     def test_confirm_create_usage_uses_peak_price_at_noon_msk(
         self, client, admin_token, monkeypatch
     ):
-        """Р‘СЂРѕРЅСЊ, РїРѕРґС‚РІРµСЂР¶РґРµРЅРЅР°СЏ РІ 12:00 РњРЎРљ, С‚Р°СЂРёС„РёС†РёСЂСѓРµС‚СЃСЏ РїРѕ peak create."""
+        """doc"""
         from datetime import UTC, datetime
 
         import src.db.usage_log as usage_log_module
@@ -263,7 +263,7 @@ class TestUsage:
     def test_confirm_create_usage_falls_back_to_reschedule_price_at_noon_msk(
         self, client, admin_token, monkeypatch
     ):
-        """Р•СЃР»Рё peak create РЅРµ Р·Р°РґР°РЅ, Р±СЂРѕРЅСЊ РІ 12:00 РњРЎРљ Р±РµСЂРµС‚ С†РµРЅСѓ РїРµСЂРµРЅРѕСЃР°."""
+        """doc"""
         from datetime import UTC, datetime
 
         import src.db.usage_log as usage_log_module
@@ -302,7 +302,7 @@ class TestUsage:
         assert entry["price"] == 7000
 
     def test_fail_usage(self, client, api_key):
-        """РћС‚РјРµС‚РєР° РѕС€РёР±РєРё."""
+        """doc"""
         reg = client.post(
             "/register-usage",
             json={"api_key": api_key, "reservation_id": "res-fail"},
@@ -321,37 +321,37 @@ class TestUsage:
         assert response.status_code == 200
 
     def test_usage_log_requires_scope(self, client):
-        """РСЃС‚РѕСЂРёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ Р±РµР· РєР»СЋС‡Р° РёР»Рё admin token Р·Р°РєСЂС‹С‚Р°."""
+        """doc"""
         response = client.get("/usage-log")
         assert response.status_code == 401
 
     def test_usage_log_filter(self, client, api_key):
-        """Р¤РёР»СЊС‚СЂР°С†РёСЏ РїРѕ РєР»СЋС‡Сѓ."""
+        """doc"""
         response = client.get(f"/usage-log?api_key={api_key}")
         assert response.status_code == 200
 
     def test_usage_log_invalid_key(self, client):
-        """РСЃС‚РѕСЂРёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ РЅРµ СЂР°СЃРєСЂС‹РІР°РµС‚СЃСЏ РїРѕ РЅРµРІР°Р»РёРґРЅРѕРјСѓ РєР»СЋС‡Сѓ."""
+        """doc"""
         response = client.get("/usage-log?api_key=invalid")
         assert response.status_code == 403
 
     def test_usage_log_api_key_id_requires_admin(self, client):
-        """Р¤РёР»СЊС‚СЂ РїРѕ ID РєР»СЋС‡Р° РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ."""
+        """doc"""
         response = client.get("/usage-log?api_key_id=1")
         assert response.status_code == 401
 
     def test_usage_log_admin_scope(self, client, admin_token):
-        """РђРґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ РјРѕР¶РµС‚ Р·Р°РїСЂРѕСЃРёС‚СЊ Р¶СѓСЂРЅР°Р» С†РµР»РёРєРѕРј."""
+        """doc"""
         response = client.get("/usage-log", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
 
 # === Mock Tests ===
 class TestMock:
-    """РўРµСЃС‚С‹ Mock СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_set_mock_config(self, client, admin_token):
-        """РЈСЃС‚Р°РЅРѕРІРєР° РєРѕРЅС„РёРіР°."""
+        """doc"""
         response = client.post(
             "/mock-config",
             headers={"X-Admin-Token": admin_token},
@@ -360,7 +360,7 @@ class TestMock:
         assert response.status_code == 200
 
     def test_get_mock_config(self, client, admin_token):
-        """РџРѕР»СѓС‡РµРЅРёРµ РєРѕРЅС„РёРіР°."""
+        """doc"""
         client.post(
             "/mock-config",
             headers={"X-Admin-Token": admin_token},
@@ -370,12 +370,12 @@ class TestMock:
         assert response.status_code == 200
 
     def test_reset_mock_config(self, client, admin_token):
-        """РЎР±СЂРѕСЃ РєРѕРЅС„РёРіР°."""
+        """doc"""
         response = client.delete("/mock-config", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_mock_captcha(self, client):
-        """Mock РєР°РїС‡Р°."""
+        """doc"""
         response = client.post(
             "/reservations-api/v1/captcha",
             json={"payload": {"facilityId": "f1", "timeSlotData": "data"}},
@@ -388,7 +388,7 @@ class TestMock:
         assert "variantsCapture" in body["front"]
 
     def test_mock_captcha_validate(self, client):
-        """Р’Р°Р»РёРґР°С†РёСЏ РєР°РїС‡Рё."""
+        """doc"""
         response = client.post(
             "/reservations-api/v1/captcha-validate",
             json={
@@ -408,7 +408,7 @@ class TestMock:
         assert "successToken" in body
 
     def test_mock_slots(self, client):
-        """Mock СЃР»РѕС‚С‹."""
+        """doc"""
         response = client.get(
             "/reservations-api/v1/timeslot/AvailableSlots?facilityId=f1&date=2026-01-01"
         )
@@ -416,13 +416,13 @@ class TestMock:
         assert "slots" in response.json()
 
     def test_mock_reschedule(self, client):
-        """Mock РїРµСЂРµРЅРѕСЃ."""
+        """doc"""
         response = client.post("/reservations-api/v1/Reschedule", json={"reservationId": "r1"})
         assert response.status_code == 200
         assert response.json()["isSuccess"] is True
 
     def test_mock_submit_draft(self, client):
-        """Mock СЃРѕР·РґР°РЅРёРµ Р±СЂРѕРЅРё."""
+        """doc"""
         response = client.post("/reservations-api/v1/SubmitDraft", json={"facilityId": "f1"})
         assert response.status_code == 200
         assert response.json()["isSuccess"] is True
@@ -430,7 +430,7 @@ class TestMock:
 
 # === Admin Tests ===
 class TestAdmin:
-    """РўРµСЃС‚С‹ Admin СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     @pytest.mark.parametrize(
         "path",
@@ -461,19 +461,19 @@ class TestAdmin:
         assert response.status_code == 200
 
     def test_admin_auth_success(self, client, admin_token):
-        """РЈСЃРїРµС€РЅР°СЏ Р°РІС‚РѕСЂРёР·Р°С†РёСЏ."""
+        """doc"""
         response = client.post("/admin/auth", json={"token": admin_token})
         assert response.status_code == 200
         assert response.json()["ok"] is True
 
     def test_admin_auth_fail(self, client):
-        """РќРµСѓРґР°С‡РЅР°СЏ Р°РІС‚РѕСЂРёР·Р°С†РёСЏ."""
+        """doc"""
         response = client.post("/admin/auth", json={"token": "wrong"})
         assert response.status_code == 401
 
     def test_admin_auth_non_admin_key(self, client, admin_token):
-        """РќРµ-Р°РґРјРёРЅСЃРєРёР№ РєР»СЋС‡ РЅРµ РїСЂРѕС…РѕРґРёС‚ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ."""
-        # РЎРѕР·РґР°С‘Рј РѕР±С‹С‡РЅС‹Р№ РєР»СЋС‡ Р±РµР· is_admin
+        """doc"""
+        # comment
         resp = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
@@ -486,7 +486,7 @@ class TestAdmin:
 
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
-        """Выписка открытого счета по компании закрывает текущий и создает новый."""
+        """doc"""
         from src.db import confirm_usage, create_tariff, log_usage
 
         created = client.post(
@@ -523,23 +523,23 @@ class TestAdmin:
         assert data["new_open_invoice"]["id"] != data["closed_invoice"]["id"]
 
     def test_admin_streams(self, client, admin_token):
-        """РЎРїРёСЃРѕРє РїРѕС‚РѕРєРѕРІ."""
+        """doc"""
         response = client.get("/admin/streams", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_admin_streams_unauthorized(self, client):
-        """РџРѕС‚РѕРєРё Р±РµР· Р°РІС‚РѕСЂРёР·Р°С†РёРё."""
+        """doc"""
         response = client.get("/admin/streams")
         assert response.status_code == 401
 
     def test_admin_test_stats(self, client, admin_token):
-        """РЎС‚Р°С‚РёСЃС‚РёРєР° С‚РµСЃС‚РѕРІ."""
+        """doc"""
         response = client.get("/admin/test-stats", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
         assert response.json() is not None
 
     def test_admin_benchmark(self, client, admin_token):
-        """Р‘РµРЅС‡РјР°СЂРє."""
+        """doc"""
         response = client.get("/admin/benchmark", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
@@ -565,7 +565,7 @@ class TestAdmin:
 
 
 class TestCaptchaRecords:
-    """РўРµСЃС‚С‹ РґРѕСЃС‚СѓРїР° Рє captcha records."""
+    """doc"""
 
     def test_captchas_require_admin(self, client):
         response = client.get("/captchas")
@@ -586,37 +586,37 @@ class TestCaptchaRecords:
 
 # === Frontend Tests ===
 class TestFrontend:
-    """РўРµСЃС‚С‹ Frontend СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_index(self, client):
-        """Р“Р»Р°РІРЅР°СЏ СЃС‚СЂР°РЅРёС†Р°."""
+        """doc"""
         response = client.get("/")
         assert response.status_code in [200, 503]
 
     def test_test_injector_edit(self, client):
-        """РўРµСЃС‚РѕРІР°СЏ СЃС‚СЂР°РЅРёС†Р° СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРёСЏ."""
+        """doc"""
         response = client.get("/test-injector/edit")
         assert response.status_code == 200
 
     def test_test_injector_reschedule(self, client):
-        """РўРµСЃС‚РѕРІР°СЏ СЃС‚СЂР°РЅРёС†Р° РїРµСЂРµРЅРѕСЃР°."""
+        """doc"""
         response = client.get("/test-injector/reschedule")
         assert response.status_code == 200
 
 
 # === Captcha Tests ===
 class TestCaptcha:
-    """РўРµСЃС‚С‹ Captcha СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_solve_captcha_auto_solve(self, client, api_key):
-        """РўРµСЃС‚ auto_solve СЃ РЅРµРІР°Р»РёРґРЅС‹РјРё РґР°РЅРЅС‹РјРё - РѕР¶РёРґР°РµРј РѕС€РёР±РєСѓ."""
+        """doc"""
         import warnings
 
-        # Р­С‚РѕС‚ С‚РµСЃС‚ С‚СЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё, РїСЂРѕРїСѓСЃРєР°РµРј
+        # comment
         pytest.skip("РўСЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё СЃ base64 РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё")
 
     def test_solve_captcha_invalid_key(self, client):
-        """РљР°РїС‡Р° СЃ РЅРµРІР°Р»РёРґРЅС‹Рј РєР»СЋС‡РѕРј."""
+        """doc"""
         response = client.post(
             "/solve-captcha",
             json={
@@ -628,7 +628,7 @@ class TestCaptcha:
         assert response.status_code == 403
 
     def test_broadcast(self, client, admin_token):
-        """Broadcast СЃРѕР±С‹С‚РёСЏ."""
+        """doc"""
         response = client.post(
             "/broadcast",
             headers={"X-Admin-Token": admin_token},
@@ -637,17 +637,17 @@ class TestCaptcha:
         assert response.status_code == 200
 
     def test_broadcast_unauthorized(self, client):
-        """Broadcast Р±РµР· admin token Р·Р°РєСЂС‹С‚."""
+        """doc"""
         response = client.post("/broadcast", json={"type": "test"})
         assert response.status_code == 401
 
 
 # === Tariff Tests ===
 class TestTariffs:
-    """РўРµСЃС‚С‹ Tariff СЌРЅРґРїРѕРёРЅС‚РѕРІ."""
+    """doc"""
 
     def test_get_tariff_not_found(self, client, admin_token, api_key):
-        """РџРѕР»СѓС‡РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ С‚Р°СЂРёС„Р°."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         response = client.get(
             f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
@@ -655,7 +655,7 @@ class TestTariffs:
         assert response.status_code == 404
 
     def test_create_tariff(self, client, admin_token, api_key):
-        """РЎРѕР·РґР°РЅРёРµ С‚Р°СЂРёС„Р°."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         response = client.put(
             f"/admin/tariffs/{key_data['id']}",
@@ -673,7 +673,7 @@ class TestTariffs:
         assert listed_key["tariff"]["price_create_peak"] == 200
 
     def test_update_tariff(self, client, admin_token, api_key):
-        """РћР±РЅРѕРІР»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         client.put(
             f"/admin/tariffs/{key_data['id']}",
@@ -691,7 +691,7 @@ class TestTariffs:
         assert data["price_reschedule"] == 50
 
     def test_update_tariff_can_clear_peak_price(self, client, admin_token, api_key):
-        """Peak create РјРѕР¶РЅРѕ РѕС‡РёСЃС‚РёС‚СЊ, С‡С‚РѕР±С‹ РІРєР»СЋС‡РёС‚СЊ fallback РЅР° РїРµСЂРµРЅРѕСЃ."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         client.put(
             f"/admin/tariffs/{key_data['id']}",
@@ -709,7 +709,7 @@ class TestTariffs:
         assert response.json()["price_create_peak"] is None
 
     def test_delete_tariff(self, client, admin_token, api_key):
-        """РЈРґР°Р»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         client.put(
             f"/admin/tariffs/{key_data['id']}",
@@ -728,10 +728,10 @@ class TestTariffs:
 
 # === Update API Key Tests ===
 class TestUpdateApiKey:
-    """РўРµСЃС‚С‹ РѕР±РЅРѕРІР»РµРЅРёСЏ API РєР»СЋС‡РµР№."""
+    """doc"""
 
     def test_update_api_key_comment(self, client, admin_token):
-        """РћР±РЅРѕРІР»РµРЅРёРµ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ."""
+        """doc"""
         create = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
@@ -748,7 +748,7 @@ class TestUpdateApiKey:
         assert data["comment"] == "Test comment"
 
     def test_update_api_key_is_admin(self, client, admin_token):
-        """РћР±РЅРѕРІР»РµРЅРёРµ is_admin С„Р»Р°РіР°."""
+        """doc"""
         create = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
@@ -757,7 +757,7 @@ class TestUpdateApiKey:
         kid = create.json()["id"]
         assert create.json()["is_admin"] is False
 
-        # Р”РµР»Р°РµРј РєР»СЋС‡ Р°РґРјРёРЅСЃРєРёРј
+        # comment
         response = client.patch(
             f"/admin/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
@@ -767,12 +767,12 @@ class TestUpdateApiKey:
         data = response.json()
         assert data["is_admin"] is True
 
-        # РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ С‚РµРїРµСЂСЊ РєР»СЋС‡ РїСЂРѕС…РѕРґРёС‚ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ
+        # comment
         new_key = create.json()["key"]
         auth_resp = client.post("/admin/auth", json={"token": new_key})
         assert auth_resp.status_code == 200
 
-        # РЈР±РёСЂР°РµРј Р°РґРјРёРЅСЃРєРёРµ РїСЂР°РІР°
+        # comment
         response = client.patch(
             f"/admin/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
@@ -781,17 +781,17 @@ class TestUpdateApiKey:
         assert response.status_code == 200
         assert response.json()["is_admin"] is False
 
-        # РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РєР»СЋС‡ Р±РѕР»СЊС€Рµ РЅРµ РїСЂРѕС…РѕРґРёС‚
+        # comment
         auth_resp = client.post("/admin/auth", json={"token": new_key})
         assert auth_resp.status_code == 401
 
 
 # === Update Usage Log Tests ===
 class TestUpdateUsageLog:
-    """РўРµСЃС‚С‹ РѕР±РЅРѕРІР»РµРЅРёСЏ Р»РѕРіРѕРІ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+    """doc"""
 
     def test_update_usage_log_price(self, client, api_key, admin_token):
-        """РћР±РЅРѕРІР»РµРЅРёРµ С†РµРЅС‹."""
+        """doc"""
         reg = client.post(
             "/register-usage",
             json={"api_key": api_key, "reservation_id": "res-price"},
@@ -807,7 +807,7 @@ class TestUpdateUsageLog:
         assert data["price"] == 500
 
     def test_update_usage_log_paid(self, client, api_key, admin_token):
-        """РћР±РЅРѕРІР»РµРЅРёРµ С„Р»Р°РіР° РѕРїР»Р°С‚С‹."""
+        """doc"""
         reg = client.post(
             "/register-usage",
             json={"api_key": api_key, "reservation_id": "res-paid"},
@@ -825,10 +825,10 @@ class TestUpdateUsageLog:
 
 # === Generate Invoice Tests ===
 class TestGenerateInvoice:
-    """РўРµСЃС‚С‹ РіРµРЅРµСЂР°С†РёРё СЃС‡С‘С‚РѕРІ."""
+    """doc"""
 
     def test_generate_invoice_missing_data(self, client, admin_token):
-        """Р“РµРЅРµСЂР°С†РёСЏ СЃС‡С‘С‚Р° СЃ РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‰РёРјРё РґР°РЅРЅС‹РјРё."""
+        """doc"""
         response = client.post(
             "/admin/generate-invoice",
             headers={"X-Admin-Token": admin_token},
@@ -837,7 +837,7 @@ class TestGenerateInvoice:
         assert response.status_code in [404, 400, 500]
 
     def test_generate_invoice_no_logs(self, client, admin_token, api_key):
-        """Р“РµРЅРµСЂР°С†РёСЏ СЃС‡С‘С‚Р° Р±РµР· Р»РѕРіРѕРІ."""
+        """doc"""
         key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
         create_w = client.post(
             "/admin/withdrawals",

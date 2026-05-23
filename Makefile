@@ -6,6 +6,14 @@ run-dev: build-frontend build-extension
 run-prod: build-frontend build-extension
 	uv run python manage.py --host 0.0.0.0 --no-ssl --data-dir prod/data --port 8766
 
+run-prod-start: build-frontend build-extension
+	@powershell -Command "$$root = (Get-Location).Path; $$pidFile = Join-Path $$root '.run-prod.pid'; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$listener.OwningProcess | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod already running, PID=' + $$listener.OwningProcess); exit 0 }; Start-Process -FilePath 'uv' -ArgumentList 'run','python','manage.py','--host','0.0.0.0','--no-ssl','--data-dir','prod/data','--port','8766' -WorkingDirectory $$root -WindowStyle Hidden; $$serverPid = $$null; for ($$i = 0; $$i -lt 20; $$i++) { Start-Sleep -Milliseconds 250; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$serverPid = $$listener.OwningProcess; break } }; if (!$$serverPid) { Write-Error 'run-prod failed to start (port 8766 not listening)'; exit 1 }; $$serverPid | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod started, PID=' + $$serverPid + ', pidfile=' + $$pidFile)"
+
+run-prod-stop:
+	@powershell -Command "$$root = (Get-Location).Path; $$pidFile = Join-Path $$root '.run-prod.pid'; $$targetPid = $$null; if (Test-Path $$pidFile) { $$targetPid = Get-Content $$pidFile -ErrorAction SilentlyContinue }; if (!$$targetPid) { $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$targetPid = $$listener.OwningProcess } }; if (!$$targetPid) { Remove-Item -Force $$pidFile -ErrorAction SilentlyContinue; Write-Host 'run-prod is not running'; exit 0 }; $$stopped = $$false; try { Stop-Process -Id ([int]$$targetPid) -Force -ErrorAction Stop; Write-Host ('run-prod stopped, PID=' + $$targetPid); $$stopped = $$true } catch { $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$listenerPid = [int]$$listener.OwningProcess; Stop-Process -Id $$listenerPid -Force -ErrorAction SilentlyContinue; Write-Host ('run-prod stopped by port, PID=' + $$listenerPid); $$stopped = $$true } }; if (!$$stopped) { Write-Host ('run-prod process not found, PID=' + $$targetPid) }; Remove-Item -Force $$pidFile -ErrorAction SilentlyContinue; exit 0"
+
+run-prod-restart: run-prod-stop run-prod-start
+
 # === Frontend ===
 
 install-frontend:
