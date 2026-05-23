@@ -2,59 +2,77 @@
 
 from datetime import UTC, datetime
 
-from src.db.connection import get_connection
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
+
+from src.db.core import company_billing_settings_table, get_engine
+from src.dto.billing import CompanyBillingSettingsDTO
 
 
-def _row_to_dict(row) -> dict:
-    return {
-        "company": row["company"],
-        "auto_invoice_reopen": bool(row["auto_invoice_reopen"]),
-        "updated_at": row["updated_at"],
-    }
+def _row_to_dto(row) -> CompanyBillingSettingsDTO:
+    return CompanyBillingSettingsDTO(
+        company=row["company"],
+        auto_invoice_reopen=bool(row["auto_invoice_reopen"]),
+        updated_at=row["updated_at"],
+    )
 
 
 def get_company_billing_settings(company: str) -> dict:
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT company, auto_invoice_reopen, updated_at FROM company_billing_settings WHERE company = ?",
-        (company,),
-    ).fetchone()
-    conn.close()
+    stmt = (
+        select(
+            company_billing_settings_table.c.company,
+            company_billing_settings_table.c.auto_invoice_reopen,
+            company_billing_settings_table.c.updated_at,
+        )
+        .where(company_billing_settings_table.c.company == company)
+    )
+    with get_engine().connect() as conn:
+        row = conn.execute(stmt).mappings().first()
     if not row:
-        return {
-            "company": company,
-            "auto_invoice_reopen": False,
-            "updated_at": None,
-        }
-    return _row_to_dict(row)
+        return CompanyBillingSettingsDTO(
+            company=company,
+            auto_invoice_reopen=False,
+            updated_at=None,
+        ).to_dict()
+    return _row_to_dto(row).to_dict()
 
 
 def list_company_billing_settings() -> list[dict]:
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT company, auto_invoice_reopen, updated_at FROM company_billing_settings ORDER BY company ASC"
-    ).fetchall()
-    conn.close()
-    return [_row_to_dict(row) for row in rows]
+    stmt = (
+        select(
+            company_billing_settings_table.c.company,
+            company_billing_settings_table.c.auto_invoice_reopen,
+            company_billing_settings_table.c.updated_at,
+        )
+        .order_by(company_billing_settings_table.c.company.asc())
+    )
+    with get_engine().connect() as conn:
+        rows = conn.execute(stmt).mappings().all()
+    return [_row_to_dto(row).to_dict() for row in rows]
 
 
 def upsert_company_billing_settings(company: str, auto_invoice_reopen: bool) -> dict:
-    conn = get_connection()
     now = datetime.now(UTC).isoformat()
-    conn.execute(
-        """
-        INSERT INTO company_billing_settings (company, auto_invoice_reopen, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(company) DO UPDATE SET
-            auto_invoice_reopen = excluded.auto_invoice_reopen,
-            updated_at = excluded.updated_at
-        """,
-        (company, 1 if auto_invoice_reopen else 0, now),
+    stmt = insert(company_billing_settings_table).values(
+        company=company,
+        auto_invoice_reopen=bool(auto_invoice_reopen),
+        updated_at=now,
     )
-    conn.commit()
-    row = conn.execute(
-        "SELECT company, auto_invoice_reopen, updated_at FROM company_billing_settings WHERE company = ?",
-        (company,),
-    ).fetchone()
-    conn.close()
-    return _row_to_dict(row)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[company_billing_settings_table.c.company],
+        set_={
+            "auto_invoice_reopen": bool(auto_invoice_reopen),
+            "updated_at": now,
+        },
+    )
+    with get_engine().begin() as conn:
+        conn.execute(stmt)
+    with get_engine().connect() as conn:
+        row = conn.execute(
+            select(
+                company_billing_settings_table.c.company,
+                company_billing_settings_table.c.auto_invoice_reopen,
+                company_billing_settings_table.c.updated_at,
+            ).where(company_billing_settings_table.c.company == company)
+        ).mappings().first()
+    return _row_to_dto(row).to_dict()
