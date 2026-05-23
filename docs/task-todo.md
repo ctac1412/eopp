@@ -41,7 +41,7 @@
 - [x] Stage 1: Analyze current billing state (invoices/open/prepaid/manual).
 - [x] Stage 2: Introduce company billing settings (`auto_invoice_reopen`).
 - [x] Stage 3: Rework auto-invoice lifecycle (manual create, optional reopen, no implicit auto-create on confirm).
-- [ ] Stage 4: Restore manual invoice issuance from unlinked usage logs in Reports.
+- [x] Stage 4: Restore manual invoice issuance from unlinked usage logs in Reports.
 - [ ] Stage 5: Add/restore prepaid admin UI and verify prepaid flow end-to-end.
 - [ ] Stage 6: Functional audit for admin + plugin UX gaps and dead/legacy code.
 - [ ] Stage 7: Ruff setup/normalization via `uv`.

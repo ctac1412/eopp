@@ -76,6 +76,7 @@ export function ReportsTab({ adminToken, onError }) {
   const [editForm, setEditForm] = useState({ price: "", paid: "" });
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceSelectedLogs, setInvoiceSelectedLogs] = useState([]);
+  const [selectedLogIds, setSelectedLogIds] = useState([]);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
@@ -217,6 +218,7 @@ export function ReportsTab({ adminToken, onError }) {
       alert(`Счёт ${data.invoice_number} создан! Итого: ${formatMoney(data.total_amount)}`);
       setShowInvoiceModal(false);
       setInvoiceSelectedLogs([]);
+      setSelectedLogIds([]);
       fetchRecords();
     } catch (err) {
       onError?.(err.message);
@@ -249,6 +251,11 @@ export function ReportsTab({ adminToken, onError }) {
     });
   }, [records, preset, statusFilter, opTypeFilter, companyFilter, keyFilter, search]);
 
+  useEffect(() => {
+    const visibleIds = new Set(filteredRecords.map((record) => record.id));
+    setSelectedLogIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [filteredRecords]);
+
   const metrics = useMemo(() => ({
     total: filteredRecords.length,
     success: filteredRecords.filter((record) => record.status === "confirmed").length,
@@ -266,6 +273,33 @@ export function ReportsTab({ adminToken, onError }) {
   if (loading) return <div className="text-center py-4">Загрузка…</div>;
 
   const summary = groupByCompany(filteredRecords);
+  const selectableRecords = filteredRecords.filter(isBillableRecord);
+  const selectedLogs = selectableRecords.filter((record) => selectedLogIds.includes(record.id));
+  const allSelectableChecked =
+    selectableRecords.length > 0 && selectedLogs.length === selectableRecords.length;
+
+  const toggleSelectedLog = (recordId) => {
+    setSelectedLogIds((prev) =>
+      prev.includes(recordId) ? prev.filter((id) => id !== recordId) : [...prev, recordId],
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (allSelectableChecked) {
+      setSelectedLogIds([]);
+      return;
+    }
+    setSelectedLogIds(selectableRecords.map((record) => record.id));
+  };
+
+  const openManualInvoiceModal = () => {
+    if (selectedLogs.length === 0) {
+      onError?.("Выбери подтвержденные непривязанные записи");
+      return;
+    }
+    setInvoiceSelectedLogs(selectedLogs);
+    setShowInvoiceModal(true);
+  };
 
   const renderPaidStatus = (record) => {
     const isPaid = record.paid === true;
@@ -302,6 +336,14 @@ export function ReportsTab({ adminToken, onError }) {
         </button>
         <button className="btn btn-sm btn-outline-secondary" onClick={fetchRecords}>
           Обновить
+        </button>
+        <button
+          className="btn btn-sm btn-primary"
+          onClick={openManualInvoiceModal}
+          disabled={selectedLogs.length === 0}
+          title="Сформировать обычный счёт из выбранных непривязанных записей"
+        >
+          Сформировать счёт {selectedLogs.length > 0 ? `(${selectedLogs.length})` : ""}
         </button>
         <span className="text-muted small ms-auto">
           Показано: {filteredRecords.length} из {records.length}
@@ -451,6 +493,14 @@ export function ReportsTab({ adminToken, onError }) {
             <table className="table table-sm table-hover table-bordered align-middle mb-0 reports-log-table">
               <thead className="table-light">
                 <tr>
+                  <th className="text-center" style={{ width: "40px" }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelectableChecked}
+                      onChange={toggleSelectAllVisible}
+                      disabled={selectableRecords.length === 0}
+                    />
+                  </th>
                   <th className="text-center" style={{ width: "40px" }}>#</th>
                   <th>ID</th>
                   <th>Токен</th>
@@ -471,16 +521,26 @@ export function ReportsTab({ adminToken, onError }) {
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="text-center text-muted py-3">Нет записей</td>
+                    <td colSpan={16} className="text-center text-muted py-3">Нет записей</td>
                   </tr>
                 ) : (
                   filteredRecords.map((record, idx) => {
                     const isExpanded = expandedRecordId === record.id;
                     const opType = getOpType(record);
                     const errorInfo = getErrorInfo(record);
+                    const selectable = isBillableRecord(record);
+                    const checked = selectedLogIds.includes(record.id);
                     return (
                       <React.Fragment key={record.id}>
                         <tr>
+                          <td className="text-center">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!selectable}
+                              onChange={() => toggleSelectedLog(record.id)}
+                            />
+                          </td>
                           <td className="text-center">{idx + 1}</td>
                           <td className="small text-muted">{record.id}</td>
                           <td className="small">{renderClip(record.label)}</td>
@@ -534,7 +594,7 @@ export function ReportsTab({ adminToken, onError }) {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={15} className="p-0">
+                            <td colSpan={16} className="p-0">
                               <OperationDetails
                                 record={record}
                                 captchaRecords={captchaRecords[record.id] || []}
