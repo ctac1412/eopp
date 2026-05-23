@@ -26,8 +26,7 @@ from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
 from src.constants import VALID_DIR
-from src.schemas.captcha import GenerateCaptchaBody
-from src.schemas.common import MockConfigBody
+from src.models import GenerateCaptchaBody, MockConfigBody
 
 # Mock config store
 mock_config: dict[str, dict] = {}

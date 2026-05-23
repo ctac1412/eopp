@@ -12,9 +12,8 @@ from fastapi.responses import JSONResponse
 
 from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token as db_check_admin_token
-from src.policies.access_policy import requires_admin
-from src.schemas.auth import AdminAuthBody
-from src.schemas.billing import (
+from src.models import (
+    AdminAuthBody,
     CompanyAliasBody,
     CompanyBillingSettingBody,
     CreateExpenseBody,
@@ -36,6 +35,7 @@ from src.schemas.billing import (
     UpdateUsageLogBody,
     UpdateUserBody,
 )
+from src.policies.access_policy import requires_admin
 from src.services import billing_service, reporting_service
 from src.utils import (
     assemble_captchas,

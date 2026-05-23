@@ -7,7 +7,7 @@ src.services.usage_service, persistence lives behind repositories.
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
-from src.schemas.usage import ConfirmUsageBody, FailUsageBody, RegisterUsageBody
+from src.models import ConfirmUsageBody, FailUsageBody, RegisterUsageBody
 from src.services import usage_service
 
 

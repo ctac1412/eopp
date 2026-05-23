@@ -34,7 +34,7 @@ from src.db import (
     get_key_by_id,
     get_key_record,
 )
-from src.schemas.captcha import SolveCaptchaBody, SolveRequest
+from src.models import SolveCaptchaBody, SolveRequest
 from src.services import captcha_service
 from src.utils import (
     assemble_captchas,
