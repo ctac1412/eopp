@@ -1,22 +1,12 @@
-"""Shared SQLAlchemy Core metadata for billing-related tables."""
+"""Database core — engine, session, and legacy SQLAlchemy Core table definitions."""
 
-from sqlalchemy import Boolean, Column, Integer, MetaData, String, Table, Text, create_engine
+from sqlalchemy import Boolean, Column, Integer, MetaData, String, Table, Text
 
-import src.db.connection as conn_module
+from src.entities.base import Base, get_engine, get_session, get_session_factory, set_db_path
 
+# Legacy Core metadata — kept for backward compat with existing SQLAlchemy Core code
+# New code should use ORM entities from src.entities instead
 metadata = MetaData()
-
-
-def get_engine():
-    return create_engine(f"sqlite:///{conn_module.DB_PATH}", future=True)
-
-company_billing_settings_table = Table(
-    "company_billing_settings",
-    metadata,
-    Column("company", String, primary_key=True),
-    Column("auto_invoice_reopen", Boolean, nullable=False, default=False),
-    Column("updated_at", Text, nullable=True),
-)
 
 prepaid_packages_table = Table(
     "prepaid_packages",
@@ -47,3 +37,16 @@ company_aliases_table = Table(
     Column("created_at", Text, nullable=False),
     Column("updated_at", Text, nullable=False),
 )
+
+
+__all__ = [
+    "Base",
+    "get_engine",
+    "get_session",
+    "get_session_factory",
+    "set_db_path",
+    "metadata",
+    "prepaid_packages_table",
+    "prepaid_deductions_table",
+    "company_aliases_table",
+]

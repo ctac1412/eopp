@@ -1,4 +1,4 @@
-﻿"""
+"""
 EOPP Captcha Solver - API Routes Unit Tests
 
 РўРµСЃС‚С‹ РІСЃРµС… API СЌРЅРґРїРѕРёРЅС‚РѕРІ (Р±РµР· Р±Р»РѕРєРёСЂСѓСЋС‰РёС… SSE С‚РµСЃС‚РѕРІ).
@@ -20,12 +20,14 @@ def isolate_db(monkeypatch):
     """doc"""
     import src.db.connection as conn_module
     import src.db.init as init_module
+    from src.entities.base import set_db_path
 
     # comment
     test_db = tempfile.mktemp(suffix=".db")
 
     # comment
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
+    set_db_path(test_db)
 
     # comment
     init_module.init_db()
@@ -253,7 +255,9 @@ class TestUsage:
             config_json={"mode": "create"},
         )
 
-        response = client.post("/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid})
+        response = client.post(
+            "/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid}
+        )
 
         assert response.status_code == 200
         logs = client.get(f"/usage-log?api_key={key_data['key']}").json()
@@ -294,7 +298,9 @@ class TestUsage:
             config_json={"mode": "create"},
         )
 
-        response = client.post("/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid})
+        response = client.post(
+            "/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid}
+        )
 
         assert response.status_code == 200
         logs = client.get(f"/usage-log?api_key={key_data['key']}").json()
@@ -484,7 +490,6 @@ class TestAdmin:
         response = client.post("/admin/auth", json={"token": normal_key})
         assert response.status_code == 401
 
-
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
         from src.db import confirm_usage, log_usage
@@ -622,7 +627,9 @@ class TestCaptcha:
         """doc"""
 
         # comment
-        pytest.skip("РўСЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё СЃ base64 РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё")
+        pytest.skip(
+            "РўСЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё СЃ base64 РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё"
+        )
 
     def test_solve_captcha_invalid_key(self, client):
         """doc"""
@@ -922,12 +929,16 @@ class TestPrepaidPackagesApi:
         assert topped_up.status_code == 200
         assert topped_up.json()["balance_amount"] == 800
 
-        log_id = log_usage(key["key"], "real-prepaid-top-up", "capt-top-up", config_json={"mode": "create"})
+        log_id = log_usage(
+            key["key"], "real-prepaid-top-up", "capt-top-up", config_json={"mode": "create"}
+        )
         confirm_usage(log_id)
 
         deductions = client.get("/admin/prepaid-deductions", headers={"X-Admin-Token": admin_token})
         assert deductions.status_code == 200
-        assert any(item["usage_log_id"] == log_id and item["amount"] == 200 for item in deductions.json())
+        assert any(
+            item["usage_log_id"] == log_id and item["amount"] == 200 for item in deductions.json()
+        )
 
 
 class TestCompanyBillingApi:
@@ -1086,4 +1097,3 @@ class TestSlotsGroup:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

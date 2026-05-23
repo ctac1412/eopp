@@ -1,15 +1,48 @@
-"""Usage workflow rules.
-
-Routes should stay thin: parse HTTP inputs, call this module, return the result.
-"""
-
 import json
 import os
 
 from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token
-from src.repositories import usage_repo
+from src.entities import UsageLog
+from src.repositories import api_key_repo, usage_log_repo
 from src.utils import lock, sse_queues
+
+
+def _parse_config_json(usage_log: UsageLog) -> dict | None:
+    if not usage_log.config_json:
+        return None
+    try:
+        return json.loads(usage_log.config_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
+    logs_raw = record.logs
+    logs = json.loads(logs_raw) if logs_raw else None
+    return {
+        "id": record.id,
+        "api_key_id": record.api_key_id,
+        "reservation_id": record.reservation_id,
+        "captcha_id": record.captcha_id,
+        "status": record.status,
+        "error_message": record.error_message,
+        "error_stage": record.error_stage,
+        "slot_date": record.slot_date,
+        "logs": logs,
+        "config_json": _parse_config_json(record),
+        "created_at": record.created_at,
+        "confirmed_at": record.confirmed_at,
+        "label": label or (record.api_key.label if record.api_key else None),
+        "price": record.price,
+        "paid": bool(record.paid) if record.paid is not None else None,
+        "op_type": record.op_type,
+        "company": record.company,
+        "fio": record.fio,
+        "vehicle_number": record.vehicle_number,
+        "is_test": bool(record.is_test) if record.is_test is not None else False,
+        "invoice_id": record.invoice_id,
+    }
 
 
 def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
@@ -37,15 +70,15 @@ def is_admin_token(token: str | None) -> bool:
 
 
 def register_usage(body) -> tuple[int, dict]:
-    validation = usage_repo.validate_api_key(body.api_key)
+    validation = api_key_repo.validate_api_key(body.api_key)
     if not validation["valid"]:
         return 403, {"error": "Invalid API key"}
 
-    key_record = usage_repo.get_key_record(body.api_key)
+    key_record = api_key_repo.get_key_record(body.api_key)
     if not key_record:
         return 403, {"error": "Invalid API key"}
 
-    api_key_id = key_record["id"]
+    api_key_id = key_record.id
     with lock:
         has_active_stream = len(sse_queues.get(api_key_id, [])) > 0
     if not has_active_stream:
@@ -54,7 +87,7 @@ def register_usage(body) -> tuple[int, dict]:
             "message": "Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение.",
         }
 
-    usage_log_id = usage_repo.create_usage(
+    usage_log_id = usage_log_repo.create_usage(
         api_key=body.api_key,
         reservation_id=body.reservation_id,
         captcha_id=body.captcha_id or "unknown",
@@ -64,36 +97,36 @@ def register_usage(body) -> tuple[int, dict]:
 
 
 def confirm_usage(body) -> tuple[int, dict]:
-    key_record = usage_repo.get_key_record(body.api_key)
+    key_record = api_key_repo.get_key_record(body.api_key)
     if not key_record:
         return 403, {"error": "Invalid API key"}
 
-    log_entry = usage_repo.get_usage(body.usage_log_id)
-    if not log_entry or log_entry["api_key_id"] != key_record["id"]:
+    log_entry = usage_log_repo.get_usage(body.usage_log_id)
+    if not log_entry or log_entry.api_key_id != key_record.id:
         return 404, {"error": "Usage log entry not found"}
 
     if body.captcha_id and body.valid_variant_index is not None:
         move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
 
-    ok = usage_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs, body.captcha_id)
+    ok = usage_log_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs, body.captcha_id)
     if not ok:
         return 404, {"error": "Usage log entry not found"}
     return 200, {"ok": True}
 
 
 def fail_usage(body) -> tuple[int, dict]:
-    key_record = usage_repo.get_key_record(body.api_key)
+    key_record = api_key_repo.get_key_record(body.api_key)
     if not key_record:
         return 403, {"error": "Invalid API key"}
 
-    log_entry = usage_repo.get_usage(body.usage_log_id)
-    if not log_entry or log_entry["api_key_id"] != key_record["id"]:
+    log_entry = usage_log_repo.get_usage(body.usage_log_id)
+    if not log_entry or log_entry.api_key_id != key_record.id:
         return 404, {"error": "Usage log entry not found"}
 
     if body.captcha_id and body.valid_variant_index is not None:
         move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
 
-    ok = usage_repo.fail_usage(
+    ok = usage_log_repo.fail_usage(
         body.usage_log_id,
         body.error_message,
         body.error_stage,
@@ -110,7 +143,7 @@ def delete_usage(usage_log_id: int, admin_token: str | None) -> tuple[int, dict]
     if not is_admin_token(admin_token):
         return 401, {"error": "Unauthorized"}
 
-    ok = usage_repo.delete_usage(usage_log_id)
+    ok = usage_log_repo.delete_usage(usage_log_id)
     if not ok:
         return 404, {"error": "Usage log entry not found"}
     return 200, {"ok": True}
@@ -128,31 +161,29 @@ def list_usage(
         return 401, {"error": "Unauthorized"}
 
     if api_key:
-        key_record = usage_repo.get_key_record(api_key)
+        key_record = api_key_repo.get_key_record(api_key)
         if not key_record:
             return 403, {"error": "Invalid API key"}
         if not is_admin:
-            api_key_id = key_record["id"]
+            api_key_id = key_record.id
         elif api_key_id is None:
-            api_key_id = key_record["id"]
+            api_key_id = key_record.id
     elif not is_admin:
         return 401, {"error": "Unauthorized"}
 
-    records = usage_repo.list_usage(api_key_id)
+    records = usage_log_repo.list_usage(api_key_id)
     if hide_test:
         records = [r for r in records if not _is_hidden_test_record(r)]
-    return 200, records
+    return 200, [_usage_to_dict(r) for r in records]
 
 
-def _is_hidden_test_record(record: dict) -> bool:
-    reservation_id = record.get("reservation_id") or ""
+def _is_hidden_test_record(record: UsageLog) -> bool:
+    reservation_id = record.reservation_id or ""
     if reservation_id in ("unknown", ""):
         return True
     if reservation_id.startswith("00000000-0000-0000-0000-000000000000"):
         return True
-    config_json = record.get("config_json")
+    config_json = _parse_config_json(record)
     return bool(
-        config_json
-        and isinstance(config_json.get("runUpTo"), int)
-        and config_json["runUpTo"] < 5
+        config_json and isinstance(config_json.get("runUpTo"), int) and config_json["runUpTo"] < 5
     )

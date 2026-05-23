@@ -35,7 +35,9 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
             "vehicle_number": None,
         }
     op_type = config_json.get("mode")
-    company = normalize_company(get_by_path(config_json, "reservationData", "raw", "userData", "organizationName"))
+    company = normalize_company(
+        get_by_path(config_json, "reservationData", "raw", "userData", "organizationName")
+    )
     fio = get_by_path(config_json, "reservationData", "raw", "userData", "fio")
     vehicle_number = None
     vehicle_data = get_by_path(config_json, "reservationData", "raw", "vehicleData", default=[])
@@ -61,7 +63,11 @@ def _calc_is_test(reservation_id: str, config_json: dict | None) -> int:
     """Вычисляет is_test по reservation_id и config_json."""
     if _is_fake_reservation(reservation_id):
         return 1
-    if config_json and isinstance(config_json.get("runUpTo"), int) and config_json.get("runUpTo") < 5:
+    if (
+        config_json
+        and isinstance(config_json.get("runUpTo"), int)
+        and config_json.get("runUpTo") < 5
+    ):
         return 1
     return 0
 
@@ -144,9 +150,16 @@ def log_usage(
             op_type, company, fio, vehicle_number, is_test)
            VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
         (
-            row["id"], reservation_id, captcha_id, now, config_str,
-            extracted["op_type"], extracted["company"], extracted["fio"],
-            extracted["vehicle_number"], is_test,
+            row["id"],
+            reservation_id,
+            captcha_id,
+            now,
+            config_str,
+            extracted["op_type"],
+            extracted["company"],
+            extracted["fio"],
+            extracted["vehicle_number"],
+            is_test,
         ),
     )
     conn.commit()
@@ -203,6 +216,7 @@ def confirm_usage(
 
     if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
+
         create_captcha_records(usage_log_id, captcha_id, logs, "confirmed")
 
     conn.close()
@@ -244,6 +258,7 @@ def fail_usage(
 
     if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
+
         create_captcha_records(usage_log_id, captcha_id, logs, "failed")
 
     conn.close()
@@ -321,7 +336,9 @@ def calc_debt(api_key_id: int) -> dict:
     }
 
 
-def update_usage_log(usage_log_id: int, price: int | None = None, paid: bool | None = None) -> dict | None:
+def update_usage_log(
+    usage_log_id: int, price: int | None = None, paid: bool | None = None
+) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
     if not row:

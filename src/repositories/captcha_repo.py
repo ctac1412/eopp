@@ -1,15 +1,24 @@
-"""Captcha-record persistence facade."""
-
-from src.db.captchas import delete_captcha, get_captcha_by_id, list_captchas
+from src.entities import CaptchaRecord, get_session
 
 
-def list_records(usage_log_id: int | None = None) -> list[dict]:
-    return list_captchas(usage_log_id)
+def list_records(usage_log_id: int | None = None) -> list[CaptchaRecord]:
+    with get_session() as session:
+        q = session.query(CaptchaRecord)
+        if usage_log_id is not None:
+            q = q.filter(CaptchaRecord.usage_log_id == usage_log_id)
+        return q.order_by(CaptchaRecord.created_at).all()
 
 
-def get_record(captcha_record_id: int) -> dict | None:
-    return get_captcha_by_id(captcha_record_id)
+def get_record(captcha_record_id: int) -> CaptchaRecord | None:
+    with get_session() as session:
+        return session.get(CaptchaRecord, captcha_record_id)
 
 
 def delete_record(captcha_record_id: int) -> bool:
-    return delete_captcha(captcha_record_id)
+    with get_session() as session:
+        record = session.get(CaptchaRecord, captcha_record_id)
+        if not record:
+            return False
+        session.delete(record)
+        session.commit()
+        return True

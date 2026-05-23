@@ -50,4 +50,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     # SQLite downgrade kept as no-op for compatibility.
     pass
-

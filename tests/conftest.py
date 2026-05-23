@@ -12,9 +12,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def isolated_api_db(monkeypatch):
     import src.db.connection as conn_module
     import src.db.init as init_module
+    from src.entities.base import set_db_path
 
     test_db = tempfile.mktemp(suffix=".db")
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
+    set_db_path(test_db)
     init_module.init_db()
 
     yield

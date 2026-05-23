@@ -124,9 +124,7 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
             (usage_log_id,),
         ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT * FROM captchas ORDER BY created_at DESC"
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM captchas ORDER BY created_at DESC").fetchall()
     conn.close()
     return [
         {
@@ -141,36 +139,3 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
         }
         for r in rows
     ]
-
-
-def get_captcha_by_id(captcha_record_id: int) -> dict | None:
-    """Возвращает запись капчи по ID."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM captchas WHERE id = ?", (captcha_record_id,)
-    ).fetchone()
-    conn.close()
-    if not row:
-        return None
-    return {
-        "id": row["id"],
-        "captcha_id": row["captcha_id"],
-        "status": row["status"],
-        "usage_log_id": row["usage_log_id"],
-        "tiles_hash": row["tiles_hash"],
-        "correct_answer": row["correct_answer"],
-        "fail_reason": row["fail_reason"],
-        "created_at": row["created_at"],
-    }
-
-
-def delete_captcha(captcha_record_id: int) -> bool:
-    """Удаляет запись капчи по ID."""
-    conn = get_connection()
-    cursor = conn.execute(
-        "DELETE FROM captchas WHERE id = ?", (captcha_record_id,)
-    )
-    conn.commit()
-    deleted = cursor.rowcount > 0
-    conn.close()
-    return deleted

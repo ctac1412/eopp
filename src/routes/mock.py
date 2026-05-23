@@ -207,19 +207,20 @@ def register_mock_routes(app):
                             "slotCaption": "10:00 - 11:00",
                             "intervalIndex": 3,
                         },
-                    {
-                        "id": "slot-mock-4",
-                        "time": "11:00",
-                        "count": 0,
-                        "slotCaption": "11:00 - 12:00",
-                        "intervalIndex": 4,
-                    },{
-                        "id": "slot-mock-5",
-                        "time": "16:00",
-                        "count": 0,
-                        "slotCaption": "16:00 - 17:00",
-                        "intervalIndex": 4,
-                    },
+                        {
+                            "id": "slot-mock-4",
+                            "time": "11:00",
+                            "count": 0,
+                            "slotCaption": "11:00 - 12:00",
+                            "intervalIndex": 4,
+                        },
+                        {
+                            "id": "slot-mock-5",
+                            "time": "16:00",
+                            "count": 0,
+                            "slotCaption": "16:00 - 17:00",
+                            "intervalIndex": 4,
+                        },
                     ]
                 }
             )
@@ -255,7 +256,8 @@ def register_mock_routes(app):
                         "count": 2,
                         "slotCaption": "11:00 - 12:00",
                         "intervalIndex": 4,
-                    },  {
+                    },
+                    {
                         "id": "slot-mock-5",
                         "time": "16:00",
                         "count": 2,

@@ -21,8 +21,10 @@ DEV_DB = "data/api_keys_dev.db"
 def migrate():
     # 1. Применяем alembic миграцию для создания новой схемы
     import os
+
     os.environ["EOPP_DB_PATH"] = DEV_DB
     from src.db.init import init_db
+
     init_db()
     print("✅ Новая схема создана через alembic")
 

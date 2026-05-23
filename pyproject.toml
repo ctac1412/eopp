@@ -41,25 +41,6 @@ dependencies = [
     "uvicorn==0.46.0",
 ]
 
-[tool.black]
-line-length = 100
-target-version = ["py313"]
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-    # directories
-    \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-  | node_modules
-)/
-'''
-
 [tool.ruff]
 target-version = "py313"
 line-length = 100
@@ -73,6 +54,5 @@ known-first-party = ["src"]
 
 [dependency-groups]
 dev = [
-    "black>=26.5.1",
     "ruff>=0.15.14",
 ]

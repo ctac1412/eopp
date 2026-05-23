@@ -143,8 +143,10 @@ def register_api_key_routes(app):
                 unpaid_count += 1
                 unpaid_total += r["price"]
 
-        return JSONResponse(content={
-            "unpaid_count": unpaid_count,
-            "no_price_count": no_price_count,
-            "unpaid_total": unpaid_total,
-        })
+        return JSONResponse(
+            content={
+                "unpaid_count": unpaid_count,
+                "no_price_count": no_price_count,
+                "unpaid_total": unpaid_total,
+            }
+        )

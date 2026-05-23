@@ -121,7 +121,10 @@ def telegram_command_preview(command: str, today: date | None = None) -> dict:
             None,
         )
         if not company:
-            return {"command": command, "text": f"Company '{raw_name}' not found for {report['date']}"}
+            return {
+                "command": command,
+                "text": f"Company '{raw_name}' not found for {report['date']}",
+            }
         text = (
             f"{company['company']} ({report['date']}): "
             f"ok {company['success']}, fail {company['failed']}, "

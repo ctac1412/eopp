@@ -40,19 +40,34 @@ def _parse_help_for(raw: str | None) -> set[int]:
 
 def register_sse_routes(app):
     @app.get("/check-stream")
-    async def check_stream(api_key: str = Query(...), super_kiosk: int = Query(0), help_for: str = Query(None)):
+    async def check_stream(
+        api_key: str = Query(...), super_kiosk: int = Query(0), help_for: str = Query(None)
+    ):
         key_record = get_key_record(api_key)
         if not key_record:
-            return JSONResponse(status_code=401, content={"valid": False, "error": "Invalid API key"})
+            return JSONResponse(
+                status_code=401, content={"valid": False, "error": "Invalid API key"}
+            )
         api_key_id = key_record["id"]
         effective_id = -1 if (super_kiosk and is_super_kiosk_key(api_key)) else api_key_id
         with lock:
             queues = sse_queues.get(effective_id, [])
             has_active = len(queues) > 0
-        return JSONResponse(content={"valid": True, "has_active_stream": has_active, "super_kiosk": bool(super_kiosk and is_super_kiosk_key(api_key))})
+        return JSONResponse(
+            content={
+                "valid": True,
+                "has_active_stream": has_active,
+                "super_kiosk": bool(super_kiosk and is_super_kiosk_key(api_key)),
+            }
+        )
 
     @app.get("/stream")
-    async def sse_stream(request: Request, api_key: str = Query(...), super_kiosk: int = Query(0), help_for: str = Query(None)):
+    async def sse_stream(
+        request: Request,
+        api_key: str = Query(...),
+        super_kiosk: int = Query(0),
+        help_for: str = Query(None),
+    ):
         key_record = get_key_record(api_key)
         if not key_record:
             return StreamingResponse(
@@ -75,7 +90,9 @@ def register_sse_routes(app):
         help_for_set = _parse_help_for(help_for) if is_super else None
         client_ip = request.client.host if request.client else "unknown"
 
-        q, displaced = register_sse_connection(api_key_id, client_ip, real_api_key_id=real_api_key_id, help_for=help_for_set)
+        q, displaced = register_sse_connection(
+            api_key_id, client_ip, real_api_key_id=real_api_key_id, help_for=help_for_set
+        )
 
         if displaced:
             unregister_sse_connection(q, api_key_id)

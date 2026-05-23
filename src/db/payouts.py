@@ -17,6 +17,7 @@ def _row_to_dict(row):
 # Низкоуровневые CRUD для payout_invoices / payout_expenses
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _link_invoice(payout_id: int, invoice_id: int, amount: float) -> int:
     conn = get_connection()
     cur = conn.execute(
@@ -81,6 +82,7 @@ def _get_linked_expenses(payout_id: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Расчёт выплаты (FIFO для расходов)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def calculate_payout(
     invoice_ids: list[int],
@@ -176,7 +178,9 @@ def calculate_payout(
     for exp in expenses:
         uid = exp.get("user_id")
         if uid:
-            user_expenses_comp[uid] = user_expenses_comp.get(uid, 0.0) + compensated.get(exp["id"], 0.0)
+            user_expenses_comp[uid] = user_expenses_comp.get(uid, 0.0) + compensated.get(
+                exp["id"], 0.0
+            )
 
     payout_shares = []
     for us in user_splits:
@@ -186,15 +190,17 @@ def calculate_payout(
         exp_comp = user_expenses_comp.get(uid, 0.0)
         profit = profit_shares.get(uid, 0.0)
         total = profit + exp_comp
-        payout_shares.append({
-            "user_id": uid,
-            "split_pct": us["split_pct"],
-            "commission_amount": comm,
-            "tax_amount": tx,
-            "expenses_compensation": exp_comp,
-            "profit_share": profit,
-            "total": total,
-        })
+        payout_shares.append(
+            {
+                "user_id": uid,
+                "split_pct": us["split_pct"],
+                "commission_amount": comm,
+                "tax_amount": tx,
+                "expenses_compensation": exp_comp,
+                "profit_share": profit,
+                "total": total,
+            }
+        )
 
     conn.close()
 
@@ -207,8 +213,7 @@ def calculate_payout(
         "net": net,
         "invoice_links": [{"invoice_id": iid} for iid in invoice_ids],
         "expense_links": [
-            {"expense_id": e["id"], "amount": compensated.get(e["id"], 0.0)}
-            for e in expenses
+            {"expense_id": e["id"], "amount": compensated.get(e["id"], 0.0)} for e in expenses
         ],
         "payout_shares": payout_shares,
     }
@@ -230,7 +235,14 @@ def preview_payout(
             "total_expenses": 0.0,
             "net_amount": 0.0,
             "shares": [
-                {**us, "commission_amount": 0.0, "tax_amount": 0.0, "expenses_compensation": 0.0, "profit_share": 0.0, "total": 0.0}
+                {
+                    **us,
+                    "commission_amount": 0.0,
+                    "tax_amount": 0.0,
+                    "expenses_compensation": 0.0,
+                    "profit_share": 0.0,
+                    "total": 0.0,
+                }
                 for us in user_splits
             ],
         }
@@ -268,6 +280,7 @@ def preview_payout(
 # payout_shares CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _create_share(
     payout_id: int,
     user_id: int,
@@ -283,7 +296,16 @@ def _create_share(
         """INSERT INTO payout_shares
            (payout_id, user_id, split_pct, commission_amount, tax_amount, expenses_compensation, profit_share, total)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (payout_id, user_id, split_pct, commission_amount, tax_amount, expenses_compensation, profit_share, total),
+        (
+            payout_id,
+            user_id,
+            split_pct,
+            commission_amount,
+            tax_amount,
+            expenses_compensation,
+            profit_share,
+            total,
+        ),
     )
     conn.commit()
     share_id = cur.lastrowid
@@ -319,19 +341,6 @@ def _get_shares(payout_id: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Основные CRUD
 # ─────────────────────────────────────────────────────────────────────────────
-
-def create_payout(name: str) -> int:
-    """Создаёт пустую выплату (без расчёта)."""
-    conn = get_connection()
-    now = datetime.now(UTC).isoformat()
-    cur = conn.execute(
-        "INSERT INTO payouts (name, status, created_at) VALUES (?, 'pending', ?)",
-        (name, now),
-    )
-    conn.commit()
-    payout_id = cur.lastrowid
-    conn.close()
-    return payout_id
 
 
 def create_payout_with_calculation(

@@ -26,9 +26,7 @@ class AccessRule:
         return path.startswith(self.path)
 
 
-PUBLIC_RULES = (
-    AccessRule("POST", "/admin/auth", "public"),
-)
+PUBLIC_RULES = (AccessRule("POST", "/admin/auth", "public"),)
 
 ADMIN_RULES = (
     AccessRule("*", "/api-keys", "admin", match="prefix"),

@@ -21,6 +21,7 @@ def register_captchas_routes(app):
             usage_log_id,
         )
         return JSONResponse(status_code=status, content=content)
+
     @app.get("/captchas/{captcha_id}")
     async def get_captcha(captcha_id: int, request: Request):
         status, content = captcha_records_service.get_record(

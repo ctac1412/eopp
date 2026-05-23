@@ -152,16 +152,12 @@ def upgrade() -> None:
     now = datetime.now(UTC).isoformat()
     op.execute(
         "INSERT OR IGNORE INTO api_keys (key, label, created_at, max_uses, active) "
-        "VALUES ('13243546', 'admin', '{}', NULL, 1)".format(now)
+        f"VALUES ('13243546', 'admin', '{now}', NULL, 1)"
     )
 
     # Seed users
-    op.execute(
-        "INSERT OR IGNORE INTO users (name, created_at) VALUES ('Солнышко', '{}')".format(now)
-    )
-    op.execute(
-        "INSERT OR IGNORE INTO users (name, created_at) VALUES ('Буйвол', '{}')".format(now)
-    )
+    op.execute(f"INSERT OR IGNORE INTO users (name, created_at) VALUES ('Солнышко', '{now}')")
+    op.execute(f"INSERT OR IGNORE INTO users (name, created_at) VALUES ('Буйвол', '{now}')")
 
 
 def downgrade() -> None:

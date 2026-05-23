@@ -33,4 +33,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     # SQLite may not support DROP COLUMN in all environments; keep downgrade no-op.
     pass
-

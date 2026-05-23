@@ -180,7 +180,12 @@ def push_sse(msg, api_key_id=None):
                     v.remove(q)
 
 
-def register_sse_connection(api_key_id: int | None, ip: str, real_api_key_id: int | None = None, help_for: set[int] | None = None) -> tuple[asyncio.Queue, bool]:
+def register_sse_connection(
+    api_key_id: int | None,
+    ip: str,
+    real_api_key_id: int | None = None,
+    help_for: set[int] | None = None,
+) -> tuple[asyncio.Queue, bool]:
     q: asyncio.Queue = asyncio.Queue()
     displaced = False
     with lock:

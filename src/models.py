@@ -35,10 +35,6 @@ class SolveCaptchaBody(BaseModel):
     valid_index: int | None = None
 
 
-class BroadcastBody(BaseModel):
-    pass
-
-
 class CreateApiKeyBody(BaseModel):
     label: str = ""
     max_uses: int | None = None
@@ -201,3 +197,32 @@ class UpdatePayoutBody(BaseModel):
 
 class SetPayoutStatusBody(BaseModel):
     status: str  # "completed" | "cancelled"
+
+
+class OpenInvoiceBody(BaseModel):
+    company: str = ""
+    comment: str = ""
+
+
+class CompanyBillingSettingBody(BaseModel):
+    auto_invoice_reopen: bool = False
+
+
+class CompanyAliasBody(BaseModel):
+    alias: str = ""
+    company: str = ""
+
+
+class CreatePrepaidPackageBody(BaseModel):
+    api_key_id: int
+    balance_amount: int
+    active: bool = True
+
+
+class UpdatePrepaidPackageBody(BaseModel):
+    balance_amount: int | None = None
+    active: bool | None = None
+
+
+class TopUpPrepaidPackageBody(BaseModel):
+    amount: int

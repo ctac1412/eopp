@@ -1,4 +1,4 @@
-﻿"""Admin routes.
+"""Admin routes.
 
 HTTP adapters for admin auth, monitoring, billing, users, and captcha replay.
 Business rules live in services; storage calls live behind repositories.
@@ -15,18 +15,24 @@ from src.db import check_admin_token as db_check_admin_token
 from src.policies.access_policy import requires_admin
 from src.schemas.auth import AdminAuthBody
 from src.schemas.billing import (
+    CompanyAliasBody,
+    CompanyBillingSettingBody,
     CreateExpenseBody,
     CreateInvoiceBody,
     CreatePayoutBody,
+    CreatePrepaidPackageBody,
     CreateUserBody,
     GenerateInvoiceBody,
+    OpenInvoiceBody,
     PreviewPayoutBody,
     SetPayoutStatusBody,
     TariffBody,
+    TopUpPrepaidPackageBody,
     UpdateApiKeyBody,
     UpdateExpenseBody,
     UpdateInvoiceBody,
     UpdatePayoutBody,
+    UpdatePrepaidPackageBody,
     UpdateUsageLogBody,
     UpdateUserBody,
 )
@@ -85,7 +91,9 @@ def register_admin_routes(app):
             try:
                 parsed_day = datetime.fromisoformat(day).date()
             except ValueError:
-                return JSONResponse(status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"})
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"}
+                )
         report = reporting_service.build_daily_report(parsed_day)
         return JSONResponse(content=report)
 
@@ -96,9 +104,16 @@ def register_admin_routes(app):
             try:
                 parsed_day = datetime.fromisoformat(day).date()
             except ValueError:
-                return JSONResponse(status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"})
+                return JSONResponse(
+                    status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"}
+                )
         report = reporting_service.build_daily_report(parsed_day)
-        return JSONResponse(content={"text": reporting_service.render_telegram_daily_report(report), "report": report})
+        return JSONResponse(
+            content={
+                "text": reporting_service.render_telegram_daily_report(report),
+                "report": report,
+            }
+        )
 
     @app.post("/admin/telegram/preview")
     async def admin_telegram_preview(body: dict):
@@ -156,14 +171,18 @@ def register_admin_routes(app):
             puzzle = data.get("puzzle", data)
             variants = puzzle.get("variantsCapture", [])
             if variant_index < 0 or variant_index >= len(variants):
-                return JSONResponse(status_code=422, content={"error": "variant_index out of range"})
+                return JSONResponse(
+                    status_code=422, content={"error": "variant_index out of range"}
+                )
             data["valid_index"] = variant_index
             os.makedirs(VALID_DIR, exist_ok=True)
             target_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
             with open(target_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             os.remove(source_path)
-            return JSONResponse(content={"ok": True, "captcha_id": captcha_id, "valid_index": variant_index})
+            return JSONResponse(
+                content={"ok": True, "captcha_id": captcha_id, "valid_index": variant_index}
+            )
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": f"save failed: {exc}"})
 
@@ -208,37 +227,32 @@ def register_admin_routes(app):
         return _json_result(billing_service.delete_invoice(id))
 
     @app.post("/admin/open-invoices/ensure")
-    async def ensure_admin_open_invoice(body: dict):
-        company = (body or {}).get("company", "")
-        return _json_result(billing_service.ensure_open_invoice(company))
+    async def ensure_admin_open_invoice(body: OpenInvoiceBody):
+        return _json_result(billing_service.ensure_open_invoice(body.company))
 
     @app.post("/admin/auto-invoices/open")
-    async def open_admin_auto_invoice(body: dict):
-        company = (body or {}).get("company", "")
-        return _json_result(billing_service.ensure_open_invoice(company))
+    async def open_admin_auto_invoice(body: OpenInvoiceBody):
+        return _json_result(billing_service.ensure_open_invoice(body.company))
 
     @app.post("/admin/open-invoices/issue")
-    async def issue_admin_open_invoice(body: dict):
-        payload = body or {}
-        company = payload.get("company", "")
-        comment = payload.get("comment", "")
-        return _json_result(billing_service.issue_open_invoice(company, comment))
+    async def issue_admin_open_invoice(body: OpenInvoiceBody):
+        return _json_result(billing_service.issue_open_invoice(body.company, body.comment))
 
     @app.get("/admin/company-billing-settings")
     async def list_admin_company_billing_settings():
         return _json_result(billing_service.list_company_billing_settings())
 
     @app.put("/admin/company-billing-settings/{company}")
-    async def update_admin_company_billing_settings(company: str, body: dict):
-        return _json_result(billing_service.update_company_billing_settings(company, body or {}))
+    async def update_admin_company_billing_settings(company: str, body: CompanyBillingSettingBody):
+        return _json_result(billing_service.update_company_billing_settings(company, body))
 
     @app.get("/admin/company-aliases")
     async def list_admin_company_aliases():
         return _json_result(billing_service.list_company_aliases())
 
     @app.post("/admin/company-aliases")
-    async def upsert_admin_company_alias(body: dict):
-        return _json_result(billing_service.upsert_company_alias(body or {}))
+    async def upsert_admin_company_alias(body: CompanyAliasBody):
+        return _json_result(billing_service.upsert_company_alias(body))
 
     @app.delete("/admin/company-aliases/{alias}")
     async def delete_admin_company_alias(alias: str):
@@ -313,23 +327,25 @@ def register_admin_routes(app):
         return _json_result(billing_service.list_prepaid_packages())
 
     @app.post("/admin/prepaid-packages")
-    async def create_admin_prepaid_package(body: dict):
-        return _json_result(billing_service.create_prepaid_package(body or {}))
+    async def create_admin_prepaid_package(body: CreatePrepaidPackageBody):
+        return _json_result(billing_service.create_prepaid_package(body))
 
     @app.patch("/admin/prepaid-packages/{id}")
-    async def update_admin_prepaid_package(id: int, body: dict):
-        return _json_result(billing_service.update_prepaid_package(id, body or {}))
+    async def update_admin_prepaid_package(id: int, body: UpdatePrepaidPackageBody):
+        return _json_result(billing_service.update_prepaid_package(id, body))
 
     @app.delete("/admin/prepaid-packages/{id}")
     async def delete_admin_prepaid_package(id: int):
         return _json_result(billing_service.delete_prepaid_package(id))
 
     @app.post("/admin/prepaid-packages/{id}/top-up")
-    async def top_up_admin_prepaid_package(id: int, body: dict):
-        return _json_result(billing_service.top_up_prepaid_package(id, body or {}))
+    async def top_up_admin_prepaid_package(id: int, body: TopUpPrepaidPackageBody):
+        return _json_result(billing_service.top_up_prepaid_package(id, body))
 
     @app.get("/admin/prepaid-deductions")
-    async def list_admin_prepaid_deductions(package_id: int | None = None, api_key_id: int | None = None):
+    async def list_admin_prepaid_deductions(
+        package_id: int | None = None, api_key_id: int | None = None
+    ):
         return _json_result(billing_service.list_prepaid_deductions(package_id, api_key_id))
 
     @app.post("/admin/captchas/send-selected")
@@ -368,17 +384,19 @@ def register_admin_routes(app):
                             variants = puzzle.get("variantsCapture", [])
                             valid_index = get_valid_variant_index(data)
                             generated = assemble_captchas(tiles, variants, valid_index)
-                            push_sse({
-                                "type": "new_captcha",
-                                "captcha_id": cid,
-                                "images": {str(g["index"]): g["image"] for g in generated},
-                                "count": len(generated),
-                                "top3": [],
-                                "created_at": time.time(),
-                                "timeout": 30,
-                                "owner_label": "replay",
-                                "owner_api_key_id": -1,
-                            })
+                            push_sse(
+                                {
+                                    "type": "new_captcha",
+                                    "captcha_id": cid,
+                                    "images": {str(g["index"]): g["image"] for g in generated},
+                                    "count": len(generated),
+                                    "top3": [],
+                                    "created_at": time.time(),
+                                    "timeout": 30,
+                                    "owner_label": "replay",
+                                    "owner_api_key_id": -1,
+                                }
+                            )
                             print(f"Sent replay captcha {cid}")
                             time.sleep(1)
                         except Exception as e:
@@ -458,4 +476,3 @@ def register_admin_routes(app):
                 "X-Accel-Buffering": "no",
             },
         )
-

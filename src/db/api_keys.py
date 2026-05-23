@@ -50,14 +50,16 @@ def list_keys() -> list[dict]:
         key_ids = [k["id"] for k in keys]
         placeholders = ",".join("?" * len(key_ids))
         tariff_rows = conn.execute(
-            f"SELECT * FROM tariffs WHERE api_key_id IN ({placeholders})",
-            key_ids
+            f"SELECT * FROM tariffs WHERE api_key_id IN ({placeholders})", key_ids
         ).fetchall()
-        tariff_map = {r["api_key_id"]: {
-            "price_create": r["price_create"],
-            "price_reschedule": r["price_reschedule"],
-            "price_create_peak": r["price_create_peak"],
-        } for r in tariff_rows}
+        tariff_map = {
+            r["api_key_id"]: {
+                "price_create": r["price_create"],
+                "price_reschedule": r["price_reschedule"],
+                "price_create_peak": r["price_create_peak"],
+            }
+            for r in tariff_rows
+        }
         for k in keys:
             k["tariff"] = tariff_map.get(k["id"])
             k["debt"] = calc_debt(k["id"])
@@ -98,7 +100,15 @@ def update_key(
 
     conn.execute(
         "UPDATE api_keys SET label = ?, max_uses = ?, active = ?, comment = ?, is_admin = ?, is_super_kiosk = ? WHERE id = ?",
-        (label, max_uses, 1 if active else 0, comment, 1 if is_admin else 0, 1 if is_super_kiosk else 0, key_id),
+        (
+            label,
+            max_uses,
+            1 if active else 0,
+            comment,
+            1 if is_admin else 0,
+            1 if is_super_kiosk else 0,
+            key_id,
+        ),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,)).fetchone()

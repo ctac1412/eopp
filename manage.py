@@ -85,9 +85,8 @@ def main(
         os.environ["EOPP_DB_PATH"] = os.path.join(data_dir, "api_keys.db")
 
     import src.utils
-
-    from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
     from src.app import create_app
+    from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
 
     certfile, keyfile = None, None
     if not no_ssl:

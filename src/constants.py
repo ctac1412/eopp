@@ -58,7 +58,9 @@ def __getattr__(name):
     if name == "VALID_DIR":
         return _lazy("VALID", lambda: os.path.join(_get_data_dir(), "captcha_examples", "valid"))
     if name == "NO_VALID_DIR":
-        return _lazy("NO_VALID", lambda: os.path.join(_get_data_dir(), "captcha_examples", "no_valid"))
+        return _lazy(
+            "NO_VALID", lambda: os.path.join(_get_data_dir(), "captcha_examples", "no_valid")
+        )
     if name == "PLUGINS_DIR":
         return os.environ.get("EOPP_PLUGINS_DIR") or os.path.join(PROJECT_DIR, "plugins")
     if name == "FRONTEND_DIST":

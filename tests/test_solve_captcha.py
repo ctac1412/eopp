@@ -26,7 +26,9 @@ from captcha_solver import (
 )
 from src.utils import get_valid_variant_index
 
-TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "captcha_examples", "valid")
+TEST_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "captcha_examples", "valid"
+)
 TEST_FILES = sorted(glob.glob(os.path.join(TEST_DIR, "*.json")))
 
 

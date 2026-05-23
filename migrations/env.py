@@ -6,7 +6,6 @@ Alembic env.py для чистого sqlite3 (без SQLAlchemy ORM).
 """
 
 import os
-import sqlite3
 from logging.config import fileConfig
 
 from alembic import context
@@ -29,7 +28,7 @@ def _get_db_path() -> str:
     # Из alembic.ini: sqlite:///data/api_keys.db
     url = config.get_main_option("sqlalchemy.url")
     if url and url.startswith("sqlite:///"):
-        return url[len("sqlite:///"):]
+        return url[len("sqlite:///") :]
 
     return "data/api_keys.db"
 

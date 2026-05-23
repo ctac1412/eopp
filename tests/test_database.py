@@ -1,4 +1,4 @@
-﻿"""
+"""
 EOPP Captcha Solver - Database Unit Tests
 
 РџРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ С‚РµСЃС‚РѕРІ Р‘Р”:
@@ -20,12 +20,14 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    """РР·РѕР»РёСЂСѓРµРј Р‘Р” РґР»СЏ РєР°Р¶РґРѕРіРѕ С‚РµСЃС‚Р°."""
+    """Изолируем БД для каждого теста."""
     import src.db.connection as conn_module
     import src.db.init as init_module
+    from src.entities.base import set_db_path
 
     test_db = tempfile.mktemp(suffix=".db")
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
+    set_db_path(test_db)
     init_module.init_db()
 
     yield
@@ -181,9 +183,7 @@ class TestUsageLog:
 
         key = create_key(label="price_test")
         create_tariff(key["id"], price_create=100, price_reschedule=50)
-        log_id = log_usage(
-            key["key"], "res-price", "capt-price", config_json={"mode": "create"}
-        )
+        log_id = log_usage(key["key"], "res-price", "capt-price", config_json={"mode": "create"})
         confirm_usage(log_id)
         log = get_usage_log_entry(log_id)
         assert log["price"] == 100
@@ -220,7 +220,9 @@ class TestUsageLog:
             "capt-open-link",
             config_json={
                 "mode": "create",
-                "reservationData": {"raw": {"userData": {"organizationName": "РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ"}}},
+                "reservationData": {
+                    "raw": {"userData": {"organizationName": "РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ"}}
+                },
             },
         )
 
@@ -241,9 +243,7 @@ class TestUsageLog:
 
         key = create_key(label="fail_test")
         log_id = log_usage(key["key"], "res-fail", "capt-fail")
-        assert (
-            fail_usage(log_id, error_message="Test error", error_stage="captcha") is True
-        )
+        assert fail_usage(log_id, error_message="Test error", error_stage="captcha") is True
 
     def test_update_usage_log(self):
         """РћР±РЅРѕРІР»РµРЅРёРµ Р»РѕРіР°."""
@@ -386,9 +386,7 @@ class TestEdgeCases:
         """РћС‚РјРµС‚РєР° РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import fail_usage
 
-        assert (
-            fail_usage(99999, error_message="Error", error_stage="test") is False
-        )
+        assert fail_usage(99999, error_message="Error", error_stage="test") is False
 
 
 class TestOpenInvoices:
@@ -477,4 +475,3 @@ class TestPrepaidPackages:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
-

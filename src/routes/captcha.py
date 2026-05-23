@@ -63,7 +63,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 content=content,
             )
 
-        api_key_id = key_record["id"]
+        api_key_id = key_record.id
 
         data = body.model_dump(exclude={"api_key", "auto_solve", "reservation_id"})
 
@@ -143,7 +143,12 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         if entry["result"] is None:
             push_sse(
-                {"type": "captcha_timeout", "captcha_id": captcha_id, "owner_label": owner_label, "owner_api_key_id": api_key_id},
+                {
+                    "type": "captcha_timeout",
+                    "captcha_id": captcha_id,
+                    "owner_label": owner_label,
+                    "owner_api_key_id": api_key_id,
+                },
                 api_key_id=api_key_id,
             )
 

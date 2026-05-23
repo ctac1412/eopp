@@ -25,48 +25,6 @@ def _row_to_dict(r):
     return dict(zip(r.keys(), r))
 
 
-def init_invoices_table(conn=None):
-    """Create invoices and invoice_items tables if they don't exist."""
-    c = conn or get_connection()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number TEXT UNIQUE NOT NULL,
-            company TEXT,
-            is_open INTEGER DEFAULT 0,
-            comment TEXT DEFAULT '',
-            percent_rate REAL DEFAULT 0,
-            tax_rate REAL DEFAULT 0,
-            debt_amount INTEGER DEFAULT 0,
-            percent_amount INTEGER DEFAULT 0,
-            tax_amount INTEGER DEFAULT 0,
-            total_amount INTEGER DEFAULT 0,
-            pdf_path TEXT,
-            paid INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now')),
-            commission_user_id INTEGER REFERENCES users(id),
-            tax_user_id INTEGER REFERENCES users(id)
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS invoice_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id INTEGER NOT NULL REFERENCES invoices(id),
-            description TEXT NOT NULL DEFAULT '',
-            amount INTEGER NOT NULL DEFAULT 0,
-            sort_order INTEGER DEFAULT 0
-        )
-    """)
-    c.execute(
-        """CREATE UNIQUE INDEX IF NOT EXISTS idx_open_invoice_company
-           ON invoices(company)
-           WHERE is_open = 1 AND company IS NOT NULL"""
-    )
-    if not conn:
-        conn.commit()
-        conn.close()
-
-
 def insert_invoice(
     invoice_number: str,
     company: str | None = None,
@@ -183,18 +141,6 @@ def insert_invoice_with_items(
 def get_invoice(invoice_id: int) -> dict | None:
     conn = get_connection()
     row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
-    conn.close()
-    if not row:
-        return None
-    result = _row_to_dict(row)
-    result["paid"] = bool(result["paid"]) if result["paid"] is not None else False
-    result["is_open"] = bool(result["is_open"]) if result.get("is_open") is not None else False
-    return result
-
-
-def get_invoice_by_number(invoice_number: str) -> dict | None:
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM invoices WHERE invoice_number = ?", (invoice_number,)).fetchone()
     conn.close()
     if not row:
         return None
@@ -352,6 +298,7 @@ def list_invoices_with_items(limit: int = 100) -> list[dict]:
     result = list_invoices(limit)
 
     from src.db.invoice_items import get_items_for_invoice
+
     for inv in result:
         inv["items"] = get_items_for_invoice(inv["id"])
 
@@ -387,7 +334,9 @@ def update_invoice(
     percent_amount = percent_amount if percent_amount is not None else current["percent_amount"]
     tax_amount = tax_amount if tax_amount is not None else current["tax_amount"]
     total_amount = total_amount if total_amount is not None else current["total_amount"]
-    commission_user_id = commission_user_id if commission_user_id is not None else current.get("commission_user_id")
+    commission_user_id = (
+        commission_user_id if commission_user_id is not None else current.get("commission_user_id")
+    )
     tax_user_id = tax_user_id if tax_user_id is not None else current.get("tax_user_id")
     company = company if company is not None else current.get("company")
     is_open = is_open if is_open is not None else current.get("is_open")
@@ -397,8 +346,20 @@ def update_invoice(
            debt_amount = ?, percent_amount = ?, tax_amount = ?, total_amount = ?,
            commission_user_id = ?, tax_user_id = ?
            WHERE id = ?""",
-        (company, 1 if is_open else 0, comment, percent_rate, tax_rate, debt_amount, percent_amount, tax_amount, total_amount,
-         commission_user_id, tax_user_id, invoice_id),
+        (
+            company,
+            1 if is_open else 0,
+            comment,
+            percent_rate,
+            tax_rate,
+            debt_amount,
+            percent_amount,
+            tax_amount,
+            total_amount,
+            commission_user_id,
+            tax_user_id,
+            invoice_id,
+        ),
     )
     conn.commit()
     conn.close()
@@ -417,8 +378,7 @@ def set_invoice_paid(invoice_id: int, paid: bool) -> dict | None:
 
     # Cascade paid status to linked usage logs
     conn.execute(
-        "UPDATE usage_log SET paid = ? WHERE invoice_id = ?",
-        (1 if paid else 0, invoice_id)
+        "UPDATE usage_log SET paid = ? WHERE invoice_id = ?", (1 if paid else 0, invoice_id)
     )
 
     conn.commit()
@@ -435,20 +395,11 @@ def delete_invoice(invoice_id: int) -> bool:
         return False
 
     # Unlink usage logs
-    conn.execute("UPDATE usage_log SET paid = 0, invoice_id = NULL WHERE invoice_id = ?", (invoice_id,))
+    conn.execute(
+        "UPDATE usage_log SET paid = 0, invoice_id = NULL WHERE invoice_id = ?", (invoice_id,)
+    )
 
     conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
     conn.commit()
     conn.close()
     return True
-
-
-def get_usage_log_count(invoice_id: int) -> int:
-    """Get count of usage logs linked to this invoice."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT COUNT(*) as cnt FROM usage_log WHERE invoice_id = ?",
-        (invoice_id,),
-    ).fetchone()
-    conn.close()
-    return row["cnt"] if row else 0

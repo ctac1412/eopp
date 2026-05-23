@@ -28,12 +28,7 @@ def extract_fields(config_json: dict | None) -> dict:
         .get("userData", {})
         .get("organizationName")
     )
-    fio = (
-        config_json.get("reservationData", {})
-        .get("raw", {})
-        .get("userData", {})
-        .get("fio")
-    )
+    fio = config_json.get("reservationData", {}).get("raw", {}).get("userData", {}).get("fio")
     vehicle_number = None
     vehicles = config_json.get("reservationData", {}).get("raw", {}).get("vehicleData", [])
     if isinstance(vehicles, list):
@@ -52,7 +47,11 @@ def extract_fields(config_json: dict | None) -> dict:
 def calc_is_test(reservation_id: str, config_json: dict | None) -> int:
     if reservation_id in ("unknown", "") or _UUID_V0_PATTERN.match(reservation_id):
         return 1
-    if config_json and isinstance(config_json.get("runUpTo"), int) and config_json.get("runUpTo") < 5:
+    if (
+        config_json
+        and isinstance(config_json.get("runUpTo"), int)
+        and config_json.get("runUpTo") < 5
+    ):
         return 1
     return 0
 
@@ -80,23 +79,33 @@ def backfill():
             """UPDATE usage_log
                SET op_type = ?, company = ?, fio = ?, vehicle_number = ?, is_test = ?
                WHERE id = ?""",
-            (fields["op_type"], fields["company"], fields["fio"],
-             fields["vehicle_number"], is_test, row["id"]),
+            (
+                fields["op_type"],
+                fields["company"],
+                fields["fio"],
+                fields["vehicle_number"],
+                is_test,
+                row["id"],
+            ),
         )
         updated += 1
 
         # Статистика
         ot = fields["op_type"] or "unknown"
         stats["op_type"][ot] = stats["op_type"].get(ot, 0) + 1
-        if fields["company"]: stats["company"] += 1
-        if fields["fio"]: stats["fio"] += 1
-        if fields["vehicle_number"]: stats["vehicle"] += 1
-        if is_test: stats["is_test"] += 1
+        if fields["company"]:
+            stats["company"] += 1
+        if fields["fio"]:
+            stats["fio"] += 1
+        if fields["vehicle_number"]:
+            stats["vehicle"] += 1
+        if is_test:
+            stats["is_test"] += 1
 
     conn.commit()
 
     print(f"\n✅ Обновлено {updated} записей")
-    print(f"\n📊 Статистика:")
+    print("\n📊 Статистика:")
     print(f"  op_type: {stats['op_type']}")
     print(f"  company: {stats['company']}")
     print(f"  fio: {stats['fio']}")
@@ -104,9 +113,7 @@ def backfill():
     print(f"  is_test: {stats['is_test']}")
 
     # Проверка
-    remaining = conn.execute(
-        "SELECT COUNT(*) FROM usage_log WHERE op_type IS NULL"
-    ).fetchone()[0]
+    remaining = conn.execute("SELECT COUNT(*) FROM usage_log WHERE op_type IS NULL").fetchone()[0]
     total = conn.execute("SELECT COUNT(*) FROM usage_log").fetchone()[0]
     print(f"\n📊 Итого: {total} записей, {remaining} ещё без op_type")
 

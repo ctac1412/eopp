@@ -16,7 +16,9 @@ depends_on = None
 
 def upgrade() -> None:
     conn = op.get_bind()
-    tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}
+    tables = {
+        row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")
+    }
     if "company_billing_settings" not in tables:
         op.execute(
             """
@@ -31,6 +33,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
-    tables = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}
+    tables = {
+        row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")
+    }
     if "company_billing_settings" in tables:
         op.execute("DROP TABLE company_billing_settings")

@@ -74,7 +74,7 @@ def migrate(db_path: str = DEV_DB):
     hash_groups = {}
     multi_captcha_logs = 0
 
-    print(f"[3/4] Processing...")
+    print("[3/4] Processing...")
     for row in rows:
         logs = json.loads(row["logs"]) if row["logs"] else None
 
@@ -86,7 +86,14 @@ def migrate(db_path: str = DEV_DB):
         parsed = _extract_v2(logs)
 
         if not parsed:
-            parsed = [(row["captcha_id"], "passed" if row["status"] == "confirmed" else "failed", None, None)]
+            parsed = [
+                (
+                    row["captcha_id"],
+                    "passed" if row["status"] == "confirmed" else "failed",
+                    None,
+                    None,
+                )
+            ]
 
         if len(parsed) > 1:
             multi_captcha_logs += 1
@@ -98,7 +105,7 @@ def migrate(db_path: str = DEV_DB):
                 skipped += 1
                 continue
 
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
 
             puzzle = data.get("puzzle", data)
@@ -108,7 +115,12 @@ def migrate(db_path: str = DEV_DB):
 
             thash = tiles_hash(tiles) if tiles else None
 
-            if correct_answer is None and valid_index is not None and variants and 0 <= valid_index < len(variants):
+            if (
+                correct_answer is None
+                and valid_index is not None
+                and variants
+                and 0 <= valid_index < len(variants)
+            ):
                 correct_answer = json.dumps(variants[valid_index])
 
             if correct_answer:
@@ -119,13 +131,21 @@ def migrate(db_path: str = DEV_DB):
             conn.execute(
                 """INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, correct_answer, fail_reason, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (captcha_id, cap_status, row["id"], thash, correct_answer, fail_reason, row["created_at"]),
+                (
+                    captcha_id,
+                    cap_status,
+                    row["id"],
+                    thash,
+                    correct_answer,
+                    fail_reason,
+                    row["created_at"],
+                ),
             )
             created += 1
 
     conn.commit()
 
-    print(f"[4/4] Results:")
+    print("[4/4] Results:")
     print(f"  V2 logs processed: {v2_count}")
     print(f"  V1 logs skipped (use migrate_v1_captchas.py): {v1_count}")
     print(f"  Captchas created: {created}")
@@ -137,7 +157,9 @@ def migrate(db_path: str = DEV_DB):
     if duplicate_hashes:
         print(f"\nDuplicate tiles_hash groups ({len(duplicate_hashes)}):")
         for h, ids in sorted(duplicate_hashes.items(), key=lambda x: -len(x[1])):
-            print(f"  {h}: {len(ids)} captchas - {', '.join(ids[:5])}{'...' if len(ids) > 5 else ''}")
+            print(
+                f"  {h}: {len(ids)} captchas - {', '.join(ids[:5])}{'...' if len(ids) > 5 else ''}"
+            )
 
     total = conn.execute("SELECT COUNT(*) FROM captchas").fetchone()[0]
     print(f"\nTotal captchas in DB: {total}")
