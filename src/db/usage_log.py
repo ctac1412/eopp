@@ -6,15 +6,23 @@ EOPP Captcha Solver - Usage Log.
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+from zoneinfo._common import ZoneInfoNotFoundError
 
 from src.db.connection import get_connection
+from src.db.invoices import link_usage_to_open_invoice
+from src.db.prepaid import deduct_prepaid_for_usage_tx
 from src.db.tariffs import get_tariff
 from src.utils import get_by_path
 
 
 # UUID v0 pattern for zero UUID (used as placeholder)
 _UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")
+try:
+    _MSK_TZ = ZoneInfo("Europe/Moscow")
+except ZoneInfoNotFoundError:
+    _MSK_TZ = timezone(timedelta(hours=3), "Europe/Moscow")
 
 
 def _extract_fields_from_config(config_json: dict | None) -> dict:
@@ -56,6 +64,24 @@ def _calc_is_test(reservation_id: str, config_json: dict | None) -> int:
     if config_json and isinstance(config_json.get("runUpTo"), int) and config_json.get("runUpTo") < 5:
         return 1
     return 0
+
+
+def _is_peak_create_time(confirmed_at_iso: str) -> bool:
+    try:
+        confirmed_at = datetime.fromisoformat(confirmed_at_iso)
+    except ValueError:
+        return False
+    if confirmed_at.tzinfo is None:
+        confirmed_at = confirmed_at.replace(tzinfo=UTC)
+    return confirmed_at.astimezone(_MSK_TZ).hour == 12
+
+
+def _calculate_usage_price(mode: str, tariff: dict, confirmed_at_iso: str) -> int:
+    if mode == "reschedule":
+        return tariff["price_reschedule"]
+    if mode == "create" and _is_peak_create_time(confirmed_at_iso):
+        return tariff["price_create_peak"] or tariff["price_reschedule"]
+    return tariff["price_create"]
 
 
 def get_usage_log_entry(usage_log_id: int) -> dict | None:
@@ -158,15 +184,17 @@ def confirm_usage(
         mode = config_json.get("mode", "create") if config_json else "create"
         tariff = get_tariff(row["api_key_id"])
         price = 0
+        company = row["company"]
         if tariff:
-            if mode == "reschedule":
-                price = tariff["price_reschedule"]
-            else:
-                price = tariff["price_create"]
+            price = _calculate_usage_price(mode, tariff, now)
         conn.execute(
             "UPDATE usage_log SET price = ? WHERE id = ?",
             (price, usage_log_id),
         )
+        deducted = deduct_prepaid_for_usage_tx(conn, row["api_key_id"], usage_log_id, price)
+        if company and not deducted:
+            conn.commit()
+            link_usage_to_open_invoice(usage_log_id, company)
     conn.execute(
         "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
         (row["api_key_id"],),

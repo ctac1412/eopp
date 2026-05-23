@@ -4,6 +4,10 @@ HTTP adapters for admin auth, monitoring, billing, users, and captcha replay.
 Business rules live in services; storage calls live behind repositories.
 """
 
+import json
+import os
+from datetime import datetime
+
 from fastapi.responses import JSONResponse
 
 from src.db import check_admin_token as db_check_admin_token
@@ -26,11 +30,15 @@ from src.schemas.billing import (
 from src.policies.access_policy import requires_admin
 from src.schemas.auth import AdminAuthBody
 from src.services import billing_service
+from src.services import reporting_service
 from src.utils import (
+    assemble_captchas,
+    get_valid_variant_index,
     get_connected_streams,
     get_test_stats,
     run_benchmark_cached,
 )
+from src.constants import NO_VALID_DIR, VALID_DIR
 
 
 def admin_auth_middleware_factory(app):
@@ -38,7 +46,7 @@ def admin_auth_middleware_factory(app):
     async def admin_auth_middleware(request, call_next):
         path = request.url.path
         if requires_admin(request.method, path):
-            token = request.headers.get("X-Admin-Token")
+            token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
             if not token or not db_check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         response = await call_next(request)
@@ -70,6 +78,95 @@ def register_admin_routes(app):
     @app.post("/admin/benchmark")
     async def admin_benchmark():
         return JSONResponse(content=run_benchmark_cached())
+
+    @app.get("/admin/daily-report")
+    async def admin_daily_report(day: str | None = None):
+        parsed_day = None
+        if day:
+            try:
+                parsed_day = datetime.fromisoformat(day).date()
+            except ValueError:
+                return JSONResponse(status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"})
+        report = reporting_service.build_daily_report(parsed_day)
+        return JSONResponse(content=report)
+
+    @app.get("/admin/daily-report-text")
+    async def admin_daily_report_text(day: str | None = None):
+        parsed_day = None
+        if day:
+            try:
+                parsed_day = datetime.fromisoformat(day).date()
+            except ValueError:
+                return JSONResponse(status_code=400, content={"error": "invalid day format, expected YYYY-MM-DD"})
+        report = reporting_service.build_daily_report(parsed_day)
+        return JSONResponse(content={"text": reporting_service.render_telegram_daily_report(report), "report": report})
+
+    @app.post("/admin/telegram/preview")
+    async def admin_telegram_preview(body: dict):
+        command = (body or {}).get("command", "")
+        if not command:
+            return JSONResponse(status_code=400, content={"error": "command required"})
+        return JSONResponse(content=reporting_service.telegram_command_preview(command))
+
+    @app.get("/admin/captcha-label/next")
+    async def admin_captcha_label_next():
+        if not os.path.isdir(NO_VALID_DIR):
+            return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
+        files = sorted(f for f in os.listdir(NO_VALID_DIR) if f.endswith(".json"))
+        if not files:
+            return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
+        filename = files[0]
+        path = os.path.join(NO_VALID_DIR, filename)
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return JSONResponse(status_code=500, content={"error": "failed to read captcha file"})
+        puzzle = data.get("puzzle", data)
+        tiles = puzzle.get("tiles", [])
+        variants = puzzle.get("variantsCapture", [])
+        if not tiles or not variants:
+            return JSONResponse(status_code=422, content={"error": "invalid captcha structure"})
+        valid_index = get_valid_variant_index(data)
+        generated = assemble_captchas(tiles, variants, valid_index)
+        captcha_id = os.path.splitext(filename)[0]
+        return JSONResponse(
+            content={
+                "captcha_id": captcha_id,
+                "filename": filename,
+                "variants_count": len(generated),
+                "images": {str(item["index"]): item["image"] for item in generated},
+            }
+        )
+
+    @app.post("/admin/captcha-label/save")
+    async def admin_captcha_label_save(body: dict):
+        payload = body or {}
+        captcha_id = payload.get("captcha_id")
+        variant_index = payload.get("variant_index")
+        if not captcha_id or not isinstance(captcha_id, str):
+            return JSONResponse(status_code=400, content={"error": "captcha_id required"})
+        if not isinstance(variant_index, int):
+            return JSONResponse(status_code=400, content={"error": "variant_index must be integer"})
+        source_path = os.path.join(NO_VALID_DIR, f"{captcha_id}.json")
+        if not os.path.exists(source_path):
+            return JSONResponse(status_code=404, content={"error": "captcha file not found"})
+        try:
+            with open(source_path, encoding="utf-8") as f:
+                data = json.load(f)
+            puzzle = data.get("puzzle", data)
+            variants = puzzle.get("variantsCapture", [])
+            if variant_index < 0 or variant_index >= len(variants):
+                return JSONResponse(status_code=422, content={"error": "variant_index out of range"})
+            data["valid_index"] = variant_index
+            os.makedirs(VALID_DIR, exist_ok=True)
+            target_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
+            with open(target_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.remove(source_path)
+            return JSONResponse(content={"ok": True, "captcha_id": captcha_id, "valid_index": variant_index})
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": f"save failed: {exc}"})
 
     @app.get("/admin/tariffs/{api_key_id}")
     async def get_admin_tariff(api_key_id: int):
@@ -110,6 +207,18 @@ def register_admin_routes(app):
     @app.delete("/admin/invoices/{id}")
     async def delete_admin_invoice(id: int):
         return _json_result(billing_service.delete_invoice(id))
+
+    @app.post("/admin/open-invoices/ensure")
+    async def ensure_admin_open_invoice(body: dict):
+        company = (body or {}).get("company", "")
+        return _json_result(billing_service.ensure_open_invoice(company))
+
+    @app.post("/admin/open-invoices/issue")
+    async def issue_admin_open_invoice(body: dict):
+        payload = body or {}
+        company = payload.get("company", "")
+        comment = payload.get("comment", "")
+        return _json_result(billing_service.issue_open_invoice(company, comment))
 
     @app.get("/admin/expenses")
     async def list_admin_expenses():
@@ -174,6 +283,22 @@ def register_admin_routes(app):
     @app.delete("/admin/users/{id}")
     async def delete_admin_user(id: int):
         return _json_result(billing_service.delete_user(id))
+
+    @app.get("/admin/prepaid-packages")
+    async def list_admin_prepaid_packages():
+        return _json_result(billing_service.list_prepaid_packages())
+
+    @app.post("/admin/prepaid-packages")
+    async def create_admin_prepaid_package(body: dict):
+        return _json_result(billing_service.create_prepaid_package(body or {}))
+
+    @app.patch("/admin/prepaid-packages/{id}")
+    async def update_admin_prepaid_package(id: int, body: dict):
+        return _json_result(billing_service.update_prepaid_package(id, body or {}))
+
+    @app.delete("/admin/prepaid-packages/{id}")
+    async def delete_admin_prepaid_package(id: int):
+        return _json_result(billing_service.delete_prepaid_package(id))
 
     @app.post("/admin/captchas/send-selected")
     async def send_selected_captchas(body: dict):
@@ -260,3 +385,44 @@ def register_admin_routes(app):
             entry["api_key_id"] = ul["api_key_id"] if ul else None
             result.append(entry)
         return JSONResponse(content=result)
+
+    @app.post("/admin/slots-group/clear")
+    async def admin_slots_group_clear():
+        from src.services.slots_group_service import clear as slots_clear
+
+        return JSONResponse(content=slots_clear())
+
+    @app.get("/admin/stream/slots")
+    async def admin_slots_stream(admin_token: str | None = None):
+        from fastapi.responses import StreamingResponse
+
+        from src.db import check_admin_token
+        from src.services.slots_group_service import get_events_since, stats
+
+        if not admin_token or not check_admin_token(admin_token):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+        async def event_generator():
+            import asyncio
+
+            last_index = 0
+            while True:
+                events, last_index = get_events_since(last_index)
+                if events:
+                    payload = {
+                        "type": "events",
+                        "events": events,
+                        "stats": stats(),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                await asyncio.sleep(1)
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )

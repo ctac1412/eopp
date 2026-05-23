@@ -74,6 +74,14 @@ from src.db.users import (
     update_user,
     delete_user,
 )
+from src.db.prepaid import (
+    create_prepaid_package,
+    deduct_prepaid_for_usage,
+    delete_prepaid_package,
+    get_active_prepaid_package,
+    list_prepaid_packages,
+    update_prepaid_package,
+)
 
 __all__ = [
     "get_connection",
@@ -127,4 +135,10 @@ __all__ = [
     "create_user",
     "update_user",
     "delete_user",
+    "list_prepaid_packages",
+    "create_prepaid_package",
+    "update_prepaid_package",
+    "delete_prepaid_package",
+    "get_active_prepaid_package",
+    "deduct_prepaid_for_usage",
 ]

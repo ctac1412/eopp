@@ -207,6 +207,31 @@ class TestUsageLog:
         log = get_usage_log_entry(log_id)
         assert log["price"] == 75
 
+    def test_confirm_usage_links_company_to_open_invoice(self):
+        """Подтвержденный usage компании автоматически попадает в открытый счет."""
+        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
+        from src.db.invoices import get_open_invoice
+
+        key = create_key(label="open_invoice_link")
+        create_tariff(key["id"], price_create=100, price_reschedule=70)
+        log_id = log_usage(
+            key["key"],
+            "res-open-link",
+            "capt-open-link",
+            config_json={
+                "mode": "create",
+                "reservationData": {"raw": {"userData": {"organizationName": "ООО Тест Компания"}}},
+            },
+        )
+
+        assert confirm_usage(log_id) is True
+        log = get_usage_log_entry(log_id)
+        assert log["invoice_id"] is not None
+        open_invoice = get_open_invoice("ООО Тест Компания")
+        assert open_invoice is not None
+        assert log["invoice_id"] == open_invoice["id"]
+        assert open_invoice["is_open"] is True
+
     def test_fail_usage(self):
         """Отметка ошибки."""
         from src.db import create_key, fail_usage, log_usage
@@ -361,6 +386,86 @@ class TestEdgeCases:
         assert (
             fail_usage(99999, error_message="Error", error_stage="test") is False
         )
+
+
+class TestOpenInvoices:
+    """Открытые счета по компаниям."""
+
+    def test_issue_open_invoice_closes_current_and_creates_new(self):
+        from src.db import create_key, create_tariff, confirm_usage, log_usage
+        from src.db.invoices import get_open_invoice, issue_open_invoice
+
+        key = create_key(label="open_issue")
+        create_tariff(key["id"], price_create=120, price_reschedule=90)
+        for idx in range(2):
+            log_id = log_usage(
+                key["key"],
+                f"res-open-{idx}",
+                f"capt-open-{idx}",
+                config_json={
+                    "mode": "create",
+                    "reservationData": {"raw": {"userData": {"organizationName": "ООО Issue"}}},
+                },
+            )
+            confirm_usage(log_id)
+
+        old_open = get_open_invoice("ООО Issue")
+        assert old_open is not None
+        result = issue_open_invoice("ООО Issue")
+        assert result is not None
+        assert result["closed_invoice"]["id"] == old_open["id"]
+        assert result["closed_invoice"]["is_open"] is False
+        assert result["closed_invoice"]["debt_amount"] == 240
+        assert result["new_open_invoice"]["id"] != old_open["id"]
+        assert result["new_open_invoice"]["is_open"] is True
+
+
+class TestPrepaidPackages:
+    """Предоплаченные пакеты и списания."""
+
+    def test_prepaid_deduction_on_confirm_usage(self):
+        from src.db import create_key, create_tariff, get_usage_log_entry, log_usage, confirm_usage
+        from src.db.prepaid import create_prepaid_package, list_prepaid_packages
+
+        key = create_key(label="prepaid")
+        create_tariff(key["id"], price_create=100, price_reschedule=70)
+        create_prepaid_package(api_key_id=key["id"], balance_amount=500, active=True)
+
+        log_id = log_usage(
+            key["key"],
+            "res-prepaid",
+            "capt-prepaid",
+            config_json={"mode": "create"},
+        )
+        confirm_usage(log_id)
+
+        log = get_usage_log_entry(log_id)
+        packages = list_prepaid_packages()
+        pkg = next(item for item in packages if item["api_key_id"] == key["id"])
+        assert log["paid"] is True
+        assert pkg["balance_amount"] == 400
+
+    def test_prepaid_not_deducted_when_insufficient_balance(self):
+        from src.db import create_key, create_tariff, get_usage_log_entry, log_usage, confirm_usage
+        from src.db.prepaid import create_prepaid_package, list_prepaid_packages
+
+        key = create_key(label="prepaid_low")
+        create_tariff(key["id"], price_create=200, price_reschedule=70)
+        create_prepaid_package(api_key_id=key["id"], balance_amount=100, active=True)
+
+        log_id = log_usage(
+            key["key"],
+            "res-prepaid-low",
+            "capt-prepaid-low",
+            config_json={"mode": "create"},
+        )
+        confirm_usage(log_id)
+
+        log = get_usage_log_entry(log_id)
+        packages = list_prepaid_packages()
+        pkg = next(item for item in packages if item["api_key_id"] == key["id"])
+        assert log["paid"] is None
+        assert pkg["balance_amount"] == 100
 
 
 if __name__ == "__main__":
