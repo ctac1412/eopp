@@ -63,10 +63,10 @@ def build_daily_report(day: date | None = None) -> dict:
     target_day = day or datetime.now(MSK).date()
     all_rows = [row for row in usage_log_repo.list_usage() if not row.is_test]
     rows = _usage_in_day(all_rows, target_day)
-    success = [row for row in rows if row.get("status") == "confirmed"]
-    failed = [row for row in rows if row.get("status") == "failed"]
-    pending = [row for row in rows if row.get("status") == "pending"]
-    revenue = sum((row.get("price") or 0) for row in success)
+    success = [row for row in rows if row.status == "confirmed"]
+    failed = [row for row in rows if row.status == "failed"]
+    pending = [row for row in rows if row.status == "pending"]
+    revenue = sum((row.price or 0) for row in success)
     return {
         "date": target_day.isoformat(),
         "timezone": "Europe/Moscow",
