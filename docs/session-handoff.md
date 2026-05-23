@@ -1,80 +1,200 @@
-# Session handoff
+# Session Handoff
 
-Snapshot for the next Codex session. Keep this file short and update it when a session changes important project assumptions.
+Updated: 2026-05-23 MSK
 
-## Current priority
+## Start Rules
 
-We are stabilizing the browser extension around the current EOPP frontend contracts. Do not release, push, deploy, bump plugin version, build CRX, or update `plugins/update.xml` unless the user explicitly asks.
+- Work in `D:\Projects\eopp`.
+- First read `AGENTS.md`, `docs/task-todo.md`, `docs/implementation-plan.md`, and this file.
+- Run `git status --short` before editing. The worktree currently has many staged user changes; do not revert, unstage, or commit unrelated files.
+- Do not deploy, push, publish CRX, update plugin release artifacts, or bump plugin versions unless explicitly requested.
+- `codegraph` was connected by the user and `.codegraph/` exists, but the previous session did not have a callable codegraph tool exposed via `tool_search`.
 
-The user wants changes in larger batches: avoid frequent commits and avoid test runs after every tiny edit. For extension code, `npm run typecheck` is the main quick check; `npm run build` is useful but can need sandbox escalation because esbuild may not read `vite.config.ts` inside the sandbox.
+## Completed Commits
 
-## Extension contract facts
+- `283f3f1 Implement shared slots coordination`
+- `234c529 Improve finance admin tabs`
+- `cfe74ce Fix captcha example validation`
+- `8534770 Improve extension configuration UI`
 
-Site source is saved as `eopp_original.js`.
+## Current Priority
 
-Known enums from site:
+Continue task B1: tariff pricing by time.
 
-- `EoppTransportType`: `Cargo = 1`, `Tso = 2`, `Special = 3`, `TsoSpecial = 4`.
-- Vehicle subtype: `Truck = 1`, `Trailer = 2`.
-- Facility mode: `Unspecified = 0`, `Timeslot = 1`, `Special = 2`, `Queue = 3`, `Stopped = 4`.
+Business rule:
+- normal create uses `price_create`;
+- reschedule uses `price_reschedule`;
+- create confirmed at 12:00 MSK should use a higher "peak create" price;
+- fallback for 12:00 create is `price_reschedule` if dedicated peak price is not configured.
 
-Site chooses vehicle id from reservation `vehicleData.find(subTypeId == Truck)`, not blindly `vehicleData[0]`.
+Do this carefully because billing touches DB, admin UI, and usage confirmation.
 
-Site computes transport type like:
+## Current Worktree Notes
 
-```ts
-isTsoMode
-  ? isSpecialCargo ? TsoSpecial : Tso
-  : isSpecialCargo ? Special : Cargo
-```
+There are many staged changes that appear to be user work or generated artifacts. Do not include them in commits unless explicitly instructed.
 
-`encryptedSettings` is a site `localStorage` key. When present, the site treats TSO mode as enabled and sends that value as `encryptedTso`. In normal mode `encryptedTso` is `null`.
+Staged files seen in the previous session included:
+- `frontend/src/AdminPage.jsx`
+- `frontend/src/components/admin/ReportsTab.jsx`
+- `frontend/src/components/admin/StreamsTab.jsx`
+- `frontend/src/components/history/HistoryRow.jsx`
+- `plugins/my-helper-v1.4.0.crx`
+- `plugins/update.xml`
+- `src/models.py`
+- `src/routes/admin.py`
+- `src/routes/frontend.py`
+- `src/routes/slots.py`
+- `src/services/slots_group_service.py`
+- many `yandex-browser-plugin/src/*` files
 
-`typeOfTransportation` in reservation raw is not the same as submit `transportType`; do not use it for EOPP submit payloads.
+Unstaged partial B1 files seen in the previous session:
+- `migrations/versions/8814b9cb1e05_initial_schema.py`
+- `src/db/api_keys.py`
+- `src/db/tariffs.py`
+- `src/db/usage_log.py`
+- `src/repositories/billing_repo.py`
+- `src/services/billing_service.py`
 
-## Raw objects
+Untracked:
+- `.codegraph/`
+- `migrations/versions/b8c9d0e1f2a3_tariff_peak_create_price.py`
 
-Reservation raw is returned by:
+Important: `src/models.py` already contains `TariffBody.price_create_peak`, but that file was staged among user changes. Inspect before using it in a commit.
 
-```text
-GET https://eopp.epd-portal.ru/reservations-api/v1/{reservationId}
-```
+## B1 Partial Implementation Already Done
 
-Important fields:
+- Added `price_create_peak: int | None = None` to `TariffBody` in `src/models.py`.
+- Extended tariff DB mapping in `src/db/tariffs.py` with `price_create_peak`.
+- Extended API key tariff map in `src/db/api_keys.py`.
+- Extended repository/service upsert path in:
+  - `src/repositories/billing_repo.py`
+  - `src/services/billing_service.py`
+- Added peak pricing calculation in `src/db/usage_log.py`:
+  - uses `Europe/Moscow`;
+  - `mode == "reschedule"` uses `price_reschedule`;
+  - `mode == "create"` at hour `12` uses `price_create_peak` or falls back to `price_reschedule`;
+  - other creates use `price_create`.
+- Added `price_create_peak INTEGER` to initial migration.
+- Added new migration `migrations/versions/b8c9d0e1f2a3_tariff_peak_create_price.py`.
 
-- `id`: reservation id.
-- `reservationRequestCode`: display number.
-- `facilityId`: selected APP id.
-- `vehicleData`: source for truck `vehicleId`.
-- `isSpecialCargo`: source for transport type.
-- `reservedSlots`: may matter for reschedule.
+## B1 Next Steps
 
-Facility raw is returned by:
+1. Inspect staged/unstaged diff, especially `src/models.py` and `frontend/src/AdminPage.jsx`.
+2. Finish admin UI for `price_create_peak`:
+   - `frontend/src/AdminPage.jsx`
+   - `frontend/src/components/admin/ApiKeysTab.jsx`
+   - `frontend/src/components/admin/KeyFormModal.jsx`
+3. Add or update tests:
+   - tariff CRUD includes `price_create_peak`;
+   - API key tariff payload includes it;
+   - usage confirmation applies 12:00 MSK peak pricing;
+   - fallback to `price_reschedule` when peak price is empty.
+4. Run relevant tests:
+   - backend billing/admin tests;
+   - frontend build or typecheck if UI changed.
+5. Commit only B1 files, avoiding unrelated staged user work.
 
-```text
-GET https://eopp.epd-portal.ru/facility/Facility/get-facility/{facilityId}
-```
+## Completed Feature Context
 
-Important fields:
+### Shared Slots
 
-- `id`, `name`, `tz`, `isWorks`, `isReadonly`.
-- `settings.approveReservation`.
-- `settings.nonArrival.tsoBooking`.
-- `mode.modeType`.
-- `mode.reservationLock`.
-- `mode.isFacilityStopped`.
+Implemented first because it was the highest priority.
 
-Available dates contract:
+Backend:
+- `src/services/slots_group_service.py`
+- `src/routes/slots.py`
+- routes registered in `src/routes/__init__.py`
 
-```text
-GET /reservations-api/v1/timeslot/AvailableDates
-  ?facilityId=...
-  &fromDate=YYYY-MM-DD
-  &transportType=...
-  &vehicleId=...
-```
+Endpoints:
+- `/slots-group/claim`
+- `/slots-group/publish`
+- `/slots-group/wait`
+- `/slots-group/fail`
+- `/slots-group/stats`
 
-Response example:
+Extension:
+- feature toggle in popup config;
+- `sharedSlotsEnabled`;
+- `sharedSlotsWaitMs`, default `1600`;
+- group key is based on exact `AvailableSlots` request fingerprint;
+- fallback to direct EOPP fetch on timeout or failure.
+
+Verified previously:
+- `cmd /c npm run typecheck` in `yandex-browser-plugin`
+- `uv run pytest tests/test_api_routes.py -k SlotsGroup`
+
+### Finance Admin Tabs
+
+Improved invoices, expenses, and payouts:
+- filters;
+- analytics summaries;
+- richer table layouts;
+- improved visual hierarchy.
+
+Files included:
+- `frontend/src/components/admin/InvoicesTab.jsx`
+- `frontend/src/components/admin/ExpensesTab.jsx`
+- `frontend/src/components/admin/PayoutsTab.jsx`
+
+Verified previously:
+- `npm run build` in `frontend` passed.
+
+### Captcha Benchmark Validation
+
+Fixed benchmark/example validation:
+- `valid_index: 0` is valid;
+- missing, null, non-integer, or out-of-range `valid_index` is invalid;
+- benchmark skips invalid examples;
+- manual save routes no longer treat key presence as validity.
+
+Files included:
+- `src/utils.py`
+- `src/routes/captcha.py`
+- `src/routes/admin.py`
+- `tests/test_captcha_validation.py`
+
+Local ignored data cleanup:
+- 41 JSON examples were moved from `data/captcha_examples/valid` to `data/captcha_examples/no_valid` because they had `valid_index: null`.
+
+Verified previously:
+- `uv run pytest tests/test_captcha_validation.py tests/test_solve_captcha.py`
+
+### Extension UI
+
+Improved plugin popup:
+- advanced settings collapsed by default;
+- mode/date remain visible;
+- quick date chips;
+- less clutter in normal path.
+
+Files included:
+- `yandex-browser-plugin/src/components/ConfigForm.tsx`
+- `yandex-browser-plugin/src/store.ts`
+- `yandex-browser-plugin/src/types.ts`
+
+Plugin version was bumped to `1.3.8` during that task according to plugin `AGENTS.md`.
+
+Verified previously:
+- `npm run typecheck`
+- `npm run build`
+
+## Remaining Planned Work After B1
+
+- B2: open invoice flow, where company usage accumulates into an open invoice until issued.
+- B3: prepaid packages / balances with usage write-off.
+- C1: Telegram bot for run start/finish notifications.
+- C2: scheduled daily report, e.g. 12:03 MSK summary and revenue.
+- D1: captcha labeling/training mode from frontend.
+- D2: captcha training mode with longer time and mixed difficulty.
+- E1: broader plugin frontend redesign ideas, possibly hiding settings by default.
+
+## Useful EOPP Context
+
+The site performs a preliminary available-dates request before slots:
+
+`GET /reservations-api/v1/timeslot/AvailableDates?facilityId=...&fromDate=2026-05-22&transportType=1&vehicleId=...`
+
+Example response:
 
 ```json
 [
@@ -88,83 +208,4 @@ Response example:
 ]
 ```
 
-Current decision: add local contract/call first, do not integrate into pipeline yet. Later decide whether to use it for date validation/default date selection.
-
-## Extension files touched/important
-
-- `yandex-browser-plugin/src/api/eopp-contract.ts`
-  Centralizes EOPP enums and builders: truck vehicle id, TSO/encryptedTso, transport type, captcha context, submit payloads.
-
-- `yandex-browser-plugin/src/index.tsx`
-  On plugin open it fetches reservation raw, then facility raw by `facilityId`. It also has page-request cache/interceptor plumbing with fallback fetch.
-
-- `yandex-browser-plugin/page-interceptor.js`
-  Injected into page context to intercept site `fetch`/XHR responses. It currently tracks reservation raw and facility raw. It worked in manual testing. No noisy logs should remain, only warnings on parse errors.
-
-- `yandex-browser-plugin/vite.config.ts`
-  Generates manifest and copies `page-interceptor.js`. Content script uses `run_at: document_start`; `page-interceptor.js` is in `web_accessible_resources`.
-
-- `yandex-browser-plugin/src/types.ts`
-  Contains typed `EoppReservationRaw`, `EoppFacilityRaw`, `EoppVehicleData`, `AvailableDatesResponse`.
-
-- `yandex-browser-plugin/src/api/stages.ts`
-  Uses eopp-contract builders for current captcha/validate/submit payloads. A separate `getAvailableDates` function should exist or be added here, but it should not be wired into pipeline until explicitly decided.
-
-- `yandex-browser-plugin/src/components/ConfigForm.tsx`
-  Computed fields should not be editable in popup: reservation id, vehicle id, transport type, APP/facility. Show compact read-only summary instead. Keep hidden/debug controls only if useful.
-
-## Current UI direction
-
-Popup summary should show:
-
-- reservation: `reservationRequestCode` or short id.
-- APP: `facilityRaw.name` or `facilityId`.
-- truck: truck `regNumber` or short vehicle id.
-- type: computed `Cargo/TSO/Special/TSO Special`.
-- APP mode: `facilityRaw.mode.modeType`.
-
-Do not expose technical computed fields as normal editable inputs.
-
-## Known workflow notes
-
-Captcha contracts changed:
-
-- Generate request is now `{ payload: { facilityId, timeSlotData, reservationId, encryptedTso } }`.
-- Generate response is now `{ token, front: { tiles, variantsCapture, type } }`.
-- Validate request is `{ captchaToken, answer, payload: { reservationId, facilityId, timeSlotData, encryptedTso } }`.
-- Validate response is `{ isValid: true, successToken }`.
-
-SubmitDraft from site:
-
-```ts
-{
-  reservationId,
-  facilityId,
-  arrivalDatePlan: modeType === Queue ? null : date,
-  intervalIndex,
-  transportType: getTransportationType(),
-  modeType,
-  isTso,
-  encryptedTso,
-  captchaToken
-}
-```
-
-Reschedule from site uses `transportType` from special cargo/cargo and includes `encryptedTso`.
-
-## Open questions
-
-- Whether to use `AvailableDates` before `AvailableSlots` in the pipeline. For now, no.
-- Whether page interceptor should also cache `AvailableDates`. User paused that path and asked first for local contracts/calls.
-- Whether `modeType` fallback should remain `Timeslot` when `facilityRaw` is missing. Current assumption: yes.
-
-## Verification status
-
-Recent extension checks:
-
-- `npm run typecheck` passed after adding `AvailableDatesResponse` and `getAvailableDates`.
-- Latest `npm run build` attempt was blocked by environment usage/sandbox escalation limit, not by code errors.
-
-## Git/worktree note
-
-The worktree may have unrelated frontend/admin changes from the user. Do not revert them. Before editing, check `git status --short`.
+For now the user asked not to intercept this yet. First create internal contracts and calls; later decide whether to integrate into the pipeline.

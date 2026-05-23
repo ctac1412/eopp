@@ -177,6 +177,17 @@ export async function publishSharedSlots(
   return response as SharedSlotsClaimResponse;
 }
 
+export async function heartbeatSharedSlots(
+  groupKey: string,
+  clientId: string,
+): Promise<SharedSlotsClaimResponse> {
+  const response = await sendMessageToBackground("sharedSlotsHeartbeat", {
+    groupKey,
+    clientId,
+  });
+  return response as SharedSlotsClaimResponse;
+}
+
 export async function failSharedSlots(
   groupKey: string,
   clientId: string,

@@ -70,6 +70,12 @@ def register_slots_routes(app):
         status = 200 if result.get("ok", True) else 409
         return JSONResponse(status_code=status, content=result)
 
+    @app.post("/slots-group/heartbeat")
+    async def slots_group_heartbeat(body: SlotsGroupClaimBody):
+        result = slots_group_service.heartbeat(body.group_key, body.client_id)
+        status = 200 if result.get("ok", True) else 409
+        return JSONResponse(status_code=status, content=result)
+
     @app.get("/slots-group/stats")
     async def slots_group_stats():
         return JSONResponse(content=slots_group_service.stats())

@@ -37,6 +37,7 @@ import {
   confirmUsage,
   failSharedSlots,
   failUsage,
+  heartbeatSharedSlots,
   publishSharedSlots,
   registerUsage,
   waitSharedSlots,
@@ -170,8 +171,39 @@ async function retrySlotsWithConfig<T>(
   return retryWith429And400(fn, retry429, retry400, "getAvailableSlots", signal);
 }
 
-function getSharedSlotsClientId(): string {
-  const key = "_ss_client_id";
+async function retrySlotsWithHeartbeat<T>(
+  fn: () => Promise<T>,
+  config: InjectorConfig,
+  groupKey: string,
+  clientId: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const rc = config.retryPerEndpoint.getAvailableSlots;
+  const retry429 = {
+    enabled: rc.enabled,
+    maxRetries: rc.maxRetries,
+    delayMs: rc.delayMs,
+  };
+  const retry400 = {
+    enabled: rc.retry400Enabled,
+    maxRetries: rc.retry400MaxRetries,
+    delayMs: rc.retry400DelayMs,
+  };
+
+  const fnWithHeartbeat = async () => {
+    try {
+      return await fn();
+    } catch (err) {
+      heartbeatSharedSlots(groupKey, clientId).catch(() => {});
+      throw err;
+    }
+  };
+
+  return retryWith429And400(fnWithHeartbeat, retry429, retry400, "getAvailableSlots", signal);
+}
+
+function getSharedSlotsClientId(reservationId?: string): string {
+  const key = reservationId ? `_ss_client_id_${reservationId}` : "_ss_client_id";
   const existing = localStorage.getItem(key);
   if (existing) return existing;
 
@@ -184,7 +216,7 @@ function getSharedSlotsClientId(): string {
 }
 
 function getSharedSlotsGroupKey(config: InjectorConfig): string {
-  return `available-slots:${getAvailableSlotsUrl(config)}`;
+  return `available-slots:${config.facilityId}:${config.slotDate}`;
 }
 
 async function fetchSlotsDirect(
@@ -207,8 +239,9 @@ async function fetchSlotsWithSharedGroup(
   }
 
   const groupKey = getSharedSlotsGroupKey(config);
-  const clientId = getSharedSlotsClientId();
+  const clientId = getSharedSlotsClientId(config.reservationId);
   const waitMs = Math.max(0, config.sharedSlotsWaitMs || 1600);
+  let isMaster = false;
 
   try {
     const claim = await withAbort(
@@ -223,6 +256,10 @@ async function fetchSlotsWithSharedGroup(
     );
 
     if (claim.status === "ready" && claim.slots_response) {
+      if (config.sharedSlotsMode === "probe") {
+        log("Общие слоты: слоты есть (probe), запрашиваю EOPP самостоятельно");
+        return fetchSlotsDirect(config, signal);
+      }
       log(`Общие слоты: использую опубликованный ответ группы (${claim.waiters || 0} ожидали)`);
       logSlotsResponse(claim.slots_response);
       return claim.slots_response;
@@ -230,8 +267,19 @@ async function fetchSlotsWithSharedGroup(
 
     if (claim.role === "master") {
       log("Общие слоты: этот клиент мастер, запрашиваю EOPP и публикую результат");
+
+      const masterConfig = {
+        ...config,
+        retryPerEndpoint: {
+          ...config.retryPerEndpoint,
+          getAvailableSlots: { ...config.retryPerEndpoint.getAvailableSlots, delayMs: 1500 },
+        },
+      };
+
+      const masterFn = () => getAvailableSlots(masterConfig, signal);
+
       try {
-        const slotsResponse = await fetchSlotsDirect(config, signal);
+        const slotsResponse = await retrySlotsWithHeartbeat(masterFn, masterConfig, groupKey, clientId, signal);
         try {
           await withAbort(publishSharedSlots(groupKey, clientId, slotsResponse), signal);
           log("Общие слоты: результат опубликован для соседних клиентов");
@@ -248,6 +296,10 @@ async function fetchSlotsWithSharedGroup(
     log(`Общие слоты: жду ответ мастера до ${waitMs} мс`);
     const waited = await withAbort(waitSharedSlots(groupKey, clientId, waitMs), signal);
     if (waited.status === "ready" && waited.slots_response) {
+      if (config.sharedSlotsMode === "probe") {
+        log("Общие слоты: мастер получил слоты (probe), запрашиваю EOPP самостоятельно");
+        return fetchSlotsDirect(config, signal);
+      }
       log("Общие слоты: получил ответ мастера, EOPP не запрашиваю");
       logSlotsResponse(waited.slots_response);
       return waited.slots_response;
@@ -261,6 +313,10 @@ async function fetchSlotsWithSharedGroup(
     return fetchSlotsDirect(config, signal);
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
+      throw err;
+    }
+    if (isMaster) {
+      log(`Общие слоты: мастер не получил слоты (${serializeError(err)})`);
       throw err;
     }
     log(`Общие слоты: координация недоступна, fallback на прямой запрос (${serializeError(err)})`);

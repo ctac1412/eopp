@@ -66,6 +66,13 @@ def register_test_pages(app):
 </body>
 </html>"""
 
+    VARIANTS = {
+        1: "АПП Забайкальск (Cargo, vehicle-1)",
+        2: "АПП Забайкальск (Cargo, vehicle-2)",
+        3: "АПП Забайкальск (Special, vehicle-3)",
+        4: "АПП Забайкальск (Cargo, vehicle-4)",
+    }
+
     @app.get("/test-injector/edit")
     async def test_injector_edit():
         return HTMLResponse(TEST_PAGE_HTML.format(title="Тест: Создание брони"))
@@ -73,3 +80,13 @@ def register_test_pages(app):
     @app.get("/test-injector/reschedule")
     async def test_injector_reschedule():
         return HTMLResponse(TEST_PAGE_HTML.format(title="Тест: Перенос брони"))
+
+    @app.get("/test-injector/edit/{variant}")
+    async def test_injector_edit_variant(variant: int):
+        label = VARIANTS.get(variant, f"Вариант {variant}")
+        return HTMLResponse(TEST_PAGE_HTML.format(title=f"Тест: Создание брони — {label}"))
+
+    @app.get("/test-injector/reschedule/{variant}")
+    async def test_injector_reschedule_variant(variant: int):
+        label = VARIANTS.get(variant, f"Вариант {variant}")
+        return HTMLResponse(TEST_PAGE_HTML.format(title=f"Тест: Перенос брони — {label}"))

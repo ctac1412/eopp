@@ -37,7 +37,6 @@ type CollapsibleSection =
   | "retryValidateCaptcha"
   | "retrySubmitReschedule"
   | "retrySubmitCreate"
-  | "sharedSlots"
   | "mockResponses"
   | "reservationData";
 
@@ -115,7 +114,6 @@ const defaultCollapsed: Record<CollapsibleSection, boolean> = {
   retryValidateCaptcha: true,
   retrySubmitReschedule: true,
   retrySubmitCreate: true,
-  sharedSlots: true,
   mockResponses: true,
   reservationData: true,
 };

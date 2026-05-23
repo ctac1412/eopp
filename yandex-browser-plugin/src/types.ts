@@ -97,6 +97,7 @@ export interface InjectorConfig {
   slotRetryDelayMs: number;
   sharedSlotsEnabled: boolean;
   sharedSlotsWaitMs: number;
+  sharedSlotsMode: "reuse" | "probe";
   retryPerEndpoint: {
     getAvailableSlots: RetryConfig;
     generateCaptcha: RetryConfig;
@@ -185,6 +186,7 @@ export interface PageInfo {
   reservationId: string;
   isLocalhost?: boolean;
   pageType?: "edit" | "reschedule";
+  variant?: number;
 }
 
 export interface SlotDict {

@@ -36,12 +36,14 @@ export function shouldInject(pageUrl: string): PageInfo | null {
       pageType: match[2] as "edit" | "reschedule",
     };
   }
-  const testMatch = pageUrl.match(/\/test-injector\/(edit|reschedule)/);
+  const testMatch = pageUrl.match(/\/test-injector\/(edit|reschedule)(?:\/(\d+))?/);
   if (testMatch) {
+    const variant = testMatch[2] ? parseInt(testMatch[2], 10) : undefined;
     return {
-      reservationId: "00000000-0000-0000-0000-000000000000",
+      reservationId: variant ? `test-variant-${variant}` : "00000000-0000-0000-0000-000000000000",
       isLocalhost: true,
       pageType: testMatch[1] as "edit" | "reschedule",
+      variant,
     };
   }
   if (
@@ -123,7 +125,8 @@ export function createDefaultConfig(
     maxSlotRetries: 8,
     slotRetryDelayMs: 500,
     sharedSlotsEnabled: false,
-    sharedSlotsWaitMs: 1600,
+    sharedSlotsWaitMs: 15000,
+    sharedSlotsMode: "reuse",
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),
       generateCaptcha: defaultRetryConfig(),

@@ -126,6 +126,18 @@ chrome.runtime.onConnect.addListener((port) => {
             error: msg.payload.error,
           }),
         });
+      } else if (msg.action === "sharedSlotsHeartbeat") {
+        res = await fetch(`${serverUrl}/slots-group/heartbeat`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            group_key: msg.payload.groupKey,
+            client_id: msg.payload.clientId,
+          }),
+        });
       } else if (msg.action === "checkStream") {
         res = await fetch(
           `${serverUrl}/check-stream?api_key=${encodeURIComponent(msg.payload.apiKey)}`,

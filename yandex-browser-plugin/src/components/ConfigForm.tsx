@@ -319,7 +319,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const modeLabel = config.mode === "create" ? "Создание" : "Перенос";
   const solveModeLabel = config.autoSolve ? "Авто-капча" : "Ручная капча";
   const sharedSlotsLabel = config.sharedSlotsEnabled
-    ? "Общие слоты"
+    ? `Общие слоты (${config.sharedSlotsMode === "reuse" ? "reuse" : "probe"})`
     : "Прямой запрос";
   const runUpToLabel =
     RUN_UP_TO_LABELS[config.runUpTo] || `Этап ${config.runUpTo}`;
@@ -527,34 +527,84 @@ const ConfigForm = React.memo(function ConfigForm() {
             Расширенные настройки запуска
           </h3>
           {!collapsed.advancedMain && (
-            <div className="qn-form-row">
-              <label className="qn-form-label">
-                Остановиться на этапе
-                <select
-                  id="runUpTo-select"
-                  className="qn-form-input"
-                  value={config.runUpTo}
-                  onChange={(e) =>
-                    handleChange("runUpTo", Number(e.target.value))
-                  }
-                >
-                  <option value="1">1 — слоты</option>
-                  <option value="2">2 — капча</option>
-                  <option value="3">3 — решение капчи</option>
-                  <option value="4">4 — валидация</option>
-                  <option value="5">5 — отправка</option>
-                </select>
-              </label>
+            <>
+              <div className="qn-form-row">
+                <label className="qn-form-label">
+                  Остановиться на этапе
+                  <select
+                    id="runUpTo-select"
+                    className="qn-form-input"
+                    value={config.runUpTo}
+                    onChange={(e) =>
+                      handleChange("runUpTo", Number(e.target.value))
+                    }
+                  >
+                    <option value="1">1 — слоты</option>
+                    <option value="2">2 — капча</option>
+                    <option value="3">3 — решение капчи</option>
+                    <option value="4">4 — валидация</option>
+                    <option value="5">5 — отправка</option>
+                  </select>
+                </label>
+                <label className="qn-form-label qn-checkbox-label">
+                  <input
+                    id="autoSolve-checkbox"
+                    type="checkbox"
+                    checked={config.autoSolve}
+                    onChange={(e) => handleChange("autoSolve", e.target.checked)}
+                  />
+                  Авто-решение капчи
+                </label>
+              </div>
               <label className="qn-form-label qn-checkbox-label">
                 <input
-                  id="autoSolve-checkbox"
+                  id="shared-slots-enabled"
                   type="checkbox"
-                  checked={config.autoSolve}
-                  onChange={(e) => handleChange("autoSolve", e.target.checked)}
+                  checked={config.sharedSlotsEnabled || false}
+                  onChange={(e) =>
+                    handleChange("sharedSlotsEnabled", e.target.checked)
+                  }
                 />
-                Авто-решение капчи
+                Получать слоты через группу клиентов
               </label>
-            </div>
+              <div className="qn-form-row">
+                <label className="qn-form-label">
+                  Ожидание мастера (мс)
+                  <input
+                    id="shared-slots-wait-ms"
+                    className="qn-form-input qn-form-number"
+                    type="number"
+                    min={0}
+                    max={5000}
+                    value={config.sharedSlotsWaitMs || 1600}
+                    onChange={(e) =>
+                      handleChange("sharedSlotsWaitMs", Number(e.target.value))
+                    }
+                    disabled={!config.sharedSlotsEnabled}
+                  />
+                </label>
+              </div>
+              <div className="qn-form-row">
+                <label className="qn-form-label">
+                  Режим
+                  <select
+                    className="qn-form-input"
+                    value={config.sharedSlotsMode}
+                    onChange={(e) =>
+                      handleChange("sharedSlotsMode", e.target.value as "reuse" | "probe")
+                    }
+                    disabled={!config.sharedSlotsEnabled}
+                  >
+                    <option value="reuse">Reuse — переиспользовать ответ</option>
+                    <option value="probe">Probe — свой запрос к EOPP</option>
+                  </select>
+                </label>
+              </div>
+              <div className="qn-help-text">
+                Reuse: слейвы используют ответ мастера без своего запроса к EOPP.
+                Probe: слейвы делают свой запрос (помогает если EOPP ждёт активности от каждого клиента).
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -724,56 +774,6 @@ const ConfigForm = React.memo(function ConfigForm() {
                   }
                 />
               </label>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="qn-form-section">
-        <h3
-          className="qn-section-title qn-collapsible"
-          onClick={() => toggleSection("sharedSlots")}
-          style={{ cursor: "pointer", userSelect: "none" }}
-        >
-          <span className="qn-collapse-icon">
-            {collapsed.sharedSlots ? "▶" : "▼"}
-          </span>{" "}
-          Общие слоты
-        </h3>
-        {!collapsed.sharedSlots && (
-          <>
-            <label className="qn-form-label qn-checkbox-label">
-              <input
-                id="shared-slots-enabled"
-                type="checkbox"
-                checked={config.sharedSlotsEnabled || false}
-                onChange={(e) =>
-                  handleChange("sharedSlotsEnabled", e.target.checked)
-                }
-              />
-              Получать слоты через группу клиентов
-            </label>
-            <div className="qn-form-row">
-              <label className="qn-form-label">
-                Ожидание мастера (мс)
-                <input
-                  id="shared-slots-wait-ms"
-                  className="qn-form-input qn-form-number"
-                  type="number"
-                  min={0}
-                  max={5000}
-                  value={config.sharedSlotsWaitMs || 1600}
-                  onChange={(e) =>
-                    handleChange("sharedSlotsWaitMs", Number(e.target.value))
-                  }
-                  disabled={!config.sharedSlotsEnabled}
-                />
-              </label>
-            </div>
-            <div className="qn-help-text">
-              Первый клиент с теми же параметрами запроса забирает слоты с EOPP
-              и публикует их на сервере. Остальные ждут ответ и продолжают
-              pipeline без своего запроса к EOPP.
             </div>
           </>
         )}

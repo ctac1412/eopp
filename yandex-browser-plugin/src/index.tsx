@@ -13,6 +13,7 @@ import {
   shouldInject,
   createDefaultConfig,
   loadSavedConfig,
+  FACILITIES,
 } from "@/constants";
 import cssContent from "@/content.css?inline";
 
@@ -154,11 +155,15 @@ function injectButton(info: PageInfo): void {
     let facilityRaw: EoppFacilityRaw | null = null;
 
     if (actualInfo.isLocalhost) {
-      params = {
-        facilityId: "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
-        vehicleId: "test-vehicle-id",
-        transportType: EoppTransportType.Cargo,
+      const testVariants: Record<number, { facilityId: string; vehicleId: string; transportType: EoppTransportType }> = {
+        1: { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-1", transportType: EoppTransportType.Cargo },
+        2: { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-2", transportType: EoppTransportType.Cargo },
+        3: { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-3", transportType: EoppTransportType.Special },
+        4: { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-4", transportType: EoppTransportType.Cargo },
       };
+      params = actualInfo.variant
+        ? testVariants[actualInfo.variant] || testVariants[1]
+        : { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-id", transportType: EoppTransportType.Cargo };
     } else {
       const json = await fetchReservationRaw(actualInfo.reservationId);
       reservationRaw = json;

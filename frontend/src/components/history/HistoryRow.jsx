@@ -227,8 +227,9 @@ export function HistoryRow({
         );
       case "paid":
         const isPaid = record.paid === true;
-        const paidDisplay = isPaid ? "✅" : "—";
-        const paidTitle = isPaid ? "Оплачено" : "Не оплачено";
+        const hasInvoice = !!record.invoice_id;
+        const paidDisplay = isPaid ? "✅" : (!hasInvoice ? "—" : "—");
+        const paidTitle = isPaid ? "Оплачено" : (!hasInvoice ? "Нет счёта" : "Не оплачено");
         return (
           <td
             className="align-middle small text-center"
