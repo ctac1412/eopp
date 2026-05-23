@@ -226,3 +226,16 @@ class UpdatePrepaidPackageBody(BaseModel):
 
 class TopUpPrepaidPackageBody(BaseModel):
     amount: int
+
+
+class TelegramPreviewBody(BaseModel):
+    command: str = ""
+
+
+class CaptchaLabelSaveBody(BaseModel):
+    captcha_id: str
+    variant_index: int
+
+
+class SendSelectedCaptchasBody(BaseModel):
+    captcha_ids: list[str] = []

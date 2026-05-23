@@ -14,6 +14,7 @@ from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token as db_check_admin_token
 from src.models import (
     AdminAuthBody,
+    CaptchaLabelSaveBody,
     CompanyAliasBody,
     CompanyBillingSettingBody,
     CreateExpenseBody,
@@ -24,8 +25,10 @@ from src.models import (
     GenerateInvoiceBody,
     OpenInvoiceBody,
     PreviewPayoutBody,
+    SendSelectedCaptchasBody,
     SetPayoutStatusBody,
     TariffBody,
+    TelegramPreviewBody,
     TopUpPrepaidPackageBody,
     UpdateApiKeyBody,
     UpdateExpenseBody,
@@ -116,11 +119,8 @@ def register_admin_routes(app):
         )
 
     @app.post("/admin/telegram/preview")
-    async def admin_telegram_preview(body: dict):
-        command = (body or {}).get("command", "")
-        if not command:
-            return JSONResponse(status_code=400, content={"error": "command required"})
-        return JSONResponse(content=reporting_service.telegram_command_preview(command))
+    async def admin_telegram_preview(body: TelegramPreviewBody):
+        return JSONResponse(content=reporting_service.telegram_command_preview(body.command))
 
     @app.get("/admin/captcha-label/next")
     async def admin_captcha_label_next():
@@ -154,15 +154,8 @@ def register_admin_routes(app):
         )
 
     @app.post("/admin/captcha-label/save")
-    async def admin_captcha_label_save(body: dict):
-        payload = body or {}
-        captcha_id = payload.get("captcha_id")
-        variant_index = payload.get("variant_index")
-        if not captcha_id or not isinstance(captcha_id, str):
-            return JSONResponse(status_code=400, content={"error": "captcha_id required"})
-        if not isinstance(variant_index, int):
-            return JSONResponse(status_code=400, content={"error": "variant_index must be integer"})
-        source_path = os.path.join(NO_VALID_DIR, f"{captcha_id}.json")
+    async def admin_captcha_label_save(body: CaptchaLabelSaveBody):
+        source_path = os.path.join(NO_VALID_DIR, f"{body.captcha_id}.json")
         if not os.path.exists(source_path):
             return JSONResponse(status_code=404, content={"error": "captcha file not found"})
         try:
@@ -170,18 +163,22 @@ def register_admin_routes(app):
                 data = json.load(f)
             puzzle = data.get("puzzle", data)
             variants = puzzle.get("variantsCapture", [])
-            if variant_index < 0 or variant_index >= len(variants):
+            if body.variant_index < 0 or body.variant_index >= len(variants):
                 return JSONResponse(
                     status_code=422, content={"error": "variant_index out of range"}
                 )
-            data["valid_index"] = variant_index
+            data["valid_index"] = body.variant_index
             os.makedirs(VALID_DIR, exist_ok=True)
-            target_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
+            target_path = os.path.join(VALID_DIR, f"{body.captcha_id}.json")
             with open(target_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             os.remove(source_path)
             return JSONResponse(
-                content={"ok": True, "captcha_id": captcha_id, "valid_index": variant_index}
+                content={
+                    "ok": True,
+                    "captcha_id": body.captcha_id,
+                    "valid_index": body.variant_index,
+                }
             )
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": f"save failed: {exc}"})
@@ -349,7 +346,7 @@ def register_admin_routes(app):
         return _json_result(billing_service.list_prepaid_deductions(package_id, api_key_id))
 
     @app.post("/admin/captchas/send-selected")
-    async def send_selected_captchas(body: dict):
+    async def send_selected_captchas(body: SendSelectedCaptchasBody):
         import json
         import os
         import threading
@@ -363,7 +360,7 @@ def register_admin_routes(app):
             push_sse,
         )
 
-        captcha_ids = body.get("captcha_ids", [])
+        captcha_ids = body.captcha_ids
         if not captcha_ids:
             return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
 
