@@ -82,6 +82,11 @@ from src.db.prepaid import (
     list_prepaid_packages,
     update_prepaid_package,
 )
+from src.db.company_billing_settings import (
+    get_company_billing_settings,
+    list_company_billing_settings,
+    upsert_company_billing_settings,
+)
 
 __all__ = [
     "get_connection",
@@ -141,4 +146,7 @@ __all__ = [
     "delete_prepaid_package",
     "get_active_prepaid_package",
     "deduct_prepaid_for_usage",
+    "get_company_billing_settings",
+    "list_company_billing_settings",
+    "upsert_company_billing_settings",
 ]

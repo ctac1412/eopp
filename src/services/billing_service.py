@@ -188,10 +188,26 @@ def ensure_open_invoice(company: str) -> tuple[int, dict]:
 def issue_open_invoice(company: str, comment: str = "") -> tuple[int, dict]:
     if not company:
         return 400, {"error": "company required"}
-    result = billing_repo.issue_open_invoice(company, comment)
+    settings = billing_repo.get_company_billing_settings(company)
+    result = billing_repo.issue_open_invoice(
+        company,
+        comment,
+        reopen=bool(settings.get("auto_invoice_reopen")),
+    )
     if not result:
         return 404, {"error": "Open invoice not found"}
     return 200, result
+
+
+def list_company_billing_settings() -> tuple[int, list[dict]]:
+    return 200, billing_repo.list_company_billing_settings()
+
+
+def update_company_billing_settings(company: str, body: dict) -> tuple[int, dict]:
+    if not company:
+        return 400, {"error": "company required"}
+    auto_invoice_reopen = bool((body or {}).get("auto_invoice_reopen", False))
+    return 200, billing_repo.upsert_company_billing_settings(company, auto_invoice_reopen)
 
 
 def list_expenses() -> tuple[int, dict]:

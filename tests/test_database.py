@@ -1,12 +1,12 @@
-"""
+﻿"""
 EOPP Captcha Solver - Database Unit Tests
 
-Полный набор тестов БД:
-- TestAPIKeysDB - CRUD операции с ключами
-- TestValidateKey - валидация ключей
-- TestUsageLog - логирование использования
-- TestAdminKey - админский ключ
-- TestEdgeCases - граничные случаи
+РџРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ С‚РµСЃС‚РѕРІ Р‘Р”:
+- TestAPIKeysDB - CRUD РѕРїРµСЂР°С†РёРё СЃ РєР»СЋС‡Р°РјРё
+- TestValidateKey - РІР°Р»РёРґР°С†РёСЏ РєР»СЋС‡РµР№
+- TestUsageLog - Р»РѕРіРёСЂРѕРІР°РЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ
+- TestAdminKey - Р°РґРјРёРЅСЃРєРёР№ РєР»СЋС‡
+- TestEdgeCases - РіСЂР°РЅРёС‡РЅС‹Рµ СЃР»СѓС‡Р°Рё
 """
 
 import os
@@ -20,7 +20,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    """Изолируем БД для каждого теста."""
+    """РР·РѕР»РёСЂСѓРµРј Р‘Р” РґР»СЏ РєР°Р¶РґРѕРіРѕ С‚РµСЃС‚Р°."""
     import src.db.connection as conn_module
     import src.db.init as init_module
 
@@ -42,10 +42,10 @@ def isolate_db(monkeypatch):
 
 
 class TestAPIKeysDB:
-    """CRUD операции с API ключами."""
+    """CRUD РѕРїРµСЂР°С†РёРё СЃ API РєР»СЋС‡Р°РјРё."""
 
     def test_create_key(self):
-        """Создание ключа."""
+        """РЎРѕР·РґР°РЅРёРµ РєР»СЋС‡Р°."""
         from src.db import create_key
 
         key = create_key(label="test", max_uses=10)
@@ -55,7 +55,7 @@ class TestAPIKeysDB:
         assert "key" in key
 
     def test_list_keys(self):
-        """Список ключей."""
+        """РЎРїРёСЃРѕРє РєР»СЋС‡РµР№."""
         from src.db import create_key, list_keys
 
         create_key(label="key1")
@@ -64,7 +64,7 @@ class TestAPIKeysDB:
         assert len(keys) >= 2
 
     def test_update_key(self):
-        """Обновление ключа."""
+        """РћР±РЅРѕРІР»РµРЅРёРµ РєР»СЋС‡Р°."""
         from src.db import create_key, update_key
 
         key = create_key(label="original")
@@ -73,7 +73,7 @@ class TestAPIKeysDB:
         assert updated["active"] is False
 
     def test_update_key_comment(self):
-        """Обновление комментария."""
+        """РћР±РЅРѕРІР»РµРЅРёРµ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ."""
         from src.db import create_key, update_key
 
         key = create_key(label="comment_test")
@@ -81,7 +81,7 @@ class TestAPIKeysDB:
         assert updated["comment"] == "Test comment"
 
     def test_delete_key(self):
-        """Удаление ключа."""
+        """РЈРґР°Р»РµРЅРёРµ РєР»СЋС‡Р°."""
         from src.db import create_key, delete_key, list_keys
 
         key = create_key(label="to_delete")
@@ -90,7 +90,7 @@ class TestAPIKeysDB:
         assert not any(k["id"] == key["id"] for k in keys)
 
     def test_get_key_by_id(self):
-        """Получение ключа по ID."""
+        """РџРѕР»СѓС‡РµРЅРёРµ РєР»СЋС‡Р° РїРѕ ID."""
         from src.db import create_key, get_key_by_id
 
         key = create_key(label="lookup")
@@ -98,17 +98,17 @@ class TestAPIKeysDB:
         assert found["label"] == "lookup"
 
     def test_get_key_by_id_not_found(self):
-        """Получение несуществующего ключа."""
+        """РџРѕР»СѓС‡РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
         from src.db import get_key_by_id
 
         assert get_key_by_id(99999) is None
 
 
 class TestValidateKey:
-    """Валидация ключей."""
+    """Р’Р°Р»РёРґР°С†РёСЏ РєР»СЋС‡РµР№."""
 
     def test_validate_valid_key(self):
-        """Валидация валидного ключа."""
+        """Р’Р°Р»РёРґР°С†РёСЏ РІР°Р»РёРґРЅРѕРіРѕ РєР»СЋС‡Р°."""
         from src.db import create_key, validate_key
 
         key = create_key(label="valid")
@@ -116,7 +116,7 @@ class TestValidateKey:
         assert result["valid"] is True
 
     def test_validate_invalid_key(self):
-        """Валидация несуществующего ключа."""
+        """Р’Р°Р»РёРґР°С†РёСЏ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
         from src.db import validate_key
 
         result = validate_key("nonexistent")
@@ -124,7 +124,7 @@ class TestValidateKey:
         assert result["reason"] == "Key not found"
 
     def test_validate_disabled_key(self):
-        """Валидация отключенного ключа."""
+        """Р’Р°Р»РёРґР°С†РёСЏ РѕС‚РєР»СЋС‡РµРЅРЅРѕРіРѕ РєР»СЋС‡Р°."""
         from src.db import create_key, update_key, validate_key
 
         key = create_key(label="disabled")
@@ -134,7 +134,7 @@ class TestValidateKey:
         assert result["reason"] == "Key is disabled"
 
     def test_validate_exhausted_key(self):
-        """Валидация ключа с исчерпанным лимитом."""
+        """Р’Р°Р»РёРґР°С†РёСЏ РєР»СЋС‡Р° СЃ РёСЃС‡РµСЂРїР°РЅРЅС‹Рј Р»РёРјРёС‚РѕРј."""
         from src.db import create_key, update_key, validate_key
 
         key = create_key(label="exhausted", max_uses=1)
@@ -151,10 +151,10 @@ class TestValidateKey:
 
 
 class TestUsageLog:
-    """Логирование использования."""
+    """Р›РѕРіРёСЂРѕРІР°РЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
 
     def test_log_usage(self):
-        """Регистрация использования."""
+        """Р РµРіРёСЃС‚СЂР°С†РёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import create_key, log_usage
 
         key = create_key(label="usage_test")
@@ -162,7 +162,7 @@ class TestUsageLog:
         assert log_id > 0
 
     def test_confirm_usage(self):
-        """Подтверждение использования."""
+        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import confirm_usage, create_key, log_usage
 
         key = create_key(label="confirm_test")
@@ -170,7 +170,7 @@ class TestUsageLog:
         assert confirm_usage(log_id) is True
 
     def test_confirm_usage_with_price(self):
-        """Подтверждение с ценой из тарифа."""
+        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ СЃ С†РµРЅРѕР№ РёР· С‚Р°СЂРёС„Р°."""
         from src.db import (
             confirm_usage,
             create_key,
@@ -189,7 +189,7 @@ class TestUsageLog:
         assert log["price"] == 100
 
     def test_confirm_usage_reschedule_price(self):
-        """Подтверждение переноса с ценой."""
+        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РїРµСЂРµРЅРѕСЃР° СЃ С†РµРЅРѕР№."""
         from src.db import (
             confirm_usage,
             create_key,
@@ -208,9 +208,9 @@ class TestUsageLog:
         assert log["price"] == 75
 
     def test_confirm_usage_links_company_to_open_invoice(self):
-        """Подтвержденный usage компании автоматически попадает в открытый счет."""
+        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРЅС‹Р№ usage РєРѕРјРїР°РЅРёРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРѕРїР°РґР°РµС‚ РІ РѕС‚РєСЂС‹С‚С‹Р№ СЃС‡РµС‚."""
         from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
-        from src.db.invoices import get_open_invoice
+        from src.db.invoices import get_open_invoice, ensure_open_invoice
 
         key = create_key(label="open_invoice_link")
         create_tariff(key["id"], price_create=100, price_reschedule=70)
@@ -220,20 +220,23 @@ class TestUsageLog:
             "capt-open-link",
             config_json={
                 "mode": "create",
-                "reservationData": {"raw": {"userData": {"organizationName": "ООО Тест Компания"}}},
+                "reservationData": {"raw": {"userData": {"organizationName": "РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ"}}},
             },
         )
+
+        open_invoice = ensure_open_invoice("РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ")
+        assert open_invoice is not None
 
         assert confirm_usage(log_id) is True
         log = get_usage_log_entry(log_id)
         assert log["invoice_id"] is not None
-        open_invoice = get_open_invoice("ООО Тест Компания")
+        open_invoice = get_open_invoice("РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ")
         assert open_invoice is not None
         assert log["invoice_id"] == open_invoice["id"]
         assert open_invoice["is_open"] is True
 
     def test_fail_usage(self):
-        """Отметка ошибки."""
+        """РћС‚РјРµС‚РєР° РѕС€РёР±РєРё."""
         from src.db import create_key, fail_usage, log_usage
 
         key = create_key(label="fail_test")
@@ -243,7 +246,7 @@ class TestUsageLog:
         )
 
     def test_update_usage_log(self):
-        """Обновление лога."""
+        """РћР±РЅРѕРІР»РµРЅРёРµ Р»РѕРіР°."""
         from src.db import create_key, log_usage, update_usage_log
 
         key = create_key(label="update_log")
@@ -253,7 +256,7 @@ class TestUsageLog:
         assert updated["paid"] is True
 
     def test_list_usages(self):
-        """Список логов."""
+        """РЎРїРёСЃРѕРє Р»РѕРіРѕРІ."""
         from src.db import create_key, list_usages, log_usage
 
         key = create_key(label="list_test")
@@ -264,10 +267,10 @@ class TestUsageLog:
 
 
 class TestTariffs:
-    """Операции с тарифами."""
+    """РћРїРµСЂР°С†РёРё СЃ С‚Р°СЂРёС„Р°РјРё."""
 
     def test_create_tariff(self):
-        """Создание тарифа."""
+        """РЎРѕР·РґР°РЅРёРµ С‚Р°СЂРёС„Р°."""
         from src.db import create_key, create_tariff
 
         key = create_key(label="tariff_test")
@@ -276,7 +279,7 @@ class TestTariffs:
         assert tariff["price_reschedule"] == 50
 
     def test_get_tariff(self):
-        """Получение тарифа."""
+        """РџРѕР»СѓС‡РµРЅРёРµ С‚Р°СЂРёС„Р°."""
         from src.db import create_key, create_tariff, get_tariff
 
         key = create_key(label="get_tariff")
@@ -285,14 +288,14 @@ class TestTariffs:
         assert tariff["price_create"] == 200
 
     def test_get_tariff_not_found(self):
-        """Получение несуществующего тарифа."""
+        """РџРѕР»СѓС‡РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ С‚Р°СЂРёС„Р°."""
         from src.db import create_key, get_tariff
 
         key = create_key(label="no_tariff")
         assert get_tariff(key["id"]) is None
 
     def test_update_tariff(self):
-        """Обновление тарифа."""
+        """РћР±РЅРѕРІР»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
         from src.db import create_key, create_tariff, update_tariff
 
         key = create_key(label="update_tariff")
@@ -302,7 +305,7 @@ class TestTariffs:
         assert updated["price_reschedule"] == 50
 
     def test_delete_tariff(self):
-        """Удаление тарифа."""
+        """РЈРґР°Р»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
         from src.db import create_key, create_tariff, delete_tariff, get_tariff
 
         key = create_key(label="delete_tariff")
@@ -312,17 +315,17 @@ class TestTariffs:
 
 
 class TestAdminKey:
-    """Админский ключ."""
+    """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡."""
 
     def test_admin_key_exists(self):
-        """Админский ключ существует."""
+        """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡ СЃСѓС‰РµСЃС‚РІСѓРµС‚."""
         from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
         assert admin is not None
 
     def test_admin_key_active(self):
-        """Админский ключ активен."""
+        """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡ Р°РєС‚РёРІРµРЅ."""
         from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
@@ -330,17 +333,17 @@ class TestAdminKey:
 
 
 class TestEdgeCases:
-    """Граничные случаи."""
+    """Р“СЂР°РЅРёС‡РЅС‹Рµ СЃР»СѓС‡Р°Рё."""
 
     def test_empty_label(self):
-        """Ключ с пустым лейблом."""
+        """РљР»СЋС‡ СЃ РїСѓСЃС‚С‹Рј Р»РµР№Р±Р»РѕРј."""
         from src.db import create_key
 
         key = create_key(label="")
         assert key["label"] == ""
 
     def test_max_uses_none(self):
-        """Ключ без лимита."""
+        """РљР»СЋС‡ Р±РµР· Р»РёРјРёС‚Р°."""
         from src.db import create_key, validate_key
 
         key = create_key(label="unlimited", max_uses=None)
@@ -349,7 +352,7 @@ class TestEdgeCases:
         assert result["remaining"] is None
 
     def test_usage_increment(self):
-        """Инкремент счётчика использования."""
+        """РРЅРєСЂРµРјРµРЅС‚ СЃС‡С‘С‚С‡РёРєР° РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import confirm_usage, create_key, increment_usage, log_usage
 
         key = create_key(label="increment")
@@ -362,25 +365,25 @@ class TestEdgeCases:
         assert updated["usage_count"] >= 1
 
     def test_get_key_by_label_not_found(self):
-        """Получение ключа по несуществующему лейблу."""
+        """РџРѕР»СѓС‡РµРЅРёРµ РєР»СЋС‡Р° РїРѕ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРјСѓ Р»РµР№Р±Р»Сѓ."""
         from src.db import get_key_by_label
 
         assert get_key_by_label("nonexistent_label") is None
 
     def test_delete_nonexistent_key(self):
-        """Удаление несуществующего ключа."""
+        """РЈРґР°Р»РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
         from src.db import delete_key
 
         assert delete_key(99999) is False
 
     def test_confirm_nonexistent_usage(self):
-        """Подтверждение несуществующего использования."""
+        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import confirm_usage
 
         assert confirm_usage(99999) is False
 
     def test_fail_nonexistent_usage(self):
-        """Отметка несуществующего использования."""
+        """РћС‚РјРµС‚РєР° РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
         from src.db import fail_usage
 
         assert (
@@ -389,14 +392,16 @@ class TestEdgeCases:
 
 
 class TestOpenInvoices:
-    """Открытые счета по компаниям."""
+    """РћС‚РєСЂС‹С‚С‹Рµ СЃС‡РµС‚Р° РїРѕ РєРѕРјРїР°РЅРёСЏРј."""
 
     def test_issue_open_invoice_closes_current_and_creates_new(self):
         from src.db import create_key, create_tariff, confirm_usage, log_usage
-        from src.db.invoices import get_open_invoice, issue_open_invoice
+        from src.db.invoices import get_open_invoice, issue_open_invoice, ensure_open_invoice
 
+        company = "ООО Issue"
         key = create_key(label="open_issue")
         create_tariff(key["id"], price_create=120, price_reschedule=90)
+        ensure_open_invoice(company)
         for idx in range(2):
             log_id = log_usage(
                 key["key"],
@@ -404,24 +409,26 @@ class TestOpenInvoices:
                 f"capt-open-{idx}",
                 config_json={
                     "mode": "create",
-                    "reservationData": {"raw": {"userData": {"organizationName": "ООО Issue"}}},
+                    "reservationData": {"raw": {"userData": {"organizationName": company}}},
                 },
             )
             confirm_usage(log_id)
 
-        old_open = get_open_invoice("ООО Issue")
+        ensure_open_invoice(company)
+        old_open = get_open_invoice(company)
         assert old_open is not None
-        result = issue_open_invoice("ООО Issue")
+        result = issue_open_invoice(company, reopen=True)
         assert result is not None
         assert result["closed_invoice"]["id"] == old_open["id"]
         assert result["closed_invoice"]["is_open"] is False
         assert result["closed_invoice"]["debt_amount"] == 240
+        assert result["new_open_invoice"] is not None
         assert result["new_open_invoice"]["id"] != old_open["id"]
         assert result["new_open_invoice"]["is_open"] is True
 
 
 class TestPrepaidPackages:
-    """Предоплаченные пакеты и списания."""
+    """РџСЂРµРґРѕРїР»Р°С‡РµРЅРЅС‹Рµ РїР°РєРµС‚С‹ Рё СЃРїРёСЃР°РЅРёСЏ."""
 
     def test_prepaid_deduction_on_confirm_usage(self):
         from src.db import create_key, create_tariff, get_usage_log_entry, log_usage, confirm_usage
@@ -470,3 +477,4 @@ class TestPrepaidPackages:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

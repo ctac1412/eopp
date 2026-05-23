@@ -266,7 +266,9 @@ def recalculate_invoice_totals(invoice_id: int) -> dict | None:
 
 
 def link_usage_to_open_invoice(usage_log_id: int, company: str) -> dict | None:
-    open_invoice = ensure_open_invoice(company)
+    open_invoice = get_open_invoice(company)
+    if not open_invoice:
+        return None
     conn = get_connection()
     conn.execute(
         "UPDATE usage_log SET invoice_id = ?, paid = 0 WHERE id = ?",
@@ -277,7 +279,7 @@ def link_usage_to_open_invoice(usage_log_id: int, company: str) -> dict | None:
     return recalculate_invoice_totals(open_invoice["id"])
 
 
-def issue_open_invoice(company: str, comment: str = "") -> dict | None:
+def issue_open_invoice(company: str, comment: str = "", reopen: bool = False) -> dict | None:
     open_invoice = get_open_invoice(company)
     if not open_invoice:
         return None
@@ -296,7 +298,7 @@ def issue_open_invoice(company: str, comment: str = "") -> dict | None:
     conn.commit()
     conn.close()
     closed_invoice = get_invoice(updated["id"])
-    new_open = ensure_open_invoice(company)
+    new_open = ensure_open_invoice(company) if reopen else None
     return {"closed_invoice": closed_invoice, "new_open_invoice": new_open}
 
 

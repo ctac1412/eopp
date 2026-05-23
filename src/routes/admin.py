@@ -213,12 +213,25 @@ def register_admin_routes(app):
         company = (body or {}).get("company", "")
         return _json_result(billing_service.ensure_open_invoice(company))
 
+    @app.post("/admin/auto-invoices/open")
+    async def open_admin_auto_invoice(body: dict):
+        company = (body or {}).get("company", "")
+        return _json_result(billing_service.ensure_open_invoice(company))
+
     @app.post("/admin/open-invoices/issue")
     async def issue_admin_open_invoice(body: dict):
         payload = body or {}
         company = payload.get("company", "")
         comment = payload.get("comment", "")
         return _json_result(billing_service.issue_open_invoice(company, comment))
+
+    @app.get("/admin/company-billing-settings")
+    async def list_admin_company_billing_settings():
+        return _json_result(billing_service.list_company_billing_settings())
+
+    @app.put("/admin/company-billing-settings/{company}")
+    async def update_admin_company_billing_settings(company: str, body: dict):
+        return _json_result(billing_service.update_company_billing_settings(company, body or {}))
 
     @app.get("/admin/expenses")
     async def list_admin_expenses():

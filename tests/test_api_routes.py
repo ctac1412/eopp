@@ -508,6 +508,16 @@ class TestAdmin:
                 "reservationData": {"raw": {"userData": {"organizationName": "ООО API Open"}}},
             },
         )
+        client.put(
+            "/admin/company-billing-settings/ООО API Open",
+            headers={"X-Admin-Token": admin_token},
+            json={"auto_invoice_reopen": True},
+        )
+        client.post(
+            "/admin/auto-invoices/open",
+            headers={"X-Admin-Token": admin_token},
+            json={"company": "ООО API Open"},
+        )
         confirm_usage(log_id)
 
         response = client.post(

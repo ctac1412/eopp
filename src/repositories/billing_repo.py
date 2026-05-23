@@ -50,6 +50,11 @@ from src.db.prepaid import (
     list_prepaid_packages as db_list_prepaid_packages,
     update_prepaid_package as db_update_prepaid_package,
 )
+from src.db.company_billing_settings import (
+    get_company_billing_settings as db_get_company_billing_settings,
+    list_company_billing_settings as db_list_company_billing_settings,
+    upsert_company_billing_settings as db_upsert_company_billing_settings,
+)
 
 
 def get_tariff(api_key_id: int) -> dict | None:
@@ -157,8 +162,20 @@ def ensure_open_invoice(company: str) -> dict:
     return db_ensure_open_invoice(company)
 
 
-def issue_open_invoice(company: str, comment: str = "") -> dict | None:
-    return db_issue_open_invoice(company, comment)
+def issue_open_invoice(company: str, comment: str = "", reopen: bool = False) -> dict | None:
+    return db_issue_open_invoice(company, comment, reopen)
+
+
+def list_company_billing_settings() -> list[dict]:
+    return db_list_company_billing_settings()
+
+
+def get_company_billing_settings(company: str) -> dict:
+    return db_get_company_billing_settings(company)
+
+
+def upsert_company_billing_settings(company: str, auto_invoice_reopen: bool) -> dict:
+    return db_upsert_company_billing_settings(company, auto_invoice_reopen)
 
 
 def list_expenses() -> list[dict]:
