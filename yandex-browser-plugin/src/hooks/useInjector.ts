@@ -6,27 +6,31 @@ import { failUsage } from "@/api/background";
 
 let isReporting = false;
 
-async function reportFailure(reason: string, stage: string) {
-  if (isReporting) return;
+async function reportFailure(reason: string, stage: string): Promise<boolean> {
+  if (isReporting) return false;
   isReporting = true;
 
   const state = useInjectorStore.getState();
   if (!state.usageLogId || !state.config.apiKey) {
     isReporting = false;
-    return;
+    return false;
   }
 
   const logs = state.logs.map((l) => `${l.ts} ${l.msg}`);
-  await failUsage(
-    state.usageLogId,
-    state.config.apiKey,
-    reason,
-    stage,
-    state.config.slotDate,
-    logs,
-    state.captchaId ?? undefined,
-  );
-  isReporting = false;
+  try {
+    await failUsage(
+      state.usageLogId,
+      state.config.apiKey,
+      reason,
+      stage,
+      state.config.slotDate,
+      logs,
+      state.captchaId ?? undefined,
+    );
+    return true;
+  } finally {
+    isReporting = false;
+  }
 }
 
 export function useInjector() {
@@ -51,7 +55,7 @@ export function useInjector() {
     isReporting = false;
     const config = useInjectorStore.getState().config;
     const abortController = new AbortController();
-    useInjectorStore.getState().abortController = abortController;
+    useInjectorStore.setState({ abortController });
 
     setStatus("running");
     setError(null);
@@ -66,9 +70,9 @@ export function useInjector() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         log("=== Остановлено пользователем ===");
-        await reportFailure("Pipeline stopped by user", "stopped");
-        setError("Остановлено пользователем");
-        setStatus("idle");
+        const reported = await reportFailure("Pipeline stopped by user", "stopped");
+        setError(reported ? "Операция остановлена, лог отправлен" : "Операция остановлена, лог не отправлен");
+        setStatus("error");
       } else {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);

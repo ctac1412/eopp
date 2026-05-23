@@ -46,3 +46,7 @@ export function log(msg: string, data?: unknown): void {
   console.log(`[injector ${ts}] ${prefixed}`, data !== undefined ? data : "");
   useInjectorStore.getState().addLog(prefixed);
 }
+
+export function logEvent(event: Record<string, unknown>): void {
+  log(`event ${safeStringify(event)}`);
+}

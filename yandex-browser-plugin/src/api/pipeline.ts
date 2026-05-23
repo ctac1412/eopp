@@ -20,6 +20,7 @@ import type {
   Slot,
   SlotsResponse,
   EndpointName,
+  PipelineStage,
 } from "@/types";
 import { retryOn429, retryWith429And400 } from "./client";
 import {
@@ -43,7 +44,7 @@ import {
   waitSharedSlots,
   openServerUrl,
 } from "./background";
-import { log, setUsageIdPrefix } from "@/logger";
+import { log, logEvent, setUsageIdPrefix } from "@/logger";
 import { useInjectorStore } from "@/store";
 import { getEndpointRetry } from "@/constants";
 
@@ -109,10 +110,41 @@ export function selectBestSlot(slots: Slot[]): Slot {
  */
 function getErrorStage(): string {
   const stage = useInjectorStore.getState().currentStage;
+  if (stage === "slots") return "stage1";
+  if (stage === "captcha") return "stage2";
   if (stage === "solving") return "stage3";
   if (stage === "validating") return "stage4";
   if (stage === "submitting") return "stage5";
   return "other";
+}
+
+async function trackStage<T>(
+  stage: PipelineStage,
+  operation: () => Promise<T>,
+  meta: Record<string, unknown> = {},
+): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    const result = await operation();
+    logEvent({
+      event: "stage_end",
+      stage,
+      status: "success",
+      duration_ms: Math.round(performance.now() - startedAt),
+      ...meta,
+    });
+    return result;
+  } catch (err) {
+    logEvent({
+      event: "stage_end",
+      stage,
+      status: err instanceof DOMException && err.name === "AbortError" ? "aborted" : "error",
+      duration_ms: Math.round(performance.now() - startedAt),
+      error: serializeError(err),
+      ...meta,
+    });
+    throw err;
+  }
 }
 
 /**
@@ -340,9 +372,13 @@ async function runCaptchaPipeline(
     return null;
   }
 
-  const captchaResponse = await withAbort(
-    retryWithConfig(() => generateCaptcha(config, slotData, signal), "generateCaptcha", signal),
-    signal,
+  const captchaResponse = await trackStage(
+    "captcha",
+    () => withAbort(
+      retryWithConfig(() => generateCaptcha(config, slotData, signal), "generateCaptcha", signal),
+      signal,
+    ),
+    { endpoint: "generateCaptcha" },
   );
 
   if (config.runUpTo < 3) {
@@ -350,14 +386,18 @@ async function runCaptchaPipeline(
     return null;
   }
 
-  const solvedAnswer = await withAbort(
-    solveCaptcha(
-      captchaResponse,
-      config.autoSolve,
-      config.apiKey,
-      config.reservationId,
+  const solvedAnswer = await trackStage(
+    "solving",
+    () => withAbort(
+      solveCaptcha(
+        captchaResponse,
+        config.autoSolve,
+        config.apiKey,
+        config.reservationId,
+      ),
+      signal,
     ),
-    signal,
+    { endpoint: "solve-captcha" },
   );
   const solverInfo = solvedAnswer.solver_label || "local";
   const tilesStr = solvedAnswer.variantTiles.join(",");
@@ -368,13 +408,21 @@ async function runCaptchaPipeline(
     return null;
   }
 
-  const validationResponse = await withAbort(
-    retryWithConfig(
-      () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
-      "validateCaptcha",
+  const validationResponse = await trackStage(
+    "validating",
+    () => withAbort(
+      retryWithConfig(
+        () => validateCaptcha(config, captchaResponse, slotData, solvedAnswer),
+        "validateCaptcha",
+        signal,
+      ),
       signal,
     ),
-    signal,
+    {
+      endpoint: "validateCaptcha",
+      captcha_id: solvedAnswer.captcha_id,
+      variant_index: solvedAnswer.variantIndex,
+    },
   );
 
   if (config.runUpTo < 5) {
@@ -387,9 +435,13 @@ async function runCaptchaPipeline(
   const endpointName: EndpointName = isCreateReservation
     ? "submitCreate"
     : "submitReschedule";
-  const submitResponse = await withAbort(
-    retryWithConfig(() => submitFn(config, slotData, validationResponse, signal), endpointName, signal),
-    signal,
+  const submitResponse = await trackStage(
+    "submitting",
+    () => withAbort(
+      retryWithConfig(() => submitFn(config, slotData, validationResponse, signal), endpointName, signal),
+      signal,
+    ),
+    { endpoint: endpointName },
   );
 
   return submitResponse;
@@ -609,6 +661,15 @@ async function tryRetrySlot(
 ): Promise<boolean> {
   const decision = decideSlotRetry(err, slotRetryCount, config);
   if (decision.action === "retry-slot") {
+    logEvent({
+      event: "retry_decision",
+      stage: "slots",
+      status: "retry",
+      attempt: slotRetryCount + 1,
+      max_attempts: config.maxSlotRetries,
+      delay_ms: config.slotRetryDelayMs,
+      reason: serializeError(err),
+    });
     log(
       `AllSlotsOccupiedOnInterval — пробуем другой слот (попытка ${slotRetryCount + 1}/${config.maxSlotRetries})`,
     );
@@ -630,6 +691,15 @@ async function tryRetryCaptcha(
 ): Promise<boolean> {
   const decision = decideCaptchaRetry(err, captchaAttempt, validateRc);
   if (decision.action === "retry-captcha") {
+    logEvent({
+      event: "retry_decision",
+      stage: "captcha",
+      status: "retry",
+      attempt: captchaAttempt + 1,
+      max_attempts: validateRc.retry400MaxRetries,
+      delay_ms: validateRc.retry400DelayMs,
+      reason: serializeError(err),
+    });
     log(
       `Капча не решена — перегенерация и ретрай ${captchaAttempt + 1}/${validateRc.retry400MaxRetries}`,
     );
@@ -740,7 +810,11 @@ export async function main(config: InjectorConfig, signal?: AbortSignal): Promis
 
   try {
     checkAbort(signal);
-    const slotsResponse = await withAbort(registerUsageAndFetchSlots(config, signal), signal);
+    const slotsResponse = await trackStage(
+      "slots",
+      () => withAbort(registerUsageAndFetchSlots(config, signal), signal),
+      { endpoint: "getAvailableSlots" },
+    );
     checkAbort(signal);
     await withAbort(runWithRetryLoop(config, slotsResponse, signal), signal);
   } catch (err) {

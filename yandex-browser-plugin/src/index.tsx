@@ -217,6 +217,7 @@ function injectButton(info: PageInfo): void {
           const state = useInjectorStore.getState();
           if (state.status === "running") {
             state.stopPipeline();
+            return;
           }
           root.unmount();
           host.remove();
