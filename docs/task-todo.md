@@ -36,3 +36,14 @@
 ## Блокеры
 
 Пока нет.
+## 2026-05-23 Execution Track (Codex)
+
+- [x] Stage 1: Analyze current billing state (invoices/open/prepaid/manual).
+- [ ] Stage 2: Introduce company billing settings (`auto_invoice_reopen`).
+- [ ] Stage 3: Rework auto-invoice lifecycle (manual create, optional reopen, no implicit auto-create on confirm).
+- [ ] Stage 4: Restore manual invoice issuance from unlinked usage logs in Reports.
+- [ ] Stage 5: Add/restore prepaid admin UI and verify prepaid flow end-to-end.
+- [ ] Stage 6: Functional audit for admin + plugin UX gaps and dead/legacy code.
+- [ ] Stage 7: Ruff setup/normalization via `uv`.
+- [ ] Stage 8: DTO layer above billing repositories (invoices/usage/prepaid paths).
+- [ ] Stage 9: Start moving critical raw SQL paths to ORM/Core query layer.
