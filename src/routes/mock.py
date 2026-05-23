@@ -16,11 +16,12 @@ Mock эндпоинты EOPP API для тестирования:
 Поддерживаемые modes: success, 429, 400, all_occupied, all_slots_occupied, custom
 """
 
+import json
 import os
 import random
 import threading
 from typing import Any
-import json 
+
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 

@@ -8,7 +8,6 @@ import secrets
 from datetime import UTC, datetime
 
 from src.db.connection import get_connection
-from src.db.tariffs import get_tariff
 from src.db.usage_log import calc_debt
 
 

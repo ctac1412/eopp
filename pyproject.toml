@@ -69,3 +69,9 @@ ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "ruff>=0.15.14",
+]

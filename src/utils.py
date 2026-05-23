@@ -39,7 +39,6 @@ from PIL import Image, ImageDraw, ImageFont
 from src.constants import (
     ADMIN_TOKEN,
     NO_VALID_DIR,
-    PORT,
     VALID_DIR,
 )
 

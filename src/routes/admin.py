@@ -10,10 +10,13 @@ from datetime import datetime
 
 from fastapi.responses import JSONResponse
 
+from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token as db_check_admin_token
+from src.policies.access_policy import requires_admin
+from src.schemas.auth import AdminAuthBody
 from src.schemas.billing import (
-    CreateInvoiceBody,
     CreateExpenseBody,
+    CreateInvoiceBody,
     CreatePayoutBody,
     CreateUserBody,
     GenerateInvoiceBody,
@@ -27,18 +30,14 @@ from src.schemas.billing import (
     UpdateUsageLogBody,
     UpdateUserBody,
 )
-from src.policies.access_policy import requires_admin
-from src.schemas.auth import AdminAuthBody
-from src.services import billing_service
-from src.services import reporting_service
+from src.services import billing_service, reporting_service
 from src.utils import (
     assemble_captchas,
-    get_valid_variant_index,
     get_connected_streams,
     get_test_stats,
+    get_valid_variant_index,
     run_benchmark_cached,
 )
-from src.constants import NO_VALID_DIR, VALID_DIR
 
 
 def admin_auth_middleware_factory(app):
@@ -376,8 +375,8 @@ def register_admin_routes(app):
         status: str | None = None,
         api_key_id: int | None = None,
     ):
+        from src.db import get_key_by_id, get_usage_log_entry
         from src.db.captchas import list_captchas
-        from src.db import get_usage_log_entry, get_key_by_id
 
         rows = list_captchas()
         result = []

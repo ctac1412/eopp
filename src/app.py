@@ -14,7 +14,6 @@ EOPP Captcha Solver - FastAPI Application Factory.
 import logging
 import threading
 import time
-import webbrowser
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -23,7 +22,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.constants import (
     CAPTCHA_TIMEOUT,
-    PORT,
 )
 from src.db import init_db
 from src.routes import register_all_routes
@@ -70,9 +68,6 @@ def create_app(
         if write_mode:
             t = threading.Thread(target=send_write_cases, daemon=True)
             t.start()
-        from src import constants
-
-        protocol = "https" if constants.use_ssl else "http"
         yield
         with lock:
             for entry in pending.values():

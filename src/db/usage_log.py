@@ -16,7 +16,6 @@ from src.db.prepaid import deduct_prepaid_for_usage_tx
 from src.db.tariffs import get_tariff
 from src.utils import get_by_path
 
-
 # UUID v0 pattern for zero UUID (used as placeholder)
 _UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")
 try:

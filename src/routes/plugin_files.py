@@ -1,4 +1,4 @@
-"""
+r"""
 EOPP Captcha Solver - Plugin Static Files Routes.
 
 Раздача файлов плагинов (.crx, .xml, .pem) из PLUGINS_DIR:

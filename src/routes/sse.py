@@ -18,12 +18,12 @@ import asyncio
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from src.db import get_key_record, is_super_kiosk_key, check_admin_token
+from src.db import get_key_record, is_super_kiosk_key
 from src.utils import (
-    register_sse_connection,
-    unregister_sse_connection,
-    sse_queues,
     lock,
+    register_sse_connection,
+    sse_queues,
+    unregister_sse_connection,
 )
 
 
@@ -99,7 +99,7 @@ def register_sse_routes(app):
                     try:
                         item = await asyncio.wait_for(q.get(), timeout=15.0)
                         yield item
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         yield ": keepalive\n\n"
             except GeneratorExit:
                 pass

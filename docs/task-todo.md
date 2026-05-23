@@ -44,6 +44,6 @@
 - [x] Stage 4: Restore manual invoice issuance from unlinked usage logs in Reports.
 - [x] Stage 5: Add/restore prepaid admin UI and verify prepaid flow end-to-end.
 - [x] Stage 6: Functional audit for admin + plugin UX gaps and dead/legacy code.
-- [ ] Stage 7: Ruff setup/normalization via `uv`.
+- [x] Stage 7: Ruff setup/normalization via `uv`.
 - [ ] Stage 8: DTO layer above billing repositories (invoices/usage/prepaid paths).
 - [ ] Stage 9: Start moving critical raw SQL paths to ORM/Core query layer.

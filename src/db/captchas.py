@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db.connection import get_connection
 
-
 _V2_VALIDATED_RE = re.compile(r"Капча валидирована\s+\[([a-f0-9]+)\]\s+ответ:\s*(\[.*?\])")
 _V2_NOT_VALIDATED_RE = re.compile(r"Капча не валидирована\s+\[([a-f0-9]+)\]\s+причина:\s*(.+)")
 _V2_VERSION_RE = re.compile(r"<log-version>v2</log-version>")
@@ -71,7 +70,7 @@ def _resolve_tiles_hash(captcha_id: str) -> str | None:
         if not os.path.exists(payload_path):
             continue
         try:
-            with open(payload_path, "r", encoding="utf-8") as f:
+            with open(payload_path, encoding="utf-8") as f:
                 data = json.load(f)
             puzzle = data.get("puzzle", data)
             tiles = puzzle.get("tiles", [])

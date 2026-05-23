@@ -7,7 +7,6 @@ whether a request must present an admin token before it reaches the route.
 from dataclasses import dataclass
 from typing import Literal
 
-
 MatchKind = Literal["exact", "prefix"]
 
 

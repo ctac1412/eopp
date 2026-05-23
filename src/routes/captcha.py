@@ -24,16 +24,15 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
-from src.db import (
-    get_key_by_id,
-    get_key_record,
-    is_super_kiosk_key,
-)
 from src.constants import (
     CAPTCHA_TIMEOUT,
     NO_VALID_DIR,
     VALID_DIR,
     write_mode,
+)
+from src.db import (
+    get_key_by_id,
+    get_key_record,
 )
 from src.schemas.captcha import SolveCaptchaBody, SolveRequest
 from src.services import captcha_service
@@ -42,11 +41,11 @@ from src.utils import (
     captcha_hash,
     get_top3_from_solver,
     get_valid_variant_index,
+    lock,
     next_result_id,
+    pending,
     push_sse,
     source_files,
-    lock,
-    pending,
     super_kiosk_subscriptions,
 )
 
@@ -176,7 +175,6 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 content={"already_solved": True, "captcha_id": captcha_id},
             )
 
-        solver_is_super = False
         solver_label = None
         solved_by_super = False
         if body.api_key:
@@ -229,7 +227,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         if write_mode and entry.get("source_file"):
             source_path = entry["source_file"]
-            with open(source_path, "r") as f:
+            with open(source_path) as f:
                 source_data = json.load(f)
             source_data["valid_index"] = variant_index
             new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")

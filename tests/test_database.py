@@ -32,12 +32,12 @@ def isolate_db(monkeypatch):
 
     try:
         conn_module.get_connection().close()
-    except:
+    except Exception:
         pass
     if os.path.exists(test_db):
         try:
             os.remove(test_db)
-        except:
+        except Exception:
             pass
 
 
@@ -210,7 +210,7 @@ class TestUsageLog:
     def test_confirm_usage_links_company_to_open_invoice(self):
         """РџРѕРґС‚РІРµСЂР¶РґРµРЅРЅС‹Р№ usage РєРѕРјРїР°РЅРёРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРѕРїР°РґР°РµС‚ РІ РѕС‚РєСЂС‹С‚С‹Р№ СЃС‡РµС‚."""
         from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
-        from src.db.invoices import get_open_invoice, ensure_open_invoice
+        from src.db.invoices import ensure_open_invoice, get_open_invoice
 
         key = create_key(label="open_invoice_link")
         create_tariff(key["id"], price_create=100, price_reschedule=70)
@@ -395,8 +395,8 @@ class TestOpenInvoices:
     """РћС‚РєСЂС‹С‚С‹Рµ СЃС‡РµС‚Р° РїРѕ РєРѕРјРїР°РЅРёСЏРј."""
 
     def test_issue_open_invoice_closes_current_and_creates_new(self):
-        from src.db import create_key, create_tariff, confirm_usage, log_usage
-        from src.db.invoices import get_open_invoice, issue_open_invoice, ensure_open_invoice
+        from src.db import confirm_usage, create_key, create_tariff, log_usage
+        from src.db.invoices import ensure_open_invoice, get_open_invoice, issue_open_invoice
 
         company = "ООО Issue"
         key = create_key(label="open_issue")
@@ -431,7 +431,7 @@ class TestPrepaidPackages:
     """РџСЂРµРґРѕРїР»Р°С‡РµРЅРЅС‹Рµ РїР°РєРµС‚С‹ Рё СЃРїРёСЃР°РЅРёСЏ."""
 
     def test_prepaid_deduction_on_confirm_usage(self):
-        from src.db import create_key, create_tariff, get_usage_log_entry, log_usage, confirm_usage
+        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
         from src.db.prepaid import create_prepaid_package, list_prepaid_packages
 
         key = create_key(label="prepaid")
@@ -453,7 +453,7 @@ class TestPrepaidPackages:
         assert pkg["balance_amount"] == 400
 
     def test_prepaid_not_deducted_when_insufficient_balance(self):
-        from src.db import create_key, create_tariff, get_usage_log_entry, log_usage, confirm_usage
+        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
         from src.db.prepaid import create_prepaid_package, list_prepaid_packages
 
         key = create_key(label="prepaid_low")

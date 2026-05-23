@@ -23,10 +23,10 @@ def isolate_db(monkeypatch):
 
     # comment
     test_db = tempfile.mktemp(suffix=".db")
-    
+
     # comment
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    
+
     # comment
     init_module.init_db()
 
@@ -35,12 +35,12 @@ def isolate_db(monkeypatch):
     # cleanup
     try:
         conn_module.get_connection().close()
-    except:
+    except Exception:
         pass
     if os.path.exists(test_db):
         try:
             os.remove(test_db)
-        except:
+        except Exception:
             pass
 
 
@@ -487,7 +487,7 @@ class TestAdmin:
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
-        from src.db import confirm_usage, create_tariff, log_usage
+        from src.db import confirm_usage, log_usage
 
         created = client.post(
             "/api-keys",
@@ -620,7 +620,6 @@ class TestCaptcha:
 
     def test_solve_captcha_auto_solve(self, client, api_key):
         """doc"""
-        import warnings
 
         # comment
         pytest.skip("РўСЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё СЃ base64 РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё")

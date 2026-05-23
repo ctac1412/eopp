@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any
 
-
 DEFAULT_WAIT_MS = 10000
 MAX_WAIT_MS = 15000
 GROUP_TTL_SECONDS = MAX_WAIT_MS

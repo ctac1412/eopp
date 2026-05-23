@@ -22,7 +22,7 @@ def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
     if os.path.exists(valid_file):
         return
     try:
-        with open(no_valid_file, "r") as f:
+        with open(no_valid_file) as f:
             source_data = json.load(f)
         source_data["valid_index"] = variant_index
         with open(valid_file, "w") as f:
