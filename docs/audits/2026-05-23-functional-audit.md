@@ -1,82 +1,82 @@
-# Functional Audit (Admin + Plugin)
+# Функциональный аудит: админка и плагин
 
-Date: 2026-05-23
-Scope: functional UX and operational completeness (security excluded by request).
+Дата: 2026-05-23
+Область: функциональная полнота, UX и операционная пригодность. Безопасность не рассматривалась по запросу.
 
-## Executive summary
+## Краткая сводка
 
-- Core billing workflows now exist in two modes: manual invoice from usage logs and auto-invoice by company.
-- Major gap closed: manual invoice flow from unlinked logs restored in Reports.
-- Remaining product risk is workflow fragmentation: invoice lifecycle is split across Reports and Invoices tabs with limited cross-navigation and weak status visibility for auto-invoice settings.
+- Основные сценарии биллинга теперь поддерживают два режима: ручной счет по логам использования и авто-счет по компании.
+- Закрыт важный пробел: на вкладку журнала возвращено ручное формирование счета по непривязанным логам.
+- Главный оставшийся продуктовый риск - раздробленность процесса: жизненный цикл счетов размазан между вкладками "Журнал" и "Счета", а состояние настроек авто-счетов видно недостаточно явно.
 
-## Admin panel findings
+## Админ-панель
 
-### P0 / Blocking for operations
+### P0 / Блокирует нормальную работу
 
-1. No explicit "Auto-invoice settings" surface in Invoices tab
-   - Backend setting exists (`auto_invoice_reopen`) but UX is not yet discoverable enough for accountants.
-   - Impact: operators cannot reliably understand when next auto-invoice will be reopened.
-   - Recommendation: add Invoices sub-panel "Авто-счета по компаниям" with:
-     - company selector
-     - open/create auto-invoice
-     - finalize auto-invoice
-     - toggle auto-reopen
-     - current active auto-invoice per company
+1. Нет явного блока "Настройки авто-счетов" на вкладке "Счета"
+   - Backend-настройка уже есть (`auto_invoice_reopen`), но бухгалтеру ее трудно обнаружить и понять из UI.
+   - Влияние: оператор не может надежно увидеть, будет ли после фиксации авто-счета открыт следующий.
+   - Рекомендация: добавить на вкладку "Счета" блок "Авто-счета по компаниям" с действиями:
+     - выбор компании;
+     - открыть или создать авто-счет;
+     - зафиксировать авто-счет;
+     - включить или выключить автооткрытие следующего счета;
+     - показать текущий активный авто-счет по каждой компании.
 
-2. Reports and Invoices are not tightly linked
-   - After manual generation from Reports, no deep-link jump to created invoice card/row.
-   - Impact: reconciliation is slower.
-   - Recommendation: return `invoice_id` and open Invoices tab filtered by that id.
+2. "Журнал" и "Счета" слабо связаны между собой
+   - После ручного формирования счета из журнала нет перехода к созданному счету.
+   - Влияние: сверка становится медленнее, оператору приходится искать счет вручную.
+   - Рекомендация: возвращать `invoice_id` и открывать вкладку "Счета" с фильтром по этому ID.
 
-### P1 / High value usability
+### P1 / Высокая пользовательская ценность
 
-1. Prepaid packages tab has minimal controls (active toggle + create)
-   - Missing: explicit top-up action, deduction history view, linked usage drilldown.
-   - Recommendation: add:
-     - top-up modal (`+ amount`)
-     - deductions table (`prepaid_deductions`)
-     - quick filters by key/date.
+1. Вкладка "Предоплата" пока содержит минимальный набор действий
+   - Не хватает отдельного пополнения, истории списаний и быстрого перехода к связанным логам использования.
+   - Рекомендация: добавить:
+     - модальное окно пополнения на сумму;
+     - таблицу списаний (`prepaid_deductions`);
+     - быстрые фильтры по ключу и датам.
 
-2. Auto-invoice naming in UI
-   - "Open invoice" wording can be confused with unpaid invoice.
-   - Recommendation: in UI terminology use "Авто-счет" consistently.
+2. Терминология авто-счетов в UI
+   - Формулировка "открытый счет" легко путается с неоплаченным обычным счетом.
+   - Рекомендация: в интерфейсе везде использовать термин "Авто-счет".
 
-3. Company identity is free-text
-   - `company` comes from usage payload, no normalization dictionary in backend.
-   - Impact: typo variants split billing streams.
-   - Recommendation: add company normalization map / aliases editable in admin.
+3. Компания сейчас хранится как свободный текст
+   - `company` приходит из usage payload, словаря нормализации на backend пока нет.
+   - Влияние: опечатки и варианты написания дробят один поток биллинга на несколько компаний.
+   - Рекомендация: добавить карту нормализации компаний и алиасов, редактируемую из админки.
 
-### P2 / Quality improvements
+### P2 / Улучшения качества
 
-1. Several files still contain mixed encoding artifacts in comments/labels.
-2. AdminPage became large and should be split by domain tabs to reduce regression risk.
+1. В нескольких файлах еще могут оставаться смешанные артефакты кодировки в комментариях или текстовых метках.
+2. `AdminPage` стал крупным файлом, его стоит разделить по доменным вкладкам, чтобы снизить риск регрессий.
 
-## Plugin findings
+## Плагин
 
 ### P0
 
-1. Popup close semantics
-   - Fixed: close action now aborts running pipeline before unmount.
-   - Fixed: accidental close on overlay click disabled.
+1. Семантика закрытия попапа
+   - Исправлено: закрытие теперь прерывает запущенный pipeline перед размонтированием UI.
+   - Исправлено: случайное закрытие по клику на фон отключено.
 
 ### P1
 
-1. User feedback after forced stop could be clearer
-   - Recommendation: show explicit "Операция остановлена, лог отправлен".
+1. Обратная связь после принудительной остановки может быть понятнее
+   - Рекомендация: показывать явное сообщение "Операция остановлена, лог отправлен".
 
-2. Retry/stop telemetry
-   - Recommendation: structured stage-end events for easier support analysis.
+2. Телеметрия повторов и остановок
+   - Рекомендация: добавить структурированные события завершения стадий, чтобы поддержке было проще разбирать проблемы.
 
-## Legacy / likely stale code paths
+## Legacy и вероятно устаревшие пути
 
-1. Reports had dormant manual invoice code path (restored).
-2. There are duplicated invoice creation paradigms (`generate_invoice` vs `create_invoice`) and both should be intentionally documented:
-   - `generate_invoice`: from selected usage logs
-   - `create_invoice`: manual with custom line items
+1. В журнале был неиспользуемый путь ручного формирования счета. Сейчас он восстановлен.
+2. В коде есть две парадигмы создания счетов (`generate_invoice` и `create_invoice`), их нужно явно задокументировать:
+   - `generate_invoice`: счет из выбранных логов использования;
+   - `create_invoice`: ручной счет с произвольными строками.
 
-## Recommended next increments
+## Рекомендуемые следующие инкременты
 
-1. Build dedicated "Авто-счета" block in Invoices tab with settings + actions.
-2. Add prepaid top-up and deductions ledger UI.
-3. Add deep links and post-action navigation between Reports/Invoices.
-4. Introduce DTOs and SQLAlchemy Core in billing repository paths to stabilize DB contracts.
+1. Сделать отдельный блок "Авто-счета" на вкладке "Счета": настройки, действия и состояние по компаниям.
+2. Добавить пополнение предоплаты и журнал списаний в UI.
+3. Добавить deep links и навигацию после действий между "Журналом" и "Счетами".
+4. Продолжить перевод billing repository paths на DTO и SQLAlchemy Core, чтобы стабилизировать контракт с БД.
