@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 
 function formatMoney(amount) {
-  return `${Math.round(Number(amount || 0)).toLocaleString("ru-RU")} ₽`;
+  return `${Math.round(Number(amount || 0)).toLocaleString("ru-RU")} в‚Ѕ`;
 }
 
 function formatDate(iso) {
@@ -21,9 +21,9 @@ function allocationStatus(item) {
 
 function SummaryCard({ label, value, tone = "secondary" }) {
   return (
-    <div className={`border-start border-4 border-${tone} bg-light p-2 h-100`}>
-      <div className="text-muted small">{label}</div>
-      <div className="fw-semibold">{value}</div>
+    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
+      <div className="text-secondary-emphasis small">{label}</div>
+      <div className="fw-semibold text-light">{value}</div>
     </div>
   );
 }
@@ -43,7 +43,7 @@ function AllocationBadge({ allocation }) {
   return <span className="badge bg-secondary">Не распределен</span>;
 }
 
-export function ExpensesTab({ expenses, total, users, onEdit, onDelete }) {
+export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate, onRefresh }) {
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [allocationFilter, setAllocationFilter] = useState("all");
@@ -108,6 +108,18 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete }) {
 
   return (
     <>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="d-flex gap-2 align-items-center">
+          <button className="btn btn-outline-secondary btn-sm" onClick={onRefresh}>
+            Обновить
+          </button>
+          <span className="text-muted small">Показано: {filteredExpenses.length} из {expenses.length}</span>
+        </div>
+        <button className="btn btn-sm btn-primary" onClick={onCreate}>
+          + Новый расход
+        </button>
+      </div>
+
       <div className="row g-2 mb-3">
         <div className="col-6 col-xl-2">
           <SummaryCard label="Показано" value={`${metrics.count} из ${expenses.length}`} tone="primary" />
@@ -228,3 +240,4 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete }) {
     </>
   );
 }
+

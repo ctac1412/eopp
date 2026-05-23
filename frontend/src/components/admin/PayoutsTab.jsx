@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 
 const STATUS_LABELS = {
   pending: { label: "Ожидает", className: "bg-warning text-dark" },
@@ -12,7 +12,7 @@ function StatusBadge({ status }) {
 }
 
 function formatMoney(n) {
-  return `${Math.round(Number(n || 0)).toLocaleString("ru-RU")} ₽`;
+  return `${Math.round(Number(n || 0)).toLocaleString("ru-RU")} в‚Ѕ`;
 }
 
 function formatDate(iso, withTime = false) {
@@ -25,9 +25,9 @@ function formatDate(iso, withTime = false) {
 
 function SummaryCard({ label, value, tone = "secondary" }) {
   return (
-    <div className={`border-start border-4 border-${tone} bg-light p-2 h-100`}>
-      <div className="text-muted small">{label}</div>
-      <div className="fw-semibold">{value}</div>
+    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
+      <div className="text-secondary-emphasis small">{label}</div>
+      <div className="fw-semibold text-light">{value}</div>
     </div>
   );
 }
@@ -44,7 +44,7 @@ function InvoiceDetails({ invoices }) {
         style={{ fontSize: "inherit" }}
       >
         {invoices.length} {invoices.length === 1 ? "счет" : invoices.length < 5 ? "счета" : "счетов"}
-        {expanded ? " ▲" : " ▼"}
+        {expanded ? " в–І" : " в–ј"}
       </button>
       {expanded && (
         <table className="table table-sm table-bordered mt-1 mb-0" style={{ fontSize: "0.75rem" }}>
@@ -91,7 +91,7 @@ function ExpenseDetails({ expenses }) {
         style={{ fontSize: "inherit" }}
       >
         {expenses.length} расхода, {formatMoney(compensated)}
-        {expanded ? " ▲" : " ▼"}
+        {expanded ? " в–І" : " в–ј"}
       </button>
       {expanded && (
         <table className="table table-sm table-bordered mt-1 mb-0" style={{ fontSize: "0.75rem" }}>
@@ -128,7 +128,7 @@ function payoutSearchText(payout) {
     .toLowerCase();
 }
 
-export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange }) {
+export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange, onCreate, onRefresh }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -194,6 +194,18 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
 
   return (
     <>
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="d-flex gap-2 align-items-center">
+          <button className="btn btn-outline-secondary btn-sm" onClick={onRefresh}>
+            Обновить
+          </button>
+          <span className="text-muted small">Показано: {filteredPayouts.length} из {payouts.length}</span>
+        </div>
+        <button className="btn btn-sm btn-primary" onClick={onCreate}>
+          + Новая выплата
+        </button>
+      </div>
+
       <div className="row g-2 mb-3">
         <div className="col-6 col-xl-2"><SummaryCard label="Выплат" value={`${metrics.count} из ${payouts.length}`} tone="primary" /></div>
         <div className="col-6 col-xl-2"><SummaryCard label="Ожидают" value={metrics.pending} tone="warning" /></div>
@@ -240,13 +252,13 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
             const total = userTotals[name] || {};
             return (
               <div className="col-12 col-md-6 col-xl-3" key={name}>
-                <div className="border rounded p-2 bg-white h-100">
-                  <div className="fw-semibold mb-1">{name}</div>
+                <div className="border rounded p-2 bg-dark-subtle h-100">
+                  <div className="fw-semibold mb-1 text-light">{name}</div>
                   <div className="d-flex justify-content-between small"><span>Комиссия</span><span className="text-info">{formatMoney(total.commission)}</span></div>
                   <div className="d-flex justify-content-between small"><span>Налог</span><span className="text-warning">{formatMoney(total.tax)}</span></div>
                   <div className="d-flex justify-content-between small"><span>Расходы</span><span className="text-danger">−{formatMoney(total.expenses)}</span></div>
                   <div className="d-flex justify-content-between small"><span>Прибыль</span><span className="text-success">{formatMoney(total.profit)}</span></div>
-                  <div className="d-flex justify-content-between border-top mt-1 pt-1 fw-semibold"><span>Итого</span><span>{formatMoney(total.total)}</span></div>
+                  <div className="d-flex justify-content-between border-top mt-1 pt-1 fw-semibold"><span className="text-secondary-emphasis">Итого</span><span className="text-light">{formatMoney(total.total)}</span></div>
                 </div>
               </div>
             );
@@ -334,3 +346,6 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
     </>
   );
 }
+
+
+

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EOPP Captcha Solver - Admin Page (Панель администрирования)
  *
  * Основные функции:
@@ -964,29 +964,7 @@ function AdminPage() {
               + Новый ключ
             </button>
           )}
-          {activeTab === "payouts" && (
-            <button className="btn btn-sm btn-primary" onClick={() => {
-              // Автозаполнение: все пользователи, доли поровну
-              const n = users.length || 1;
-              const base = Math.floor(100 / n);
-              const remainder = 100 - base * n;
-              const autoSplits = users.map((u, i) => ({
-                user_id: u.id,
-                split_pct: base + (i < remainder ? 1 : 0),
-              }));
-              setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: autoSplits });
-              setPayoutPreview(null);
-              setShowPayoutModal(true);
-            }}>
-              + Новая выплата
-            </button>
-          )}
-          {activeTab === "expenses" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" }); setShowExpenseModal(true); }}>
-              + Новый расход
-            </button>
-          )}
-          {activeTab === "users" && (
+                    {activeTab === "users" && (
             <button className="btn btn-sm btn-primary" onClick={() => { setUserForm({ id: null, name: "" }); setShowUserModal(true); }}>
               + Новый пользователь
             </button>
@@ -1073,6 +1051,8 @@ function AdminPage() {
           expenses={expenses}
           total={expenseTotal}
           users={users}
+          onRefresh={() => fetchExpenses(adminToken)}
+          onCreate={() => { setExpenseForm({ id: null, amount: "", reason: "", user_id: null, comment: "", created_at: "" }); setShowExpenseModal(true); }}
           onEdit={(e) => { setExpenseForm({ id: e.id, amount: String(e.amount), reason: e.reason, user_id: e.user_id, comment: e.comment || "", created_at: e.created_at }); setShowExpenseModal(true); }}
           onDelete={handleDeleteExpense}
         />
@@ -1081,6 +1061,19 @@ function AdminPage() {
       {activeTab === "payouts" && (
         <PayoutsTab
           payouts={payouts}
+          onRefresh={() => fetchPayouts(adminToken)}
+          onCreate={() => {
+            const n = users.length || 1;
+            const base = Math.floor(100 / n);
+            const remainder = 100 - base * n;
+            const autoSplits = users.map((u, i) => ({
+              user_id: u.id,
+              split_pct: base + (i < remainder ? 1 : 0),
+            }));
+            setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: autoSplits });
+            setPayoutPreview(null);
+            setShowPayoutModal(true);
+          }}
           onEdit={(p) => {
             const splits = (p.shares || []).map((sh) => ({
               user_id: sh.user_id,
@@ -1192,3 +1185,5 @@ function AdminPage() {
 }
 
 export default AdminPage;
+
+

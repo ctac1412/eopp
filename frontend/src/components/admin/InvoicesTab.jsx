@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatMoney } from "../../utils/format";
 import { InvoiceEditModal } from "./InvoiceEditModal";
 import { InvoiceCreateModal } from "./InvoiceCreateModal";
@@ -28,9 +28,9 @@ function allocationStatus(invoice) {
 
 function SummaryCard({ label, value, tone = "secondary" }) {
   return (
-    <div className={`border-start border-4 border-${tone} bg-light p-2 h-100`}>
-      <div className="text-muted small">{label}</div>
-      <div className="fw-semibold">{value}</div>
+    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
+      <div className="text-secondary-emphasis small">{label}</div>
+      <div className="fw-semibold text-light">{value}</div>
     </div>
   );
 }
@@ -328,7 +328,7 @@ export function InvoicesTab({ adminToken, onError, users }) {
                       onClick={() => deleteInvoice(invoice)}
                       title="Удалить"
                     >
-                      ×
+                      Г—
                     </button>
                   </td>
                 </tr>
@@ -357,3 +357,4 @@ export function InvoicesTab({ adminToken, onError, users }) {
     </div>
   );
 }
+

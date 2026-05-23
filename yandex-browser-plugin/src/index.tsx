@@ -214,6 +214,10 @@ function injectButton(info: PageInfo): void {
     root.render(
       <App
         onClose={() => {
+          const state = useInjectorStore.getState();
+          if (state.status === "running") {
+            state.stopPipeline();
+          }
           root.unmount();
           host.remove();
         }}

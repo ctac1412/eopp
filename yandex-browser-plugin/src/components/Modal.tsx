@@ -33,7 +33,7 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
   };
 
   return (
-    <div className="qn-modal-overlay" onClick={onClose}>
+    <div className="qn-modal-overlay">
       <div
         className={[
           "qn-modal",
