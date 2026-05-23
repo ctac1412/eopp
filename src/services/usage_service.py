@@ -2,7 +2,7 @@ import json
 import os
 
 from src.constants import NO_VALID_DIR, VALID_DIR
-from src.db import check_admin_token
+from src.policies.access_policy import is_admin_token
 from src.entities import UsageLog
 from src.repositories import api_key_repo, usage_log_repo
 from src.utils import lock, sse_queues
@@ -63,10 +63,6 @@ def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
         os.remove(no_valid_file)
     except Exception:
         pass
-
-
-def is_admin_token(token: str | None) -> bool:
-    return bool(token and check_admin_token(token))
 
 
 def register_usage(body) -> tuple[int, dict]:

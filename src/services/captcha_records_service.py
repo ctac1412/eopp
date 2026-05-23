@@ -1,10 +1,6 @@
-from src.db import check_admin_token
 from src.entities.utils import entities_to_list, entity_to_dict
+from src.policies.access_policy import is_admin_token
 from src.repositories import captcha_repo
-
-
-def is_admin_token(token: str | None) -> bool:
-    return bool(token and check_admin_token(token))
 
 
 def list_records(admin_token: str | None, usage_log_id: int | None = None):
