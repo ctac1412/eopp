@@ -1,65 +1,58 @@
-import logging
-from datetime import datetime
+"""Billing service facade — re-exports all domain services."""
 
-from src.entities.utils import entities_to_list, entity_to_dict
-from src.repositories import (
-    api_key_repo,
-    company_repo,
-    expense_repo,
-    invoice_repo,
-    payout_repo,
-    prepaid_repo,
-    tariff_repo,
-    usage_log_repo,
-    user_repo,
+from src.entities.utils import entity_to_dict
+from src.repositories import api_key_repo, usage_log_repo
+from src.services.company_service import (
+    delete_company_alias,
+    list_company_aliases,
+    list_company_billing_settings,
+    update_company_billing_settings,
+    upsert_company_alias,
 )
-
-
-def _invoice_totals(body) -> tuple[int, int, int, int]:
-    items_total = sum(item.get("amount", 0) for item in (body.items or []))
-    debt = body.debt_amount or items_total
-    combined_rate = body.percent_rate + body.tax_rate
-    divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
-    total = round(debt / divisor) if divisor > 0 else debt
-    percent = round(total * body.percent_rate / 100)
-    tax = round(total * body.tax_rate / 100)
-    return debt, percent, tax, total
-
-
-def _updated_invoice_totals(body, items_total: int) -> tuple[int, int, int, int]:
-    debt = body.debt_amount if body.debt_amount is not None else items_total
-    percent_rate = body.percent_rate if body.percent_rate is not None else 0
-    tax_rate = body.tax_rate if body.tax_rate is not None else 0
-    combined_rate = percent_rate + tax_rate
-    divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
-    total = round(debt / divisor) if divisor > 0 else debt
-    percent = round(total * percent_rate / 100)
-    tax = round(total * tax_rate / 100)
-    return debt, percent, tax, total
-
-
-def get_tariff(api_key_id: int) -> tuple[int, dict]:
-    tariff = tariff_repo.get_tariff(api_key_id)
-    if not tariff:
-        return 404, {"error": "Tariff not found"}
-    return 200, entity_to_dict(tariff)
-
-
-def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
-    return 200, entity_to_dict(
-        tariff_repo.upsert_tariff(
-            api_key_id,
-            body.price_create,
-            body.price_reschedule,
-            body.price_create_peak,
-        )
-    )
-
-
-def delete_tariff(api_key_id: int) -> tuple[int, dict]:
-    if not tariff_repo.delete_tariff(api_key_id):
-        return 404, {"error": "Tariff not found"}
-    return 200, {"ok": True}
+from src.services.expense_service import (
+    create_expense,
+    delete_expense,
+    list_expenses,
+    update_expense,
+)
+from src.services.invoice_service import (
+    available_resources,
+    create_invoice,
+    delete_invoice,
+    ensure_open_invoice,
+    generate_invoice,
+    issue_open_invoice,
+    list_invoices,
+    update_invoice,
+)
+from src.services.payout_service import (
+    create_payout,
+    delete_payout,
+    list_payouts,
+    preview_payout,
+    recalculate_payout,
+    set_payout_status,
+    update_payout,
+)
+from src.services.prepaid_service import (
+    create_prepaid_package,
+    delete_prepaid_package,
+    list_prepaid_deductions,
+    list_prepaid_packages,
+    top_up_prepaid_package,
+    update_prepaid_package,
+)
+from src.services.tariff_service import (
+    delete_tariff,
+    get_tariff,
+    upsert_tariff,
+)
+from src.services.user_service import (
+    create_user,
+    delete_user,
+    list_users,
+    update_user,
+)
 
 
 def update_api_key(api_key_id: int, body) -> tuple[int, dict]:
@@ -76,340 +69,45 @@ def update_usage_log(usage_log_id: int, body) -> tuple[int, dict]:
     return 200, log
 
 
-def generate_invoice(body) -> tuple[int, dict]:
-    usage_logs = [
-        log for log_id in body.usage_log_ids if (log := usage_log_repo.get_usage_log(log_id))
-    ]
-    if not usage_logs:
-        return 400, {"error": "No valid usage logs provided"}
-
-    debt_amount = body.debt_amount or 0
-    percent_amount = body.percent_amount or 0
-    tax_amount = body.tax_amount or 0
-    total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
-    invoice_number = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    invoice_id = None
-
-    try:
-        invoice_id = invoice_repo.create_invoice_record(
-            invoice_number=invoice_number,
-            pdf_path="",
-            comment=body.comment,
-            percent_rate=body.percent_rate,
-            tax_rate=body.tax_rate,
-            debt_amount=debt_amount,
-            percent_amount=percent_amount,
-            tax_amount=tax_amount,
-            total_amount=total_amount,
-            paid=False,
-        )
-        usage_log_repo.link_usage_logs_to_invoice(invoice_id, body.usage_log_ids)
-    except Exception as exc:
-        logging.warning("Failed to save invoice to DB: %s", exc)
-
-    return 200, {
-        "ok": True,
-        "invoice_number": invoice_number,
-        "invoice_id": invoice_id,
-        "debt_amount": debt_amount,
-        "percent_amount": percent_amount,
-        "tax_amount": tax_amount,
-        "total_amount": total_amount,
-    }
-
-
-def list_invoices() -> tuple[int, list[dict]]:
-    return 200, invoice_repo.list_invoices(limit=200)
-
-
-def create_invoice(body) -> tuple[int, dict]:
-    debt, calc_percent, calc_tax, calc_total = _invoice_totals(body)
-    invoice_number = body.invoice_number or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    return 200, invoice_repo.create_invoice_with_items(
-        invoice_number=invoice_number,
-        comment=body.comment,
-        percent_rate=body.percent_rate,
-        tax_rate=body.tax_rate,
-        debt_amount=debt,
-        percent_amount=body.percent_amount or calc_percent,
-        tax_amount=body.tax_amount or calc_tax,
-        total_amount=body.total_amount or calc_total,
-        paid=False,
-        items=body.items,
-        commission_user_id=body.commission_user_id,
-        tax_user_id=body.tax_user_id,
-    )
-
-
-def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
-    if body.paid is not None:
-        result = invoice_repo.set_invoice_paid(invoice_id, body.paid)
-        if not result:
-            return 404, {"error": "Invoice not found"}
-        return 200, result
-
-    if body.items is not None:
-        items_total = sum(item.get("amount", 0) for item in body.items)
-        debt, calc_percent, calc_tax, calc_total = _updated_invoice_totals(body, items_total)
-        result = invoice_repo.update_invoice(
-            invoice_id,
-            comment=body.comment,
-            percent_rate=body.percent_rate,
-            tax_rate=body.tax_rate,
-            debt_amount=debt,
-            percent_amount=body.percent_amount or calc_percent,
-            tax_amount=body.tax_amount or calc_tax,
-            total_amount=body.total_amount or calc_total,
-            commission_user_id=body.commission_user_id,
-            tax_user_id=body.tax_user_id,
-        )
-        if not result:
-            return 404, {"error": "Invoice not found"}
-        invoice_repo.replace_invoice_items(invoice_id, body.items)
-        result["items"] = body.items
-        return 200, result
-
-    result = invoice_repo.update_invoice(
-        invoice_id,
-        comment=body.comment,
-        percent_rate=body.percent_rate,
-        tax_rate=body.tax_rate,
-        debt_amount=body.debt_amount,
-        percent_amount=body.percent_amount,
-        tax_amount=body.tax_amount,
-        total_amount=body.total_amount,
-        commission_user_id=body.commission_user_id,
-        tax_user_id=body.tax_user_id,
-    )
-    if not result:
-        return 404, {"error": "Invoice not found"}
-    return 200, result
-
-
-def delete_invoice(invoice_id: int) -> tuple[int, dict]:
-    if not invoice_repo.delete_invoice(invoice_id):
-        return 404, {"error": "Invoice not found"}
-    return 200, {"ok": True}
-
-
-def ensure_open_invoice(company: str) -> tuple[int, dict]:
-    if not company:
-        return 400, {"error": "company required"}
-    return 200, invoice_repo.ensure_open_invoice(company)
-
-
-def issue_open_invoice(company: str, comment: str = "") -> tuple[int, dict]:
-    if not company:
-        return 400, {"error": "company required"}
-    settings = company_repo.get_company_billing_settings(company)
-    result = invoice_repo.issue_open_invoice(
-        company,
-        comment,
-        reopen=bool(settings.auto_invoice_reopen),
-    )
-    if not result:
-        return 404, {"error": "Open invoice not found"}
-    return 200, result
-
-
-def list_company_billing_settings() -> tuple[int, list[dict]]:
-    return 200, entities_to_list(company_repo.list_company_billing_settings())
-
-
-def update_company_billing_settings(company: str, body) -> tuple[int, dict]:
-    if not company:
-        return 400, {"error": "company required"}
-    return 200, entity_to_dict(
-        company_repo.upsert_company_billing_settings(company, body.auto_invoice_reopen)
-    )
-
-
-def list_company_aliases() -> tuple[int, list[dict]]:
-    return 200, entities_to_list(company_repo.list_company_aliases())
-
-
-def upsert_company_alias(body) -> tuple[int, dict]:
-    if not body.alias.strip():
-        return 400, {"error": "alias required"}
-    if not body.company.strip():
-        return 400, {"error": "company required"}
-    return 200, entity_to_dict(company_repo.upsert_company_alias(body.alias, body.company))
-
-
-def delete_company_alias(alias: str) -> tuple[int, dict]:
-    if not alias:
-        return 400, {"error": "alias required"}
-    if not company_repo.delete_company_alias(alias):
-        return 404, {"error": "Company alias not found"}
-    return 200, {"ok": True}
-
-
-def list_expenses() -> tuple[int, dict]:
-    return 200, {
-        "expenses": expense_repo.list_expenses(),
-        "total": expense_repo.get_total_expenses(),
-    }
-
-
-def create_expense(body) -> tuple[int, dict]:
-    return 200, entity_to_dict(
-        expense_repo.create_expense(body.amount, body.reason, body.user_id, body.comment)
-    )
-
-
-def update_expense(expense_id: int, body) -> tuple[int, dict]:
-    expense = expense_repo.update_expense(expense_id, body)
-    if not expense:
-        return 404, {"error": "Expense not found"}
-    return 200, entity_to_dict(expense)
-
-
-def delete_expense(expense_id: int) -> tuple[int, dict]:
-    if not expense_repo.delete_expense(expense_id):
-        return 404, {"error": "Expense not found"}
-    return 200, {"ok": True}
-
-
-def list_payouts() -> tuple[int, list[dict]]:
-    return 200, payout_repo.list_payouts()
-
-
-def preview_payout(body) -> tuple[int, dict]:
-    if not body.user_splits:
-        return 400, {"error": "user_splits обязателен"}
-    return 200, payout_repo.preview_payout(
-        body.invoice_ids or [], body.expense_ids or [], body.user_splits
-    )
-
-
-def available_resources() -> tuple[int, dict]:
-    invoices = invoice_repo.list_available_invoices(limit=1000)
-    expenses = expense_repo.list_expenses()
-    return 200, {
-        "invoices": [
-            invoice
-            for invoice in invoices
-            if invoice.get("allocation", {}).get("status") != "fully_allocated"
-        ],
-        "expenses": [
-            expense
-            for expense in expenses
-            if expense.get("allocation", {}).get("status") != "fully_allocated"
-        ],
-    }
-
-
-def _validate_payout_payload(body) -> tuple[int, dict] | None:
-    if not body.user_splits:
-        return 400, {"error": "user_splits обязателен"}
-    if not body.invoice_ids and not body.expense_ids:
-        return 400, {"error": "нужен хотя бы один invoice_id или expense_id"}
-    return None
-
-
-def create_payout(body) -> tuple[int, dict]:
-    invalid = _validate_payout_payload(body)
-    if invalid:
-        return invalid
-    return 200, payout_repo.create_payout_with_calculation(
-        body.name,
-        body.invoice_ids or [],
-        body.expense_ids or [],
-        body.user_splits,
-    )
-
-
-def update_payout(payout_id: int, body) -> tuple[int, dict]:
-    if body.name is None:
-        return 400, {"error": "name required"}
-    payout = payout_repo.update_payout(payout_id, body.name)
-    if not payout:
-        return 404, {"error": "Payout not found or not editable"}
-    return 200, payout
-
-
-def set_payout_status(payout_id: int, body) -> tuple[int, dict]:
-    payout = payout_repo.set_payout_status(payout_id, body.status)
-    if not payout:
-        return 404, {"error": "Payout not found or not editable"}
-    return 200, payout
-
-
-def delete_payout(payout_id: int) -> tuple[int, dict]:
-    if not payout_repo.delete_payout(payout_id):
-        return 404, {"error": "Payout not found or not deletable"}
-    return 200, {"ok": True}
-
-
-def recalculate_payout(payout_id: int, body) -> tuple[int, dict]:
-    invalid = _validate_payout_payload(body)
-    if invalid:
-        return invalid
-    payout = payout_repo.recalculate_payout(
-        payout_id,
-        body.invoice_ids or [],
-        body.expense_ids or [],
-        body.user_splits,
-    )
-    if not payout:
-        return 404, {"error": "Payout not found or not editable"}
-    return 200, payout
-
-
-def list_users() -> tuple[int, list[dict]]:
-    return 200, entities_to_list(user_repo.list_users())
-
-
-def create_user(body) -> tuple[int, dict]:
-    return 200, entity_to_dict(user_repo.create_user(body.name))
-
-
-def update_user(user_id: int, body) -> tuple[int, dict]:
-    user = user_repo.update_user(user_id, body.name)
-    if not user:
-        return 404, {"error": "User not found"}
-    return 200, entity_to_dict(user)
-
-
-def delete_user(user_id: int) -> tuple[int, dict]:
-    if not user_repo.delete_user(user_id):
-        return 404, {"error": "User not found"}
-    return 200, {"ok": True}
-
-
-def list_prepaid_packages() -> tuple[int, list[dict]]:
-    return 200, entities_to_list(prepaid_repo.list_prepaid_packages())
-
-
-def create_prepaid_package(body) -> tuple[int, dict]:
-    return 200, entity_to_dict(
-        prepaid_repo.create_prepaid_package(body.api_key_id, body.balance_amount, body.active)
-    )
-
-
-def update_prepaid_package(package_id: int, body) -> tuple[int, dict]:
-    updated = prepaid_repo.update_prepaid_package(package_id, body.balance_amount, body.active)
-    if not updated:
-        return 404, {"error": "Prepaid package not found"}
-    return 200, entity_to_dict(updated)
-
-
-def delete_prepaid_package(package_id: int) -> tuple[int, dict]:
-    if not prepaid_repo.delete_prepaid_package(package_id):
-        return 404, {"error": "Prepaid package not found"}
-    return 200, {"ok": True}
-
-
-def top_up_prepaid_package(package_id: int, body) -> tuple[int, dict]:
-    if body.amount <= 0:
-        return 400, {"error": "amount must be positive"}
-    updated = prepaid_repo.top_up_prepaid_package(package_id, body.amount)
-    if not updated:
-        return 404, {"error": "Prepaid package not found"}
-    return 200, entity_to_dict(updated)
-
-
-def list_prepaid_deductions(
-    package_id: int | None = None, api_key_id: int | None = None
-) -> tuple[int, list[dict]]:
-    return 200, prepaid_repo.list_prepaid_deductions(package_id=package_id, api_key_id=api_key_id)
+__all__ = [
+    "update_api_key",
+    "update_usage_log",
+    "available_resources",
+    "create_expense",
+    "create_invoice",
+    "create_payout",
+    "create_prepaid_package",
+    "create_user",
+    "delete_company_alias",
+    "delete_expense",
+    "delete_invoice",
+    "delete_payout",
+    "delete_prepaid_package",
+    "delete_tariff",
+    "delete_user",
+    "ensure_open_invoice",
+    "generate_invoice",
+    "get_tariff",
+    "issue_open_invoice",
+    "list_company_aliases",
+    "list_company_billing_settings",
+    "list_expenses",
+    "list_invoices",
+    "list_payouts",
+    "list_prepaid_deductions",
+    "list_prepaid_packages",
+    "list_users",
+    "preview_payout",
+    "recalculate_payout",
+    "set_payout_status",
+    "top_up_prepaid_package",
+    "update_company_billing_settings",
+    "update_expense",
+    "update_invoice",
+    "update_payout",
+    "update_prepaid_package",
+    "upsert_tariff",
+    "update_user",
+    "upsert_company_alias",
+    "upsert_tariff",
+]
