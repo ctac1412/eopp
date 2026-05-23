@@ -10,6 +10,8 @@ from datetime import datetime
 
 from fastapi.responses import JSONResponse
 
+from src.benchmark import run_benchmark_cached
+from src.captcha_assembly import assemble_captchas, get_valid_variant_index
 from src.constants import NO_VALID_DIR, VALID_DIR
 from src.db import check_admin_token as db_check_admin_token
 from src.models import (
@@ -40,13 +42,8 @@ from src.models import (
 )
 from src.policies.access_policy import requires_admin
 from src.services import billing_service, reporting_service
-from src.utils import (
-    assemble_captchas,
-    get_connected_streams,
-    get_test_stats,
-    get_valid_variant_index,
-    run_benchmark_cached,
-)
+from src.sse import get_connected_streams, push_sse
+from src.test_runner import get_test_stats
 
 
 def admin_auth_middleware_factory(app):
@@ -352,13 +349,9 @@ def register_admin_routes(app):
         import threading
         import time
 
+        from src.captcha_assembly import assemble_captchas, get_valid_variant_index
         from src.constants import NO_VALID_DIR, VALID_DIR
-        from src.utils import (
-            assemble_captchas,
-            get_connected_streams,
-            get_valid_variant_index,
-            push_sse,
-        )
+        from src.sse import get_connected_streams
 
         captcha_ids = body.captcha_ids
         if not captcha_ids:

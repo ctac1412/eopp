@@ -5,7 +5,7 @@ from src.constants import NO_VALID_DIR, VALID_DIR
 from src.entities import UsageLog
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
-from src.utils import lock, sse_queues
+from src.sse import lock, sse_queues
 
 
 def _parse_config_json(usage_log: UsageLog) -> dict | None:

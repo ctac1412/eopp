@@ -10,12 +10,12 @@ from datetime import UTC, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from zoneinfo._common import ZoneInfoNotFoundError
 
+from src.captcha_assembly import get_by_path
 from src.db.company_aliases import normalize_company
 from src.db.connection import get_connection
 from src.db.invoices import link_usage_to_open_invoice
 from src.db.prepaid import deduct_prepaid_for_usage_tx
 from src.db.tariffs import get_tariff
-from src.utils import get_by_path
 
 # UUID v0 pattern for zero UUID (used as placeholder)
 _UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")

@@ -24,7 +24,7 @@ from captcha_solver import (
     calculate_sobel_continuity,
     prepare_clean_tiles,
 )
-from src.utils import get_valid_variant_index
+from src.captcha_assembly import get_valid_variant_index
 
 TEST_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "data", "captcha_examples", "valid"

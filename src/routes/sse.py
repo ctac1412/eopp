@@ -19,12 +19,7 @@ from fastapi import Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.db import get_key_record, is_super_kiosk_key
-from src.utils import (
-    lock,
-    register_sse_connection,
-    sse_queues,
-    unregister_sse_connection,
-)
+from src.sse import lock, register_sse_connection, sse_queues, unregister_sse_connection
 
 
 def _parse_help_for(raw: str | None) -> set[int]:

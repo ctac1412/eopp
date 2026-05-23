@@ -24,6 +24,12 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from captcha_solver import solve_captcha
+from src.captcha_assembly import (
+    assemble_captchas,
+    captcha_hash,
+    get_top3_from_solver,
+    get_valid_variant_index,
+)
 from src.constants import (
     CAPTCHA_TIMEOUT,
     NO_VALID_DIR,
@@ -36,18 +42,9 @@ from src.db import (
 )
 from src.models import SolveCaptchaBody, SolveRequest
 from src.services import captcha_service
-from src.utils import (
-    assemble_captchas,
-    captcha_hash,
-    get_top3_from_solver,
-    get_valid_variant_index,
-    lock,
-    next_result_id,
-    pending,
-    push_sse,
-    source_files,
-    super_kiosk_subscriptions,
-)
+from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
+from src.test_runner import next_result_id
+from src.utils import source_files
 
 
 def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
@@ -261,7 +258,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
     @app.post("/trigger-test")
     async def trigger_test(request: Request):
-        from src.utils import send_one_test_captcha
+        from src.test_runner import send_one_test_captcha
 
         try:
             body = await request.json()

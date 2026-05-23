@@ -26,12 +26,8 @@ from src.constants import (
 from src.db import init_db
 from src.routes import register_all_routes
 from src.routes.admin import admin_auth_middleware_factory
-from src.utils import (
-    lock,
-    pending,
-    send_test_cases,
-    send_write_cases,
-)
+from src.sse import lock, pending
+from src.test_runner import send_test_cases, send_write_cases
 
 logging.basicConfig(
     level=logging.INFO,

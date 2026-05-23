@@ -1,4 +1,4 @@
-from src.utils import get_valid_variant_index
+from src.captcha_assembly import get_valid_variant_index
 
 
 def make_captcha(valid_index):
