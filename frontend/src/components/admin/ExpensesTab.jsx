@@ -1,7 +1,7 @@
 ﻿import React, { useMemo, useState } from "react";
 
 function formatMoney(amount) {
-  return `${Math.round(Number(amount || 0)).toLocaleString("ru-RU")} в‚Ѕ`;
+  return `${Math.round(Number(amount || 0)).toLocaleString("ru-RU")} ₽`;
 }
 
 function formatDate(iso) {

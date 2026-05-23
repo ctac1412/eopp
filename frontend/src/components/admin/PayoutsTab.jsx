@@ -12,7 +12,7 @@ function StatusBadge({ status }) {
 }
 
 function formatMoney(n) {
-  return `${Math.round(Number(n || 0)).toLocaleString("ru-RU")} в‚Ѕ`;
+  return `${Math.round(Number(n || 0)).toLocaleString("ru-RU")} ₽`;
 }
 
 function formatDate(iso, withTime = false) {
