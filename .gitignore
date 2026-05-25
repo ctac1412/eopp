@@ -66,3 +66,4 @@ prod/backups/
 
 # EOPP original JS dump
 eopp_original.js
+.run-prod.pid
