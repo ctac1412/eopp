@@ -26,6 +26,7 @@ from src.constants import (
 from src.db import init_db
 from src.routes import register_all_routes
 from src.routes.admin import admin_auth_middleware_factory
+from src.services import telegram_service
 from src.sse import lock, pending
 from src.test_runner import send_test_cases, send_write_cases
 
@@ -58,6 +59,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        telegram_stop = threading.Event()
+        telegram_thread = telegram_service.start_daily_report_scheduler(telegram_stop)
         if use_tests:
             t = threading.Thread(target=send_test_cases, daemon=True)
             t.start()
@@ -65,6 +68,8 @@ def create_app(
             t = threading.Thread(target=send_write_cases, daemon=True)
             t.start()
         yield
+        if telegram_thread:
+            telegram_stop.set()
         with lock:
             for entry in pending.values():
                 entry["event"].set()

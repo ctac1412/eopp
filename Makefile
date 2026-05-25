@@ -43,7 +43,7 @@ build-crx: typecheck-extension build-extension
 	@echo "Packing extension to CRX..."
 	@"C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/yandex-browser-plugin/dist" --no-sandbox --pack-extension-key="$(CURDIR)/data/my.pem"
 	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' -Destination ('$(CURDIR)/plugins/my-helper-v' + $$ver + '.crx'); if (Test-Path '$(CURDIR)/yandex-browser-plugin/dist.crx') { Remove-Item -Force '$(CURDIR)/yandex-browser-plugin/dist.crx' }; Write-Host ('CRX created: plugins/my-helper-v' + $$ver + '.crx')"
-	@powershell -Command "$$envFile = '$(CURDIR)/prod/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; $$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl.TrimEnd('/') + '/plugins/my-helper-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver + ' at ' + $$codebase)"
+	@powershell -Command "$$envFile = '$(CURDIR)/prod/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; try { $$uri = [Uri]$$serverUrl; $$host = $$uri.Host.ToLower(); $$isLocal = ($$host -eq 'localhost' -or $$host -eq '127.0.0.1' -or $$host -eq '::1'); if (-not $$isLocal -and $$uri.Scheme -eq 'http') { $$builder = New-Object System.UriBuilder($$uri); $$builder.Scheme = 'https'; if ($$builder.Port -eq 80) { $$builder.Port = -1 }; $$serverUrl = $$builder.Uri.AbsoluteUri.TrimEnd('/') } else { $$serverUrl = $$serverUrl.TrimEnd('/') } } catch { $$serverUrl = $$serverUrl.TrimEnd('/') }; $$ver = (Get-Content '$(CURDIR)/yandex-browser-plugin/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl + '/plugins/my-helper-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/update.xml' -Encoding UTF8; Write-Host ('update.xml updated to v' + $$ver + ' at ' + $$codebase)"
 
 # === Formatters ===
 
@@ -75,6 +75,13 @@ bench:
 list-plugins:
 	@echo "Plugin versions:"
 	@python -c "from src.plugins import get_versions; [print(f\"  {v['version']} - {v.get('note', '')}\") for v in get_versions()]"
+
+telegram-daily:
+	uv run python -c "from src.services.telegram_service import load_local_env, parse_report_day, send_daily_report_sync; load_local_env(); print('sent=' + str(send_daily_report_sync(parse_report_day('$(DAY)'))))"
+
+telegram-usage:
+	@powershell -Command "if ('$(LOG_ID)' -eq '') { Write-Error 'Usage: make telegram-usage LOG_ID=123'; exit 1 }"
+	uv run python -c "from src.services.telegram_service import load_local_env, notify_usage_by_id; load_local_env(); print('sent=' + str(notify_usage_by_id(int('$(LOG_ID)'), async_send=False)))"
 
 # === Deploy ===
 

@@ -62,6 +62,10 @@ function pickByMaxCount(slots: Slot[]): Slot {
   return best[Math.floor(Math.random() * best.length)];
 }
 
+function normalizeSlotTime(time: string): string {
+  return time.split(":").slice(0, 2).join(":");
+}
+
 /**
  * Выбирает лучший слот из доступных с учётом приоритетов.
  * Сначала пытается найти слот из предпочтительных групп (timeOrder),
@@ -78,7 +82,7 @@ export function selectBestSlot(slots: Slot[]): Slot {
     for (const group of timeOrder) {
       if (group.length === 0) continue;
       const available = slots.filter(
-        (s) => group.includes(s.time) && !usedSlotIds.has(s.id) && s.count > 0,
+        (s) => group.includes(normalizeSlotTime(s.time)) && !usedSlotIds.has(s.id) && s.count > 0,
       );
       if (available.length > 0) {
         const selected = pickByMaxCount(available);
@@ -399,9 +403,18 @@ async function runCaptchaPipeline(
     ),
     { endpoint: "solve-captcha" },
   );
-  const solverInfo = solvedAnswer.solver_label || "local";
+  const solvedBySuper = !!solvedAnswer.solved_by_super;
+  const solverLabel = solvedAnswer.solver_label || "unknown";
+  const solverSource = solvedBySuper ? "super-kiosk" : "local";
   const tilesStr = solvedAnswer.variantTiles.join(",");
-  log(`Ответ сервера: captcha=${solvedAnswer.captcha_id || "?"} variant=${solvedAnswer.variantIndex} solver=${solverInfo} tiles=[${tilesStr}]${attemptLabel}`);
+  log(
+    "Server answer: captcha=" + (solvedAnswer.captcha_id || "?") +
+      " variant=" + solvedAnswer.variantIndex +
+      " solver=" + solverLabel +
+      " source=" + solverSource +
+      " super_kiosk=" + (solvedBySuper ? "yes" : "no") +
+      " tiles=[" + tilesStr + "]" + attemptLabel,
+  );
 
   if (config.runUpTo < 4) {
     log("Остановка по конфигу runUpTo");
@@ -464,14 +477,58 @@ async function runPipeline(
  * Проверяет, является ли ошибка связанной с капчей.
  * Возвращает true для 400 (неверное решение) и "Сервер вернул null" (таймаут).
  */
-function isCaptchaRelatedError(err: unknown): boolean {
+type PipelineErrorKind = "captcha" | "slot-unavailable" | "unknown";
+
+function parseErrorBody(err: unknown): Record<string, unknown> | null {
+  const body = (err as { body?: string })?.body;
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body);
+    return typeof parsed === "object" && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function describeEoppError(err: unknown): string {
+  const parsed = parseErrorBody(err);
+  if (!parsed) return serializeError(err);
+  const title = typeof parsed.title === "string" ? parsed.title : "EOPP error";
+  const status = typeof parsed.eoppStatus === "number" ? ` (${parsed.eoppStatus})` : "";
+  const detail = typeof parsed.detail === "string" ? `: ${parsed.detail}` : "";
+  return `${title}${status}${detail}`;
+}
+
+function getPipelineErrorKind(err: unknown): PipelineErrorKind {
   if (err instanceof Error && err.message.includes("Сервер вернул null")) {
-    return true;
+    return "captcha";
   }
   if (typeof err === "object" && err !== null && "status" in err) {
-    return (err as { status: number }).status === 400;
+    const error = err as { status: number; body?: string };
+    if (error.status !== 400 || !error.body) return "unknown";
+    if (
+      error.body.includes("AllSlotsOccupiedOnInterval") ||
+      error.body.includes("CaptchaNotExistFreeTimeslot") ||
+      error.body.includes('"eoppStatus":40144')
+    ) {
+      return "slot-unavailable";
+    }
+    return (
+      error.body.includes("CaptchaNotValid") ||
+      error.body.includes("CaptchaInvalid") ||
+      error.body.includes("CaptchaValidation") ||
+      error.body.includes("IncorrectCaptcha")
+    ) ? "captcha" : "unknown";
   }
-  return false;
+  return "unknown";
+}
+
+function isCaptchaRelatedError(err: unknown): boolean {
+  return getPipelineErrorKind(err) === "captcha";
+}
+
+function isSlotUnavailableError(err: unknown): boolean {
+  return getPipelineErrorKind(err) === "slot-unavailable";
 }
 
 /**
@@ -545,11 +602,8 @@ function decideSlotRetry(
   slotRetryCount: number,
   config: InjectorConfig,
 ): RetryDecision {
-  const error = err as { body?: string };
-  const isAllSlotsOccupied =
-    error.body && error.body.includes("AllSlotsOccupiedOnInterval");
   if (
-    isAllSlotsOccupied &&
+    isSlotUnavailableError(err) &&
     config.retryOnAllSlotsOccupied &&
     slotRetryCount < config.maxSlotRetries
   ) {
@@ -671,7 +725,7 @@ async function tryRetrySlot(
       reason: serializeError(err),
     });
     log(
-      `AllSlotsOccupiedOnInterval — пробуем другой слот (попытка ${slotRetryCount + 1}/${config.maxSlotRetries})`,
+      `Слот недоступен (${describeEoppError(err)}) — пробуем другой слот (попытка ${slotRetryCount + 1}/${config.maxSlotRetries})`,
     );
     await withAbort(new Promise((r) => setTimeout(r, config.slotRetryDelayMs)), signal);
     return true;
@@ -744,8 +798,11 @@ async function runWithRetryLoop(
         const captchaId = storeState.captchaId || "?";
         const variantTiles = storeState.solvedVariantTiles;
 
-        if (isCaptchaRelatedError(err)) {
-          if (captchaId !== "?") {
+        const errorKind = getPipelineErrorKind(err);
+        if (errorKind === "captcha") {
+          if (storeState.currentStage === "captcha") {
+            log(`Ошибка генерации капчи: ${describeEoppError(err)}`);
+          } else if (captchaId !== "?") {
             const reason =
               err instanceof Error && err.message.includes("Сервер вернул null")
                 ? "таймаут сервера"
@@ -754,6 +811,8 @@ async function runWithRetryLoop(
           } else {
             log(`Ошибка генерации капчи: ${serializeError(err)}`);
           }
+        } else if (errorKind === "slot-unavailable") {
+          log(`Слот недоступен: ${describeEoppError(err)}`);
         }
 
         if (await tryRetrySlot(err, slotRetryCount, config, signal)) {

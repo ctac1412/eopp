@@ -19,6 +19,26 @@ if (fs.existsSync(envServerPath)) {
   if (hostMatch) serverHost = hostMatch[1].trim();
 }
 
+function forceHttpsForPublicUrl(rawUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const isLocal =
+    host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (!isLocal && parsed.protocol === "http:") {
+    parsed.protocol = "https:";
+    if (parsed.port === "80") parsed.port = "";
+    return parsed.toString().replace(/\/$/, "");
+  }
+  return rawUrl.replace(/\/$/, "");
+}
+
+serverUrl = forceHttpsForPublicUrl(serverUrl);
+
 const copyStaticFiles = () => ({
   name: "copy-static",
   closeBundle() {
@@ -54,7 +74,7 @@ const copyStaticFiles = () => ({
     const manifest = {
       manifest_version: 3,
       name: "Помощник",
-      version: "1.4.0",
+      version: "1.4.2",
       description: "Быстрые заметки прямо на странице",
       icons: {
         "48": "icon.png",

@@ -65,6 +65,8 @@
   height: 40px;
   padding: 0.28rem 0.32rem;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   vertical-align: middle;
 }
 
@@ -74,15 +76,16 @@
 .reports-log-table th:nth-child(4) { width: 76px; }
 .reports-log-table th:nth-child(5) { width: 76px; }
 .reports-log-table th:nth-child(6) { width: 108px; }
-.reports-log-table th:nth-child(7) { width: 80px; }
-.reports-log-table th:nth-child(8) { width: 48px; }
+.reports-log-table th:nth-child(7) { width: 132px; }
+.reports-log-table th:nth-child(8) { width: 96px; }
 .reports-log-table th:nth-child(9) { width: 116px; }
 .reports-log-table th:nth-child(10) { width: 78px; }
 .reports-log-table th:nth-child(11) { width: 68px; }
-.reports-log-table th:nth-child(12) { width: 44px; }
-.reports-log-table th:nth-child(13) { width: 42px; }
-.reports-log-table th:nth-child(14) { width: 136px; }
-.reports-log-table th:nth-child(15) { width: 84px; }
+.reports-log-table th:nth-child(12) { width: 72px; }
+.reports-log-table th:nth-child(13) { width: 48px; }
+.reports-log-table th:nth-child(14) { width: 56px; }
+.reports-log-table th:nth-child(15) { width: 136px; }
+.reports-log-table th:nth-child(16) { width: 84px; }
 
 .reports-log-table .badge {
   line-height: 1;

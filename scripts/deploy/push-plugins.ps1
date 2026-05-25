@@ -46,6 +46,22 @@ if (Test-Path $envFile) {
         }
     }
 }
+$uri = $null
+try {
+    $uri = [Uri]$serverUrl
+    $host = $uri.Host.ToLower()
+    $isLocal = ($host -eq 'localhost' -or $host -eq '127.0.0.1' -or $host -eq '::1')
+    if (-not $isLocal -and $uri.Scheme -eq 'http') {
+        $builder = New-Object System.UriBuilder($uri)
+        $builder.Scheme = 'https'
+        if ($builder.Port -eq 80) { $builder.Port = -1 }
+        $serverUrl = $builder.Uri.AbsoluteUri.TrimEnd('/')
+    } else {
+        $serverUrl = $serverUrl.TrimEnd('/')
+    }
+} catch {
+    $serverUrl = $serverUrl.TrimEnd('/')
+}
 $codebase = $serverUrl.TrimEnd('/') + "/plugins/my-helper-v$ver.crx"
 $updateXml = '<?xml version="1.0" encoding="UTF-8"?>' + [Environment]::NewLine +
     '<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">' + [Environment]::NewLine +

@@ -11,6 +11,18 @@ try:
 except ZoneInfoNotFoundError:
     MSK = timezone(timedelta(hours=3), "Europe/Moscow")
 
+OPERATION_LABELS = {
+    "create": "Создание",
+    "reschedule": "Перенос",
+    "unknown": "Неизвестно",
+}
+
+PAYMENT_LABELS = {
+    "paid": "Оплачено",
+    "unpaid": "Не оплачено",
+    "no_price": "Без цены",
+}
+
 
 def _msk_day_bounds(day: date) -> tuple[datetime, datetime]:
     start = datetime(day.year, day.month, day.day, tzinfo=MSK)
@@ -59,6 +71,38 @@ def _company_totals(entries) -> list[dict]:
     return sorted(grouped.values(), key=lambda item: item["revenue"], reverse=True)
 
 
+def _operation_totals(entries) -> dict[str, dict]:
+    grouped: dict[str, dict] = {}
+    for row in entries:
+        if row.status != "confirmed":
+            continue
+        op_type = row.op_type or "unknown"
+        node = grouped.setdefault(op_type, {"count": 0, "revenue": 0})
+        node["count"] += 1
+        node["revenue"] += row.price or 0
+    return grouped
+
+
+def _payment_totals(entries) -> dict[str, dict]:
+    grouped = {
+        "paid": {"count": 0, "revenue": 0},
+        "unpaid": {"count": 0, "revenue": 0},
+        "no_price": {"count": 0, "revenue": 0},
+    }
+    for row in entries:
+        if row.status != "confirmed":
+            continue
+        if row.price is None:
+            bucket = "no_price"
+        elif row.paid is True:
+            bucket = "paid"
+        else:
+            bucket = "unpaid"
+        grouped[bucket]["count"] += 1
+        grouped[bucket]["revenue"] += row.price or 0
+    return grouped
+
+
 def build_daily_report(day: date | None = None) -> dict:
     target_day = day or datetime.now(MSK).date()
     all_rows = [row for row in usage_log_repo.list_usage() if not row.is_test]
@@ -75,29 +119,42 @@ def build_daily_report(day: date | None = None) -> dict:
         "failed_count": len(failed),
         "pending_count": len(pending),
         "revenue_total": revenue,
+        "operations": _operation_totals(rows),
+        "payments": _payment_totals(rows),
         "companies": _company_totals(rows),
     }
 
 
 def render_telegram_daily_report(report: dict) -> str:
     lines = [
-        f"Daily report {report['date']} (MSK)",
-        f"Total: {report['total']}",
-        f"Success: {report['success_count']}",
-        f"Failed: {report['failed_count']}",
-        f"Pending: {report['pending_count']}",
-        f"Revenue: {report['revenue_total']} RUB",
-        "",
-        "By company:",
+        f"📊 Итоги за день: {report['date']} (МСК)",
+        f"📌 Всего запусков: {report['total']}",
+        f"✅ Успешно: {report['success_count']}",
+        f"💰 Сумма: {report['revenue_total']} ₽",
     ]
+    if report.get("failed_count", 0):
+        lines.append(f"❌ Ошибки: {report['failed_count']}")
+    if report.get("pending_count", 0):
+        lines.append(f"⏳ В ожидании: {report['pending_count']}")
+
+    operations = {
+        op_type: item
+        for op_type, item in (report.get("operations") or {}).items()
+        if item.get("count", 0) > 0
+    }
+    if operations:
+        lines.extend(["", "🔧 По типам:"])
+        for op_type, item in sorted(operations.items()):
+            label = OPERATION_LABELS.get(op_type, op_type)
+            lines.append(f"- {label}: {item['count']} / {item['revenue']} ₽")
+
     companies = report.get("companies") or []
-    if not companies:
-        lines.append("- no records")
-    else:
+    if companies:
+        lines.extend(["", "🏢 По компаниям:"])
         for item in companies[:12]:
             lines.append(
-                f"- {item['company']}: ok {item['success']}, fail {item['failed']}, "
-                f"pending {item['pending']}, rev {item['revenue']}"
+                f"- {item['company']}: ✅ {item['success']}, ❌ {item['failed']}, "
+                f"⏳ {item['pending']}, 💰 {item['revenue']} ₽"
             )
     return "\n".join(lines)
 
