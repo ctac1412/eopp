@@ -16,13 +16,17 @@ from captcha_solver import (
     prepare_clean_tiles,
 )
 from src.captcha_assembly import get_valid_variant_index
-from src.constants import VALID_DIR
+from src.services import captcha_file_service
 
 _benchmark_cache: dict | None = None
 
 
 def _run_benchmark_sync():
-    test_files = sorted(glob.glob(os.path.join(VALID_DIR, "*.json")))
+    test_files = []
+    for filepath in sorted(glob.glob(os.path.join(captcha_file_service.all_dir(), "*.json"))):
+        data = captcha_file_service.read_json(filepath) or {}
+        if get_valid_variant_index(data) is not None:
+            test_files.append(filepath)
     total = len(test_files)
     if total == 0:
         return {

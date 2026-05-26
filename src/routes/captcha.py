@@ -10,13 +10,11 @@ EOPP Captcha Solver - Captcha Routes
 Логика:
 - Если auto_solve=true - решает автоматически через captcha_solver
 - Иначе блокирует до ручного ответа или таймаута
-- Сохраняет капчи в файлы (valid/ или no_valid/)
-- При write_mode сохраняет ответ обратно в файл
+- Сохраняет капчи в единую папку captcha_examples/all/
+- При write_mode сохраняет valid_index обратно в файл
 """
 
 import asyncio
-import json
-import os
 import threading
 import time
 
@@ -32,19 +30,16 @@ from src.captcha_assembly import (
 )
 from src.constants import (
     CAPTCHA_TIMEOUT,
-    NO_VALID_DIR,
-    VALID_DIR,
-    write_mode,
 )
 from src.db import (
     get_key_by_id,
     get_key_record,
 )
 from src.models import SolveCaptchaBody, SolveRequest
+from src.services import captcha_file_service
 from src.services import captcha_service
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
 from src.test_runner import next_result_id
-from src.utils import source_files
 
 
 def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
@@ -80,13 +75,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             captcha_id,
         )
 
-        has_valid_index = valid_index is not None
-        target_dir = VALID_DIR if has_valid_index else NO_VALID_DIR
-        os.makedirs(target_dir, exist_ok=True)
-        existing_file = os.path.join(target_dir, f"{captcha_id}.json")
-        if not os.path.exists(existing_file):
-            with open(existing_file, "w") as f:
-                json.dump(data, f, indent=2)
+        captcha_file_service.save_captcha_payload(captcha_id, data)
 
         if auto_solve:
             best_variant, tile_order, results = await asyncio.to_thread(solve_captcha, data)
@@ -110,7 +99,6 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             "images": {str(g["index"]): g["image"] for g in generated},
             "event": event,
             "result": None,
-            "source_file": source_files.get(captcha_id),
             "usage_log_id": usage_log_id,
             "api_key_id": api_key_id,
         }
@@ -235,17 +223,6 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         result["resultFile"] = f"captcha_{captcha_id}_{rid:04d}.json"
         entry["result"] = result
         entry["event"].set()
-
-        if write_mode and entry.get("source_file"):
-            source_path = entry["source_file"]
-            with open(source_path) as f:
-                source_data = json.load(f)
-            source_data["valid_index"] = variant_index
-            new_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
-            if not os.path.exists(new_path):
-                with open(new_path, "w") as f:
-                    json.dump(source_data, f, indent=2)
-                os.remove(source_path)
 
         owner_id = entry.get("api_key_id")
         owner_info = get_key_by_id(owner_id)

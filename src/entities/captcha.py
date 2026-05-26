@@ -20,7 +20,24 @@ class CaptchaRecord(Base):
     usage_log_id: Mapped[int] = mapped_column(Integer, ForeignKey("usage_log.id"), nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     tiles_hash: Mapped[str | None] = mapped_column(String, nullable=True)
-    correct_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     fail_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     usage_log: Mapped[UsageLog] = relationship(back_populates="captcha_records")
+
+
+class CaptchaFile(Base):
+    __tablename__ = "captcha_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    captcha_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_status: Mapped[str] = mapped_column(String, nullable=False)
+    captcha_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    tiles_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    valid_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    variants_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_mtime: Mapped[str | None] = mapped_column(Text, nullable=True)
+    no_valid_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_seen_at: Mapped[str | None] = mapped_column(Text, nullable=True)

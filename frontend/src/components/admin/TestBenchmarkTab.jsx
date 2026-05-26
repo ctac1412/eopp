@@ -24,7 +24,7 @@ export function TestBenchmarkTab({ testStats, testStatsLoading, benchmark, bench
           <div className="col-6">
             <div className="card">
               <div className="card-body">
-                <h6 className="card-subtitle mb-1 text-muted">Помеченные (valid/)</h6>
+                <h6 className="card-subtitle mb-1 text-muted">Помеченные</h6>
                 <p className="card-text fs-4 fw-bold text-success mb-0">{testStats.labeled_count}</p>
               </div>
             </div>
@@ -32,7 +32,7 @@ export function TestBenchmarkTab({ testStats, testStatsLoading, benchmark, bench
           <div className="col-6">
             <div className="card">
               <div className="card-body">
-                <h6 className="card-subtitle mb-1 text-muted">Без пометки (no_valid/)</h6>
+                <h6 className="card-subtitle mb-1 text-muted">Без пометки</h6>
                 <p className="card-text fs-4 fw-bold text-warning mb-0">{testStats.unlabeled_count}</p>
               </div>
             </div>

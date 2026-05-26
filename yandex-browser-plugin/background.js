@@ -29,8 +29,6 @@ chrome.runtime.onConnect.addListener((port) => {
             api_key: msg.payload.apiKey,
             slot_date: msg.payload.slotDate,
             logs: msg.payload.logs,
-            captcha_id: msg.payload.captchaId,
-            valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
       } else if (msg.action === "failUsage") {
@@ -47,8 +45,6 @@ chrome.runtime.onConnect.addListener((port) => {
             error_stage: msg.payload.errorStage,
             slot_date: msg.payload.slotDate,
             logs: msg.payload.logs,
-            captcha_id: msg.payload.captchaId,
-            valid_variant_index: msg.payload.validVariantIndex,
           }),
         });
       } else if (msg.action === "apiKeyStatus") {

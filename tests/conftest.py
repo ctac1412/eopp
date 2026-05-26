@@ -36,7 +36,7 @@ def isolated_api_db(monkeypatch):
 def client(isolated_api_db):
     from src.app import create_app
 
-    app = create_app(use_tests=False)
+    app = create_app()
     return TestClient(app)
 
 

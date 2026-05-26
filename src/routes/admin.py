@@ -4,11 +4,15 @@ HTTP adapters for admin auth, monitoring, billing, users, and captcha replay.
 Business rules live in services; storage calls live behind repositories.
 """
 
+import base64
+import io
 import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
+
+from PIL import Image
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -359,6 +363,74 @@ def register_admin_routes(app):
             entry["key_label"] = key_label
             entry["api_key_id"] = ul["api_key_id"] if ul else None
             result.append(entry)
+        return JSONResponse(content=result)
+
+    @app.get("/admin/captcha-files")
+    async def list_admin_captcha_files():
+        from src.services import captcha_file_service
+
+        captcha_file_service.sync_captcha_files()
+        return JSONResponse(content=captcha_file_service.list_captcha_files())
+
+    @app.get("/admin/captcha-files/{captcha_id}/thumbnail")
+    async def admin_captcha_thumbnail(captcha_id: str):
+        from fastapi.responses import Response
+        from src.services.captcha_file_service import load_captcha_payload
+        from src.captcha_assembly import get_valid_variant_index
+
+        data = load_captcha_payload(captcha_id)
+        if data is None:
+            return Response(status_code=404, content="Not found")
+
+        vi = get_valid_variant_index(data)
+        if vi is None:
+            return Response(status_code=404, content="No valid_index")
+
+        puzzle = data.get("puzzle", data)
+        variants = puzzle.get("variantsCapture", [])
+        tiles = puzzle.get("tiles", [])
+
+        if vi < 0 or vi >= len(variants):
+            return Response(status_code=404, content="Invalid variant index")
+
+        tile_map = {}
+        for t in tiles:
+            try:
+                img = Image.open(io.BytesIO(base64.b64decode(t["imageData"]))).convert("RGBA")
+                tile_map[t["tileId"]] = img
+            except Exception:
+                pass
+
+        tile_ids = variants[vi]
+        images = [tile_map[tid] for tid in tile_ids if tid in tile_map]
+        if len(images) != len(tile_ids):
+            return Response(status_code=500, content="Tile assembly failed")
+
+        w, h = images[0].size
+        cols = min(len(images), 3)
+        rows = (len(images) + cols - 1) // cols
+        canvas = Image.new("RGBA", (w * cols, h * rows), (255, 255, 255, 255))
+        for i, img in enumerate(images):
+            r = i // cols
+            c = i % cols
+            canvas.paste(img, (c * w, r * h))
+
+        buf = io.BytesIO()
+        canvas.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    @app.post("/admin/captcha-files/backfill-valid-index")
+    async def admin_backfill_valid_index():
+        from src.services import captcha_file_service
+
+        result = captcha_file_service.backfill_valid_index_from_logs()
+        return JSONResponse(content=result)
+
+    @app.post("/admin/captcha-files/backfill-dates")
+    async def admin_backfill_dates():
+        from src.services import captcha_file_service
+
+        result = captcha_file_service.backfill_captcha_dates()
         return JSONResponse(content=result)
 
     @app.post("/admin/slots-group/clear")

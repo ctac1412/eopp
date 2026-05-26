@@ -32,9 +32,7 @@ PROTECTED_PATHS = (
     "/admin/benchmark",
 )
 
-write_mode = False
 use_ssl = True
-override_captcha_timeout = None
 
 _TEST_API_KEY = None
 
@@ -61,6 +59,8 @@ def __getattr__(name):
         return _lazy(
             "NO_VALID", lambda: os.path.join(_get_data_dir(), "captcha_examples", "no_valid")
         )
+    if name == "CAPTCHA_ALL_DIR":
+        return _lazy("CAPTCHA_ALL", lambda: os.path.join(_get_data_dir(), "captcha_examples", "all"))
     if name == "PLUGINS_DIR":
         return os.environ.get("EOPP_PLUGINS_DIR") or os.path.join(PROJECT_DIR, "plugins")
     if name == "FRONTEND_DIST":

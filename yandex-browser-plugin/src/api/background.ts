@@ -52,16 +52,12 @@ export async function confirmUsage(
   apiKey: string,
   slotDate?: string,
   logs?: string[],
-  captchaId?: string,
-  validVariantIndex?: number,
 ): Promise<boolean> {
   const response = await sendMessageToBackground("confirmUsage", {
     usageLogId,
     apiKey,
     slotDate,
     logs,
-    captchaId,
-    validVariantIndex,
   });
   return response as boolean;
 }
@@ -73,8 +69,6 @@ export async function failUsage(
   errorStage: string,
   slotDate?: string,
   logs?: string[],
-  captchaId?: string,
-  validVariantIndex?: number,
 ): Promise<boolean> {
   const response = await sendMessageToBackground("failUsage", {
     usageLogId,
@@ -83,8 +77,6 @@ export async function failUsage(
     errorStage,
     slotDate,
     logs,
-    captchaId,
-    validVariantIndex,
   });
   return response as boolean;
 }

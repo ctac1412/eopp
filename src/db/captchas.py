@@ -1,8 +1,7 @@
 """
 EOPP Captcha Solver - Captchas DB.
 
-Таблица для хранения истории отдельных капч.
-Парсер логов: только v2 формат.
+Stores per-captcha history records parsed from v2 logs.
 """
 
 import hashlib
@@ -11,13 +10,19 @@ import os
 import re
 from datetime import UTC, datetime
 
-from src.constants import NO_VALID_DIR, VALID_DIR
+from src.constants import CAPTCHA_ALL_DIR
 from src.db.connection import get_connection
 
-_V2_VALIDATED_RE = re.compile(r"Капча валидирована\s+\[([a-f0-9]+)\]\s+ответ:\s*(\[.*?\])")
-_V2_NOT_VALIDATED_RE = re.compile(r"Капча не валидирована\s+\[([a-f0-9]+)\]\s+причина:\s*(.+)")
-_V2_NOT_SOLVED_RE = re.compile(r"Капча не решена\s+\[([a-f0-9]+)\]\s+причина:\s*(.+)")
 _V2_VERSION_RE = re.compile(r"<log-version>v2</log-version>")
+_V2_VALIDATE_EVENT_RE = re.compile(
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"success".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)'
+)
+_V2_VALIDATE_ERROR_EVENT_RE = re.compile(
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)'
+)
+_V2_SOLVING_ERROR_EVENT_RE = re.compile(
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"solving".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"solve-captcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)"'
+)
 
 
 def _is_v2(logs: list[str] | None) -> bool:
@@ -27,66 +32,172 @@ def _is_v2(logs: list[str] | None) -> bool:
 
 
 def _tiles_hash(tiles: list[dict]) -> str:
-    """Хеш только набора тайлов (без variantsCapture)."""
     tile_ids = sorted(t["tileId"] for t in tiles)
     hash_input = json.dumps(tile_ids, sort_keys=True)
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
-def _extract_v2(logs: list[str]) -> list[tuple[str, str, str | None, str | None]]:
-    """Парсит v2 логи и возвращает список (captcha_id, status, correct_answer, fail_reason)."""
+def extract_passed_captchas_from_logs(logs: list[str] | None) -> list[tuple[str, int]]:
     if not logs:
         return []
-
-    results = []
+    passed: list[tuple[str, int]] = []
     for line in logs:
-        m = _V2_VALIDATED_RE.search(line)
+        m = _V2_VALIDATE_EVENT_RE.search(line)
         if m:
-            captcha_id = m.group(1)
-            answer = m.group(2)
-            try:
-                parsed = json.loads(answer)
-                if isinstance(parsed, list):
-                    results.append((captcha_id, "passed", json.dumps(parsed), None))
-                else:
-                    results.append((captcha_id, "passed", None, None))
-            except (json.JSONDecodeError, ValueError):
-                results.append((captcha_id, "passed", None, None))
-            continue
+            passed.append((m.group(1), int(m.group(2))))
+    return passed
 
-        m = _V2_NOT_VALIDATED_RE.search(line)
+
+def extract_invalid_captchas_from_logs(logs: list[str] | None) -> list[tuple[str, int | None, str]]:
+    if not logs:
+        return []
+    invalid: list[tuple[str, int | None, str]] = []
+    for line in logs:
+        m = _V2_VALIDATE_ERROR_EVENT_RE.search(line)
         if m:
-            captcha_id = m.group(1)
-            reason = m.group(2).strip()
-            results.append((captcha_id, "failed", None, reason))
-            continue
+            invalid.append((m.group(2), int(m.group(3)), f"validation_error: {m.group(1).strip()}"))
+    return invalid
 
-        m = _V2_NOT_SOLVED_RE.search(line)
+
+def extract_unsolved_captchas_from_logs(logs: list[str] | None) -> list[tuple[str, str]]:
+    if not logs:
+        return []
+    unsolved: list[tuple[str, str]] = []
+    for line in logs:
+        m = _V2_SOLVING_ERROR_EVENT_RE.search(line)
         if m:
-            captcha_id = m.group(1)
-            reason = m.group(2).strip()
-            results.append((captcha_id, "failed", None, reason))
-            continue
-
-    return results
+            unsolved.append((m.group(2), f"solve_error: {m.group(1).strip()}"))
+    return unsolved
 
 
 def _resolve_tiles_hash(captcha_id: str) -> str | None:
-    """Best-effort tiles hash lookup from stored captcha payload files."""
-    for base_dir in (VALID_DIR, NO_VALID_DIR):
-        payload_path = os.path.join(base_dir, f"{captcha_id}.json")
-        if not os.path.exists(payload_path):
-            continue
-        try:
-            with open(payload_path, encoding="utf-8") as f:
-                data = json.load(f)
-            puzzle = data.get("puzzle", data)
-            tiles = puzzle.get("tiles", [])
-            if tiles:
-                return _tiles_hash(tiles)
-        except Exception:
-            continue
+    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+    if not os.path.exists(payload_path):
+        return None
+    try:
+        with open(payload_path, encoding="utf-8") as f:
+            data = json.load(f)
+        puzzle = data.get("puzzle", data)
+        tiles = puzzle.get("tiles", [])
+        if tiles:
+            return _tiles_hash(tiles)
+    except Exception:
+        return None
     return None
+
+
+def _set_valid_index_in_payload(captcha_id: str, valid_index: int) -> bool:
+    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+    if not os.path.exists(payload_path):
+        return False
+    try:
+        with open(payload_path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["valid_index"] = valid_index
+        with open(payload_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _set_no_valid_index_in_payload(captcha_id: str, no_valid_index: int) -> bool:
+    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+    if not os.path.exists(payload_path):
+        return False
+    try:
+        with open(payload_path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["no_valid_index"] = no_valid_index
+        with open(payload_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _sync_captcha_files_label(conn, captcha_id: str, valid_index: int, timestamp_iso: str) -> None:
+    try:
+        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        file_mtime = None
+        if os.path.exists(payload_path):
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
+        conn.execute(
+            """
+            UPDATE captcha_files
+            SET valid_index = ?,
+                no_valid_index = NULL,
+                file_status = 'labeled',
+                file_mtime = COALESCE(?, file_mtime),
+                last_seen_at = ?
+            WHERE captcha_id = ?
+            """,
+            (valid_index, file_mtime, timestamp_iso, captcha_id),
+        )
+    except Exception:
+        pass
+
+
+def _sync_captcha_files_no_valid(conn, captcha_id: str, no_valid_index: int, timestamp_iso: str) -> None:
+    try:
+        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        file_mtime = None
+        if os.path.exists(payload_path):
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
+        conn.execute(
+            """
+            UPDATE captcha_files
+            SET valid_index = NULL,
+                no_valid_index = ?,
+                file_status = 'labeled',
+                file_mtime = COALESCE(?, file_mtime),
+                last_seen_at = ?
+            WHERE captcha_id = ?
+            """,
+            (no_valid_index, file_mtime, timestamp_iso, captcha_id),
+        )
+    except Exception:
+        pass
+
+
+def _sync_captcha_files_unsolved(conn, captcha_id: str, timestamp_iso: str) -> None:
+    try:
+        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        file_mtime = None
+        if os.path.exists(payload_path):
+            file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
+        conn.execute(
+            """
+            UPDATE captcha_files
+            SET valid_index = NULL,
+                no_valid_index = NULL,
+                file_status = 'no_answer',
+                file_mtime = COALESCE(?, file_mtime),
+                last_seen_at = ?
+            WHERE captcha_id = ?
+            """,
+            (file_mtime, timestamp_iso, captcha_id),
+        )
+    except Exception:
+        pass
+
+
+def extract_variant_from_logs(logs: list[str] | None, captcha_id: str) -> int | None:
+    variants = extract_variants_from_logs(logs)
+    if not captcha_id:
+        return None
+    return variants.get(captcha_id)
+
+
+def extract_variants_from_logs(logs: list[str] | None) -> dict[str, int]:
+    if not logs or not _is_v2(logs):
+        return {}
+    variants: dict[str, int] = {}
+    for line in logs:
+        m = _V2_VALIDATE_EVENT_RE.search(line)
+        if m:
+            variants[m.group(1)] = int(m.group(2))
+    return variants
 
 
 def create_captcha_records(
@@ -95,28 +206,50 @@ def create_captcha_records(
     logs: list[str] | None,
     overall_status: str,
 ) -> list[int]:
-    """Создаёт записи в таблице captchas на основе v2 логов.
-
-    Если логи не v2 (нет <log-version>v2</log-version>), записи НЕ создаются.
-    """
     if not _is_v2(logs):
         return []
 
-    parsed = _extract_v2(logs)
-    if not parsed:
+    passed = extract_passed_captchas_from_logs(logs)
+    invalid = extract_invalid_captchas_from_logs(logs)
+    unsolved = extract_unsolved_captchas_from_logs(logs)
+    if not passed and not invalid and not unsolved:
         return []
 
     conn = get_connection()
     now = datetime.now(UTC).isoformat()
     created_ids = []
 
-    for cid, status, correct_answer, fail_reason in parsed:
+    # 1) solved correctly
+    for cid, valid_index in passed:
         tiles_hash = _resolve_tiles_hash(cid)
         cursor = conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, correct_answer, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (cid, status, usage_log_id, tiles_hash, correct_answer, fail_reason, now),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, "passed", usage_log_id, tiles_hash, None, now),
         )
         created_ids.append(cursor.lastrowid)
+        if _set_valid_index_in_payload(cid, valid_index):
+            _sync_captcha_files_label(conn, cid, valid_index, now)
+
+    # 2) solved but invalid: do not store answer
+    for cid, no_valid_index, reason in invalid:
+        tiles_hash = _resolve_tiles_hash(cid)
+        cursor = conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, "failed", usage_log_id, tiles_hash, reason, now),
+        )
+        created_ids.append(cursor.lastrowid)
+        if no_valid_index is not None and _set_no_valid_index_in_payload(cid, no_valid_index):
+            _sync_captcha_files_no_valid(conn, cid, no_valid_index, now)
+
+    # 3) unsolved: answer does not exist
+    for cid, reason in unsolved:
+        tiles_hash = _resolve_tiles_hash(cid)
+        cursor = conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (cid, "failed", usage_log_id, tiles_hash, reason, now),
+        )
+        created_ids.append(cursor.lastrowid)
+        _sync_captcha_files_unsolved(conn, cid, now)
 
     conn.commit()
     conn.close()
@@ -124,7 +257,6 @@ def create_captcha_records(
 
 
 def list_captchas(usage_log_id: int | None = None) -> list[dict]:
-    """Возвращает список записей из таблицы captchas."""
     conn = get_connection()
     if usage_log_id is not None:
         rows = conn.execute(
@@ -141,7 +273,6 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
             "status": r["status"],
             "usage_log_id": r["usage_log_id"],
             "tiles_hash": r["tiles_hash"],
-            "correct_answer": r["correct_answer"],
             "fail_reason": r["fail_reason"],
             "created_at": r["created_at"],
         }
@@ -150,7 +281,6 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
 
 
 def list_public_captchas() -> list[dict]:
-    """Return anonymized captcha records for public replay UI."""
     conn = get_connection()
     rows = conn.execute(
         "SELECT captcha_id, status FROM captchas ORDER BY created_at DESC, id DESC"

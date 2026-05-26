@@ -100,7 +100,7 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "id": row["id"],
         "api_key_id": row["api_key_id"],
         "reservation_id": row["reservation_id"],
-        "captcha_id": row["captcha_id"],
+        "captcha_id": None,
         "status": row["status"],
         "error_message": row["error_message"],
         "error_stage": row["error_stage"],
@@ -146,13 +146,12 @@ def log_usage(
 
     cursor = conn.execute(
         """INSERT INTO usage_log
-           (api_key_id, reservation_id, captcha_id, status, created_at, config_json,
+           (api_key_id, reservation_id, status, created_at, config_json,
             op_type, company, fio, vehicle_number, is_test)
-           VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
         (
             row["id"],
             reservation_id,
-            captcha_id,
             now,
             config_str,
             extracted["op_type"],
@@ -172,7 +171,6 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-    captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
     row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
@@ -181,16 +179,10 @@ def confirm_usage(
         return False
     now = datetime.now(UTC).isoformat()
     logs_json = json.dumps(logs) if logs else None
-    if captcha_id and captcha_id != "unknown":
-        conn.execute(
-            "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ?, captcha_id = ? WHERE id = ?",
-            (now, slot_date, logs_json, captcha_id, usage_log_id),
-        )
-    else:
-        conn.execute(
-            "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
-            (now, slot_date, logs_json, usage_log_id),
-        )
+    conn.execute(
+        "UPDATE usage_log SET status = 'confirmed', confirmed_at = ?, slot_date = ?, logs = ? WHERE id = ?",
+        (now, slot_date, logs_json, usage_log_id),
+    )
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
     is_test = bool(row["is_test"]) if row["is_test"] else False
     if not is_test:
@@ -214,10 +206,10 @@ def confirm_usage(
     )
     conn.commit()
 
-    if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
+    if logs and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
 
-        create_captcha_records(usage_log_id, captcha_id, logs, "confirmed")
+        create_captcha_records(usage_log_id, "unknown", logs, "confirmed")
 
     conn.close()
     return True
@@ -229,7 +221,6 @@ def fail_usage(
     error_stage: str,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-    captcha_id: str | None = None,
 ) -> bool:
     conn = get_connection()
     row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
@@ -237,29 +228,16 @@ def fail_usage(
         conn.close()
         return False
     logs_json = json.dumps(logs) if logs else None
-    if captcha_id and captcha_id != "unknown":
-        conn.execute(
-            "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ?, captcha_id = ? WHERE id = ?",
-            (
-                error_message,
-                error_stage,
-                slot_date,
-                logs_json,
-                captcha_id,
-                usage_log_id,
-            ),
-        )
-    else:
-        conn.execute(
-            "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ? WHERE id = ?",
-            (error_message, error_stage, slot_date, logs_json, usage_log_id),
-        )
+    conn.execute(
+        "UPDATE usage_log SET status = 'failed', error_message = ?, error_stage = ?, slot_date = ?, logs = ? WHERE id = ?",
+        (error_message, error_stage, slot_date, logs_json, usage_log_id),
+    )
     conn.commit()
 
-    if captcha_id and captcha_id != "unknown" and not _is_fake_reservation(row["reservation_id"]):
+    if logs and not _is_fake_reservation(row["reservation_id"]):
         from src.db.captchas import create_captcha_records
 
-        create_captcha_records(usage_log_id, captcha_id, logs, "failed")
+        create_captcha_records(usage_log_id, "unknown", logs, "failed")
 
     conn.close()
     return True
@@ -286,7 +264,7 @@ def list_usages(api_key_id: int | None = None) -> list[dict]:
                 "id": r["id"],
                 "api_key_id": r["api_key_id"],
                 "reservation_id": r["reservation_id"],
-                "captcha_id": r["captcha_id"],
+                "captcha_id": None,
                 "status": r["status"],
                 "error_message": r["error_message"],
                 "error_stage": r["error_stage"],
@@ -357,7 +335,7 @@ def update_usage_log(
         "id": row["id"],
         "api_key_id": row["api_key_id"],
         "reservation_id": row["reservation_id"],
-        "captcha_id": row["captcha_id"],
+        "captcha_id": None,
         "status": row["status"],
         "error_message": row["error_message"],
         "error_stage": row["error_stage"],

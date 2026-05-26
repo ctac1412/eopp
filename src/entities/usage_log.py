@@ -19,7 +19,6 @@ class UsageLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     api_key_id: Mapped[int] = mapped_column(Integer, ForeignKey("api_keys.id"), nullable=False)
     reservation_id: Mapped[str] = mapped_column(String, nullable=False)
-    captcha_id: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_stage: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -25,8 +25,8 @@ from typing import Any
 from fastapi import Query, Request
 from fastapi.responses import JSONResponse
 
-from src.constants import VALID_DIR
 from src.models import GenerateCaptchaBody, MockConfigBody
+from src.services import captcha_file_service
 
 # Mock config store
 mock_config: dict[str, dict] = {}
@@ -72,7 +72,16 @@ def _mock_400(body: dict) -> JSONResponse:
 
 
 def _load_random_captcha() -> dict:
-    files = [os.path.join(VALID_DIR, f) for f in os.listdir(VALID_DIR) if f.endswith(".json")]
+    files = []
+    if not os.path.isdir(captcha_file_service.all_dir()):
+        return {"error": "No test captcha files found"}
+    for name in os.listdir(captcha_file_service.all_dir()):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(captcha_file_service.all_dir(), name)
+        data = captcha_file_service.read_json(path) or {}
+        if data.get("valid_index") is not None:
+            files.append(path)
     if not files:
         return {"error": "No test captcha files found"}
     filepath = random.choice(files)

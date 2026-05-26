@@ -28,7 +28,6 @@ from src.routes import register_all_routes
 from src.routes.admin import admin_auth_middleware_factory
 from src.services import telegram_service
 from src.sse import lock, pending
-from src.test_runner import send_test_cases, send_write_cases
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,21 +51,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def create_app(
-    use_tests: bool = False, write_mode: bool = False, captcha_timeout=CAPTCHA_TIMEOUT
-) -> FastAPI:
+def create_app(captcha_timeout=CAPTCHA_TIMEOUT) -> FastAPI:
     init_db()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         telegram_stop = threading.Event()
         telegram_thread = telegram_service.start_daily_report_scheduler(telegram_stop)
-        if use_tests:
-            t = threading.Thread(target=send_test_cases, daemon=True)
-            t.start()
-        if write_mode:
-            t = threading.Thread(target=send_write_cases, daemon=True)
-            t.start()
         yield
         if telegram_thread:
             telegram_stop.set()
@@ -74,9 +65,6 @@ def create_app(
             for entry in pending.values():
                 entry["event"].set()
         pending.clear()
-
-    if write_mode:
-        captcha_timeout = 99
 
     app = FastAPI(lifespan=lifespan)
 

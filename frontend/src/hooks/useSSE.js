@@ -97,7 +97,7 @@ function useSSE(enabled = true) {
             playNewCaptchaSound();
           }
           const ownerInfo = msg.owner_label ? ` (${msg.owner_label})` : "";
-          addLog(`Капча ${msg.captcha_id} — ${msg.count} вариантов${ownerInfo}`);
+          addLog(`Капча ${msg.captcha_id}${ownerInfo}`);
         }
 
         if (msg.type === "captcha_solved") {

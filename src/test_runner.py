@@ -10,7 +10,9 @@ import threading
 import time
 
 from src.captcha_assembly import captcha_hash
-from src.constants import ADMIN_TOKEN, NO_VALID_DIR, VALID_DIR
+from src.captcha_assembly import get_valid_variant_index
+from src.constants import ADMIN_TOKEN
+from src.services import captcha_file_service
 from src.utils import counter_lock, result_counter, source_files
 
 pending = {}
@@ -46,10 +48,9 @@ def _http_post(path, body, extra_headers=None):
 
 
 def send_test_cases():
-    pattern = os.path.join(VALID_DIR, "*.json")
-    files = sorted(glob.glob(pattern))
+    files = _captcha_files(labeled=True)
     if not files:
-        print(f"No test files found in {VALID_DIR}")
+        print(f"No labeled test files found in {captcha_file_service.all_dir()}")
         return
 
     time.sleep(2)
@@ -64,10 +65,9 @@ def send_test_cases():
 
 
 def send_write_cases():
-    pattern = os.path.join(NO_VALID_DIR, "*.json")
-    files = sorted(glob.glob(pattern))
+    files = _captcha_files(labeled=False)
     if not files:
-        print(f"No unlabelled test files found in {NO_VALID_DIR}")
+        print(f"No unlabelled test files found in {captcha_file_service.all_dir()}")
         return
 
     time.sleep(2)
@@ -129,10 +129,9 @@ def _send_captcha_with_id(captcha_id, body, admin_token, api_key=None):
 
 
 def send_test_cases_with_key(api_key=None):
-    pattern = os.path.join(VALID_DIR, "*.json")
-    files = sorted(glob.glob(pattern))
+    files = _captcha_files(labeled=True)
     if not files:
-        print(f"No test files found in {VALID_DIR}")
+        print(f"No labeled test files found in {captcha_file_service.all_dir()}")
         return
 
     time.sleep(2)
@@ -147,15 +146,14 @@ def send_test_cases_with_key(api_key=None):
 
 
 def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None):
-    pattern = os.path.join(VALID_DIR, "*.json")
-    files = sorted(glob.glob(pattern))
+    files = _captcha_files(labeled=True)
     if not files:
-        print(f"No test files found in {VALID_DIR}")
+        print(f"No labeled test files found in {captcha_file_service.all_dir()}")
         return
 
     time.sleep(1)
     if captcha_id:
-        filepath = os.path.join(VALID_DIR, f"{captcha_id}.json")
+        filepath = captcha_file_service.captcha_file_path(captcha_id)
         if not os.path.exists(filepath):
             print(f"Test file not found: {filepath}")
             return
@@ -188,14 +186,18 @@ def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_
 
 
 def get_test_stats() -> dict:
-    labeled = (
-        len([f for f in os.listdir(VALID_DIR) if f.endswith(".json")])
-        if os.path.isdir(VALID_DIR)
-        else 0
-    )
-    unlabeled = (
-        len([f for f in os.listdir(NO_VALID_DIR) if f.endswith(".json")])
-        if os.path.isdir(NO_VALID_DIR)
-        else 0
-    )
+    labeled = len(_captcha_files(labeled=True))
+    unlabeled = len(_captcha_files(labeled=False))
     return {"labeled_count": labeled, "unlabeled_count": unlabeled}
+
+
+def _captcha_files(labeled: bool) -> list[str]:
+    base_dir = captcha_file_service.all_dir()
+    pattern = os.path.join(base_dir, "*.json")
+    files = []
+    for filepath in sorted(glob.glob(pattern)):
+        data = captcha_file_service.read_json(filepath)
+        has_label = get_valid_variant_index(data or {}) is not None
+        if has_label == labeled:
+            files.append(filepath)
+    return files

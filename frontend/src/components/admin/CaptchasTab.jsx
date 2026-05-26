@@ -22,7 +22,10 @@ function formatDate(iso) {
 
 export function CaptchasTab({ adminToken, keys, onError }) {
   const [captchas, setCaptchas] = useState([]);
+  const [captchaFiles, setCaptchaFiles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(true);
+  const [subtab, setSubtab] = useState("operations");
   const [selected, setSelected] = useState(new Set());
   const [preset, setPreset] = useState("all");
   const [search, setSearch] = useState("");
@@ -30,6 +33,7 @@ export function CaptchasTab({ adminToken, keys, onError }) {
   const [answerFilter, setAnswerFilter] = useState("all");
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [sending, setSending] = useState(false);
+  const [previewCaptchaId, setPreviewCaptchaId] = useState(null);
 
   const fetchCaptchas = useCallback(async () => {
     setLoading(true);
@@ -49,9 +53,27 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     }
   }, [adminToken, onError]);
 
+  const fetchCaptchaFiles = useCallback(async () => {
+    setFilesLoading(true);
+    try {
+      const res = await fetch("/admin/captcha-files", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCaptchaFiles(Array.isArray(data) ? data : []);
+    } catch (err) {
+      onError?.(err.message);
+      setCaptchaFiles([]);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [adminToken, onError]);
+
   useEffect(() => {
     fetchCaptchas();
-  }, [fetchCaptchas]);
+    fetchCaptchaFiles();
+  }, [fetchCaptchaFiles, fetchCaptchas]);
 
   const toggleSelect = (id) => {
     setSelected((prev) => {
@@ -117,6 +139,15 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     return counts;
   }, [captchas]);
 
+  const fileHashCounts = useMemo(() => {
+    const counts = {};
+    captchaFiles.forEach((captcha) => {
+      if (!captcha.tiles_hash) return;
+      counts[captcha.tiles_hash] = (counts[captcha.tiles_hash] || 0) + 1;
+    });
+    return counts;
+  }, [captchaFiles]);
+
   const keyOptions = useMemo(() => {
     const optionMap = new Map();
     keys.forEach((key) => optionMap.set(String(key.id), key.label || key.key || `#${key.id}`));
@@ -137,11 +168,12 @@ export function CaptchasTab({ adminToken, keys, onError }) {
       if (keyFilter !== "all" && String(captcha.api_key_id) !== keyFilter) return false;
       if (answerFilter === "known" && !captcha.correct_answer) return false;
       if (answerFilter === "missing" && captcha.correct_answer) return false;
-      if (duplicatesOnly && !(captcha.tiles_hash && hashCounts[captcha.tiles_hash] > 1)) return false;
+      if (duplicatesOnly && !(captcha.tiles_hash && fileHashCounts[captcha.tiles_hash] > 1)) return false;
       if (!normalizedSearch) return true;
       return [
         captcha.id,
         captcha.captcha_id,
+        captcha.captcha_type,
         captcha.tiles_hash,
         captcha.fail_reason,
         captcha.key_label,
@@ -161,6 +193,52 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     answerKnown: filteredCaptchas.filter((captcha) => !!captcha.correct_answer).length,
     duplicatePuzzles: filteredCaptchas.filter((captcha) => captcha.tiles_hash && hashCounts[captcha.tiles_hash] > 1).length,
   }), [filteredCaptchas, hashCounts]);
+
+  const captchaToUsageLogs = useMemo(() => {
+    const map = new Map();
+    for (const captcha of captchas) {
+      const cid = captcha.captcha_id;
+      if (!map.has(cid)) map.set(cid, []);
+      if (captcha.usage_log_id != null) {
+        map.get(cid).push(captcha.usage_log_id);
+      }
+    }
+    return map;
+  }, [captchas]);
+
+  const fileValidIndex = useMemo(() => {
+    const map = new Map();
+    for (const f of captchaFiles) {
+      if (f.valid_index != null) {
+        map.set(f.captcha_id, f.valid_index);
+      }
+    }
+    return map;
+  }, [captchaFiles]);
+
+  const filteredCaptchaFiles = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return captchaFiles.filter((captcha) => {
+      if (preset === "passed" && captcha.file_status !== "labeled") return false;
+      if (preset === "failed" && captcha.file_status !== "unlabeled") return false;
+      if (answerFilter === "known" && captcha.valid_index == null) return false;
+      if (answerFilter === "missing" && captcha.valid_index != null) return false;
+      if (duplicatesOnly && !(captcha.tiles_hash && hashCounts[captcha.tiles_hash] > 1)) return false;
+      if (!normalizedSearch) return true;
+      return [
+        captcha.id,
+        captcha.captcha_id,
+        captcha.tiles_hash,
+        captcha.file_status,
+        captcha.valid_index,
+        captcha.file_path,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedSearch);
+    });
+  }, [answerFilter, captchaFiles, duplicatesOnly, fileHashCounts, preset, search]);
 
   const failureSummary = useMemo(() => {
     const groups = {};
@@ -185,12 +263,31 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     return Object.values(groups).sort((a, b) => b.total - a.total).slice(0, 6);
   }, [filteredCaptchas]);
 
-  if (loading) {
+  if (subtab === "operations" && loading) {
+    return <div className="text-center text-muted py-3">Загрузка…</div>;
+  }
+
+  if (subtab === "files" && filesLoading) {
     return <div className="text-center text-muted py-3">Загрузка…</div>;
   }
 
   return (
     <div>
+      <div className="btn-group btn-group-sm mb-3" role="group" aria-label="Раздел капч">
+        <button
+          className={`btn ${subtab === "operations" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setSubtab("operations")}
+        >
+          По операциям
+        </button>
+        <button
+          className={`btn ${subtab === "files" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setSubtab("files")}
+        >
+          Все капчи
+        </button>
+      </div>
+
       <div className="d-flex gap-2 mb-2 align-items-center flex-wrap">
         <div className="btn-group btn-group-sm" role="group" aria-label="Фильтр капч">
           {[
@@ -209,21 +306,25 @@ export function CaptchasTab({ adminToken, keys, onError }) {
         </div>
         <button
           className="btn btn-sm btn-outline-secondary"
-          onClick={fetchCaptchas}
+          onClick={subtab === "files" ? fetchCaptchaFiles : fetchCaptchas}
         >
           Обновить
         </button>
-        <button
-          className="btn btn-sm btn-primary"
-          onClick={handleSendSelected}
-          disabled={selected.size === 0 || sending}
-        >
-          {sending
-            ? "Отправка…"
-            : `Отправить выбранные (${selected.size})`}
-        </button>
+        {subtab === "operations" && (
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={handleSendSelected}
+            disabled={selected.size === 0 || sending}
+          >
+            {sending
+              ? "Отправка…"
+              : `Отправить выбранные (${selected.size})`}
+          </button>
+        )}
         <span className="text-muted small ms-auto">
-          Показано: {filteredCaptchas.length} из {captchas.length}
+          {subtab === "files"
+            ? `Показано: ${filteredCaptchaFiles.length} из ${captchaFiles.length}`
+            : `Показано: ${filteredCaptchas.length} из ${captchas.length}`}
         </span>
       </div>
 
@@ -333,7 +434,71 @@ export function CaptchasTab({ adminToken, keys, onError }) {
         </div>
       )}
 
-      {filteredCaptchas.length === 0 ? (
+      {subtab === "files" ? (
+        filteredCaptchaFiles.length === 0 ? (
+          <div className="text-center text-muted py-3">Нет файлов капч</div>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-sm table-hover table-bordered align-middle mb-0">
+              <thead className="table-light">
+                <tr>
+                  <th style={{ width: "50px" }}>ID</th>
+                  <th>Captcha ID</th>
+                  <th style={{ width: "110px" }}>Тип</th>
+                  <th style={{ width: "110px" }}>Файл</th>
+                  <th style={{ width: "90px" }}>Ответ</th>
+                  <th style={{ width: "110px" }}>Вариант</th>
+
+                  <th style={{ width: "120px" }}>Tiles Hash</th>
+                  <th style={{ width: "130px" }}>Usage Log IDs</th>
+                  <th style={{ width: "110px" }}>Размер</th>
+                  <th style={{ width: "90px" }}>Превью</th>
+                  <th style={{ width: "160px" }}>Дата файла</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCaptchaFiles.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.id}</td>
+                    <td className="font-monospace small">{c.captcha_id}</td>
+                    <td className="small">{c.captcha_type || "unknown"}</td>
+                    <td>
+                      <span className={`badge ${c.file_status === "labeled" ? "bg-success" : "bg-secondary"}`}>
+                        {c.file_status === "labeled" ? "valid" : "raw"}
+                      </span>
+                    </td>
+                    <td>{c.valid_index == null ? "—" : "Есть"}</td>
+                    <td>
+                      {c.valid_index != null
+                        ? c.valid_index
+                        : c.no_valid_index != null
+                          ? <span className="text-danger fw-semibold">{c.no_valid_index}</span>
+                          : "—"}
+                    </td>
+
+                    <td className="font-monospace small">{c.tiles_hash || "—"}</td>
+                    <td className="font-monospace small">{captchaToUsageLogs.get(c.captcha_id)?.join(", ") || "—"}</td>
+                    <td>{c.file_size ? `${Math.round(c.file_size / 1024)} KB` : "—"}</td>
+                    <td>
+                      {c.valid_index != null ? (
+                        <img
+                          src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}`}
+                          alt="variant"
+                          style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
+                          loading="lazy"
+                          onError={(e) => { e.target.style.display = "none" }}
+                          onClick={() => setPreviewCaptchaId(c.captcha_id)}
+                        />
+                      ) : "—"}
+                    </td>
+                    <td className="small">{formatDate(c.file_mtime)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : filteredCaptchas.length === 0 ? (
         <div className="text-center text-muted py-3">Нет капч</div>
       ) : (
         <div className="table-responsive">
@@ -356,9 +521,10 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                 <th style={{ width: "120px" }}>Причина отказа</th>
                 <th style={{ width: "100px" }}>Tiles Hash</th>
                 <th style={{ width: "120px" }}>Пользователь</th>
-                <th style={{ width: "100px" }}>Usage Log</th>
+                  <th style={{ width: "100px" }}>Usage Log</th>
                 <th style={{ width: "160px" }}>Дата</th>
-              </tr>
+                  <th style={{ width: "90px" }}>Превью</th>
+                </tr>
             </thead>
             <tbody>
               {filteredCaptchas.map((c) => (
@@ -378,10 +544,40 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                   <td className="small">{c.key_label || "—"}</td>
                   <td>{c.usage_log_id}</td>
                   <td className="small">{formatDate(c.created_at)}</td>
+                  <td>
+                    {fileValidIndex.has(c.captcha_id) ? (
+                      <img
+                        src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}`}
+                        alt="variant"
+                        style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
+                        loading="lazy"
+                        onError={(e) => { e.target.style.display = "none" }}
+                        onClick={() => setPreviewCaptchaId(c.captcha_id)}
+                      />
+                    ) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {previewCaptchaId && (
+        <div
+          style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.7)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1050,
+            cursor: "pointer",
+          }}
+          onClick={() => setPreviewCaptchaId(null)}
+        >
+          <img
+            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail?admin_token=${adminToken}`}
+            alt="variant large"
+            style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

@@ -30,7 +30,6 @@ def create_usage(
         log = UsageLog(
             api_key_id=key_record.id,
             reservation_id=reservation_id,
-            captcha_id=captcha_id,
             status="pending",
             created_at=now,
             config_json=config_str,
@@ -69,9 +68,8 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-    captcha_id: str | None = None,
 ) -> bool:
-    return db_confirm_usage(usage_log_id, slot_date, logs, captcha_id)
+    return db_confirm_usage(usage_log_id, slot_date, logs)
 
 
 def fail_usage(
@@ -80,9 +78,8 @@ def fail_usage(
     error_stage: str,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-    captcha_id: str | None = None,
 ) -> bool:
-    return db_fail_usage(usage_log_id, error_message, error_stage, slot_date, logs, captcha_id)
+    return db_fail_usage(usage_log_id, error_message, error_stage, slot_date, logs)
 
 
 def delete_usage(usage_log_id: int) -> bool:
@@ -138,7 +135,7 @@ def _usage_log_to_dict(log: UsageLog) -> dict:
         "id": log.id,
         "api_key_id": log.api_key_id,
         "reservation_id": log.reservation_id,
-        "captcha_id": log.captcha_id,
+        "captcha_id": None,
         "status": log.status,
         "error_message": log.error_message,
         "error_stage": log.error_stage,

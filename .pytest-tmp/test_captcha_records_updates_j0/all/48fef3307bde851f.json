@@ -1,0 +1,25 @@
+{
+  "puzzle": {
+    "tiles": [
+      {
+        "tileId": "a"
+      },
+      {
+        "tileId": "b"
+      },
+      {
+        "tileId": "c"
+      }
+    ],
+    "variantsCapture": [
+      [
+        "a",
+        "b"
+      ],
+      [
+        "c"
+      ]
+    ]
+  },
+  "valid_index": 0
+}

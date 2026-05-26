@@ -8,8 +8,6 @@ EOPP Captcha Solver Server - CLI Entry Point.
 Использование:
     python manage.py --host 0.0.0.0          # HTTPS режим
     python manage.py --host 0.0.0.0 --no-ssl # HTTP режим
-    python manage.py --test                  # тестовый режим
-    python manage.py --write                 # режим разметки капч
 
 Переменные окружения:
     ADMIN_TOKEN - токен для админских операций (по умолчанию: 13243546)
@@ -70,8 +68,6 @@ def ensure_self_signed_cert():
 
 @app.callback(invoke_without_command=True)
 def main(
-    test: bool = False,
-    write: bool = False,
     host: str = "127.0.0.1",
     port: int = PORT,
     no_ssl: bool = False,
@@ -84,7 +80,7 @@ def main(
         os.environ["EOPP_DATA_DIR"] = data_dir
         os.environ["EOPP_DB_PATH"] = os.path.join(data_dir, "api_keys.db")
 
-    import src.utils
+    import src.constants as constants
     from src.app import create_app
     from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
 
@@ -92,8 +88,8 @@ def main(
     if not no_ssl:
         certfile, keyfile = ensure_self_signed_cert()
 
-    src.constants.use_ssl = not no_ssl
-    src.constants.PORT = port
+    constants.use_ssl = not no_ssl
+    constants.PORT = port
 
     typer.echo("=" * 56)
     typer.echo("  EOPP Captcha Solver Server — Configuration")
@@ -104,8 +100,6 @@ def main(
     if not no_ssl:
         typer.echo(f"  Cert            : {certfile}")
         typer.echo(f"  Key             : {keyfile}")
-    typer.echo(f"  Test mode       : {test}")
-    typer.echo(f"  Write mode      : {write}")
     typer.echo(f"  Captcha timeout : {CAPTCHA_TIMEOUT}s")
     typer.echo(f"  Test dir        : {TEST_DIR}")
     typer.echo(f"  Valid dir       : {VALID_DIR}")
@@ -135,13 +129,7 @@ def main(
     typer.echo("  POST /broadcast  — Broadcast SSE event")
     typer.echo()
 
-    if test:
-        typer.echo(f"▶ Loading test cases from {TEST_DIR} ...")
-
-    if write:
-        typer.echo(f"▶ LABELING MODE — loading unlabelled cases from {src.utils.NO_VALID_DIR} ...")
-
-    fastapi_app = create_app(use_tests=test, write_mode=write)
+    fastapi_app = create_app()
     uvicorn_kwargs = {
         "host": host,
         "port": port,

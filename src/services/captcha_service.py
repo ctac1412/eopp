@@ -4,7 +4,7 @@ import threading
 import time
 
 from src.captcha_assembly import assemble_captchas, get_valid_variant_index
-from src.constants import NO_VALID_DIR, VALID_DIR
+from src.services import captcha_file_service
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
 from src.sse import get_connected_streams, push_sse
@@ -44,31 +44,40 @@ def get_or_create_usage_log(
 
 def verify_usage_log_matches_captcha(usage_log_id: int, captcha_id: str) -> bool:
     log_entry = usage_log_repo.get_usage(usage_log_id)
-    return bool(log_entry and log_entry.captcha_id == captcha_id)
+    return bool(log_entry)
 
 
 def load_captcha_file(captcha_id: str) -> dict | None:
-    for d in [VALID_DIR, NO_VALID_DIR]:
-        path = os.path.join(d, f"{captcha_id}.json")
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
-    return None
+    return captcha_file_service.load_captcha_payload(captcha_id)
 
 
 def read_label_next_captcha() -> dict | None:
-    if not os.path.isdir(NO_VALID_DIR):
+    all_dir = captcha_file_service.all_dir()
+    if not os.path.isdir(all_dir):
         return None
-    files = sorted(f for f in os.listdir(NO_VALID_DIR) if f.endswith(".json"))
+    files = sorted(f for f in os.listdir(all_dir) if f.endswith(".json"))
     if not files:
         return None
-    filename = files[0]
-    path = os.path.join(NO_VALID_DIR, filename)
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
+    filename = None
+    data = None
+    for candidate in files:
+        path = os.path.join(all_dir, candidate)
+        try:
+            with open(path, encoding="utf-8") as f:
+                candidate_data = json.load(f)
+        except Exception:
+            continue
+        if get_valid_variant_index(candidate_data) is None:
+            filename = candidate
+            data = candidate_data
+            break
+    if not filename or data is None:
         return None
+    path = os.path.join(all_dir, filename)
+    try:
+        captcha_file_service.upsert_captcha_file(path)
+    except Exception:
+        pass
     puzzle = data.get("puzzle", data)
     tiles = puzzle.get("tiles", [])
     variants = puzzle.get("variantsCapture", [])
@@ -86,7 +95,7 @@ def read_label_next_captcha() -> dict | None:
 
 
 def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
-    source_path = os.path.join(NO_VALID_DIR, f"{captcha_id}.json")
+    source_path = captcha_file_service.captcha_file_path(captcha_id)
     if not os.path.exists(source_path):
         return 404, {"error": "captcha file not found"}
     try:
@@ -97,11 +106,9 @@ def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
         if variant_index < 0 or variant_index >= len(variants):
             return 422, {"error": "variant_index out of range"}
         data["valid_index"] = variant_index
-        os.makedirs(VALID_DIR, exist_ok=True)
-        target_path = os.path.join(VALID_DIR, f"{captcha_id}.json")
-        with open(target_path, "w", encoding="utf-8") as f:
+        with open(source_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        os.remove(source_path)
+        captcha_file_service.upsert_captcha_file(source_path)
         return 200, {"ok": True, "captcha_id": captcha_id, "valid_index": variant_index}
     except Exception as exc:
         return 500, {"error": f"save failed: {exc}"}

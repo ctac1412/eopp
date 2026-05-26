@@ -130,8 +130,9 @@ function getErrorStage(): string {
 async function trackStage<T>(
   stage: PipelineStage,
   operation: () => Promise<T>,
-  meta: Record<string, unknown> = {},
+  meta: Record<string, unknown> | (() => Record<string, unknown>) = {},
 ): Promise<T> {
+  const getMeta = () => (typeof meta === "function" ? meta() : meta);
   const startedAt = performance.now();
   try {
     const result = await operation();
@@ -140,7 +141,7 @@ async function trackStage<T>(
       stage,
       status: "success",
       duration_ms: Math.round(performance.now() - startedAt),
-      ...meta,
+      ...getMeta(),
     });
     return result;
   } catch (err) {
@@ -150,7 +151,7 @@ async function trackStage<T>(
       status: err instanceof DOMException && err.name === "AbortError" ? "aborted" : "error",
       duration_ms: Math.round(performance.now() - startedAt),
       error: serializeError(err),
-      ...meta,
+      ...getMeta(),
     });
     throw err;
   }
@@ -408,7 +409,10 @@ async function runCaptchaPipeline(
       ),
       signal,
     ),
-    { endpoint: "solve-captcha" },
+    () => ({
+      endpoint: "solve-captcha",
+      captcha_id: useInjectorStore.getState().captchaId || undefined,
+    }),
   );
   const solvedBySuper = !!solvedAnswer.solved_by_super;
   const solverLabel = solvedAnswer.solver_label || "unknown";
@@ -557,17 +561,12 @@ async function confirmUsageInBackground(config: InjectorConfig): Promise<void> {
   const logs = useInjectorStore
     .getState()
     .logs.map((l) => `${l.ts} ${l.msg}`);
-  const captchaId = useInjectorStore.getState().captchaId;
-  const validated = useInjectorStore.getState().captchaValidated;
-  const variantIndex = useInjectorStore.getState().solvedVariantIndex;
   try {
     await confirmUsage(
       usageLogId,
       config.apiKey,
       config.slotDate,
       logs,
-      captchaId ?? undefined,
-      validated && variantIndex != null ? variantIndex : undefined,
     );
   } catch {
     // fire-and-forget, silently swallow
@@ -584,9 +583,6 @@ async function failUsageInBackground(config: InjectorConfig, err: unknown): Prom
   const logs = useInjectorStore
     .getState()
     .logs.map((l) => `${l.ts} ${l.msg}`);
-  const captchaId = useInjectorStore.getState().captchaId;
-  const validated = useInjectorStore.getState().captchaValidated;
-  const variantIndex = useInjectorStore.getState().solvedVariantIndex;
   try {
     await failUsage(
       usageLogId,
@@ -595,8 +591,6 @@ async function failUsageInBackground(config: InjectorConfig, err: unknown): Prom
       getErrorStage(),
       config.slotDate,
       logs,
-      captchaId ?? undefined,
-      validated && variantIndex != null ? variantIndex : undefined,
     );
   } catch {
     // fire-and-forget

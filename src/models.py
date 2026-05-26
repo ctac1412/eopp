@@ -60,8 +60,6 @@ class ConfirmUsageBody(BaseModel):
     api_key: str
     slot_date: str | None = None
     logs: list[str] | None = None
-    captcha_id: str | None = None
-    valid_variant_index: int | None = None
 
 
 class FailUsageBody(BaseModel):
@@ -71,8 +69,6 @@ class FailUsageBody(BaseModel):
     error_stage: str = "other"
     slot_date: str | None = None
     logs: list[str] | None = None
-    captcha_id: str | None = None
-    valid_variant_index: int | None = None
 
 
 class GenerateCaptchaBody(BaseModel):

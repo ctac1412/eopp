@@ -91,7 +91,7 @@ export function CaptchaLabelingTab({ adminToken, onError }) {
         </button>
         {captcha && (
           <span className="small text-muted">
-            {captcha.captcha_id} • вариантов: {variantIndexes.length}
+            {captcha.captcha_id}
           </span>
         )}
       </div>

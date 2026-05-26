@@ -1,7 +1,5 @@
 import json
-import os
 
-from src.constants import NO_VALID_DIR, VALID_DIR
 from src.entities import UsageLog
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
@@ -25,7 +23,6 @@ def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
         "id": record.id,
         "api_key_id": record.api_key_id,
         "reservation_id": record.reservation_id,
-        "captcha_id": record.captcha_id,
         "status": record.status,
         "error_message": record.error_message,
         "error_stage": record.error_stage,
@@ -44,26 +41,6 @@ def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
         "is_test": bool(record.is_test) if record.is_test is not None else False,
         "invoice_id": record.invoice_id,
     }
-
-
-def move_captcha_to_valid(captcha_id: str, variant_index: int) -> None:
-    if not captcha_id:
-        return
-    no_valid_file = os.path.join(NO_VALID_DIR, f"{captcha_id}.json")
-    if not os.path.exists(no_valid_file):
-        return
-    valid_file = os.path.join(VALID_DIR, f"{captcha_id}.json")
-    if os.path.exists(valid_file):
-        return
-    try:
-        with open(no_valid_file) as f:
-            source_data = json.load(f)
-        source_data["valid_index"] = variant_index
-        with open(valid_file, "w") as f:
-            json.dump(source_data, f, indent=2)
-        os.remove(no_valid_file)
-    except Exception:
-        pass
 
 
 def register_usage(body) -> tuple[int, dict]:
@@ -102,10 +79,7 @@ def confirm_usage(body) -> tuple[int, dict]:
     if not log_entry or log_entry.api_key_id != key_record.id:
         return 404, {"error": "Usage log entry not found"}
 
-    if body.captcha_id and body.valid_variant_index is not None:
-        move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
-
-    ok = usage_log_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs, body.captcha_id)
+    ok = usage_log_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs)
     if not ok:
         return 404, {"error": "Usage log entry not found"}
     telegram_service.notify_confirmed_usage(usage_log_repo.get_usage_log(body.usage_log_id))
@@ -121,16 +95,12 @@ def fail_usage(body) -> tuple[int, dict]:
     if not log_entry or log_entry.api_key_id != key_record.id:
         return 404, {"error": "Usage log entry not found"}
 
-    if body.captcha_id and body.valid_variant_index is not None:
-        move_captcha_to_valid(body.captcha_id, body.valid_variant_index)
-
     ok = usage_log_repo.fail_usage(
         body.usage_log_id,
         body.error_message,
         body.error_stage,
         body.slot_date,
         body.logs,
-        body.captcha_id,
     )
     if not ok:
         return 404, {"error": "Usage log entry not found"}

@@ -5,6 +5,7 @@ EOPP Captcha Solver - API Routes Unit Tests
 """
 
 import os
+import json
 import sys
 import tempfile
 
@@ -51,7 +52,7 @@ def client(isolate_db):
     """doc"""
     from src.app import create_app
 
-    app = create_app(use_tests=False)
+    app = create_app()
     return TestClient(app)
 
 
@@ -446,6 +447,7 @@ class TestAdmin:
             "/admin/payouts",
             "/admin/users",
             "/admin/captchas",
+            "/admin/captcha-files",
             "/admin/backend-logs",
         ],
     )
@@ -461,6 +463,7 @@ class TestAdmin:
             "/admin/payouts",
             "/admin/users",
             "/admin/captchas",
+            "/admin/captcha-files",
         ],
     )
     def test_admin_routes_authorized(self, client, admin_token, path):
@@ -624,12 +627,12 @@ class TestCaptchaRecords:
 
         conn = get_connection()
         conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("own-captcha", "passed", own_usage_id, "2026-05-01T00:00:00+00:00", "hash1", "[]", None),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, fail_reason) VALUES (?, ?, ?, ?, ?, ?)",
+            ("own-captcha", "passed", own_usage_id, "2026-05-01T00:00:00+00:00", "hash1", None),
         )
         conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("other-captcha", "failed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", None, "bad"),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, fail_reason) VALUES (?, ?, ?, ?, ?, ?)",
+            ("other-captcha", "failed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", "bad"),
         )
         conn.commit()
         conn.close()
@@ -664,8 +667,8 @@ class TestCaptchaRecords:
 
         conn = get_connection()
         conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("foreign-captcha", "passed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", "[]", None),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, fail_reason) VALUES (?, ?, ?, ?, ?, ?)",
+            ("foreign-captcha", "passed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", None),
         )
         conn.commit()
         conn.close()
@@ -690,7 +693,7 @@ class TestCaptchaRecords:
         logs = [
             "07:00:00.0 === Старт скрипта (runUpTo: 5) ===",
             "07:00:00.0 <log-version>v2</log-version>",
-            '07:00:08.8 [id=194] [4] Капча валидирована [48fef3307bde851f] ответ: ["tile-1","tile-2"]',
+            '07:00:08.8 [id=194] [4] event { "event": "stage_end", "stage": "validating", "status": "success", "duration_ms": 54, "endpoint": "validateCaptcha", "captcha_id": "48fef3307bde851f", "variant_index": 0 }',
         ]
 
         created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "confirmed")
@@ -699,7 +702,6 @@ class TestCaptchaRecords:
         rows = list_captchas(usage_id)
         assert rows[0]["captcha_id"] == "48fef3307bde851f"
         assert rows[0]["status"] == "passed"
-        assert rows[0]["correct_answer"] == '["tile-1", "tile-2"]'
 
     def test_captcha_records_parse_unsolved_timeout_line(self, api_key):
         from src.db import log_usage
@@ -709,7 +711,7 @@ class TestCaptchaRecords:
         logs = [
             "07:00:00.5 === Старт скрипта (runUpTo: 5) ===",
             "07:00:00.5 <log-version>v2</log-version>",
-            "07:00:16.6 [id=196] [3] Капча не решена [48fef3307bde851f] причина: таймаут или ошибка",
+            '07:00:16.6 [id=196] [3] event { "event": "stage_end", "stage": "solving", "status": "error", "duration_ms": 15231, "error": "Сервер вернул null — капча не решена (таймаут или ошибка)", "endpoint": "solve-captcha", "captcha_id": "48fef3307bde851f" }',
         ]
 
         created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "failed")
@@ -718,7 +720,7 @@ class TestCaptchaRecords:
         rows = list_captchas(usage_id)
         assert rows[0]["captcha_id"] == "48fef3307bde851f"
         assert rows[0]["status"] == "failed"
-        assert rows[0]["fail_reason"] == "таймаут или ошибка"
+        assert "solve_error:" in rows[0]["fail_reason"]
 
     def test_captcha_records_only_scan_first_five_lines_for_v2_marker(self, api_key):
         from src.db import log_usage
@@ -732,12 +734,60 @@ class TestCaptchaRecords:
             "line 4",
             "line 5",
             "<log-version>v2</log-version>",
-            '07:00:08.8 [id=194] [4] Капча валидирована [48fef3307bde851f] ответ: ["tile-1"]',
+            '07:00:08.8 [id=194] [4] event { "event": "stage_end", "stage": "validating", "status": "success", "duration_ms": 54, "endpoint": "validateCaptcha", "captcha_id": "48fef3307bde851f", "variant_index": 0 }',
         ]
 
         created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "confirmed")
 
         assert created == []
+
+    def test_captcha_records_updates_json_and_file_index_from_v2_logs(self, api_key, tmp_path, monkeypatch):
+        from src.db import log_usage
+        import src.db.captchas as captchas_db
+        from src.db.captchas import create_captcha_records
+        from src.services.captcha_file_service import list_captcha_files, sync_captcha_files
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        monkeypatch.setattr(captchas_db, "CAPTCHA_ALL_DIR", str(all_dir))
+
+        captcha_id = "48fef3307bde851f"
+        payload = {
+            "puzzle": {
+                "tiles": [{"tileId": "a"}, {"tileId": "b"}, {"tileId": "c"}],
+                "variantsCapture": [["a", "b"], ["c"]],
+            }
+        }
+        (all_dir / f"{captcha_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+        sync_captcha_files()
+
+        usage_id = log_usage(api_key, "real-reservation", captcha_id)
+        logs = [
+            "07:00:00.0 <log-version>v2</log-version>",
+            f'07:00:08.7 [id=194] [3] event {{ "event": "stage_end", "stage": "validating", "status": "success", "duration_ms": 54, "endpoint": "validateCaptcha", "captcha_id": "{captcha_id}", "variant_index": 0 }}',
+            f'07:00:08.8 [id=194] [4] Капча валидирована [{captcha_id}] ответ: ["b","a"]',
+        ]
+
+        created = create_captcha_records(usage_id, captcha_id, logs, "confirmed")
+
+        assert len(created) == 1
+        saved = json.loads((all_dir / f"{captcha_id}.json").read_text(encoding="utf-8"))
+        assert saved["valid_index"] == 0
+        rows = list_captcha_files()
+        assert any(row["captcha_id"] == captcha_id and row["valid_index"] == 0 and row["file_status"] == "labeled" for row in rows)
+
+    def test_extract_variant_from_validate_event_is_single_source(self):
+        from src.db.captchas import extract_variant_from_logs
+
+        captcha_id = "48fef3307bde851f"
+        logs = [
+            "07:00:00.0 <log-version>v2</log-version>",
+            '07:00:08.7 [id=194] [3] Server answer: captcha=48fef3307bde851f variant=99 solver=ilyx',
+            '07:00:08.8 [id=194] [4] event { "event": "stage_end", "stage": "validating", "status": "success", "duration_ms": 54, "endpoint": "validateCaptcha", "captcha_id": "48fef3307bde851f", "variant_index": 14 }',
+        ]
+
+        assert extract_variant_from_logs(logs, captcha_id) == 14
 
     def test_solve_captcha_timeout_returns_captcha_metadata(self, api_key):
         from fastapi import FastAPI
@@ -786,6 +836,53 @@ class TestCaptchaRecords:
 
         assert response.status_code == 200
         assert response.json() is None
+
+    def test_captcha_files_sync_indexes_all_folder(self, tmp_path, monkeypatch):
+        from src.services.captcha_file_service import list_captcha_files, sync_captcha_files
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+
+        (all_dir / "abc123.json").write_text(
+            json.dumps(
+                {
+                    "valid_index": 2,
+                    "type": "puzzle-v2",
+                    "puzzle": {
+                        "tiles": [{"tileId": "b"}, {"tileId": "a"}],
+                        "variantsCapture": [["a"], ["b"], ["a", "b"]],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = sync_captcha_files()
+
+        assert result["indexed"] == 1
+        rows = list_captcha_files()
+        assert rows[0]["captcha_id"] == "abc123"
+        assert rows[0]["file_status"] == "labeled"
+        assert rows[0]["valid_index"] == 2
+        assert rows[0]["captcha_type"] == "puzzle-v2"
+        assert rows[0]["variants_count"] == 3
+        assert rows[0]["tiles_hash"]
+
+    def test_admin_captcha_files_lists_file_index(self, client, admin_token, tmp_path, monkeypatch):
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        (all_dir / "listed.json").write_text(
+            json.dumps({"valid_index": 0, "puzzle": {"tiles": [], "variantsCapture": [[]]}}),
+            encoding="utf-8",
+        )
+
+        response = client.get("/admin/captcha-files", headers={"X-Admin-Token": admin_token})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert any(row["captcha_id"] == "listed" and row["valid_index"] == 0 for row in data)
 
 
 # === Frontend Tests ===
@@ -1171,29 +1268,19 @@ class TestCaptchaLabelingApi:
     """Backend labeling flow for unlabeled captchas."""
 
     def test_captcha_label_next_not_found(self, client, admin_token, tmp_path, monkeypatch):
-        import src.routes.admin as admin_routes
-
-        no_valid = tmp_path / "no_valid"
-        valid = tmp_path / "valid"
-        no_valid.mkdir()
-        valid.mkdir()
-        monkeypatch.setattr(admin_routes, "NO_VALID_DIR", str(no_valid))
-        monkeypatch.setattr(admin_routes, "VALID_DIR", str(valid))
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
 
         response = client.get("/admin/captcha-label/next", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 404
 
-    def test_captcha_label_save_moves_file(self, client, admin_token, tmp_path, monkeypatch):
+    def test_captcha_label_save_updates_file_in_place(self, client, admin_token, tmp_path, monkeypatch):
         import json
 
-        import src.routes.admin as admin_routes
-
-        no_valid = tmp_path / "no_valid"
-        valid = tmp_path / "valid"
-        no_valid.mkdir()
-        valid.mkdir()
-        monkeypatch.setattr(admin_routes, "NO_VALID_DIR", str(no_valid))
-        monkeypatch.setattr(admin_routes, "VALID_DIR", str(valid))
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
 
         captcha_id = "sample_captcha"
         payload = {
@@ -1202,7 +1289,7 @@ class TestCaptchaLabelingApi:
                 "variantsCapture": [["a"], ["a"]],
             }
         }
-        with open(no_valid / f"{captcha_id}.json", "w", encoding="utf-8") as f:
+        with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
 
         save = client.post(
@@ -1211,8 +1298,9 @@ class TestCaptchaLabelingApi:
             json={"captcha_id": captcha_id, "variant_index": 1},
         )
         assert save.status_code == 200
-        assert (valid / f"{captcha_id}.json").exists()
-        assert not (no_valid / f"{captcha_id}.json").exists()
+        with open(all_dir / f"{captcha_id}.json", encoding="utf-8") as f:
+            saved = json.load(f)
+        assert saved["valid_index"] == 1
 
 
 class TestSlotsGroup:
