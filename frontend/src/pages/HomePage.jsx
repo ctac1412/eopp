@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useSSE from "../hooks/useSSE";
 import useCaptchaStore from "../store/useCaptchaStore";
@@ -7,13 +7,14 @@ import AuthWizard from "../components/AuthWizard";
 import SuperKioskPanel from "../components/SuperKioskPanel";
 import { CaptchaTab } from "./CaptchaTab";
 import { HistoryTab } from "./HistoryTab";
+import { PublicCaptchasTab } from "./PublicCaptchasTab";
 
 export function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const [activeTab, setActiveTab] = useState(
-    () => searchParams.get("tab") || "captchas"
+    () => searchParams.get("tab") || "captchas",
   );
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -28,7 +29,7 @@ export function HomePage() {
 
   const showWizard = !apiKey;
 
-  useSSE(!showWizard && activeTab === "captchas");
+  useSSE(!showWizard && (activeTab === "captchas" || activeTab === "public-captchas"));
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -41,6 +42,11 @@ export function HomePage() {
     return <AuthWizard />;
   }
 
+  const openTab = (tab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
+
   return (
     <div className="container py-3">
       <StatusBar />
@@ -49,7 +55,15 @@ export function HomePage() {
         <li className="nav-item">
           <button
             className={`nav-link ${activeTab === "captchas" ? "active" : ""}`}
-            onClick={() => { setActiveTab("captchas"); setSearchParams({ tab: "captchas" }); }}
+            onClick={() => openTab("captchas")}
+          >
+            Очередь
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab === "public-captchas" ? "active" : ""}`}
+            onClick={() => openTab("public-captchas")}
           >
             Капчи
           </button>
@@ -57,7 +71,7 @@ export function HomePage() {
         <li className="nav-item">
           <button
             className={`nav-link ${activeTab === "history" ? "active" : ""}`}
-            onClick={() => { setActiveTab("history"); setSearchParams({ tab: "history" }); }}
+            onClick={() => openTab("history")}
           >
             История
           </button>
@@ -66,6 +80,8 @@ export function HomePage() {
       <div className="mt-3">
         {activeTab === "captchas" ? (
           <CaptchaTab />
+        ) : activeTab === "public-captchas" ? (
+          <PublicCaptchasTab onReplaySent={() => openTab("captchas")} />
         ) : (
           <HistoryTab
             apiKey={apiKey}

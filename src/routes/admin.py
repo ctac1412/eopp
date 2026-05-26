@@ -5,8 +5,12 @@ Business rules live in services; storage calls live behind repositories.
 """
 
 import json
+import logging
+import os
 from datetime import datetime
+from pathlib import Path
 
+from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from src.benchmark import run_benchmark_cached
@@ -38,6 +42,8 @@ from src.models import (
 )
 from src.policies.access_policy import requires_admin
 from src.repositories import api_key_repo, usage_log_repo
+
+logger = logging.getLogger("eopp.admin")
 from src.services import billing_service, captcha_service, reporting_service
 from src.sse import get_connected_streams
 from src.test_runner import get_test_stats
@@ -62,6 +68,13 @@ def _json_result(result):
     return JSONResponse(status_code=status, content=content)
 
 
+def _tail_lines(path: Path, limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    with path.open("r", encoding="utf-8", errors="replace") as file:
+        return file.readlines()[-limit:]
+
+
 def register_admin_routes(app):
     @app.post("/admin/auth")
     async def admin_auth(body: AdminAuthBody):
@@ -76,6 +89,28 @@ def register_admin_routes(app):
     @app.get("/admin/test-stats")
     async def admin_test_stats():
         return JSONResponse(content=get_test_stats())
+
+    @app.get("/admin/backend-logs")
+    async def admin_backend_logs(lines: int = 300):
+        limit = max(1, min(lines, 1000))
+        raw_path = os.environ.get("EOPP_BACKEND_LOG_PATH", "data/backend.log")
+        log_path = Path(raw_path)
+        if not log_path.exists():
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "error": "log_file_not_found",
+                    "path": str(log_path),
+                    "lines": [],
+                },
+            )
+        return JSONResponse(
+            content={
+                "path": str(log_path),
+                "limit": limit,
+                "lines": [line.rstrip("\n") for line in _tail_lines(log_path, limit)],
+            }
+        )
 
     @app.post("/admin/benchmark")
     async def admin_benchmark():
@@ -333,7 +368,7 @@ def register_admin_routes(app):
         return JSONResponse(content=slots_clear())
 
     @app.get("/admin/stream/slots")
-    async def admin_slots_stream(admin_token: str | None = None):
+    async def admin_slots_stream(request: Request, admin_token: str | None = None):
         from fastapi.responses import StreamingResponse
 
         from src.services.slots_group_service import get_events_since, stats
@@ -343,18 +378,39 @@ def register_admin_routes(app):
 
         async def event_generator():
             import asyncio
+            import time
+            import uuid
 
+            stream_id = uuid.uuid4().hex[:8]
+            client = request.client.host if request.client else "unknown"
             last_index = 0
-            while True:
-                events, last_index = get_events_since(last_index)
-                if events:
-                    payload = {
-                        "type": "events",
-                        "events": events,
-                        "stats": stats(),
-                    }
-                    yield f"data: {json.dumps(payload)}\n\n"
-                await asyncio.sleep(1)
+            last_heartbeat_at = 0.0
+            heartbeat_interval = 15.0
+            logger.warning("slots stream open id=%s client=%s", stream_id, client)
+            yield "retry: 2000\n\n"
+            try:
+                while True:
+                    events, last_index = get_events_since(last_index)
+                    if events:
+                        payload = {
+                            "type": "events",
+                            "events": events,
+                            "stats": stats(),
+                        }
+                        yield f"data: {json.dumps(payload)}\n\n"
+                        last_heartbeat_at = time.monotonic()
+                    elif time.monotonic() - last_heartbeat_at >= heartbeat_interval:
+                        yield f": ping {int(time.time())}\n\n"
+                        last_heartbeat_at = time.monotonic()
+                    await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.warning("slots stream cancelled id=%s client=%s", stream_id, client)
+                raise
+            except Exception:
+                logger.exception("slots stream crashed id=%s client=%s", stream_id, client)
+                raise
+            finally:
+                logger.warning("slots stream closed id=%s client=%s", stream_id, client)
 
         return StreamingResponse(
             event_generator(),

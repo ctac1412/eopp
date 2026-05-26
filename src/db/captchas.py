@@ -16,13 +16,14 @@ from src.db.connection import get_connection
 
 _V2_VALIDATED_RE = re.compile(r"Капча валидирована\s+\[([a-f0-9]+)\]\s+ответ:\s*(\[.*?\])")
 _V2_NOT_VALIDATED_RE = re.compile(r"Капча не валидирована\s+\[([a-f0-9]+)\]\s+причина:\s*(.+)")
+_V2_NOT_SOLVED_RE = re.compile(r"Капча не решена\s+\[([a-f0-9]+)\]\s+причина:\s*(.+)")
 _V2_VERSION_RE = re.compile(r"<log-version>v2</log-version>")
 
 
 def _is_v2(logs: list[str] | None) -> bool:
     if not logs:
         return False
-    return bool(_V2_VERSION_RE.search(logs[0]))
+    return any(_V2_VERSION_RE.search(line) for line in logs[:5])
 
 
 def _tiles_hash(tiles: list[dict]) -> str:
@@ -54,6 +55,13 @@ def _extract_v2(logs: list[str]) -> list[tuple[str, str, str | None, str | None]
             continue
 
         m = _V2_NOT_VALIDATED_RE.search(line)
+        if m:
+            captcha_id = m.group(1)
+            reason = m.group(2).strip()
+            results.append((captcha_id, "failed", None, reason))
+            continue
+
+        m = _V2_NOT_SOLVED_RE.search(line)
         if m:
             captcha_id = m.group(1)
             reason = m.group(2).strip()
@@ -136,6 +144,23 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
             "correct_answer": r["correct_answer"],
             "fail_reason": r["fail_reason"],
             "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+
+
+def list_public_captchas() -> list[dict]:
+    """Return anonymized captcha records for public replay UI."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT captcha_id, status FROM captchas ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "id": r["captcha_id"],
+            "captcha_id": r["captcha_id"],
+            "status": r["status"],
         }
         for r in rows
     ]

@@ -16,6 +16,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   AdminAuth,
   ApiKeysTab,
+  BackendLogsTab,
   StreamsTab,
   TestBenchmarkTab,
   InvoicesTab,
@@ -1246,6 +1247,13 @@ function AdminPage() {
 
       {activeTab === "streams" && (
         <StreamsTab streams={streams} streamsLoading={streamsLoading} adminToken={adminToken} />
+      )}
+
+      {activeTab === "backend-logs" && (
+        <BackendLogsTab
+          adminToken={adminToken}
+          onError={(msg) => setError(msg)}
+        />
       )}
 
       <KeyFormModal

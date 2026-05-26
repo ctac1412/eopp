@@ -446,6 +446,7 @@ class TestAdmin:
             "/admin/payouts",
             "/admin/users",
             "/admin/captchas",
+            "/admin/backend-logs",
         ],
     )
     def test_admin_routes_unauthorized(self, client, path):
@@ -489,6 +490,21 @@ class TestAdmin:
 
         response = client.post("/admin/auth", json={"token": normal_key})
         assert response.status_code == 401
+
+    def test_backend_logs_tail(self, client, admin_token, tmp_path, monkeypatch):
+        log_file = tmp_path / "backend.log"
+        log_file.write_text("\n".join(f"line {i}" for i in range(5)), encoding="utf-8")
+        monkeypatch.setenv("EOPP_BACKEND_LOG_PATH", str(log_file))
+
+        response = client.get(
+            "/admin/backend-logs?lines=3",
+            headers={"X-Admin-Token": admin_token},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limit"] == 3
+        assert data["lines"] == ["line 2", "line 3", "line 4"]
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
@@ -597,6 +613,179 @@ class TestCaptchaRecords:
     def test_delete_usage_log_requires_admin(self, client):
         response = client.delete("/usage-log/1")
         assert response.status_code == 401
+
+    def test_public_captchas_show_limited_anonymized_records(self, client, api_key):
+        from src.db import create_key, log_usage
+        from src.db.connection import get_connection
+
+        own_usage_id = log_usage(api_key, "own-reservation", "own-captcha")
+        other_key = create_key("other_captcha_user")
+        other_usage_id = log_usage(other_key["key"], "other-reservation", "other-captcha")
+
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("own-captcha", "passed", own_usage_id, "2026-05-01T00:00:00+00:00", "hash1", "[]", None),
+        )
+        conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("other-captcha", "failed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", None, "bad"),
+        )
+        conn.commit()
+        conn.close()
+
+        response = client.get("/public/captchas")
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "id": "other-captcha",
+                "captcha_id": "other-captcha",
+                "status": "failed",
+            },
+            {
+                "id": "own-captcha",
+                "captcha_id": "own-captcha",
+                "status": "passed",
+            },
+        ]
+        assert "created_at" not in response.text
+        assert "usage_log_id" not in response.text
+        assert "api_key_id" not in response.text
+        assert "key_label" not in response.text
+
+    def test_public_captcha_replay_sends_selected_without_token(self, client, api_key, monkeypatch):
+        from src.db import create_key, log_usage
+        from src.db.connection import get_connection
+        from src.services import captcha_service
+
+        other_key = create_key("other_replay_user")
+        other_usage_id = log_usage(other_key["key"], "other-reservation", "foreign-captcha")
+
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, correct_answer, fail_reason) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("foreign-captcha", "passed", other_usage_id, "2026-05-02T00:00:00+00:00", "hash2", "[]", None),
+        )
+        conn.commit()
+        conn.close()
+
+        called = []
+        monkeypatch.setattr(captcha_service, "replay_captchas", lambda *args, **kwargs: called.append(args) or 1)
+
+        response = client.post(
+            "/public/captchas/send-selected",
+            json={"captcha_ids": ["foreign-captcha"]},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"sent": 1}
+        assert called == [(["foreign-captcha"],)]
+
+    def test_captcha_records_accept_v2_marker_after_start_line(self, api_key):
+        from src.db import log_usage
+        from src.db.captchas import create_captcha_records, list_captchas
+
+        usage_id = log_usage(api_key, "real-reservation", "48fef3307bde851f")
+        logs = [
+            "07:00:00.0 === Старт скрипта (runUpTo: 5) ===",
+            "07:00:00.0 <log-version>v2</log-version>",
+            '07:00:08.8 [id=194] [4] Капча валидирована [48fef3307bde851f] ответ: ["tile-1","tile-2"]',
+        ]
+
+        created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "confirmed")
+
+        assert len(created) == 1
+        rows = list_captchas(usage_id)
+        assert rows[0]["captcha_id"] == "48fef3307bde851f"
+        assert rows[0]["status"] == "passed"
+        assert rows[0]["correct_answer"] == '["tile-1", "tile-2"]'
+
+    def test_captcha_records_parse_unsolved_timeout_line(self, api_key):
+        from src.db import log_usage
+        from src.db.captchas import create_captcha_records, list_captchas
+
+        usage_id = log_usage(api_key, "real-reservation", "48fef3307bde851f")
+        logs = [
+            "07:00:00.5 === Старт скрипта (runUpTo: 5) ===",
+            "07:00:00.5 <log-version>v2</log-version>",
+            "07:00:16.6 [id=196] [3] Капча не решена [48fef3307bde851f] причина: таймаут или ошибка",
+        ]
+
+        created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "failed")
+
+        assert len(created) == 1
+        rows = list_captchas(usage_id)
+        assert rows[0]["captcha_id"] == "48fef3307bde851f"
+        assert rows[0]["status"] == "failed"
+        assert rows[0]["fail_reason"] == "таймаут или ошибка"
+
+    def test_captcha_records_only_scan_first_five_lines_for_v2_marker(self, api_key):
+        from src.db import log_usage
+        from src.db.captchas import create_captcha_records
+
+        usage_id = log_usage(api_key, "real-reservation", "48fef3307bde851f")
+        logs = [
+            "line 1",
+            "line 2",
+            "line 3",
+            "line 4",
+            "line 5",
+            "<log-version>v2</log-version>",
+            '07:00:08.8 [id=194] [4] Капча валидирована [48fef3307bde851f] ответ: ["tile-1"]',
+        ]
+
+        created = create_captcha_records(usage_id, "48fef3307bde851f", logs, "confirmed")
+
+        assert created == []
+
+    def test_solve_captcha_timeout_returns_captcha_metadata(self, api_key):
+        from fastapi import FastAPI
+
+        from src.routes.captcha import register_captcha_routes
+
+        app = FastAPI()
+        register_captcha_routes(app, captcha_timeout=0.01)
+        timeout_client = TestClient(app)
+
+        response = timeout_client.post(
+            "/solve-captcha",
+            json={
+                "api_key": api_key,
+                "auto_solve": False,
+                "timeout_metadata": True,
+                "reservation_id": "real-reservation",
+                "puzzle": {"tiles": [], "variantsCapture": []},
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "timeout"
+        assert data["captcha_id"]
+        assert data["usage_log_id"]
+
+    def test_solve_captcha_timeout_keeps_legacy_null_without_metadata_flag(self, api_key):
+        from fastapi import FastAPI
+
+        from src.routes.captcha import register_captcha_routes
+
+        app = FastAPI()
+        register_captcha_routes(app, captcha_timeout=0.01)
+        timeout_client = TestClient(app)
+
+        response = timeout_client.post(
+            "/solve-captcha",
+            json={
+                "api_key": api_key,
+                "auto_solve": False,
+                "reservation_id": "real-reservation",
+                "puzzle": {"tiles": [], "variantsCapture": []},
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() is None
 
 
 # === Frontend Tests ===

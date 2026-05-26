@@ -5,6 +5,7 @@ import type {
   AvailableDatesResponse,
   CaptchaResponse,
   CaptchaValidationResponse,
+  SolveCaptchaTimeout,
   SolvedAnswer,
 } from "@/types";
 import { httpRequest } from "./client";
@@ -145,6 +146,7 @@ export async function solveCaptcha(
   const payload: Record<string, unknown> = {
     ...captchaData,
     auto_solve: autoSolve,
+    timeout_metadata: true,
   };
   if (apiKey) {
     payload.api_key = apiKey;
@@ -157,24 +159,32 @@ export async function solveCaptcha(
   }
 
   const response = await sendMessageToBackground("solveCaptcha", payload);
-  const solved = response as SolvedAnswer | null;
+  const solved = response as SolvedAnswer | SolveCaptchaTimeout | null;
 
-  if (!solved) {
+  if (!solved || ("status" in solved && solved.status === "timeout")) {
+    if (solved?.usage_log_id != null) {
+      useInjectorStore.getState().setUsageLogId(solved.usage_log_id);
+    }
+    if (solved?.captcha_id) {
+      useInjectorStore.getState().setCaptchaId(solved.captcha_id);
+    }
+    const suffix = solved?.captcha_id ? ` [${solved.captcha_id}]` : "";
     throw new Error(
-      "Сервер вернул null — капча не решена (таймаут или ошибка)",
+      `Сервер вернул null — капча не решена${suffix} (таймаут или ошибка)`,
     );
   }
 
-  if (solved.usage_log_id != null) {
-    useInjectorStore.getState().setUsageLogId(solved.usage_log_id);
+  const answer = solved as SolvedAnswer;
+  if (answer.usage_log_id != null) {
+    useInjectorStore.getState().setUsageLogId(answer.usage_log_id);
   }
-  if (solved.captcha_id) {
-    useInjectorStore.getState().setCaptchaId(solved.captcha_id);
+  if (answer.captcha_id) {
+    useInjectorStore.getState().setCaptchaId(answer.captcha_id);
   }
-  useInjectorStore.getState().setSolvedVariantIndex(solved.variantIndex);
-  useInjectorStore.getState().setSolvedVariantTiles(solved.variantTiles);
+  useInjectorStore.getState().setSolvedVariantIndex(answer.variantIndex);
+  useInjectorStore.getState().setSolvedVariantTiles(answer.variantTiles);
   log("Капча решена");
-  return solved;
+  return answer;
 }
 
 export async function validateCaptcha(

@@ -1,5 +1,44 @@
 import { log } from "@/logger";
 
+export type HttpError = {
+  status: number;
+  body: string | null;
+  critical?: "eopp_access_challenge";
+  message?: string;
+};
+
+const ACCESS_CHALLENGE_MESSAGE =
+  "EOPP запросил подтверждение, что вы не бот. Остановлено без ретраев: пройдите проверку/VPN в соседней вкладке и запустите заново.";
+
+function isHtmlDocument(body: string): boolean {
+  return /<!doctype\s+html|<html[\s>]/i.test(body);
+}
+
+function isAccessChallengeResponse(
+  status: number,
+  body: string,
+  contentType: string | null,
+): boolean {
+  if (status !== 403) return false;
+  const type = (contentType || "").toLowerCase();
+  return type.includes("text/html") || isHtmlDocument(body);
+}
+
+export function isEoppAccessChallengeError(err: unknown): err is HttpError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as HttpError).critical === "eopp_access_challenge"
+  );
+}
+
+export function describeHttpError(err: unknown): string {
+  if (isEoppAccessChallengeError(err)) {
+    return ACCESS_CHALLENGE_MESSAGE;
+  }
+  return "";
+}
+
 function getCookie(name: string): string | null {
   const prefix = `${name}=`;
   const item = document.cookie
@@ -70,7 +109,7 @@ export async function httpRequest(
     signal,
   }).then(async (res) => {
     if (res.status === 429) {
-      return Promise.reject({ status: 429, body: null });
+      return Promise.reject({ status: 429, body: null } satisfies HttpError);
     }
     if (!res.ok) {
       let bodyText = "";
@@ -79,7 +118,18 @@ export async function httpRequest(
       } catch {
         /* ignore */
       }
-      return Promise.reject({ status: res.status, body: bodyText });
+      const contentType = res.headers.get("content-type");
+      const isAccessChallenge = isAccessChallengeResponse(
+        res.status,
+        bodyText,
+        contentType,
+      );
+      return Promise.reject({
+        status: res.status,
+        body: bodyText,
+        critical: isAccessChallenge ? "eopp_access_challenge" : undefined,
+        message: isAccessChallenge ? ACCESS_CHALLENGE_MESSAGE : undefined,
+      } satisfies HttpError);
     }
     return res.json();
   });
@@ -128,6 +178,9 @@ export async function retryOn429<T>(
       return await fn();
     } catch (err) {
       checkAbort(signal);
+      if (isEoppAccessChallengeError(err)) {
+        throw err;
+      }
       const error = err as { status?: number };
       if (error.status === 429 && i < retries) {
         const lbl = label ? ` [${label}]` : "";
@@ -166,6 +219,9 @@ export async function retryWith429And400<T>(
       return await fn();
     } catch (err) {
       checkAbort(signal);
+      if (isEoppAccessChallengeError(err)) {
+        throw err;
+      }
       const error = err as { status?: number };
       const status = error.status;
       const lbl = label ? ` [${label}]` : "";

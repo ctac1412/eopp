@@ -38,6 +38,16 @@ function shortClientId(id) {
   return id;
 }
 
+function eventKey(ev) {
+  return [
+    ev.timestamp,
+    ev.type,
+    ev.group_key,
+    ev.client_id,
+    JSON.stringify(ev.details || {}),
+  ].join("|");
+}
+
 function GroupLabel({ groupKey, details }) {
   const meta = details?.meta;
   if (meta?.reservationId && meta?.facilityId) {
@@ -73,7 +83,14 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
         const data = JSON.parse(e.data);
         if (data.type === "events") {
           setEvents((prev) => {
-            const merged = [...data.events, ...prev];
+            const seen = new Set(prev.map(eventKey));
+            const fresh = data.events.filter((ev) => {
+              const key = eventKey(ev);
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            const merged = [...fresh, ...prev];
             return merged.length > 200 ? merged.slice(0, 200) : merged;
           });
           setSlotsStats(data.stats);

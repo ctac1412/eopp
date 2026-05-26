@@ -25,6 +25,7 @@ class SolveRequest(BaseModel):
 class SolveCaptchaBody(BaseModel):
     api_key: str
     auto_solve: bool = False
+    timeout_metadata: bool = False
     captcha_id: str | None = None
     reservation_id: str | None = None
     usage_log_id: int | None = None

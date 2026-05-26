@@ -22,7 +22,12 @@ import type {
   EndpointName,
   PipelineStage,
 } from "@/types";
-import { retryOn429, retryWith429And400 } from "./client";
+import {
+  describeHttpError,
+  isEoppAccessChallengeError,
+  retryOn429,
+  retryWith429And400,
+} from "./client";
 import {
   getAvailableSlots,
   getAvailableSlotsUrl,
@@ -156,6 +161,8 @@ async function trackStage<T>(
  * Обрабатывает Error, объекты и примитивы.
  */
 function serializeError(err: unknown): string {
+  const httpDescription = describeHttpError(err);
+  if (httpDescription) return httpDescription;
   if (err instanceof Error) return err.message;
   if (typeof err === "object" && err !== null) {
     try {
@@ -477,7 +484,11 @@ async function runPipeline(
  * Проверяет, является ли ошибка связанной с капчей.
  * Возвращает true для 400 (неверное решение) и "Сервер вернул null" (таймаут).
  */
-type PipelineErrorKind = "captcha" | "slot-unavailable" | "unknown";
+type PipelineErrorKind =
+  | "captcha"
+  | "slot-unavailable"
+  | "access-challenge"
+  | "unknown";
 
 function parseErrorBody(err: unknown): Record<string, unknown> | null {
   const body = (err as { body?: string })?.body;
@@ -491,6 +502,8 @@ function parseErrorBody(err: unknown): Record<string, unknown> | null {
 }
 
 function describeEoppError(err: unknown): string {
+  const httpDescription = describeHttpError(err);
+  if (httpDescription) return httpDescription;
   const parsed = parseErrorBody(err);
   if (!parsed) return serializeError(err);
   const title = typeof parsed.title === "string" ? parsed.title : "EOPP error";
@@ -500,6 +513,9 @@ function describeEoppError(err: unknown): string {
 }
 
 function getPipelineErrorKind(err: unknown): PipelineErrorKind {
+  if (isEoppAccessChallengeError(err)) {
+    return "access-challenge";
+  }
   if (err instanceof Error && err.message.includes("Сервер вернул null")) {
     return "captcha";
   }
@@ -803,16 +819,18 @@ async function runWithRetryLoop(
           if (storeState.currentStage === "captcha") {
             log(`Ошибка генерации капчи: ${describeEoppError(err)}`);
           } else if (captchaId !== "?") {
-            const reason =
-              err instanceof Error && err.message.includes("Сервер вернул null")
-                ? "таймаут сервера"
-                : "неверное решение (400)";
-            log(`Капча не валидирована [${captchaId}] причина: ${reason}`);
+            if (err instanceof Error && err.message.includes("Сервер вернул null")) {
+              log(`Капча не решена [${captchaId}] причина: таймаут сервера`);
+            } else {
+              log(`Капча не валидирована [${captchaId}] причина: неверное решение (400)`);
+            }
           } else {
             log(`Ошибка генерации капчи: ${serializeError(err)}`);
           }
         } else if (errorKind === "slot-unavailable") {
           log(`Слот недоступен: ${describeEoppError(err)}`);
+        } else if (errorKind === "access-challenge") {
+          log(`Критичная ошибка доступа: ${describeEoppError(err)}`);
         }
 
         if (await tryRetrySlot(err, slotRetryCount, config, signal)) {
@@ -825,7 +843,7 @@ async function runWithRetryLoop(
           continue;
         }
 
-        log("=== ОШИБКА ===", err);
+        log(`=== ОШИБКА === ${serializeError(err)}`);
         throw err;
       }
     }
@@ -881,7 +899,7 @@ export async function main(config: InjectorConfig, signal?: AbortSignal): Promis
       throw err;
     }
     await failUsageInBackground(config, err);
-    log("=== ОШИБКА ===", err);
+    log(`=== ОШИБКА === ${serializeError(err)}`);
     const error = err as Error;
     if (error.message && error.message.includes("Откройте страницу с капчами")) {
       openServerUrl();

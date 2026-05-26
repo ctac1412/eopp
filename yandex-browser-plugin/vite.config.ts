@@ -74,7 +74,7 @@ const copyStaticFiles = () => ({
     const manifest = {
       manifest_version: 3,
       name: "Помощник",
-      version: "1.4.2",
+      version: "1.4.4",
       description: "Быстрые заметки прямо на странице",
       icons: {
         "48": "icon.png",

@@ -166,6 +166,13 @@ export interface SolvedAnswer {
   solver_label?: string;
 }
 
+export interface SolveCaptchaTimeout {
+  status: "timeout";
+  error?: string;
+  usage_log_id?: number;
+  captcha_id?: string;
+}
+
 export interface ApiKeyStatusResponse {
   valid: boolean;
   remaining: number | null;

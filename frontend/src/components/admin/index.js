@@ -1,6 +1,7 @@
 export { AdminAuth } from "./AdminAuth";
 export { ApiKeysTab } from "./ApiKeysTab";
 export { StreamsTab } from "./StreamsTab";
+export { BackendLogsTab } from "./BackendLogsTab";
 export { TestBenchmarkTab } from "./TestBenchmarkTab";
 export { InvoicesTab } from "./InvoicesTab";
 export { KeyFormModal, DeleteConfirmModal } from "./KeyFormModal";

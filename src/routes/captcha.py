@@ -62,7 +62,9 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         api_key_id = key_record.id
 
-        data = body.model_dump(exclude={"api_key", "auto_solve", "reservation_id"})
+        data = body.model_dump(
+            exclude={"api_key", "auto_solve", "timeout_metadata", "reservation_id"}
+        )
 
         puzzle = data.get("puzzle", data)
         valid_index = get_valid_variant_index(data)
@@ -148,6 +150,13 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 },
                 api_key_id=api_key_id,
             )
+            if body.timeout_metadata:
+                entry["result"] = {
+                    "status": "timeout",
+                    "error": "captcha_timeout",
+                    "usage_log_id": entry["usage_log_id"],
+                    "captcha_id": captcha_id,
+                }
 
         result = entry["result"]
         with lock:

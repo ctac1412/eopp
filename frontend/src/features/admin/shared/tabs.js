@@ -10,4 +10,5 @@
   { id: "users", label: "Пользователи" },
   { id: "testbench", label: "Тесты и бенчмарк" },
   { id: "streams", label: "Стримы" },
+  { id: "backend-logs", label: "Backend logs" },
 ];

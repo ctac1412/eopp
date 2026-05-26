@@ -23,6 +23,9 @@ export default defineConfig({
       "/broadcast": {
         target: "http://127.0.0.1:8765",
       },
+      "/public": {
+        target: "http://127.0.0.1:8765",
+      },
     },
   },
 });
