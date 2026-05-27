@@ -393,9 +393,8 @@ def register_admin_routes(app):
         if mode == "solver_top1" and vi is None:
             if captcha_file_service.ensure_analysis_metadata(data):
                 source_path = captcha_file_service.captcha_file_path(captcha_id)
-                with open(source_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                captcha_file_service.upsert_captcha_file(source_path)
+                captcha_file_service.write_captcha_json(source_path, data)
+                captcha_file_service.upsert_captcha_file_data(source_path, data, captcha_id)
             top3 = data.get("solver_top3")
             if isinstance(top3, list) and top3 and isinstance(top3[0], int):
                 vi = top3[0]

@@ -24,6 +24,8 @@ def upsert_file(meta: dict) -> int:
             session.add(record)
         else:
             for key, value in meta.items():
+                if key == "created_at":
+                    continue
                 setattr(record, key, value)
         session.commit()
         return record.id
@@ -61,4 +63,3 @@ def list_all_captcha_ids() -> list[str]:
     rows = conn.execute("SELECT captcha_id FROM captcha_files ORDER BY id ASC").fetchall()
     conn.close()
     return [r[0] for r in rows]
-

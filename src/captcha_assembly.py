@@ -1,13 +1,11 @@
 """Captcha image assembly and hashing utilities."""
 
-import base64
 import hashlib
-import io
 import json
 
-from PIL import Image, ImageDraw, ImageFont
-
 from captcha_solver import solve_captcha
+from src.captcha_solver_engine.images import assemble_captchas
+from src.captcha_solver_engine.ranking import top_variants
 
 
 def get_by_path(obj: dict | None, *keys, default=None):
@@ -41,57 +39,47 @@ def get_valid_variant_index(data: dict) -> int | None:
     return valid_index
 
 
-def assemble_captchas(tiles, variants, valid_index=None):
-    tile_map = {}
-    for t in tiles:
-        tile_id = t["tileId"]
-        img_data = base64.b64decode(t["imageData"])
-        img = Image.open(io.BytesIO(img_data)).convert("RGBA")
-        tile_map[tile_id] = img
+def get_solver_results_from_metadata(data: dict) -> list[dict] | None:
+    results = data.get("solver_results")
+    if not isinstance(results, list) or not all(isinstance(item, dict) for item in results):
+        return None
+    if not results:
+        return None
+    return sorted(
+        results,
+        key=lambda item: (
+            item.get("rank") if isinstance(item.get("rank"), int) else float("inf"),
+            item.get("score") if isinstance(item.get("score"), int | float) else float("inf"),
+        ),
+    )
 
-    generated = []
-    for idx, tile_ids in enumerate(variants):
-        images = [tile_map[tid] for tid in tile_ids if tid in tile_map]
-        if len(images) != len(tile_ids):
-            continue
 
-        w, h = images[0].size
-        cols = min(len(images), 3)
-        rows = (len(images) + cols - 1) // cols
-        canvas = Image.new("RGBA", (w * cols, h * rows), (255, 255, 255, 255))
-        for i, img in enumerate(images):
-            row = i // cols
-            col = i % cols
-            canvas.paste(img, (col * w, row * h))
+def get_solver_answer_from_metadata(data: dict) -> tuple[int, list[str], list[dict]] | None:
+    puzzle = data.get("puzzle", data)
+    variants = puzzle.get("variantsCapture", [])
+    results = get_solver_results_from_metadata(data)
+    if not results:
+        return None
 
-        if valid_index is not None and idx == valid_index:
-            draw = ImageDraw.Draw(canvas)
-            text = "100%"
-            try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica-Bold.ttc", 80)
-            except OSError:
-                try:
-                    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 80)
-                except OSError:
-                    font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
-            x = (canvas.width - text_w) // 2
-            y = (canvas.height - text_h) // 2
-            draw.text((x, y), text, fill=(255, 0, 0, 255), font=font)
-
-        buf = io.BytesIO()
-        canvas.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode()
-        generated.append({"index": idx, "tiles": tile_ids, "image": b64})
-
-    return generated
+    variant = results[0].get("variant")
+    if not isinstance(variant, int):
+        return None
+    if variant < 0 or variant >= len(variants):
+        return None
+    return variant, variants[variant], results
 
 
 def get_top3_from_solver(data):
+    top3 = data.get("solver_top3")
+    if isinstance(top3, list) and all(isinstance(item, int) for item in top3):
+        return [str(item) for item in top3[:3]]
+
+    results = get_solver_results_from_metadata(data)
+    if results:
+        return [str(item["variant"]) for item in results[:3] if isinstance(item.get("variant"), int)]
+
     try:
-        best_variant, _, results = solve_captcha(data)
-        return [str(r["variant"]) for r in results[:3]]
+        _, _, results = solve_captcha(data)
+        return [str(variant) for variant in top_variants(results)]
     except Exception:
         return []

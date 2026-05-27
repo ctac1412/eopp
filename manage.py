@@ -15,6 +15,7 @@ EOPP Captcha Solver Server - CLI Entry Point.
 
 import os
 import sys
+import logging
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -83,6 +84,9 @@ def main(
     import src.constants as constants
     from src.app import create_app
     from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
+    from src.logging_config import configure_logging
+
+    log_level = logging.getLevelName(configure_logging()).lower()
 
     certfile, keyfile = None, None
     if not no_ssl:
@@ -106,6 +110,7 @@ def main(
     typer.echo(f"  No-valid dir    : {NO_VALID_DIR}")
     typer.echo(f"  Data dir        : {os.environ.get('EOPP_DATA_DIR', 'data/')}")
     typer.echo(f"  DB path         : {os.environ.get('EOPP_DB_PATH', 'data/api_keys.db')}")
+    typer.echo(f"  Log level       : {os.environ.get('EOPP_LOG_LEVEL', 'INFO')}")
 
     import captcha_solver
 
@@ -133,7 +138,7 @@ def main(
     uvicorn_kwargs = {
         "host": host,
         "port": port,
-        "log_level": "warning",
+        "log_level": os.environ.get("EOPP_UVICORN_LOG_LEVEL", log_level),
         "timeout_graceful_shutdown": 2,
     }
     if certfile and keyfile:

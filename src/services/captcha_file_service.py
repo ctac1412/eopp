@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from contextlib import redirect_stdout
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
@@ -15,6 +16,14 @@ from src.captcha_assembly import get_valid_variant_index
 from src.entities.utils import entities_to_list
 from src.repositories import captcha_file_repo
 from captcha_solver import solve_captcha
+
+
+@dataclass(frozen=True)
+class SaveCaptchaPayloadResult:
+    path: str
+    data: dict
+    reused_existing: bool
+    analysis_changed: bool
 
 
 def all_dir() -> str:
@@ -125,10 +134,7 @@ def ensure_analysis_metadata(data: dict) -> bool:
     return solver_changed or label_changed
 
 
-def metadata_for_path(path: str) -> dict | None:
-    data = read_json(path)
-    if data is None:
-        return None
+def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> dict:
     puzzle = data.get("puzzle", data)
     variants = puzzle.get("variantsCapture", [])
     valid_index = get_valid_variant_index(data)
@@ -139,7 +145,7 @@ def metadata_for_path(path: str) -> dict | None:
     stat = os.stat(path)
     now = datetime.now(UTC).isoformat()
     return {
-        "captcha_id": Path(path).stem,
+        "captcha_id": captcha_id or Path(path).stem,
         "file_path": path,
         "file_status": "labeled" if valid_index is not None else "unlabeled",
         "captcha_type": str(captcha_type),
@@ -157,32 +163,62 @@ def metadata_for_path(path: str) -> dict | None:
     }
 
 
+def metadata_for_path(path: str) -> dict | None:
+    data = read_json(path)
+    if data is None:
+        return None
+    return metadata_for_data(path, data)
+
+
+def upsert_captcha_file_data(path: str, data: dict, captcha_id: str | None = None) -> int | None:
+    try:
+        return captcha_file_repo.upsert_file(metadata_for_data(path, data, captcha_id))
+    except Exception:
+        return None
+
+
 def upsert_captcha_file(path: str) -> int | None:
     meta = metadata_for_path(path)
     if meta is None:
         return None
-    existing = captcha_file_repo.get_by_captcha_id(meta["captcha_id"])
-    if existing:
-        meta["created_at"] = existing.created_at
     return captcha_file_repo.upsert_file(meta)
 
 
-def save_captcha_payload(captcha_id: str, data: dict) -> str:
+def write_captcha_json(path: str, data: dict) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def copy_existing_metadata(existing: dict, data: dict, include_labels: bool = False) -> None:
+    keys = ["solver_top3", "solver_results", "solver_valid_rank"]
+    if include_labels:
+        keys.extend(["manual_labeled", "label_source", "valid_index", "no_valid_index"])
+    for key in keys:
+        if key in existing:
+            data[key] = existing[key]
+
+
+def save_captcha_payload_detailed(captcha_id: str, data: dict) -> SaveCaptchaPayloadResult:
     os.makedirs(all_dir(), exist_ok=True)
     path = captcha_file_path(captcha_id)
     if os.path.exists(path):
         existing = read_json(path) or {}
         existing_valid = get_valid_variant_index(existing)
         incoming_valid = get_valid_variant_index(data)
-        if existing_valid is not None and incoming_valid is None:
-            if ensure_analysis_metadata(existing):
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(existing, f, ensure_ascii=False, indent=2)
-            return path
-    ensure_analysis_metadata(data)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return path
+        if incoming_valid is None:
+            analysis_changed = ensure_analysis_metadata(existing)
+            if analysis_changed:
+                write_captcha_json(path, existing)
+            copy_existing_metadata(existing, data, include_labels=existing_valid is not None)
+            if existing.get("solver_results"):
+                return SaveCaptchaPayloadResult(path, data, True, analysis_changed)
+    analysis_changed = ensure_analysis_metadata(data)
+    write_captcha_json(path, data)
+    return SaveCaptchaPayloadResult(path, data, False, analysis_changed)
+
+
+def save_captcha_payload(captcha_id: str, data: dict) -> str:
+    return save_captcha_payload_detailed(captcha_id, data).path
 
 
 def sync_captcha_files() -> dict:
@@ -233,14 +269,13 @@ def backfill_analysis_metadata() -> dict:
 
         if changed:
             try:
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                write_captcha_json(path, data)
                 json_updated += 1
             except Exception:
                 skipped += 1
                 continue
 
-        row_id = upsert_captcha_file(path)
+        row_id = upsert_captcha_file_data(path, data)
         if row_id is None:
             skipped += 1
         else:
@@ -264,9 +299,8 @@ def list_captcha_files() -> list[dict]:
 def _write_valid_index(path: str, source_data: dict, idx: int) -> bool:
     try:
         source_data["valid_index"] = idx
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(source_data, f, ensure_ascii=False, indent=2)
-        upsert_captcha_file(path)
+        write_captcha_json(path, source_data)
+        upsert_captcha_file_data(path, source_data)
         return True
     except Exception:
         return False

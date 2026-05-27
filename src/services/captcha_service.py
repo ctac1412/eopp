@@ -59,9 +59,8 @@ def read_label_captcha(captcha_id: str) -> dict | None:
         with open(source_path, encoding="utf-8") as f:
             data = json.load(f)
         if captcha_file_service.ensure_analysis_metadata(data):
-            with open(source_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        captcha_file_service.upsert_captcha_file(source_path)
+            captcha_file_service.write_captcha_json(source_path, data)
+        captcha_file_service.upsert_captcha_file_data(source_path, data, captcha_id)
     except Exception:
         return None
 
@@ -133,9 +132,8 @@ def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
         data["valid_index"] = variant_index
         data["manual_labeled"] = True
         data["label_source"] = "manual"
-        with open(source_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        captcha_file_service.upsert_captcha_file(source_path)
+        captcha_file_service.write_captcha_json(source_path, data)
+        captcha_file_service.upsert_captcha_file_data(source_path, data, captcha_id)
         return 200, {"ok": True, "captcha_id": captcha_id, "valid_index": variant_index}
     except Exception as exc:
         return 500, {"error": f"save failed: {exc}"}

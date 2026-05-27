@@ -40,6 +40,44 @@ def _tiles_hash(tiles: list[dict]) -> str:
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
+def _payload_path(captcha_id: str) -> str:
+    return os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+
+
+def _load_payload(captcha_id: str) -> dict | None:
+    payload_path = _payload_path(captcha_id)
+    if not os.path.exists(payload_path):
+        return None
+    try:
+        with open(payload_path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _write_payload(captcha_id: str, data: dict) -> bool:
+    try:
+        with open(_payload_path(captcha_id), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def _payload_tiles_hash(data: dict | None) -> str | None:
+    if not data:
+        return None
+    puzzle = data.get("puzzle", data)
+    tiles = puzzle.get("tiles", [])
+    if not tiles:
+        return None
+    try:
+        return _tiles_hash(tiles)
+    except Exception:
+        return None
+
+
 def _parse_v2_event(line: str) -> dict | None:
     marker_pos = line.find("event")
     if marker_pos < 0:
@@ -143,56 +181,16 @@ def extract_unsolved_captchas_from_logs(logs: list[str] | None) -> list[tuple[st
     return unsolved
 
 
-def _resolve_tiles_hash(captcha_id: str) -> str | None:
-    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
-    if not os.path.exists(payload_path):
-        return None
+def _sync_captcha_files_label(
+    conn,
+    captcha_id: str,
+    valid_index: int,
+    timestamp_iso: str,
+    payload_data: dict | None = None,
+) -> None:
     try:
-        with open(payload_path, encoding="utf-8") as f:
-            data = json.load(f)
-        puzzle = data.get("puzzle", data)
-        tiles = puzzle.get("tiles", [])
-        if tiles:
-            return _tiles_hash(tiles)
-    except Exception:
-        return None
-    return None
-
-
-def _set_valid_index_in_payload(captcha_id: str, valid_index: int) -> bool:
-    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
-    if not os.path.exists(payload_path):
-        return False
-    try:
-        with open(payload_path, encoding="utf-8") as f:
-            data = json.load(f)
-        data["valid_index"] = valid_index
-        with open(payload_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception:
-        return False
-
-
-def _set_no_valid_index_in_payload(captcha_id: str, no_valid_index: int) -> bool:
-    payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
-    if not os.path.exists(payload_path):
-        return False
-    try:
-        with open(payload_path, encoding="utf-8") as f:
-            data = json.load(f)
-        data["no_valid_index"] = no_valid_index
-        with open(payload_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception:
-        return False
-
-
-def _sync_captcha_files_label(conn, captcha_id: str, valid_index: int, timestamp_iso: str) -> None:
-    try:
-        _ensure_captcha_file_row(captcha_id)
-        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        _ensure_captcha_file_row(captcha_id, payload_data)
+        payload_path = _payload_path(captcha_id)
         file_mtime = None
         if os.path.exists(payload_path):
             file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
@@ -212,10 +210,16 @@ def _sync_captcha_files_label(conn, captcha_id: str, valid_index: int, timestamp
         pass
 
 
-def _sync_captcha_files_no_valid(conn, captcha_id: str, no_valid_index: int, timestamp_iso: str) -> None:
+def _sync_captcha_files_no_valid(
+    conn,
+    captcha_id: str,
+    no_valid_index: int,
+    timestamp_iso: str,
+    payload_data: dict | None = None,
+) -> None:
     try:
-        _ensure_captcha_file_row(captcha_id)
-        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        _ensure_captcha_file_row(captcha_id, payload_data)
+        payload_path = _payload_path(captcha_id)
         file_mtime = None
         if os.path.exists(payload_path):
             file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
@@ -235,10 +239,15 @@ def _sync_captcha_files_no_valid(conn, captcha_id: str, no_valid_index: int, tim
         pass
 
 
-def _sync_captcha_files_unsolved(conn, captcha_id: str, timestamp_iso: str) -> None:
+def _sync_captcha_files_unsolved(
+    conn,
+    captcha_id: str,
+    timestamp_iso: str,
+    payload_data: dict | None = None,
+) -> None:
     try:
-        _ensure_captcha_file_row(captcha_id)
-        payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
+        _ensure_captcha_file_row(captcha_id, payload_data)
+        payload_path = _payload_path(captcha_id)
         file_mtime = None
         if os.path.exists(payload_path):
             file_mtime = datetime.fromtimestamp(os.path.getmtime(payload_path), UTC).isoformat()
@@ -258,14 +267,17 @@ def _sync_captcha_files_unsolved(conn, captcha_id: str, timestamp_iso: str) -> N
         pass
 
 
-def _ensure_captcha_file_row(captcha_id: str) -> None:
+def _ensure_captcha_file_row(captcha_id: str, payload_data: dict | None = None) -> None:
     """Ensure captcha_files has a row for captcha_id before status/index updates."""
     try:
         from src.services import captcha_file_service
 
         path = captcha_file_service.captcha_file_path(captcha_id)
         if os.path.exists(path):
-            captcha_file_service.upsert_captcha_file(path)
+            if payload_data is not None:
+                captcha_file_service.upsert_captcha_file_data(path, payload_data, captcha_id)
+            else:
+                captcha_file_service.upsert_captcha_file(path)
     except Exception:
         pass
 
@@ -320,35 +332,42 @@ def create_captcha_records(
 
     # 1) solved correctly
     for cid, valid_index in passed:
-        tiles_hash = _resolve_tiles_hash(cid)
+        payload_data = _load_payload(cid)
+        tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (cid, "passed", usage_log_id, tiles_hash, None, now),
         )
         created_ids.append(cursor.lastrowid)
-        if _set_valid_index_in_payload(cid, valid_index):
-            _sync_captcha_files_label(conn, cid, valid_index, now)
+        if payload_data is not None:
+            payload_data["valid_index"] = valid_index
+            if _write_payload(cid, payload_data):
+                _sync_captcha_files_label(conn, cid, valid_index, now, payload_data)
 
     # 2) solved but invalid: do not store answer
     for cid, no_valid_index, reason in invalid:
-        tiles_hash = _resolve_tiles_hash(cid)
+        payload_data = _load_payload(cid)
+        tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (cid, "failed", usage_log_id, tiles_hash, reason, now),
         )
         created_ids.append(cursor.lastrowid)
-        if no_valid_index is not None and _set_no_valid_index_in_payload(cid, no_valid_index):
-            _sync_captcha_files_no_valid(conn, cid, no_valid_index, now)
+        if payload_data is not None and no_valid_index is not None:
+            payload_data["no_valid_index"] = no_valid_index
+            if _write_payload(cid, payload_data):
+                _sync_captcha_files_no_valid(conn, cid, no_valid_index, now, payload_data)
 
     # 3) unsolved: answer does not exist
     for cid, reason in unsolved:
-        tiles_hash = _resolve_tiles_hash(cid)
+        payload_data = _load_payload(cid)
+        tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (cid, "failed", usage_log_id, tiles_hash, reason, now),
         )
         created_ids.append(cursor.lastrowid)
-        _sync_captcha_files_unsolved(conn, cid, now)
+        _sync_captcha_files_unsolved(conn, cid, now, payload_data)
 
     conn.commit()
     conn.close()

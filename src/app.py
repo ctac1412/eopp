@@ -24,16 +24,13 @@ from src.constants import (
     CAPTCHA_TIMEOUT,
 )
 from src.db import init_db
+from src.logging_config import configure_logging
 from src.routes import register_all_routes
 from src.routes.admin import admin_auth_middleware_factory
 from src.services import telegram_service
 from src.sse import lock, pending
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+configure_logging()
 logger = logging.getLogger("eopp")
 
 
