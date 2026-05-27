@@ -2,7 +2,7 @@
   { id: "reports", label: "Журнал" },
   { id: "keys", label: "API Keys" },
   { id: "captchas", label: "Капчи" },
-  { id: "labeling", label: "Разметка" },
+  { id: "ai", label: "ИИ" },
   { id: "invoices", label: "Счета" },
   { id: "prepaid", label: "Предоплата" },
   { id: "expenses", label: "Расходы" },

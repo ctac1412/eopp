@@ -8,6 +8,8 @@ from .common import (
     prepare_clean_tiles,
     strip_black_borders,
 )
+from .digit_classifier import is_digit_captcha
+from .figures_classifier import is_figure_captcha
 from .images import assemble_captchas
 from .ranking import assign_ranks, sort_results, top_variants
 from .solvers import solve_prepared_captcha
@@ -19,6 +21,8 @@ __all__ = [
     "build_captcha_context",
     "classify_captcha",
     "decode_base64_image",
+    "is_digit_captcha",
+    "is_figure_captcha",
     "load_captcha_data",
     "prepare_clean_tiles",
     "solve_prepared_captcha",

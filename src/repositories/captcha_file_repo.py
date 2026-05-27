@@ -63,3 +63,15 @@ def list_all_captcha_ids() -> list[str]:
     rows = conn.execute("SELECT captcha_id FROM captcha_files ORDER BY id ASC").fetchall()
     conn.close()
     return [r[0] for r in rows]
+
+
+def update_classification(captcha_id: str, classification: str | None) -> bool:
+    conn = get_connection()
+    cur = conn.execute(
+        "UPDATE captcha_files SET classification = ? WHERE captcha_id = ?",
+        (classification, captcha_id),
+    )
+    conn.commit()
+    updated = cur.rowcount > 0
+    conn.close()
+    return updated

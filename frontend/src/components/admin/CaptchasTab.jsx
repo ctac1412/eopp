@@ -20,6 +20,16 @@ function formatDate(iso) {
   });
 }
 
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+
+function pageCount(total, pageSize) {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+function pageSlice(items, page, pageSize) {
+  return items.slice((page - 1) * pageSize, page * pageSize);
+}
+
 export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabChange }) {
   const [captchas, setCaptchas] = useState([]);
   const [captchaFiles, setCaptchaFiles] = useState([]);
@@ -33,7 +43,11 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const [search, setSearch] = useState("");
   const [keyFilter, setKeyFilter] = useState("all");
   const [answerFilter, setAnswerFilter] = useState("all");
+  const [classificationFilter, setClassificationFilter] = useState("all");
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  const [pageSize, setPageSize] = useState(25);
+  const [operationsPage, setOperationsPage] = useState(1);
+  const [filesPage, setFilesPage] = useState(1);
   const [sending, setSending] = useState(false);
   const [previewCaptchaId, setPreviewCaptchaId] = useState(null);
   const [previewMode, setPreviewMode] = useState(null);
@@ -41,6 +55,22 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const [labelSelectedIndex, setLabelSelectedIndex] = useState(null);
   const [labelLoading, setLabelLoading] = useState(false);
   const [labelSaving, setLabelSaving] = useState(false);
+
+  const setFileClassification = async (captchaId, classification) => {
+    // Optimistic local update
+    setCaptchaFiles((prev) =>
+      prev.map((f) => (f.captcha_id === captchaId ? { ...f, classification } : f))
+    );
+    try {
+      const res = await fetch(
+        `/admin/captcha-files/${encodeURIComponent(captchaId)}/classification`,
+        { method: "PUT", headers: adminHeaders(adminToken), body: JSON.stringify({ classification }) }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      onError?.(err.message);
+    }
+  };
 
   const fetchCaptchas = useCallback(async () => {
     setLoading(true);
@@ -93,13 +123,13 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
 
   const toggleSelectAll = () => {
     setSelected((prev) => {
-      const allVisibleSelected = filteredCaptchas.every((captcha) => prev.has(captcha.id));
+      const allVisibleSelected = pagedCaptchas.every((captcha) => prev.has(captcha.id));
       if (allVisibleSelected) {
         const next = new Set(prev);
-        filteredCaptchas.forEach((captcha) => next.delete(captcha.id));
+        pagedCaptchas.forEach((captcha) => next.delete(captcha.id));
         return next;
       }
-      return new Set([...prev, ...filteredCaptchas.map((captcha) => captcha.id)]);
+      return new Set([...prev, ...pagedCaptchas.map((captcha) => captcha.id)]);
     });
   };
 
@@ -325,6 +355,10 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       if (preset === "failed" && captcha.file_status !== "unlabeled") return false;
       if (answerFilter === "known" && captcha.valid_index == null) return false;
       if (answerFilter === "missing" && captcha.valid_index != null) return false;
+      if (classificationFilter === "digit" && captcha.classification !== "digit") return false;
+      if (classificationFilter === "figures" && captcha.classification !== "figures") return false;
+      if (classificationFilter === "puzzle" && captcha.classification !== "puzzle") return false;
+      if (classificationFilter === "unset" && captcha.classification != null) return false;
       if (duplicatesOnly && !(captcha.tiles_hash && hashCounts[captcha.tiles_hash] > 1)) return false;
       if (!normalizedSearch) return true;
       return [
@@ -341,7 +375,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
         .toLowerCase()
         .includes(normalizedSearch);
     });
-  }, [answerFilter, captchaFiles, duplicatesOnly, fileHashCounts, preset, search]);
+  }, [answerFilter, captchaFiles, classificationFilter, duplicatesOnly, fileHashCounts, preset, search]);
 
   const fileMetrics = useMemo(() => {
     const known = filteredCaptchaFiles.filter((captcha) => captcha.valid_index != null);
@@ -400,6 +434,73 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     });
     return Object.values(groups).sort((a, b) => b.total - a.total).slice(0, 6);
   }, [filteredCaptchas]);
+
+  const operationsPageCount = pageCount(filteredCaptchas.length, pageSize);
+  const filesPageCount = pageCount(filteredCaptchaFiles.length, pageSize);
+  const currentOperationsPage = Math.min(operationsPage, operationsPageCount);
+  const currentFilesPage = Math.min(filesPage, filesPageCount);
+  const pagedCaptchas = useMemo(
+    () => pageSlice(filteredCaptchas, currentOperationsPage, pageSize),
+    [currentOperationsPage, filteredCaptchas, pageSize],
+  );
+  const pagedCaptchaFiles = useMemo(
+    () => pageSlice(filteredCaptchaFiles, currentFilesPage, pageSize),
+    [currentFilesPage, filteredCaptchaFiles, pageSize],
+  );
+
+  useEffect(() => {
+    setOperationsPage(1);
+    setFilesPage(1);
+  }, [answerFilter, classificationFilter, duplicatesOnly, keyFilter, pageSize, preset, search]);
+
+  useEffect(() => {
+    if (operationsPage > operationsPageCount) setOperationsPage(operationsPageCount);
+  }, [operationsPage, operationsPageCount]);
+
+  useEffect(() => {
+    if (filesPage > filesPageCount) setFilesPage(filesPageCount);
+  }, [filesPage, filesPageCount]);
+
+  const renderPagination = (page, totalPages, setPage, totalItems, shownItems) => {
+    const start = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+    const end = Math.min(totalItems, start + shownItems - 1);
+    return (
+      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap my-2">
+        <div className="d-flex align-items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            disabled={page <= 1}
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+          >
+            &lt;
+          </button>
+          <span className="small text-muted">{page} / {totalPages}</span>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary"
+            disabled={page >= totalPages}
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+          >
+            &gt;
+          </button>
+        </div>
+        <div className="d-flex align-items-center gap-2">
+          <span className="small text-muted">{start}-{end} / {totalItems}</span>
+          <select
+            className="form-select form-select-sm"
+            style={{ width: 86 }}
+            value={pageSize}
+            onChange={(event) => setPageSize(Number(event.target.value))}
+          >
+            {PAGE_SIZE_OPTIONS.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+  };
 
   if (subtab === "operations" && loading) {
     return <div className="text-center text-muted py-3">Загрузка…</div>;
@@ -489,6 +590,16 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             <option value="all">Все</option>
             <option value="known">Есть ответ</option>
             <option value="missing">Без ответа</option>
+          </select>
+        </div>
+        <div className="col-6 col-md-4 col-xl-2">
+          <label className="form-label small mb-1">Класс</label>
+          <select className="form-select form-select-sm" value={classificationFilter} onChange={(event) => setClassificationFilter(event.target.value)}>
+            <option value="all">Все</option>
+            <option value="digit">Цифры</option>
+            <option value="figures">Фигуры</option>
+            <option value="puzzle">Пазл</option>
+            <option value="unset">Без класса</option>
           </select>
         </div>
         <div className="col-12 col-md-4 col-xl-3">
@@ -641,14 +752,17 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
         filteredCaptchaFiles.length === 0 ? (
           <div className="text-center text-muted py-3">Нет файлов капч</div>
         ) : (
+          <>
+          {renderPagination(currentFilesPage, filesPageCount, setFilesPage, filteredCaptchaFiles.length, pagedCaptchaFiles.length)}
           <div className="table-responsive">
             <table className="table table-sm table-hover table-bordered align-middle mb-0">
               <thead className="table-light">
                 <tr>
                   <th style={{ width: "50px" }}>ID</th>
                   <th>Captcha ID</th>
-                  <th style={{ width: "110px" }}>Тип</th>
-                  <th style={{ width: "110px" }}>{"Действия"}</th>
+                   <th style={{ width: "110px" }}>Тип</th>
+                   <th style={{ width: "90px" }}>Класс</th>
+                   <th style={{ width: "110px" }}>{"Действия"}</th>
                   <th style={{ width: "90px" }}>Rank</th>
                   <th style={{ width: "110px" }}>Вариант</th>
 
@@ -662,11 +776,24 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                 </tr>
               </thead>
               <tbody>
-                {filteredCaptchaFiles.map((c) => (
+                {pagedCaptchaFiles.map((c) => (
                   <tr key={c.id}>
                     <td>{c.id}</td>
                     <td className="font-monospace small">{c.captcha_id}</td>
                     <td className="small">{c.captcha_type || "unknown"}</td>
+                    <td>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 80, padding: "2px 4px", fontSize: "0.75rem" }}
+                        value={c.classification || ""}
+                        onChange={(e) => setFileClassification(c.captcha_id, e.target.value || null)}
+                      >
+                        <option value="">—</option>
+                        <option value="digit">Цифры</option>
+                        <option value="figures">Фигуры</option>
+                        <option value="puzzle">Пазл</option>
+                      </select>
+                    </td>
                     <td>
                       <button
                         type="button"
@@ -721,10 +848,14 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
               </tbody>
             </table>
           </div>
+          {renderPagination(currentFilesPage, filesPageCount, setFilesPage, filteredCaptchaFiles.length, pagedCaptchaFiles.length)}
+          </>
         )
       ) : filteredCaptchas.length === 0 ? (
         <div className="text-center text-muted py-3">Нет капч</div>
       ) : (
+        <>
+        {renderPagination(currentOperationsPage, operationsPageCount, setOperationsPage, filteredCaptchas.length, pagedCaptchas.length)}
         <div className="table-responsive">
           <table className="table table-sm table-hover table-bordered align-middle mb-0">
             <thead className="table-light">
@@ -733,8 +864,8 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                   <input
                     type="checkbox"
                     checked={
-                      filteredCaptchas.length > 0 &&
-                      filteredCaptchas.every((captcha) => selected.has(captcha.id))
+                      pagedCaptchas.length > 0 &&
+                      pagedCaptchas.every((captcha) => selected.has(captcha.id))
                     }
                     onChange={toggleSelectAll}
                   />
@@ -754,7 +885,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                 </tr>
             </thead>
             <tbody>
-              {filteredCaptchas.map((c) => {
+              {pagedCaptchas.map((c) => {
                 const file = captchaFileById.get(c.captcha_id);
                 const variant = file?.valid_index ?? file?.no_valid_index ?? null;
                 return (
@@ -804,6 +935,8 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             </tbody>
           </table>
         </div>
+        {renderPagination(currentOperationsPage, operationsPageCount, setOperationsPage, filteredCaptchas.length, pagedCaptchas.length)}
+        </>
       )}
       {previewCaptchaId && (
         <div

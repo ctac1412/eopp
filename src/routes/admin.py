@@ -155,13 +155,6 @@ def register_admin_routes(app):
     async def admin_telegram_preview(body: TelegramPreviewBody):
         return JSONResponse(content=reporting_service.telegram_command_preview(body.command))
 
-    @app.get("/admin/captcha-label/next")
-    async def admin_captcha_label_next():
-        result = captcha_service.read_label_next_captcha()
-        if not result:
-            return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
-        return JSONResponse(content=result)
-
     @app.get("/admin/captcha-label/{captcha_id}")
     async def admin_captcha_label_by_id(captcha_id: str):
         result = captcha_service.read_label_captcha(captcha_id)
@@ -454,6 +447,215 @@ def register_admin_routes(app):
 
         result = captcha_file_service.backfill_captcha_dates()
         return JSONResponse(content=result)
+
+    @app.put("/admin/captcha-files/{captcha_id}/classification")
+    async def admin_set_classification(captcha_id: str, body: dict):
+        from src.repositories import captcha_file_repo
+
+        classification = body.get("classification")
+        if classification not in ("digit", "puzzle", "figures", None):
+            raise HTTPException(400, "classification must be 'digit', 'puzzle', 'figures', or null")
+        ok = captcha_file_repo.update_classification(captcha_id, classification)
+        if not ok:
+            raise HTTPException(404, "Captcha file not found")
+        return JSONResponse(content={"captcha_id": captcha_id, "classification": classification})
+
+    @app.get("/admin/ai/models")
+    async def admin_ai_models():
+        """List available trained models."""
+        from src.captcha_solver_engine.train import list_models
+        return JSONResponse(content=list_models())
+
+    @app.get("/admin/ai/runs")
+    async def admin_ai_runs():
+        """Get history of classification runs."""
+        from src.db.connection import get_connection
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT * FROM classification_runs ORDER BY created_at DESC LIMIT 10"
+        ).fetchall()
+        conn.close()
+        return JSONResponse(content=[dict(r) for r in rows])
+
+    @app.post("/admin/ai/classify")
+    async def admin_ai_classify(body: dict):
+        """Run classifier on all captchas, return results with Top-1 previews."""
+        from src.services import captcha_file_service
+        from src.captcha_solver_engine.classifier import ChainClassifier
+        from src.captcha_solver_engine.digit_classifier import DigitCaptchaClassifier
+        from src.captcha_solver_engine.figures_classifier import FigureCaptchaClassifier
+        from src.captcha_solver_engine.common import build_captcha_context
+        from src.captcha_solver_engine.solvers import solver_for_classification
+        from src.captcha_assembly import get_valid_variant_index
+        from src.db.connection import get_connection
+        import time
+        import numpy as np
+
+        classifier_type = body.get("classifier", "chain")
+        gt_only = body.get("gt_only")  # filter captchas by ground truth class
+
+        # Select classifier
+        if classifier_type == "figures":
+            clf = FigureCaptchaClassifier()
+            model_name = "figures"; model_version = 0
+        elif classifier_type == "digits":
+            model_name = body.get("model_name", "hog_svm")
+            model_version = body.get("model_version", 1)
+            from src.captcha_solver_engine import digit_classifier as dc_mod
+            from src.captcha_solver_engine.train import MODELS_DIR
+            model_path = os.path.join(MODELS_DIR, f"{model_name}_v{model_version}.pkl")
+            if os.path.exists(model_path):
+                import pickle
+                with open(model_path, "rb") as f:
+                    dc_mod._model_cache = pickle.load(f)
+            clf = DigitCaptchaClassifier()
+        else:
+            clf = ChainClassifier()
+            model_name = "chain"; model_version = 0
+
+        captcha_file_service.sync_captcha_files()
+        all_files = captcha_file_service.list_captcha_files()
+
+        results = []
+
+        for cf in all_files:
+            cid = cf["captcha_id"]
+
+            # Filter by ground truth if requested
+            if gt_only and cf.get("classification") != gt_only:
+                continue
+
+            data = captcha_file_service.load_captcha_payload(cid)
+            if data is None:
+                continue
+
+            context = build_captcha_context(data)
+
+            t0 = time.perf_counter()
+            classification = clf.classify(context)
+            elapsed = time.perf_counter() - t0
+
+            # Run solver to check Top-1 accuracy (optional)
+            solver_top1_match = None
+            solver_name = None
+            if body.get("check_solver"):
+                try:
+                    solver = solver_for_classification(classification)
+                    solver_output = solver.solve(context, classification, edge_trim=3, verbose=False)
+                    vi = get_valid_variant_index(data)
+                    solver_top1_match = (solver_output.best_variant == vi) if vi is not None else None
+                    solver_name = solver_output.solver_name
+                except Exception as e:
+                    solver_name = f"error: {e}"
+
+            # Generate Top-1 preview
+            puzzle = data.get("puzzle", data)
+            variants = puzzle.get("variantsCapture", [])
+            tiles = puzzle.get("tiles", [])
+            vi = get_valid_variant_index(data)
+            if vi is None:
+                top3 = data.get("solver_top3")
+                if isinstance(top3, list) and top3 and isinstance(top3[0], int):
+                    vi = top3[0]
+
+            preview_b64 = None
+            if vi is not None and vi < len(variants):
+                tile_ids = variants[vi]
+                tile_map = {}
+                for t in tiles:
+                    try:
+                        img = Image.open(io.BytesIO(base64.b64decode(t["imageData"]))).convert("RGBA")
+                        tile_map[t["tileId"]] = img
+                    except Exception:
+                        pass
+                images = [tile_map[tid] for tid in tile_ids if tid in tile_map]
+                if len(images) == len(tile_ids):
+                    w, h = images[0].size
+                    cols = min(len(images), 3)
+                    rows = (len(images) + cols - 1) // cols
+                    canvas = Image.new("RGBA", (w * cols, h * rows), (255, 255, 255, 255))
+                    for i, img in enumerate(images):
+                        r = i // cols
+                        c = i % cols
+                        canvas.paste(img, (c * w, r * h))
+                    buf = io.BytesIO()
+                    canvas.save(buf, format="PNG")
+                    preview_b64 = base64.b64encode(buf.getvalue()).decode()
+
+            results.append({
+                "captcha_id": cid,
+                "kind": classification.kind,
+                "confidence": round(classification.confidence, 3),
+                "details": classification.details,
+                "time_s": round(elapsed, 4),
+                "preview": preview_b64,
+                "ground_truth": cf.get("classification"),
+                "solver_top1_match": solver_top1_match,
+                "solver_name": solver_name,
+            })
+
+        digit_count = sum(1 for r in results if r["kind"] == "digit")
+        figure_count = sum(1 for r in results if r["kind"] == "figures")
+        puzzle_count = sum(1 for r in results if r["kind"] == "default")
+        times = [r["time_s"] for r in results]
+
+        # Compute stats vs ground truth
+        tp = fp = fn = tn = 0
+        for r in results:
+            gt = r["ground_truth"]
+            is_digit = r["kind"] == "digit"
+            if gt == "digit" and is_digit:
+                tp += 1
+            elif gt == "digit" and not is_digit:
+                fn += 1
+            elif gt and gt != "digit" and is_digit:
+                fp += 1
+            elif gt and gt != "digit" and not is_digit:
+                tn += 1
+
+        total_l = tp + tn + fp + fn
+        accuracy = (tp + tn) / max(total_l, 1)
+        precision = tp / max(tp + fp, 1)
+        recall = tp / max(tp + fn, 1)
+        f1_val = 2 * precision * recall / max(precision + recall, 0.001) if (precision + recall) > 0 else 0.0
+
+        # Save stats to DB
+        try:
+            conn = get_connection()
+            conn.execute(
+                """INSERT INTO classification_runs
+                   (model_name, model_version, total, figure_found, digit_found, puzzle_found,
+                    true_positives, false_positives, false_negatives, true_negatives,
+                    accuracy, precision, recall, f1, speed_avg, speed_median,
+                    solver_top1_hits, solver_top1_total)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (model_name, model_version, len(results), figure_count, digit_count,
+                 puzzle_count, tp, fp, fn, tn,
+                 round(accuracy, 4), round(precision, 4), round(recall, 4), round(f1_val, 4),
+                 round(float(np.mean(times)), 4), round(float(np.median(times)), 4),
+                 sum(1 for r in results if r.get("solver_top1_match") is True),
+                 sum(1 for r in results if r.get("solver_top1_match") is not None)),
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        return JSONResponse(content={
+            "total": len(results),
+            "figure_count": figure_count,
+            "digit_count": digit_count,
+            "puzzle_count": puzzle_count,
+            "speed": {
+                "avg": round(float(np.mean(times)), 4),
+                "median": round(float(np.median(times)), 4),
+                "max": round(float(np.max(times)), 4),
+            },
+            "stats": {"tp": tp, "fp": fp, "fn": fn, "tn": tn,
+                      "accuracy": round(accuracy, 3), "precision": round(precision, 3),
+                      "recall": round(recall, 3), "f1": round(f1_val, 3)},
+            "results": results,
+        })
 
     @app.post("/admin/slots-group/clear")
     async def admin_slots_group_clear():

@@ -31,7 +31,7 @@ import {
   UsersTab,
   UserModal,
   CaptchasTab,
-  CaptchaLabelingTab,
+  AITab,
   PrepaidPackagesTab,
 } from "./components/admin";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
@@ -1151,11 +1151,8 @@ function AdminPage() {
         />
       )}
 
-      {activeTab === "labeling" && (
-        <CaptchaLabelingTab
-          adminToken={adminToken}
-          onError={(msg) => setError(msg)}
-        />
+      {activeTab === "ai" && (
+        <AITab adminToken={adminToken} />
       )}
 
       {activeTab === "invoices" && (
