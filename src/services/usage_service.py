@@ -69,7 +69,6 @@ def register_usage(body) -> tuple[int, dict]:
     )
     return 200, {"usage_log_id": usage_log_id}
 
-
 def confirm_usage(body) -> tuple[int, dict]:
     key_record = api_key_repo.get_key_record(body.api_key)
     if not key_record:

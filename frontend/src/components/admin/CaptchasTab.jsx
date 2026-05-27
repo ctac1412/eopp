@@ -20,12 +20,14 @@ function formatDate(iso) {
   });
 }
 
-export function CaptchasTab({ adminToken, keys, onError }) {
+export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabChange }) {
   const [captchas, setCaptchas] = useState([]);
   const [captchaFiles, setCaptchaFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(true);
-  const [subtab, setSubtab] = useState("operations");
+  const [localSubtab, setLocalSubtab] = useState("operations");
+  const subtab = activeSubtab ?? localSubtab;
+  const setSubtab = onSubtabChange ?? setLocalSubtab;
   const [selected, setSelected] = useState(new Set());
   const [preset, setPreset] = useState("all");
   const [search, setSearch] = useState("");
@@ -34,6 +36,11 @@ export function CaptchasTab({ adminToken, keys, onError }) {
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [sending, setSending] = useState(false);
   const [previewCaptchaId, setPreviewCaptchaId] = useState(null);
+  const [previewMode, setPreviewMode] = useState(null);
+  const [labelingCaptcha, setLabelingCaptcha] = useState(null);
+  const [labelSelectedIndex, setLabelSelectedIndex] = useState(null);
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [labelSaving, setLabelSaving] = useState(false);
 
   const fetchCaptchas = useCallback(async () => {
     setLoading(true);
@@ -121,6 +128,93 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     } finally {
       setSending(false);
     }
+  };
+
+  const openLabelingPopup = async (captchaId) => {
+    setLabelLoading(true);
+    setLabelSelectedIndex(null);
+    try {
+      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(captchaId)}`, {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setLabelingCaptcha(data);
+      setLabelSelectedIndex(data.valid_index ?? null);
+    } catch (err) {
+      onError?.(err.message);
+      setLabelingCaptcha(null);
+    } finally {
+      setLabelLoading(false);
+    }
+  };
+
+  const saveLabelingChoice = async () => {
+    if (!labelingCaptcha || labelSelectedIndex == null) return;
+    setLabelSaving(true);
+    try {
+      const res = await fetch("/admin/captcha-label/save", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          captcha_id: labelingCaptcha.captcha_id,
+          variant_index: labelSelectedIndex,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      await Promise.all([fetchCaptchaFiles(), fetchCaptchas()]);
+      setLabelingCaptcha(null);
+      setLabelSelectedIndex(null);
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setLabelSaving(false);
+    }
+  };
+
+  const labelVariantIndexes = useMemo(() => {
+    if (!labelingCaptcha?.images) return [];
+    const top3 = (labelingCaptcha.solver_top3 || []).filter((item) => Number.isInteger(item));
+    return Object.keys(labelingCaptcha.images)
+      .map((key) => parseInt(key, 10))
+      .filter((key) => Number.isInteger(key))
+      .sort((a, b) => {
+        const ra = top3.indexOf(a);
+        const rb = top3.indexOf(b);
+        if (ra >= 0 && rb >= 0) return ra - rb;
+        if (ra >= 0) return -1;
+        if (rb >= 0) return 1;
+        return a - b;
+      });
+  }, [labelingCaptcha]);
+
+  const solverResultByVariant = useMemo(() => {
+    const map = new Map();
+    for (const result of labelingCaptcha?.solver_results || []) {
+      if (Number.isInteger(result.variant)) {
+        map.set(result.variant, result);
+      }
+    }
+    return map;
+  }, [labelingCaptcha]);
+
+  const solverTop3 = useMemo(
+    () => new Set((labelingCaptcha?.solver_top3 || []).filter((item) => Number.isInteger(item))),
+    [labelingCaptcha],
+  );
+
+  const solverRankBadge = (rank) => {
+    if (!Number.isInteger(rank)) {
+      return <span className="text-muted">-</span>;
+    }
+    const cls = rank === 0 ? "text-success" : rank <= 2 ? "text-warning" : "text-danger";
+    return <span className={`fw-semibold ${cls}`}>{rank}</span>;
   };
 
   const solvedBadge = (correctAnswer, status) => {
@@ -216,6 +310,14 @@ export function CaptchasTab({ adminToken, keys, onError }) {
     return map;
   }, [captchaFiles]);
 
+  const captchaFileById = useMemo(() => {
+    const map = new Map();
+    for (const file of captchaFiles) {
+      map.set(file.captcha_id, file);
+    }
+    return map;
+  }, [captchaFiles]);
+
   const filteredCaptchaFiles = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return captchaFiles.filter((captcha) => {
@@ -231,6 +333,7 @@ export function CaptchasTab({ adminToken, keys, onError }) {
         captcha.tiles_hash,
         captcha.file_status,
         captcha.valid_index,
+        captcha.solver_valid_rank,
         captcha.file_path,
       ]
         .filter(Boolean)
@@ -239,6 +342,41 @@ export function CaptchasTab({ adminToken, keys, onError }) {
         .includes(normalizedSearch);
     });
   }, [answerFilter, captchaFiles, duplicatesOnly, fileHashCounts, preset, search]);
+
+  const fileMetrics = useMemo(() => {
+    const known = filteredCaptchaFiles.filter((captcha) => captcha.valid_index != null);
+    const ranked = known.filter((captcha) => Number.isInteger(captcha.solver_valid_rank));
+    const top1RankZero = ranked.filter((captcha) => captcha.solver_valid_rank === 0).length;
+    const rankSum = ranked.reduce((sum, captcha) => sum + captcha.solver_valid_rank, 0);
+    const ranks = ranked.map((captcha) => captcha.solver_valid_rank).sort((a, b) => a - b);
+    const median = ranks.length > 0 ? ranks[Math.floor(ranks.length / 2)] : null;
+    const percent = (value, total = ranked.length) => (
+      total > 0 ? `${Math.round((value / total) * 100)}%` : "-"
+    );
+    const buckets = [
+      { id: "0", label: "0", hint: "Сразу top1", count: ranked.filter((captcha) => captcha.solver_valid_rank === 0).length },
+      { id: "1", label: "1", hint: "Второе место", count: ranked.filter((captcha) => captcha.solver_valid_rank === 1).length },
+      { id: "2", label: "2", hint: "Третье место", count: ranked.filter((captcha) => captcha.solver_valid_rank === 2).length },
+      { id: "3-5", label: "3-5", hint: "Близко, но не top3", count: ranked.filter((captcha) => captcha.solver_valid_rank >= 3 && captcha.solver_valid_rank <= 5).length },
+      { id: "6-10", label: "6-10", hint: "Далеко", count: ranked.filter((captcha) => captcha.solver_valid_rank >= 6 && captcha.solver_valid_rank <= 10).length },
+      { id: "11+", label: "11+", hint: "Очень далеко", count: ranked.filter((captcha) => captcha.solver_valid_rank >= 11).length },
+    ];
+    return {
+      total: filteredCaptchaFiles.length,
+      answerKnown: known.length,
+      rankedCount: ranked.length,
+      unrankedKnown: known.length - ranked.length,
+      top1RankZero,
+      top1RankZeroPercent: ranked.length > 0 ? Math.round((top1RankZero / ranked.length) * 100) : 0,
+      avgSolverDistance: ranked.length > 0 ? (rankSum / ranked.length).toFixed(1) : "-",
+      medianSolverDistance: median ?? "-",
+      duplicatePuzzles: filteredCaptchaFiles.filter((captcha) => captcha.tiles_hash && fileHashCounts[captcha.tiles_hash] > 1).length,
+      buckets: buckets.map((bucket) => ({
+        ...bucket,
+        percent: percent(bucket.count),
+      })),
+    };
+  }, [filteredCaptchaFiles, fileHashCounts]);
 
   const failureSummary = useMemo(() => {
     const groups = {};
@@ -369,15 +507,80 @@ export function CaptchasTab({ adminToken, keys, onError }) {
         </div>
       </div>
 
-      <div className="d-flex flex-wrap gap-2 mb-3">
-        <span className="badge text-bg-secondary">Всего: {metrics.total}</span>
-        <span className="badge text-bg-success">Решено: {metrics.passed}</span>
-        <span className="badge text-bg-danger">Не прошли: {metrics.failed}</span>
-        <span className="badge text-bg-primary">С ответом: {metrics.answerKnown}</span>
-        <span className="badge text-bg-warning">Повторы: {metrics.duplicatePuzzles}</span>
-      </div>
-
-      {(failureSummary.length > 0 || userSummary.length > 0) && (
+      {subtab === "files" ? (
+        <div className="table-responsive mb-3">
+          <table className="table table-sm table-bordered align-middle mb-0">
+            <thead className="table-light">
+              <tr>
+                <th style={{ width: "120px" }}>{"Метрика"}</th>
+                <th className="text-center" style={{ width: "88px" }}>{"Значение"}</th>
+                <th>{"Деталь"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{"Всего"}</td>
+                <td className="text-center fw-semibold">{fileMetrics.total}</td>
+                <td className="text-muted small">{"Файлы капч по текущим фильтрам"}</td>
+              </tr>
+              <tr>
+                <td>{"С ответом"}</td>
+                <td className="text-center fw-semibold">{fileMetrics.answerKnown}</td>
+                <td className="text-muted small">{"Есть valid_index"}</td>
+              </tr>
+              <tr>
+                <td>{"С rank"}</td>
+                <td className="text-center fw-semibold">{fileMetrics.rankedCount}</td>
+                <td className="text-muted small">{"Из них без rank"}: {fileMetrics.unrankedKnown}</td>
+              </tr>
+              <tr>
+                <td>{"Потенциал"}</td>
+                <td className="text-center fw-semibold text-success">{fileMetrics.top1RankZeroPercent}%</td>
+                <td className="text-muted small">{"Правильный ответ на rank 0"}: {fileMetrics.top1RankZero}</td>
+              </tr>
+              <tr>
+                <td>{"Удаленность"}</td>
+                <td className="text-center fw-semibold">{fileMetrics.avgSolverDistance}</td>
+                <td className="text-muted small">{"Средняя; медиана"}: {fileMetrics.medianSolverDistance}</td>
+              </tr>
+              <tr>
+                <td>{"Повторы"}</td>
+                <td className="text-center fw-semibold">{fileMetrics.duplicatePuzzles}</td>
+                <td className="text-muted small">{"Пазлы с одинаковым tiles_hash"}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table className="table table-sm table-bordered align-middle mt-2 mb-0">
+            <thead className="table-light">
+              <tr>
+                <th style={{ width: "120px" }}>Rank</th>
+                <th className="text-center" style={{ width: "88px" }}>{"Капч"}</th>
+                <th className="text-center" style={{ width: "88px" }}>%</th>
+                <th>{"Смысл"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fileMetrics.buckets.map((bucket) => (
+                <tr key={bucket.id}>
+                  <td className="fw-semibold">{bucket.label}</td>
+                  <td className="text-center">{bucket.count}</td>
+                  <td className="text-center">{bucket.percent}</td>
+                  <td className="text-muted small">{bucket.hint}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="d-flex flex-wrap gap-2 mb-3">
+          <span className="badge text-bg-secondary">Всего: {metrics.total}</span>
+          <span className="badge text-bg-success">Решено: {metrics.passed}</span>
+          <span className="badge text-bg-danger">Не прошли: {metrics.failed}</span>
+          <span className="badge text-bg-primary">С ответом: {metrics.answerKnown}</span>
+          <span className="badge text-bg-warning">Повторы: {metrics.duplicatePuzzles}</span>
+        </div>
+      )}
+      {subtab === "operations" && (failureSummary.length > 0 || userSummary.length > 0) && (
         <div className="row g-3 mb-3">
           {failureSummary.length > 0 && (
             <div className="col-12 col-xl-7">
@@ -445,14 +648,16 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                   <th style={{ width: "50px" }}>ID</th>
                   <th>Captcha ID</th>
                   <th style={{ width: "110px" }}>Тип</th>
-                  <th style={{ width: "110px" }}>Файл</th>
-                  <th style={{ width: "90px" }}>Ответ</th>
+                  <th style={{ width: "110px" }}>{"Действия"}</th>
+                  <th style={{ width: "90px" }}>Rank</th>
                   <th style={{ width: "110px" }}>Вариант</th>
 
+                  <th style={{ width: "110px" }}>{"Источник"}</th>
                   <th style={{ width: "120px" }}>Tiles Hash</th>
                   <th style={{ width: "130px" }}>Usage Log IDs</th>
                   <th style={{ width: "110px" }}>Размер</th>
                   <th style={{ width: "90px" }}>Превью</th>
+                  <th style={{ width: "110px" }}>{"Статус"}</th>
                   <th style={{ width: "160px" }}>Дата файла</th>
                 </tr>
               </thead>
@@ -463,11 +668,15 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                     <td className="font-monospace small">{c.captcha_id}</td>
                     <td className="small">{c.captcha_type || "unknown"}</td>
                     <td>
-                      <span className={`badge ${c.file_status === "labeled" ? "bg-success" : "bg-secondary"}`}>
-                        {c.file_status === "labeled" ? "valid" : "raw"}
-                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => openLabelingPopup(c.captcha_id)}
+                      >
+                        {"Разметка"}
+                      </button>
                     </td>
-                    <td>{c.valid_index == null ? "—" : "Есть"}</td>
+                    <td>{solverRankBadge(c.solver_valid_rank)}</td>
                     <td>
                       {c.valid_index != null
                         ? c.valid_index
@@ -476,20 +685,35 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                           : "—"}
                     </td>
 
+                    <td>
+                      {c.manual_labeled ? (
+                        <span className="badge bg-warning text-dark">{"Ручная"}</span>
+                      ) : (
+                        <span className="badge bg-secondary">{"Исходная"}</span>
+                      )}
+                    </td>
                     <td className="font-monospace small">{c.tiles_hash || "—"}</td>
                     <td className="font-monospace small">{captchaToUsageLogs.get(c.captcha_id)?.join(", ") || "—"}</td>
                     <td>{c.file_size ? `${Math.round(c.file_size / 1024)} KB` : "—"}</td>
                     <td>
-                      {c.valid_index != null ? (
+                      {c.valid_index != null || c.solver_valid_rank == null ? (
                         <img
-                          src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}`}
-                          alt="variant"
+                          src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}${c.valid_index == null ? "&mode=solver_top1" : ""}`}
+                          alt={c.valid_index == null ? "solver top1" : "variant"}
                           style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
                           loading="lazy"
                           onError={(e) => { e.target.style.display = "none" }}
-                          onClick={() => setPreviewCaptchaId(c.captcha_id)}
+                          onClick={() => {
+                            setPreviewCaptchaId(c.captcha_id);
+                            setPreviewMode(c.valid_index == null ? "solver_top1" : null);
+                          }}
                         />
                       ) : "—"}
+                    </td>
+                    <td>
+                      <span className={`badge ${c.file_status === "labeled" ? "bg-success" : "bg-danger"}`}>
+                        {c.file_status === "labeled" ? "Решена" : "Не решена"}
+                      </span>
                     </td>
                     <td className="small">{formatDate(c.file_mtime)}</td>
                   </tr>
@@ -520,6 +744,9 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                 <th style={{ width: "100px" }}>Решена</th>
                 <th style={{ width: "120px" }}>Причина отказа</th>
                 <th style={{ width: "100px" }}>Tiles Hash</th>
+                <th style={{ width: "90px" }}>{"Разметка"}</th>
+                <th style={{ width: "70px" }}>Rank</th>
+                <th style={{ width: "80px" }}>{"Вариант"}</th>
                 <th style={{ width: "120px" }}>Пользователь</th>
                   <th style={{ width: "100px" }}>Usage Log</th>
                 <th style={{ width: "160px" }}>Дата</th>
@@ -527,7 +754,10 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                 </tr>
             </thead>
             <tbody>
-              {filteredCaptchas.map((c) => (
+              {filteredCaptchas.map((c) => {
+                const file = captchaFileById.get(c.captcha_id);
+                const variant = file?.valid_index ?? file?.no_valid_index ?? null;
+                return (
                 <tr key={c.id}>
                   <td>
                     <input
@@ -541,6 +771,15 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                   <td>{solvedBadge(c.correct_answer, c.status)}</td>
                   <td className="small text-danger">{c.fail_reason || "—"}</td>
                   <td className="font-monospace small">{c.tiles_hash || "—"}</td>
+                  <td className="small">
+                    {file
+                      ? file.manual_labeled
+                        ? <span className="text-warning fw-semibold">{"Ручная"}</span>
+                        : <span className="text-muted">{"Исх."}</span>
+                      : "-"}
+                  </td>
+                  <td>{file ? solverRankBadge(file.solver_valid_rank) : <span className="text-muted">-</span>}</td>
+                  <td className="fw-semibold">{variant != null ? variant : "-"}</td>
                   <td className="small">{c.key_label || "—"}</td>
                   <td>{c.usage_log_id}</td>
                   <td className="small">{formatDate(c.created_at)}</td>
@@ -552,12 +791,16 @@ export function CaptchasTab({ adminToken, keys, onError }) {
                         style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
                         loading="lazy"
                         onError={(e) => { e.target.style.display = "none" }}
-                        onClick={() => setPreviewCaptchaId(c.captcha_id)}
+                        onClick={() => {
+                          setPreviewCaptchaId(c.captcha_id);
+                          setPreviewMode(null);
+                        }}
                       />
                     ) : "—"}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -570,14 +813,129 @@ export function CaptchasTab({ adminToken, keys, onError }) {
             alignItems: "center", justifyContent: "center", zIndex: 1050,
             cursor: "pointer",
           }}
-          onClick={() => setPreviewCaptchaId(null)}
+          onClick={() => {
+            setPreviewCaptchaId(null);
+            setPreviewMode(null);
+          }}
         >
           <img
-            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail?admin_token=${adminToken}`}
+            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail?admin_token=${adminToken}${previewMode ? `&mode=${previewMode}` : ""}`}
             alt="variant large"
             style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+      {(labelingCaptcha || labelLoading) && (
+        <div
+          style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.7)", display: "flex",
+            alignItems: "center", justifyContent: "center", zIndex: 1060,
+            padding: 16,
+          }}
+          onClick={() => {
+            if (!labelSaving) setLabelingCaptcha(null);
+          }}
+        >
+          <div
+            className="bg-body text-body rounded shadow-lg"
+            style={{ width: "min(1800px, 98vw)", maxHeight: "96vh", overflow: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="d-flex align-items-center gap-2 border-bottom px-3 py-2">
+              <div className="fw-semibold">Разметка капчи</div>
+              {labelingCaptcha && (
+                <div className="font-monospace small text-muted">{labelingCaptcha.captcha_id}</div>
+              )}
+              <button
+                type="button"
+                className="btn-close ms-auto"
+                onClick={() => setLabelingCaptcha(null)}
+                disabled={labelSaving}
+                aria-label="Close"
+              />
+            </div>
+            <div className="p-3">
+              {labelLoading ? (
+                <div className="text-center text-muted py-4">Загрузка...</div>
+              ) : (
+                <>
+                  <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-2">
+                    {labelVariantIndexes.map((index) => (
+                      <div className="col" key={index}>
+                        <button
+                          type="button"
+                          className={`card w-100 text-start ${labelSelectedIndex === index ? "border-primary border-2" : ""}`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => setLabelSelectedIndex(index)}
+                        >
+                          <img
+                            src={`data:image/png;base64,${labelingCaptcha.images[String(index)]}`}
+                            alt={`Вариант ${index}`}
+                            style={{ width: "100%", objectFit: "contain", maxHeight: 160 }}
+                          />
+                          <div className="card-body py-2 px-3">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <span className="fw-semibold">{"Вариант"} {index}</span>
+                              {labelSelectedIndex === index && (
+                                <span className="badge bg-primary">{"Выбран"}</span>
+                              )}
+                            </div>
+                            <div className="d-flex flex-wrap gap-1">
+                              {labelingCaptcha.valid_index === index && (
+                                <span className="badge bg-success">{"Был выдан"}</span>
+                              )}
+                              {labelingCaptcha.no_valid_index === index && (
+                                <span className="badge bg-danger">{"Не выбран"}</span>
+                              )}
+                              {solverResultByVariant.get(index)?.rank === 1 && (
+                                <span className="badge bg-info text-dark">{"Прогноз"}</span>
+                              )}
+                              {solverTop3.has(index) && solverResultByVariant.get(index)?.rank !== 1 && (
+                                <span className="badge bg-info text-dark">Top 3</span>
+                              )}
+                              {solverResultByVariant.get(index) && (
+                                <span className="badge bg-light text-dark border">
+                                  #{solverResultByVariant.get(index).rank} score {solverResultByVariant.get(index).score}
+                                </span>
+                              )}
+                              {solverResultByVariant.get(index) && (
+                                <span className="badge bg-secondary">{"Расчеты"}</span>
+                              )}
+                            </div>
+                            {solverResultByVariant.get(index) && (
+                              <div className="small text-muted mt-1">
+                                d {solverResultByVariant.get(index).discontinuity} · ssim {solverResultByVariant.get(index).ssim} · coh {solverResultByVariant.get(index).coherence} · sobel {solverResultByVariant.get(index).sobel}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="d-flex justify-content-end gap-2 mt-3">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary"
+                      onClick={() => setLabelingCaptcha(null)}
+                      disabled={labelSaving}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={saveLabelingChoice}
+                      disabled={labelSaving || labelSelectedIndex == null}
+                    >
+                      {labelSaving ? "Сохранение..." : "Сохранить как верный"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

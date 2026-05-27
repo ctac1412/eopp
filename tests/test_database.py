@@ -171,6 +171,36 @@ class TestUsageLog:
         log_id = log_usage(key["key"], "res-conf", "capt-conf")
         assert confirm_usage(log_id) is True
 
+    def test_confirm_usage_indexes_captchas_from_stored_logs(self, monkeypatch):
+        import src.db.captchas as captchas_db
+        from src.db import confirm_usage, create_key, log_usage
+
+        captured = {}
+
+        def fake_create_captcha_records(usage_log_id, captcha_id, indexed_logs, overall_status):
+            captured["usage_log_id"] = usage_log_id
+            captured["captcha_id"] = captcha_id
+            captured["logs"] = indexed_logs
+            captured["overall_status"] = overall_status
+            return [1]
+
+        monkeypatch.setattr(captchas_db, "create_captcha_records", fake_create_captcha_records)
+
+        logs = [
+            "15:17:15.5 <log-version>v2</log-version>",
+            '15:17:22.4 [id=210] [4] event { "event": "stage_end" }',
+        ]
+        key = create_key(label="confirm_stored_logs")
+        log_id = log_usage(key["key"], "res-stored", "capt-stored")
+
+        assert confirm_usage(log_id, logs=logs) is True
+
+        assert captured["usage_log_id"] == log_id
+        assert captured["captcha_id"] == "unknown"
+        assert captured["logs"] == logs
+        assert captured["logs"] is not logs
+        assert captured["overall_status"] == "confirmed"
+
     def test_confirm_usage_with_price(self):
         """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ СЃ С†РµРЅРѕР№ РёР· С‚Р°СЂРёС„Р°."""
         from src.db import (

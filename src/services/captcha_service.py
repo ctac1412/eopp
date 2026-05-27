@@ -51,6 +51,48 @@ def load_captcha_file(captcha_id: str) -> dict | None:
     return captcha_file_service.load_captcha_payload(captcha_id)
 
 
+def read_label_captcha(captcha_id: str) -> dict | None:
+    source_path = captcha_file_service.captcha_file_path(captcha_id)
+    if not os.path.exists(source_path):
+        return None
+    try:
+        with open(source_path, encoding="utf-8") as f:
+            data = json.load(f)
+        if captcha_file_service.ensure_analysis_metadata(data):
+            with open(source_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        captcha_file_service.upsert_captcha_file(source_path)
+    except Exception:
+        return None
+
+    puzzle = data.get("puzzle", data)
+    tiles = puzzle.get("tiles", [])
+    variants = puzzle.get("variantsCapture", [])
+    if not tiles or not variants:
+        return None
+
+    valid_index = get_valid_variant_index(data)
+    generated = assemble_captchas(tiles, variants, valid_index)
+    return {
+        "captcha_id": captcha_id,
+        "filename": f"{captcha_id}.json",
+        "valid_index": valid_index,
+        "no_valid_index": data.get("no_valid_index")
+        if isinstance(data.get("no_valid_index"), int)
+        else None,
+        "manual_labeled": data.get("manual_labeled") is True,
+        "label_source": data.get("label_source")
+        if isinstance(data.get("label_source"), str)
+        else None,
+        "solver_top3": data.get("solver_top3") if isinstance(data.get("solver_top3"), list) else [],
+        "solver_results": data.get("solver_results")
+        if isinstance(data.get("solver_results"), list)
+        else [],
+        "variants_count": len(generated),
+        "images": {str(item["index"]): item["image"] for item in generated},
+    }
+
+
 def read_label_next_captcha() -> dict | None:
     all_dir = captcha_file_service.all_dir()
     if not os.path.isdir(all_dir):
@@ -73,25 +115,8 @@ def read_label_next_captcha() -> dict | None:
             break
     if not filename or data is None:
         return None
-    path = os.path.join(all_dir, filename)
-    try:
-        captcha_file_service.upsert_captcha_file(path)
-    except Exception:
-        pass
-    puzzle = data.get("puzzle", data)
-    tiles = puzzle.get("tiles", [])
-    variants = puzzle.get("variantsCapture", [])
-    if not tiles or not variants:
-        return None
-    valid_index = get_valid_variant_index(data)
-    generated = assemble_captchas(tiles, variants, valid_index)
     captcha_id = os.path.splitext(filename)[0]
-    return {
-        "captcha_id": captcha_id,
-        "filename": filename,
-        "variants_count": len(generated),
-        "images": {str(item["index"]): item["image"] for item in generated},
-    }
+    return read_label_captcha(captcha_id)
 
 
 def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
@@ -106,6 +131,8 @@ def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
         if variant_index < 0 or variant_index >= len(variants):
             return 422, {"error": "variant_index out of range"}
         data["valid_index"] = variant_index
+        data["manual_labeled"] = True
+        data["label_source"] = "manual"
         with open(source_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         captcha_file_service.upsert_captcha_file(source_path)

@@ -535,9 +535,11 @@ function getPipelineErrorKind(err: unknown): PipelineErrorKind {
     }
     return (
       error.body.includes("CaptchaNotValid") ||
+      error.body.includes("CaptchaIsNotValid") ||
       error.body.includes("CaptchaInvalid") ||
       error.body.includes("CaptchaValidation") ||
-      error.body.includes("IncorrectCaptcha")
+      error.body.includes("IncorrectCaptcha") ||
+      error.body.includes('"eoppStatus":40119')
     ) ? "captcha" : "unknown";
   }
   return "unknown";

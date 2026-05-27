@@ -162,6 +162,13 @@ def register_admin_routes(app):
             return JSONResponse(status_code=404, content={"error": "no unlabeled captchas"})
         return JSONResponse(content=result)
 
+    @app.get("/admin/captcha-label/{captcha_id}")
+    async def admin_captcha_label_by_id(captcha_id: str):
+        result = captcha_service.read_label_captcha(captcha_id)
+        if not result:
+            return JSONResponse(status_code=404, content={"error": "captcha not found"})
+        return JSONResponse(content=result)
+
     @app.post("/admin/captcha-label/save")
     async def admin_captcha_label_save(body: CaptchaLabelSaveBody):
         status, content = captcha_service.save_captcha_label(body.captcha_id, body.variant_index)
@@ -373,16 +380,25 @@ def register_admin_routes(app):
         return JSONResponse(content=captcha_file_service.list_captcha_files())
 
     @app.get("/admin/captcha-files/{captcha_id}/thumbnail")
-    async def admin_captcha_thumbnail(captcha_id: str):
+    async def admin_captcha_thumbnail(captcha_id: str, mode: str | None = None):
         from fastapi.responses import Response
-        from src.services.captcha_file_service import load_captcha_payload
+        from src.services import captcha_file_service
         from src.captcha_assembly import get_valid_variant_index
 
-        data = load_captcha_payload(captcha_id)
+        data = captcha_file_service.load_captcha_payload(captcha_id)
         if data is None:
             return Response(status_code=404, content="Not found")
 
         vi = get_valid_variant_index(data)
+        if mode == "solver_top1" and vi is None:
+            if captcha_file_service.ensure_analysis_metadata(data):
+                source_path = captcha_file_service.captcha_file_path(captcha_id)
+                with open(source_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                captcha_file_service.upsert_captcha_file(source_path)
+            top3 = data.get("solver_top3")
+            if isinstance(top3, list) and top3 and isinstance(top3[0], int):
+                vi = top3[0]
         if vi is None:
             return Response(status_code=404, content="No valid_index")
 
@@ -424,6 +440,13 @@ def register_admin_routes(app):
         from src.services import captcha_file_service
 
         result = captcha_file_service.backfill_valid_index_from_logs()
+        return JSONResponse(content=result)
+
+    @app.post("/admin/captcha-files/backfill-analysis-metadata")
+    async def admin_backfill_analysis_metadata():
+        from src.services import captcha_file_service
+
+        result = captcha_file_service.backfill_analysis_metadata()
         return JSONResponse(content=result)
 
     @app.post("/admin/captcha-files/backfill-dates")

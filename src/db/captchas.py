@@ -15,13 +15,16 @@ from src.db.connection import get_connection
 
 _V2_VERSION_RE = re.compile(r"<log-version>v2</log-version>")
 _V2_VALIDATE_EVENT_RE = re.compile(
-    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"success".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)'
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"success".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)',
+    re.DOTALL,
 )
 _V2_VALIDATE_ERROR_EVENT_RE = re.compile(
-    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)'
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"validating".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"validateCaptcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)".*?"variant_index"\s*:\s*(\d+)',
+    re.DOTALL,
 )
 _V2_SOLVING_ERROR_EVENT_RE = re.compile(
-    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"solving".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"solve-captcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)"'
+    r'"event"\s*:\s*"stage_end".*?"stage"\s*:\s*"solving".*?"status"\s*:\s*"error".*?"error"\s*:\s*"([^"]+)".*?"endpoint"\s*:\s*"solve-captcha".*?"captcha_id"\s*:\s*"([a-f0-9]+)"',
+    re.DOTALL,
 )
 
 
@@ -37,11 +40,56 @@ def _tiles_hash(tiles: list[dict]) -> str:
     return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
 
+def _parse_v2_event(line: str) -> dict | None:
+    marker_pos = line.find("event")
+    if marker_pos < 0:
+        return None
+    json_pos = line.find("{", marker_pos)
+    if json_pos < 0:
+        return None
+    try:
+        event = json.loads(line[json_pos:])
+    except json.JSONDecodeError:
+        return None
+    return event if isinstance(event, dict) else None
+
+
+def _event_matches(event: dict, stage: str, status: str, endpoint: str) -> bool:
+    return (
+        event.get("event") == "stage_end"
+        and event.get("stage") == stage
+        and event.get("status") == status
+        and event.get("endpoint") == endpoint
+    )
+
+
+def _event_int(event: dict, key: str) -> int | None:
+    value = event.get(key)
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
 def extract_passed_captchas_from_logs(logs: list[str] | None) -> list[tuple[str, int]]:
     if not logs:
         return []
     passed: list[tuple[str, int]] = []
     for line in logs:
+        if not isinstance(line, str):
+            continue
+        event = _parse_v2_event(line)
+        if event:
+            if not _event_matches(event, "validating", "success", "validateCaptcha"):
+                continue
+            captcha_id = event.get("captcha_id")
+            variant_index = _event_int(event, "variant_index")
+            if isinstance(captcha_id, str) and variant_index is not None:
+                passed.append((captcha_id, variant_index))
+            continue
         m = _V2_VALIDATE_EVENT_RE.search(line)
         if m:
             passed.append((m.group(1), int(m.group(2))))
@@ -53,6 +101,20 @@ def extract_invalid_captchas_from_logs(logs: list[str] | None) -> list[tuple[str
         return []
     invalid: list[tuple[str, int | None, str]] = []
     for line in logs:
+        if not isinstance(line, str):
+            continue
+        event = _parse_v2_event(line)
+        if event:
+            if not _event_matches(event, "validating", "error", "validateCaptcha"):
+                continue
+            captcha_id = event.get("captcha_id")
+            if not isinstance(captcha_id, str):
+                continue
+            error = str(event.get("error") or "").strip()
+            invalid.append(
+                (captcha_id, _event_int(event, "variant_index"), f"validation_error: {error}")
+            )
+            continue
         m = _V2_VALIDATE_ERROR_EVENT_RE.search(line)
         if m:
             invalid.append((m.group(2), int(m.group(3)), f"validation_error: {m.group(1).strip()}"))
@@ -64,6 +126,17 @@ def extract_unsolved_captchas_from_logs(logs: list[str] | None) -> list[tuple[st
         return []
     unsolved: list[tuple[str, str]] = []
     for line in logs:
+        if not isinstance(line, str):
+            continue
+        event = _parse_v2_event(line)
+        if event:
+            if not _event_matches(event, "solving", "error", "solve-captcha"):
+                continue
+            captcha_id = event.get("captcha_id")
+            if isinstance(captcha_id, str):
+                error = str(event.get("error") or "").strip()
+                unsolved.append((captcha_id, f"solve_error: {error}"))
+            continue
         m = _V2_SOLVING_ERROR_EVENT_RE.search(line)
         if m:
             unsolved.append((m.group(2), f"solve_error: {m.group(1).strip()}"))
@@ -118,6 +191,7 @@ def _set_no_valid_index_in_payload(captcha_id: str, no_valid_index: int) -> bool
 
 def _sync_captcha_files_label(conn, captcha_id: str, valid_index: int, timestamp_iso: str) -> None:
     try:
+        _ensure_captcha_file_row(captcha_id)
         payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
         file_mtime = None
         if os.path.exists(payload_path):
@@ -140,6 +214,7 @@ def _sync_captcha_files_label(conn, captcha_id: str, valid_index: int, timestamp
 
 def _sync_captcha_files_no_valid(conn, captcha_id: str, no_valid_index: int, timestamp_iso: str) -> None:
     try:
+        _ensure_captcha_file_row(captcha_id)
         payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
         file_mtime = None
         if os.path.exists(payload_path):
@@ -162,6 +237,7 @@ def _sync_captcha_files_no_valid(conn, captcha_id: str, no_valid_index: int, tim
 
 def _sync_captcha_files_unsolved(conn, captcha_id: str, timestamp_iso: str) -> None:
     try:
+        _ensure_captcha_file_row(captcha_id)
         payload_path = os.path.join(CAPTCHA_ALL_DIR, f"{captcha_id}.json")
         file_mtime = None
         if os.path.exists(payload_path):
@@ -182,6 +258,18 @@ def _sync_captcha_files_unsolved(conn, captcha_id: str, timestamp_iso: str) -> N
         pass
 
 
+def _ensure_captcha_file_row(captcha_id: str) -> None:
+    """Ensure captcha_files has a row for captcha_id before status/index updates."""
+    try:
+        from src.services import captcha_file_service
+
+        path = captcha_file_service.captcha_file_path(captcha_id)
+        if os.path.exists(path):
+            captcha_file_service.upsert_captcha_file(path)
+    except Exception:
+        pass
+
+
 def extract_variant_from_logs(logs: list[str] | None, captcha_id: str) -> int | None:
     variants = extract_variants_from_logs(logs)
     if not captcha_id:
@@ -194,6 +282,17 @@ def extract_variants_from_logs(logs: list[str] | None) -> dict[str, int]:
         return {}
     variants: dict[str, int] = {}
     for line in logs:
+        if not isinstance(line, str):
+            continue
+        event = _parse_v2_event(line)
+        if event:
+            if not _event_matches(event, "validating", "success", "validateCaptcha"):
+                continue
+            captcha_id = event.get("captcha_id")
+            variant_index = _event_int(event, "variant_index")
+            if isinstance(captcha_id, str) and variant_index is not None:
+                variants[captcha_id] = variant_index
+            continue
         m = _V2_VALIDATE_EVENT_RE.search(line)
         if m:
             variants[m.group(1)] = int(m.group(2))

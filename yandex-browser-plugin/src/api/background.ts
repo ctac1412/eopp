@@ -100,6 +100,8 @@ export async function openServerUrl(): Promise<void> {
 function sanitizeConfig(config: InjectorConfig): Record<string, unknown> {
   const c = { ...config };
   delete (c as any).apiKey;
+  const host = window.location.hostname.toLowerCase();
+  (c as any).captcha_source = host === "eopp.epd-portal.ru" ? "eopp" : "local";
   return c;
 }
 

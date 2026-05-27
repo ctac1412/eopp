@@ -4,6 +4,8 @@ import { resolve } from "path";
 import fs from "fs";
 
 const isDevBuild = process.env.DEV_BUILD === "true";
+const packageJsonPath = resolve(__dirname, "package.json");
+const packageVersion = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).version;
 
 // Load .env.server from project root
 const rootDir = resolve(__dirname, "../prod");
@@ -74,7 +76,7 @@ const copyStaticFiles = () => ({
     const manifest = {
       manifest_version: 3,
       name: "Помощник",
-      version: "1.4.4",
+      version: packageVersion,
       description: "Быстрые заметки прямо на странице",
       icons: {
         "48": "icon.png",

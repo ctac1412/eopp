@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.entities.base import Base
@@ -39,5 +39,8 @@ class CaptchaFile(Base):
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     file_mtime: Mapped[str | None] = mapped_column(Text, nullable=True)
     no_valid_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    manual_labeled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    label_source: Mapped[str | None] = mapped_column(String, nullable=True)
+    solver_valid_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_seen_at: Mapped[str | None] = mapped_column(Text, nullable=True)

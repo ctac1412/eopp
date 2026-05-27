@@ -72,6 +72,32 @@ def _calc_is_test(reservation_id: str, config_json: dict | None) -> int:
     return 0
 
 
+def _get_captcha_source(config_json: dict | None) -> str:
+    if not config_json:
+        return "eopp"
+    source = str(config_json.get("captcha_source") or "").strip().lower()
+    if source in {"local", "eopp"}:
+        return source
+    return "eopp"
+
+
+def _should_index_captchas(config_json: dict | None) -> bool:
+    """Index captchas only for EOPP source; never index local source."""
+    source = _get_captcha_source(config_json)
+    return source != "local"
+
+
+def _read_usage_logs(conn, usage_log_id: int) -> list[str] | None:
+    row = conn.execute("SELECT logs FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
+    if not row or not row["logs"]:
+        return None
+    try:
+        logs = json.loads(row["logs"])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return logs if isinstance(logs, list) else None
+
+
 def _is_peak_create_time(confirmed_at_iso: str) -> bool:
     try:
         confirmed_at = datetime.fromisoformat(confirmed_at_iso)
@@ -206,10 +232,11 @@ def confirm_usage(
     )
     conn.commit()
 
-    if logs and not _is_fake_reservation(row["reservation_id"]):
+    stored_logs = _read_usage_logs(conn, usage_log_id)
+    if stored_logs and _should_index_captchas(config_json):
         from src.db.captchas import create_captcha_records
 
-        create_captcha_records(usage_log_id, "unknown", logs, "confirmed")
+        create_captcha_records(usage_log_id, "unknown", stored_logs, "confirmed")
 
     conn.close()
     return True
@@ -234,10 +261,12 @@ def fail_usage(
     )
     conn.commit()
 
-    if logs and not _is_fake_reservation(row["reservation_id"]):
+    config_json = json.loads(row["config_json"]) if row["config_json"] else None
+    stored_logs = _read_usage_logs(conn, usage_log_id)
+    if stored_logs and _should_index_captchas(config_json):
         from src.db.captchas import create_captcha_records
 
-        create_captcha_records(usage_log_id, "unknown", logs, "failed")
+        create_captcha_records(usage_log_id, "unknown", stored_logs, "failed")
 
     conn.close()
     return True

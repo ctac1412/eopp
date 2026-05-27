@@ -25,7 +25,6 @@ async function reportFailure(reason: string, stage: string): Promise<boolean> {
       stage,
       state.config.slotDate,
       logs,
-      state.captchaId ?? undefined,
     );
     return true;
   } finally {

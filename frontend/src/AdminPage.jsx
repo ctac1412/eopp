@@ -48,6 +48,7 @@ function AdminPage() {
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "reports"
   );
+  const [captchaSubtab, setCaptchaSubtab] = useState("operations");
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1145,6 +1146,8 @@ function AdminPage() {
           adminToken={adminToken}
           keys={keys}
           onError={(msg) => setError(msg)}
+          activeSubtab={captchaSubtab}
+          onSubtabChange={setCaptchaSubtab}
         />
       )}
 

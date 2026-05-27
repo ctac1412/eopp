@@ -10,18 +10,6 @@ Write-Header "EOPP Production Deploy — $script:SshTarget — $script:ImageFull
 Check-SSH
 Check-Docker
 
-# --- Backup ---
-Log-Info "Backing up remote data..."
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$backupSubdir = Join-Path $script:LocalBackupDir $timestamp
-New-Item -ItemType Directory -Force -Path $backupSubdir | Out-Null
-$null = Remote-Exec "mkdir -p $script:RemoteDir/data $script:RemoteDir/plugins"
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no -r "${script:SshTarget}:${script:RemoteDir}/data/." "$backupSubdir/" 2>$null
-if ($LASTEXITCODE -ne 0) { Log-Warn "No data/ to download" }
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no -r "${script:SshTarget}:${script:RemoteDir}/plugins/." "$backupSubdir/" 2>$null
-if ($LASTEXITCODE -ne 0) { Log-Warn "No plugins/ to download" }
-Log-Success "Backup: $backupSubdir"
-
 # --- Build ---
 Log-Info "Building frontend..."
 Push-Location (Join-Path $PSScriptRoot "..\..")
@@ -90,7 +78,7 @@ for ($attempt = 1; $attempt -le $script:HealthCheckRetries; $attempt++) {
 }
 
 if ($healthy) {
-    Write-Header "Deploy completed successfully! Backup: $backupSubdir"
+    Write-Header "Deploy completed successfully!"
 } else {
     Log-Error "Health check failed, rolling back..."
     $prevImage = Remote-Exec "docker images --format '{{.Repository}}:{{.Tag}}' | grep eopp | grep -v 'latest' | head -1" 2>$null
@@ -98,9 +86,9 @@ if ($healthy) {
         $null = Remote-Exec "cd $script:RemoteDir && docker compose down"
         $null = Remote-Exec "sed -i 's|image:.*|image: $prevImage|' $script:RemoteDir/docker-compose.yml"
         $null = Remote-Exec "cd $script:RemoteDir && docker compose up -d"
-        Log-Error "Rolled back to $prevImage. Backup: $backupSubdir"
+        Log-Error "Rolled back to $prevImage"
     } else {
-        Log-Error "No previous image for rollback. Backup: $backupSubdir"
+        Log-Error "No previous image for rollback"
     }
     exit 1
 }
