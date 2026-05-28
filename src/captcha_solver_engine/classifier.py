@@ -1,9 +1,10 @@
 """Captcha classification layer.
 
 Classification pipeline (chain, first match wins):
-1. FigureCaptchaClassifier — detects figure-based captchas (shapes + colors)
-2. DigitCaptchaClassifier  — detects digit-based captchas (HOG+SVM)
-3. DefaultCaptchaClassifier — fallback for puzzle captchas
+1. TypeBasedClassifier      — detects icon-click captchas (type=1)
+2. FigureCaptchaClassifier  — detects figure-based captchas (shapes + colors)
+3. DigitCaptchaClassifier   — detects digit-based captchas (HOG+SVM)
+4. DefaultCaptchaClassifier — fallback for puzzle captchas
 """
 
 from __future__ import annotations
@@ -18,6 +19,33 @@ class CaptchaClassifier:
 
     def classify(self, context: CaptchaContext) -> CaptchaClassification:
         raise NotImplementedError
+
+
+class TypeBasedClassifier(CaptchaClassifier):
+    """Detect icon-click captcha by data structure (imageBase64 present, no tiles)."""
+
+    name = "type_based"
+
+    def classify(self, context: CaptchaContext) -> CaptchaClassification:
+        puzzle = context.data.get("puzzle", context.data)
+        if not isinstance(puzzle, dict):
+            return CaptchaClassification(kind="default", confidence=1.0)
+
+        has_image = bool(puzzle.get("imageBase64"))
+        has_tiles = bool(puzzle.get("tiles"))
+
+        if has_image and not has_tiles:
+            return CaptchaClassification(
+                kind="icon_click",
+                confidence=1.0,
+                details={
+                    "classifier": self.name,
+                    "has_image": True,
+                    "has_icons": bool(puzzle.get("iconsBase64")),
+                },
+            )
+
+        return CaptchaClassification(kind="default", confidence=1.0)
 
 
 class DefaultCaptchaClassifier(CaptchaClassifier):
@@ -43,6 +71,7 @@ class ChainClassifier(CaptchaClassifier):
 
     def __init__(self, classifiers: list[CaptchaClassifier] | None = None) -> None:
         self._classifiers = classifiers or [
+            TypeBasedClassifier(),
             FIGURES_CLASSIFIER,
             DIGIT_CLASSIFIER,
             DefaultCaptchaClassifier(),

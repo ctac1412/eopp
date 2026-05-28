@@ -27,8 +27,9 @@ class CaptchaClassification:
 @dataclass(frozen=True)
 class SolverOutput:
     best_variant: int | None
-    tile_order: list[str]
+    tile_order: list  # list[str] for puzzle, list[dict] for icon-click
     results: list[dict[str, Any]]
     classification: CaptchaClassification
     solver_name: str
     confident: bool = False  # gap-based: True = solver is sure about Top1
+    captcha_type: int | None = None  # 0/None = puzzle, 1 = icon-click

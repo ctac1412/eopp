@@ -6,7 +6,7 @@ def list_files() -> list[CaptchaFile]:
     with get_session() as session:
         return (
             session.query(CaptchaFile)
-            .order_by(CaptchaFile.file_mtime.desc(), CaptchaFile.id.desc())
+            .order_by(CaptchaFile.usage_log_id.desc().nullslast(), CaptchaFile.id.desc())
             .all()
         )
 
@@ -24,7 +24,7 @@ def upsert_file(meta: dict) -> int:
             session.add(record)
         else:
             for key, value in meta.items():
-                if key == "created_at":
+                if key in ("created_at", "file_mtime"):
                     continue
                 setattr(record, key, value)
         session.commit()

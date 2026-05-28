@@ -21,9 +21,28 @@ export const TZ_OFFSET = 3;
 export const CAPTCHA_SERVER =
   (typeof import.meta.env !== "undefined" && import.meta.env.VITE_SERVER_URL) ||
   "http://localhost:8765";
+export const LOCAL_CAPTCHA_SERVER = "http://127.0.0.1:8766";
 export const SERVER_HOST =
   (typeof import.meta.env !== "undefined" && import.meta.env.VITE_SERVER_HOST) ||
   "localhost";
+
+const LS_LOCAL_SERVER_KEY = "_use_local_server";
+
+export function isLocalServerEnabled(): boolean {
+  try {
+    return localStorage.getItem(LS_LOCAL_SERVER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setLocalServerEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(LS_LOCAL_SERVER_KEY, enabled ? "1" : "0");
+  } catch {
+    /* quota exceeded */
+  }
+}
 export const EOPP_API_BASE = "https://eopp.epd-portal.ru/reservations-api/v1";
 
 export function shouldInject(pageUrl: string): PageInfo | null {

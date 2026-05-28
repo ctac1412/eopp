@@ -3,6 +3,7 @@
  */
 import React from "react";
 import CaptchaCard from "./CaptchaCard";
+import IconClickCaptcha from "./IconClickCaptcha";
 import CountdownTimer from "./CountdownTimer";
 import useCaptchaStore from "../store/useCaptchaStore";
 
@@ -28,6 +29,10 @@ function CaptchaGrid() {
         )}
       </div>
     );
+  }
+
+  if (active.captchaType === 1) {
+    return <IconClickCaptcha entry={active} />;
   }
 
   const imgKeys = Object.keys(active.images);

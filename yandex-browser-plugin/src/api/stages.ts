@@ -31,11 +31,24 @@ type EoppCaptchaResponseV2 = {
     tiles?: CaptchaResponse["puzzle"]["tiles"];
     variantsCapture?: string[][];
     type?: number;
+    imageBase64?: string;
+    iconsBase64?: string;
   };
 };
 
 function normalizeCaptchaResponse(raw: unknown): CaptchaResponse {
   const response = raw as LegacyCaptchaResponse & EoppCaptchaResponseV2;
+
+  if (response.front?.type === 1 && response.front?.imageBase64) {
+    return {
+      token: response.token || "",
+      puzzle: {
+        imageBase64: response.front.imageBase64,
+        iconsBase64: response.front.iconsBase64,
+      },
+      type: 1,
+    };
+  }
 
   if (response.front?.tiles && response.front?.variantsCapture) {
     return {

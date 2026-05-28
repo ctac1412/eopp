@@ -4,7 +4,12 @@ import type {
   SharedSlotsClaimResponse,
   SlotsResponse,
 } from "@/types";
-import { CAPTCHA_SERVER, getDefaultScheduleTime } from "@/constants";
+import {
+  CAPTCHA_SERVER,
+  LOCAL_CAPTCHA_SERVER,
+  getDefaultScheduleTime,
+  isLocalServerEnabled,
+} from "@/constants";
 
 export { getDefaultScheduleTime };
 
@@ -15,7 +20,7 @@ export function getServerUrl(): string {
   ) {
     return `http://127.0.0.1:${window.location.port || "8765"}`;
   }
-  return CAPTCHA_SERVER;
+  return isLocalServerEnabled() ? LOCAL_CAPTCHA_SERVER : CAPTCHA_SERVER;
 }
 
 export function sendMessageToBackground(

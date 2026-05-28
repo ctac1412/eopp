@@ -380,6 +380,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       if (classificationFilter === "digit" && captcha.classification !== "digit") return false;
       if (classificationFilter === "figures" && captcha.classification !== "figures") return false;
       if (classificationFilter === "puzzle" && captcha.classification !== "puzzle") return false;
+      if (classificationFilter === "icon_click" && captcha.classification !== "icon_click") return false;
       if (classificationFilter === "unset" && captcha.classification != null) return false;
       if (duplicatesOnly && !(captcha.tiles_hash && hashCounts[captcha.tiles_hash] > 1)) return false;
       if (!normalizedSearch) return true;
@@ -621,6 +622,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             <option value="digit">Цифры</option>
             <option value="figures">Фигуры</option>
             <option value="puzzle">Пазл</option>
+            <option value="icon_click">Иконки</option>
             <option value="unset">Без класса</option>
           </select>
         </div>
@@ -814,6 +816,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                         <option value="digit">Цифры</option>
                         <option value="figures">Фигуры</option>
                         <option value="puzzle">Пазл</option>
+                        <option value="icon_click">Иконки</option>
                       </select>
                     </td>
                     <td>

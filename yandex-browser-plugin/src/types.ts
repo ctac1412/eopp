@@ -151,19 +151,22 @@ export interface CaptchaTile {
 export interface CaptchaResponse {
   token: string;
   puzzle: {
-    tiles: CaptchaTile[];
-    variantsCapture: string[][];
+    tiles?: CaptchaTile[];
+    variantsCapture?: string[][];
+    imageBase64?: string;
+    iconsBase64?: string;
   };
   type?: number;
 }
 
 export interface SolvedAnswer {
   variantIndex: number;
-  variantTiles: string[];
+  variantTiles: string[] | { x: number; y: number }[];
   usage_log_id?: number;
   captcha_id?: string;
   solved_by_super?: boolean;
   solver_label?: string;
+  captchaType?: number;
 }
 
 export interface SolveCaptchaTimeout {

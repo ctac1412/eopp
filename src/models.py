@@ -17,9 +17,10 @@ from pydantic import BaseModel
 
 class SolveRequest(BaseModel):
     captcha_id: str
-    variantIndex: int
+    variantIndex: int = 0
     api_key: str | None = None
     usage_log_id: int | None = None
+    coordinates: list[dict] | None = None  # [{x: int, y: int}, ...] for icon-click
 
 
 class SolveCaptchaBody(BaseModel):

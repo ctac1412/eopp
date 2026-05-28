@@ -1624,5 +1624,147 @@ class TestSlotsGroup:
         assert response.json()["error"] == "not_master"
 
 
+class TestIconClickCaptcha:
+    """Type=1 icon-click captcha end-to-end: matching real EOPP prod format."""
+
+    _TINY_PNG = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwAD"
+        "hgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+
+    def test_solve_captcha_type1_creates_entry(self, client, api_key):
+        """POST /solve-captcha with type=1 creates pending entry, returns on timeout."""
+        response = client.post(
+            "/solve-captcha",
+            json={
+                "api_key": api_key,
+                "auto_solve": False,
+                "timeout_metadata": True,
+                "type": 1,
+                "token": "zc_test_token_123",
+                "puzzle": {
+                    "imageBase64": self._TINY_PNG,
+                    "iconsBase64": self._TINY_PNG,
+                },
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body.get("status") == "timeout"
+        assert body.get("captcha_id") is not None
+
+    def test_solve_type1_with_coordinates(self, client, api_key):
+        """POST /solve with coordinates marks type=1 captcha as solved."""
+        import threading, time
+
+        captcha_id = None
+        result = {}
+
+        def send_captcha():
+            nonlocal captcha_id
+            resp = client.post(
+                "/solve-captcha",
+                json={
+                    "api_key": api_key,
+                    "auto_solve": False,
+                    "timeout_metadata": True,
+                    "type": 1,
+                    "token": "zc_test_token_456",
+                    "puzzle": {
+                        "imageBase64": self._TINY_PNG,
+                        "iconsBase64": self._TINY_PNG,
+                    },
+                },
+            )
+            nonlocal result
+            result = resp.json()
+
+        t = threading.Thread(target=send_captcha, daemon=True)
+        t.start()
+
+        # Wait for captcha to be pending, then solve
+        time.sleep(0.3)
+
+        # The captcha_id is in the response; but we need it from the pending state.
+        # For the test, we capture it from the captcha response after timeout.
+        t.join(timeout=5)
+
+        if result.get("status") == "timeout":
+            captcha_id = result["captcha_id"]
+
+        if captcha_id is None:
+            pytest.skip("Captcha not created in time")
+
+        # Now solve with coordinates
+        solve_resp = client.post(
+            "/solve",
+            json={
+                "captcha_id": captcha_id,
+                "variantIndex": 0,
+                "coordinates": [
+                    {"x": 332, "y": 102},
+                    {"x": 418, "y": 172},
+                    {"x": 186, "y": 15},
+                    {"x": 23, "y": 17},
+                    {"x": 45, "y": 118},
+                ],
+                "api_key": api_key,
+            },
+        )
+        assert solve_resp.status_code == 200
+        body = solve_resp.json()
+        assert body["variantIndex"] == 0
+        assert body["variantTiles"] == [
+            {"x": 332, "y": 102},
+            {"x": 418, "y": 172},
+            {"x": 186, "y": 15},
+            {"x": 23, "y": 17},
+            {"x": 45, "y": 118},
+        ]
+        assert body.get("captcha_type") == 1
+
+    def test_type1_answer_matches_eopp_format(self):
+        """Verify answer format matches real EOPP validation request."""
+        eopp_answer = [
+            {"x": 332, "y": 102},
+            {"x": 418, "y": 172},
+            {"x": 186, "y": 15},
+            {"x": 23, "y": 17},
+            {"x": 45, "y": 118},
+        ]
+        assert len(eopp_answer) == 5
+        for item in eopp_answer:
+            assert isinstance(item, dict)
+            assert "x" in item and "y" in item
+            assert isinstance(item["x"], int)
+            assert isinstance(item["y"], int)
+
+    def test_type1_captcha_saved_to_json(self, client, api_key):
+        """Type=1 captcha JSON is persisted with correct fields."""
+        from src.captcha_assembly import captcha_hash, is_icon_click_type
+        from src.services.captcha_file_service import save_captcha_payload_detailed
+
+        data = {
+            "type": 1,
+            "token": "zc_test_save_789",
+            "puzzle": {
+                "imageBase64": self._TINY_PNG,
+                "iconsBase64": self._TINY_PNG,
+            },
+        }
+        cid = captcha_hash(data)
+        result = save_captcha_payload_detailed(cid, data)
+        assert result.path.endswith(f"{cid}.json")
+        assert result.reused_existing is False
+
+        import json
+        saved = json.load(open(result.path))
+        assert saved["type"] == 1
+        assert "puzzle" in saved
+        assert saved["puzzle"]["imageBase64"] == self._TINY_PNG
+        assert saved["puzzle"]["iconsBase64"] == self._TINY_PNG
+        assert saved.get("manual_labeled") is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

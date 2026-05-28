@@ -31,6 +31,7 @@ from src.captcha_assembly import (
     get_solver_answer_from_metadata,
     get_top3_from_solver,
     get_valid_variant_index,
+    is_icon_click_type,
 )
 from src.constants import (
     CAPTCHA_TIMEOUT,
@@ -149,82 +150,119 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         )
 
         if auto_solve:
-            step_start = time.perf_counter()
-            solver_answer = get_solver_answer_from_metadata(data)
-            if solver_answer is None:
-                _log_solve_step(rid, captcha_id, "auto_solve_metadata_miss", step_start)
-                step_start = time.perf_counter()
-                best_variant, tile_order, results = await asyncio.to_thread(solve_captcha, data)
-                _log_solve_step(
-                    rid,
-                    captcha_id,
-                    "auto_solve_calculate",
-                    step_start,
-                    best_variant=best_variant,
-                )
+            if is_icon_click_type(data):
+                _log_solve_step(rid, captcha_id, "auto_solve_skip_type1", step_start)
             else:
-                best_variant, tile_order, results = solver_answer
+                step_start = time.perf_counter()
+                solver_answer = get_solver_answer_from_metadata(data)
+                if solver_answer is None:
+                    _log_solve_step(rid, captcha_id, "auto_solve_metadata_miss", step_start)
+                    step_start = time.perf_counter()
+                    best_variant, tile_order, results = await asyncio.to_thread(solve_captcha, data)
+                    _log_solve_step(
+                        rid,
+                        captcha_id,
+                        "auto_solve_calculate",
+                        step_start,
+                        best_variant=best_variant,
+                    )
+                else:
+                    best_variant, tile_order, results = solver_answer
+                    _log_solve_step(
+                        rid,
+                        captcha_id,
+                        "auto_solve_metadata_hit",
+                        step_start,
+                        best_variant=best_variant,
+                    )
                 _log_solve_step(
                     rid,
                     captcha_id,
-                    "auto_solve_metadata_hit",
-                    step_start,
-                    best_variant=best_variant,
+                    "finish",
+                    request_start,
+                    mode="auto",
+                    status="success",
                 )
-            _log_solve_step(
-                rid,
-                captcha_id,
-                "finish",
-                request_start,
-                mode="auto",
-                status="success",
-            )
-            return JSONResponse(
-                content={
-                    "variantIndex": best_variant,
-                    "variantTiles": tile_order,
-                    "usage_log_id": usage_log_id,
-                    "captcha_id": captcha_id,
-                }
-            )
+                return JSONResponse(
+                    content={
+                        "variantIndex": best_variant,
+                        "variantTiles": tile_order,
+                        "usage_log_id": usage_log_id,
+                        "captcha_id": captcha_id,
+                    }
+                )
 
         event = threading.Event()
 
         step_start = time.perf_counter()
         top3 = get_top3_from_solver(data)
-        # Run solver to get real confidence
         confident = False
-        try:
-            from src.captcha_solver_engine.common import build_captcha_context
-            from src.captcha_solver_engine.classifier import classify_captcha
-            from src.captcha_solver_engine.solvers import solver_for_classification
-            ctx = build_captcha_context(data)
-            clf_result = classify_captcha(ctx)
-            solver = solver_for_classification(clf_result)
-            solver_out = solver.solve(ctx, clf_result, edge_trim=3, verbose=False)
-            confident = solver_out.confident
-        except Exception:
-            pass
+
+        if not is_icon_click_type(data):
+            solver_out = None
+            try:
+                from src.captcha_solver_engine.common import build_captcha_context
+                from src.captcha_solver_engine.classifier import classify_captcha
+                from src.captcha_solver_engine.solvers import solver_for_classification
+                ctx = build_captcha_context(data)
+                clf_result = classify_captcha(ctx)
+                solver = solver_for_classification(clf_result)
+                solver_out = solver.solve(ctx, clf_result, edge_trim=3, verbose=False)
+                confident = solver_out.confident
+            except Exception:
+                pass
         _log_solve_step(rid, captcha_id, "top3", step_start, top3=",".join(top3), confident=confident)
         step_start = time.perf_counter()
-        generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
-        _log_solve_step(
-            rid,
-            captcha_id,
-            "assemble_captchas",
-            step_start,
-            generated=len(generated),
-        )
 
-        entry = {
-            "captcha_id": captcha_id,
-            "variants": variants,
-            "images": {str(g["index"]): g["image"] for g in generated},
-            "event": event,
-            "result": None,
-            "usage_log_id": usage_log_id,
-            "api_key_id": api_key_id,
-        }
+        if is_icon_click_type(data):
+            from src.captcha_solver_engine.images import assemble_icon_click_preview
+            puzzle_data = data.get("puzzle", data)
+            main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
+            icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
+
+            try:
+                generated = await asyncio.to_thread(
+                    assemble_icon_click_preview, main_b64, icons_b64
+                )
+            except Exception as exc:
+                _log_solve_step(rid, captcha_id, "assemble_icon_click_failed", step_start,
+                                error=str(exc), level=logging.WARNING)
+                generated = []
+
+            _log_solve_step(
+                rid, captcha_id, "assemble_icon_click", step_start, generated=len(generated),
+            )
+
+            entry = {
+                "captcha_id": captcha_id,
+                "captcha_type": 1,
+                "variants": [],
+                "images": {str(g["index"]): g["image"] for g in generated},
+                "icons_image": generated[0].get("icons", "") if generated else "",
+                "event": event,
+                "result": None,
+                "usage_log_id": usage_log_id,
+                "api_key_id": api_key_id,
+            }
+        else:
+            generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
+            _log_solve_step(
+                rid,
+                captcha_id,
+                "assemble_captchas",
+                step_start,
+                generated=len(generated),
+            )
+
+            entry = {
+                "captcha_id": captcha_id,
+                "variants": variants,
+                "images": {str(g["index"]): g["image"] for g in generated},
+                "event": event,
+                "result": None,
+                "usage_log_id": usage_log_id,
+                "api_key_id": api_key_id,
+            }
 
         step_start = time.perf_counter()
         with lock:
@@ -237,21 +275,22 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         _log_solve_step(rid, captcha_id, "owner_lookup", step_start, owner=owner_label)
 
         step_start = time.perf_counter()
-        push_sse(
-            {
-                "type": "new_captcha",
-                "captcha_id": captcha_id,
-                "images": entry["images"],
-                "count": len(entry["images"]),
-                "top3": top3,
-                "confident": confident,
-                "created_at": time.time(),
-                "timeout": captcha_timeout,
-                "owner_label": owner_label,
-                "owner_api_key_id": api_key_id,
-            },
-            api_key_id=api_key_id,
-        )
+        sse_event = {
+            "type": "new_captcha",
+            "captcha_id": captcha_id,
+            "images": entry["images"],
+            "count": len(entry["images"]),
+            "top3": top3,
+            "confident": confident,
+            "created_at": time.time(),
+            "timeout": captcha_timeout,
+            "owner_label": owner_label,
+            "owner_api_key_id": api_key_id,
+        }
+        if is_icon_click_type(data):
+            sse_event["captcha_type"] = 1
+            sse_event["icons_image"] = entry.get("icons_image", "")
+        push_sse(sse_event, api_key_id=api_key_id)
         _log_solve_step(rid, captcha_id, "push_sse_new_captcha", step_start)
 
         step_start = time.perf_counter()
@@ -453,7 +492,17 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             )
 
         step_start = time.perf_counter()
-        tile_ids = entry["variants"][variant_index]
+        is_type1 = entry.get("captcha_type") == 1
+
+        if is_type1 and body.coordinates:
+            tile_ids = body.coordinates
+            variant_index = 0
+        elif is_type1:
+            tile_ids = []
+            variant_index = 0
+        else:
+            tile_ids = entry["variants"][variant_index]
+
         rid = next_result_id()
         result = {
             "variantIndex": variant_index,
@@ -461,6 +510,8 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
             "solved_by_super": solved_by_super,
             "solver_label": solver_label,
         }
+        if is_type1:
+            result["captcha_type"] = 1
 
         result["resultFile"] = f"captcha_{captcha_id}_{rid:04d}.json"
         entry["result"] = result

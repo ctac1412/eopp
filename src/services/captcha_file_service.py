@@ -12,7 +12,7 @@ from io import StringIO
 from pathlib import Path
 
 import src.constants as constants
-from src.captcha_assembly import get_valid_variant_index
+from src.captcha_assembly import get_valid_variant_index, is_icon_click_type
 from src.entities.utils import entities_to_list
 from src.repositories import captcha_file_repo
 from captcha_solver import solve_captcha
@@ -55,12 +55,29 @@ def tiles_hash(tiles: list[dict]) -> str | None:
     return hashlib.sha256(json.dumps(tile_ids, sort_keys=True).encode()).hexdigest()[:16]
 
 
+def icon_click_hash(data: dict) -> str | None:
+    puzzle = data.get("puzzle", data)
+    image_b64 = puzzle.get("imageBase64", "") if isinstance(puzzle, dict) else ""
+    icons_b64 = puzzle.get("iconsBase64", "") if isinstance(puzzle, dict) else ""
+    if not image_b64 and not icons_b64:
+        return None
+    hash_input = json.dumps({
+        "image_prefix": image_b64[:300] if image_b64 else "",
+        "icons_prefix": icons_b64[:300] if icons_b64 else "",
+    }, sort_keys=True)
+    return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
+
 def calculate_solver_results(data: dict) -> list[dict]:
+    if is_icon_click_type(data):
+        return []  # not yet solvable automatically
+
     try:
         with redirect_stdout(StringIO()):
             _, _, results = solve_captcha(data)
     except Exception:
         return []
+
     return [
         {
             "variant": int(result["variant"]),
@@ -142,6 +159,8 @@ def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> d
     manual_labeled = data.get("manual_labeled") is True
     label_source = data.get("label_source")
     captcha_type = data.get("type") or puzzle.get("type") or "unknown"
+    tile_hash = icon_click_hash(data) if is_icon_click_type(data) else tiles_hash(puzzle.get("tiles", []))
+    variant_count = 1 if is_icon_click_type(data) else (len(variants) if isinstance(variants, list) else 0)
     stat = os.stat(path)
     now = datetime.now(UTC).isoformat()
     return {
@@ -149,13 +168,13 @@ def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> d
         "file_path": path,
         "file_status": "labeled" if valid_index is not None else "unlabeled",
         "captcha_type": str(captcha_type),
-        "tiles_hash": tiles_hash(puzzle.get("tiles", [])),
+        "tiles_hash": tile_hash,
         "valid_index": valid_index,
         "no_valid_index": no_valid if isinstance(no_valid, int) else None,
         "manual_labeled": manual_labeled,
         "label_source": str(label_source) if isinstance(label_source, str) else None,
         "solver_valid_rank": solver_valid_rank(data, valid_index),
-        "variants_count": len(variants) if isinstance(variants, list) else 0,
+        "variants_count": variant_count,
         "file_size": stat.st_size,
         "file_mtime": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
         "created_at": now,

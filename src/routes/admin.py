@@ -411,12 +411,41 @@ def register_admin_routes(app):
     async def admin_captcha_thumbnail(captcha_id: str, mode: str | None = None):
         from fastapi.responses import Response
         from src.services import captcha_file_service
-        from src.captcha_assembly import get_valid_variant_index
+        from src.captcha_assembly import get_valid_variant_index, is_icon_click_type
 
         data = captcha_file_service.load_captcha_payload(captcha_id)
         if data is None:
             return Response(status_code=404, content="Not found")
 
+        # --- icon-click captcha (type=1) ---
+        if is_icon_click_type(data):
+            from src.captcha_solver_engine.images import _clean_b64, _decode_b64_image
+            puzzle_data = data.get("puzzle", data)
+            main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
+            icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
+
+            main_img = _decode_b64_image(main_b64)
+            icons_img = _decode_b64_image(icons_b64)
+
+            if main_img is None:
+                return Response(status_code=500, content="Cannot decode main image")
+
+            # Resize icons strip to match main image width
+            if icons_img:
+                main_w = main_img.width
+                icons_h = int(icons_img.height * main_w / icons_img.width) if icons_img.width > 0 else icons_img.height
+                icons_img = icons_img.resize((main_w, icons_h), Image.LANCZOS)
+                canvas = Image.new("RGBA", (main_w, main_img.height + icons_h), (255, 255, 255, 255))
+                canvas.paste(main_img, (0, 0))
+                canvas.paste(icons_img, (0, main_img.height))
+            else:
+                canvas = main_img
+
+            buf = io.BytesIO()
+            canvas.save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
+
+        # --- original puzzle captcha ---
         vi = get_valid_variant_index(data)
         if mode == "solver_top1" and vi is None:
             if captcha_file_service.ensure_analysis_metadata(data):

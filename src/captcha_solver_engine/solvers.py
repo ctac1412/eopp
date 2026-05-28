@@ -5,6 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from .icon_click_solver import solve_icon_click
 from .metrics import (
     calculate_content_coherence,
     calculate_seam_discontinuity,
@@ -377,11 +378,60 @@ class FigureCaptchaSolver(BaseCaptchaSolver):
         )
 
 
+class IconClickSolver(BaseCaptchaSolver):
+    """Solver for icon-click captchas (type=1).
+
+    Strategy:
+    1. Extract individual icons from the iconsBase64 strip
+    2. Template-match each icon on the main image
+    3. Return center coordinates in left-to-right icon order
+    """
+
+    name = "icon_click"
+
+    def solve(
+        self,
+        context: CaptchaContext,
+        classification: CaptchaClassification,
+        edge_trim: int,
+        verbose: bool = True,
+    ) -> SolverOutput:
+        main_b64 = context.data.get("imageBase64") or context.puzzle.get("imageBase64", "")
+        icons_b64 = context.data.get("iconsBase64") or context.puzzle.get("iconsBase64", "")
+
+        if not main_b64 or not icons_b64:
+            if verbose:
+                print(f"[{self.name}] Missing imageBase64 or iconsBase64 — cannot solve")
+            return SolverOutput(
+                best_variant=None,
+                tile_order=[],
+                results=[],
+                classification=classification,
+                solver_name=self.name,
+                confident=False,
+                captcha_type=1,
+            )
+
+        _, coordinates, results = solve_icon_click(main_b64, icons_b64, verbose=verbose)
+
+        confident = len(coordinates) >= 3
+        return SolverOutput(
+            best_variant=0,
+            tile_order=coordinates,
+            results=results,
+            classification=classification,
+            solver_name=self.name,
+            confident=confident,
+            captcha_type=1,
+        )
+
+
 DEFAULT_SOLVER = SeamMetricsSolver()
 SOLVERS_BY_CLASSIFICATION = {
     "default": DEFAULT_SOLVER,
     "digit": DigitCaptchaSolver(),
     "figures": FigureCaptchaSolver(),
+    "icon_click": IconClickSolver(),
 }
 
 

@@ -10,6 +10,7 @@ from .common import (
 )
 from .digit_classifier import is_digit_captcha
 from .figures_classifier import is_figure_captcha
+from .icon_click_solver import solve_icon_click
 from .images import assemble_captchas
 from .ranking import assign_ranks, sort_results, top_variants
 from .solvers import solve_prepared_captcha

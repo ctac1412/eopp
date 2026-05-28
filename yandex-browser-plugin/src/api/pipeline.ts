@@ -417,7 +417,12 @@ async function runCaptchaPipeline(
   const solvedBySuper = !!solvedAnswer.solved_by_super;
   const solverLabel = solvedAnswer.solver_label || "unknown";
   const solverSource = solvedBySuper ? "super-kiosk" : "local";
-  const tilesStr = solvedAnswer.variantTiles.join(",");
+  const tilesStr = typeof solvedAnswer.variantTiles[0] === "object"
+    ? solvedAnswer.variantTiles.map((t: unknown) => {
+        const c = t as { x: number; y: number };
+        return `${c.x},${c.y}`;
+      }).join("; ")
+    : solvedAnswer.variantTiles.join(",");
   log(
     "Server answer: captcha=" + (solvedAnswer.captcha_id || "?") +
       " variant=" + solvedAnswer.variantIndex +

@@ -43,5 +43,6 @@ class CaptchaFile(Base):
     label_source: Mapped[str | None] = mapped_column(String, nullable=True)
     solver_valid_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     classification: Mapped[str | None] = mapped_column(String, nullable=True)
+    usage_log_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_seen_at: Mapped[str | None] = mapped_column(Text, nullable=True)

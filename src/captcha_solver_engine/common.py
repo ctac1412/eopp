@@ -105,7 +105,18 @@ def prepare_clean_tiles(tiles: list[dict[str, Any]]) -> dict[str, np.ndarray]:
 
 def build_captcha_context(data: dict[str, Any]) -> CaptchaContext:
     """Build a prepared context shared by classifiers and solvers."""
+    captcha_type = data.get("type")
     puzzle = data.get("puzzle", data)
+
+    if captcha_type == 1 or (isinstance(puzzle, dict) and puzzle.get("type") == 1):
+        return CaptchaContext(
+            data=data,
+            puzzle=puzzle if isinstance(puzzle, dict) else {},
+            tiles=[],
+            variants=[],
+            images_dict={},
+        )
+
     tiles = puzzle.get("tiles", [])
     variants = puzzle.get("variantsCapture", [])
     images_dict = prepare_clean_tiles(tiles)

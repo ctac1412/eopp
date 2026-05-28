@@ -4,8 +4,26 @@ import hashlib
 import json
 
 from captcha_solver import solve_captcha
-from src.captcha_solver_engine.images import assemble_captchas
+from src.captcha_solver_engine.icon_click_solver import solve_icon_click
+from src.captcha_solver_engine.images import assemble_captchas, assemble_icon_click_preview
 from src.captcha_solver_engine.ranking import top_variants
+
+
+def is_icon_click_type(data: dict) -> bool:
+    """Detect icon-click captcha by data structure, NOT by EOPP type field.
+
+    Icon-click: puzzle has imageBase64 + iconsBase64, no tiles
+    Puzzle:     puzzle has tiles + variantsCapture
+    """
+    puzzle = data.get("puzzle", {})
+    if not isinstance(puzzle, dict):
+        return False
+
+    has_image = bool(puzzle.get("imageBase64"))
+    has_tiles = bool(puzzle.get("tiles"))
+
+    # Image data present + no tiles = icon-click
+    return has_image and not has_tiles
 
 
 def get_by_path(obj: dict | None, *keys, default=None):
@@ -20,6 +38,15 @@ def get_by_path(obj: dict | None, *keys, default=None):
 
 
 def captcha_hash(data):
+    if is_icon_click_type(data):
+        puzzle = data.get("puzzle", data)
+        hash_input = json.dumps({
+            "imageBase64": puzzle.get("imageBase64", "")[:500] if isinstance(puzzle, dict) else "",
+            "iconsBase64": puzzle.get("iconsBase64", "")[:500] if isinstance(puzzle, dict) else "",
+            "token": data.get("token", "")[:100],
+        }, sort_keys=True)
+        return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+
     puzzle = data.get("puzzle", data)
     tiles = puzzle.get("tiles", [])
     variants = puzzle.get("variantsCapture", [])
@@ -28,6 +55,10 @@ def captcha_hash(data):
 
 
 def get_valid_variant_index(data: dict) -> int | None:
+    if is_icon_click_type(data):
+        vi = data.get("valid_index")
+        return vi if isinstance(vi, int) else None
+
     puzzle = data.get("puzzle", data)
     variants = puzzle.get("variantsCapture", [])
     valid_index = data.get("valid_index")
@@ -54,7 +85,19 @@ def get_solver_results_from_metadata(data: dict) -> list[dict] | None:
     )
 
 
-def get_solver_answer_from_metadata(data: dict) -> tuple[int, list[str], list[dict]] | None:
+def get_solver_answer_from_metadata(data: dict) -> tuple[int, list, list[dict]] | None:
+    if is_icon_click_type(data):
+        puzzle = data.get("puzzle", data)
+        main_b64 = puzzle.get("imageBase64", "") if isinstance(puzzle, dict) else ""
+        icons_b64 = puzzle.get("iconsBase64", "") if isinstance(puzzle, dict) else ""
+        if not main_b64 or not icons_b64:
+            return None
+        try:
+            variant, coords, results = solve_icon_click(main_b64, icons_b64, verbose=False)
+            return variant, coords, results
+        except Exception:
+            return None
+
     puzzle = data.get("puzzle", data)
     variants = puzzle.get("variantsCapture", [])
     results = get_solver_results_from_metadata(data)
@@ -70,6 +113,9 @@ def get_solver_answer_from_metadata(data: dict) -> tuple[int, list[str], list[di
 
 
 def get_top3_from_solver(data):
+    if is_icon_click_type(data):
+        return ["0"]
+
     top3 = data.get("solver_top3")
     if isinstance(top3, list) and all(isinstance(item, int) for item in top3):
         return [str(item) for item in top3[:3]]

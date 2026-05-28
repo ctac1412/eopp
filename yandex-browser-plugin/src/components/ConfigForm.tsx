@@ -6,6 +6,9 @@ import {
   FACILITIES,
   getDefaultSlotDate,
   createDefaultConfig,
+  isLocalServerEnabled,
+  setLocalServerEnabled,
+  LOCAL_CAPTCHA_SERVER,
 } from "@/constants";
 import TimeOrderPanel from "./TimeOrderPanel";
 
@@ -307,6 +310,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const [mockConfig, setMockConfig] = useState<Record<string, MockMode[]>>({});
   const [mockLoading, setMockLoading] = useState(false);
   const [mockSending, setMockSending] = useState(false);
+  const [useLocalServer, setUseLocalServer] = useState(isLocalServerEnabled());
 
   const isLocalhost =
     window.location.hostname === "localhost" ||
@@ -606,6 +610,22 @@ const ConfigForm = React.memo(function ConfigForm() {
               </div>
             </>
           )}
+          <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
+            <label className="qn-form-label qn-checkbox-label" style={{ fontWeight: "500" }}>
+              <input
+                type="checkbox"
+                checked={useLocalServer}
+                onChange={(e) => {
+                  setUseLocalServer(e.target.checked);
+                  setLocalServerEnabled(e.target.checked);
+                }}
+              />
+              Локальный сервер капчи ({LOCAL_CAPTCHA_SERVER})
+            </label>
+            <div className="qn-help-text">
+              Включите, чтобы капчи решались на локальном dev-сервере вместо продового.
+            </div>
+          </div>
         </div>
       </div>
 

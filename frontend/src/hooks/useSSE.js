@@ -93,6 +93,8 @@ function useSSE(enabled = true) {
             ownerLabel: msg.owner_label || null,
             ownerApiKeyId: msg.owner_api_key_id || null,
             confident: msg.confident || false,
+            captchaType: msg.captcha_type || 0,
+            iconsImage: msg.icons_image || "",
           });
           if (wasEmpty) {
             playNewCaptchaSound();

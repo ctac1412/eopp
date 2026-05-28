@@ -53,7 +53,7 @@ interface InjectorState {
   usageLogId: number | null;
   captchaId: string | null;
   solvedVariantIndex: number | null;
-  solvedVariantTiles: string[] | null;
+  solvedVariantTiles: string[] | { x: number; y: number }[] | null;
   captchaValidated: boolean | null;
   isFullscreen: boolean;
   authKey: string;
@@ -88,7 +88,7 @@ interface InjectorState {
   setUsageLogId: (id: number | null) => void;
   setCaptchaId: (id: string | null) => void;
   setSolvedVariantIndex: (idx: number | null) => void;
-  setSolvedVariantTiles: (tiles: string[] | null) => void;
+  setSolvedVariantTiles: (tiles: string[] | { x: number; y: number }[] | null) => void;
   setCaptchaValidated: (val: boolean | null) => void;
   toggleFullscreen: () => void;
   reset: () => void;

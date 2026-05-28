@@ -4,8 +4,8 @@ function adminHeaders(token) {
   return { "Content-Type": "application/json", "X-Admin-Token": token };
 }
 
-const CLASS_LABELS = { digit: "Цифры", puzzle: "Пазл", default: "Пазл", figures: "Фигуры" };
-const CLASS_BADGES = { digit: "bg-warning text-dark", puzzle: "bg-secondary", default: "bg-secondary", figures: "bg-info text-dark" };
+const CLASS_LABELS = { digit: "Цифры", puzzle: "Пазл", default: "Пазл", figures: "Фигуры", icon_click: "Иконки" };
+const CLASS_BADGES = { digit: "bg-warning text-dark", puzzle: "bg-secondary", default: "bg-secondary", figures: "bg-info text-dark", icon_click: "bg-purple text-white" };
 
 export function AITab({ adminToken }) {
   const [models, setModels] = useState([]);

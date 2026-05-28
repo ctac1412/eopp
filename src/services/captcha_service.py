@@ -3,7 +3,7 @@ import os
 import threading
 import time
 
-from src.captcha_assembly import assemble_captchas, get_valid_variant_index
+from src.captcha_assembly import assemble_captchas, get_valid_variant_index, is_icon_click_type
 from src.services import captcha_file_service
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
@@ -93,6 +93,7 @@ def read_label_captcha(captcha_id: str) -> dict | None:
 
 
 def read_label_next_captcha() -> dict | None:
+    from src.captcha_assembly import is_icon_click_type
     all_dir = captcha_file_service.all_dir()
     if not os.path.isdir(all_dir):
         return None
@@ -107,6 +108,8 @@ def read_label_next_captcha() -> dict | None:
             with open(path, encoding="utf-8") as f:
                 candidate_data = json.load(f)
         except Exception:
+            continue
+        if is_icon_click_type(candidate_data):
             continue
         if get_valid_variant_index(candidate_data) is None:
             filename = candidate
@@ -151,13 +154,37 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
             data = load_captcha_file(cid)
             if not data:
                 continue
-            puzzle = data.get("puzzle", data)
-            tiles = puzzle.get("tiles", [])
-            variants = puzzle.get("variantsCapture", [])
-            valid_index = get_valid_variant_index(data)
-            generated = assemble_captchas(tiles, variants, valid_index)
-            push_sse(
-                {
+
+            if is_icon_click_type(data):
+                from src.captcha_solver_engine.images import assemble_icon_click_preview
+                puzzle_data = data.get("puzzle", data)
+                main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
+                icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
+                try:
+                    gen = assemble_icon_click_preview(main_b64, icons_b64)
+                except Exception:
+                    gen = []
+                sse = {
+                    "type": "new_captcha",
+                    "captcha_id": cid,
+                    "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
+                    "count": len(gen),
+                    "top3": [],
+                    "confident": False,
+                    "created_at": time.time(),
+                    "timeout": 30,
+                    "owner_label": "replay",
+                    "owner_api_key_id": -1,
+                    "captcha_type": 1,
+                    "icons_image": gen[0].get("icons", "") if gen else "",
+                }
+            else:
+                puzzle = data.get("puzzle", data)
+                tiles = puzzle.get("tiles", [])
+                variants = puzzle.get("variantsCapture", [])
+                valid_index = get_valid_variant_index(data)
+                generated = assemble_captchas(tiles, variants, valid_index)
+                sse = {
                     "type": "new_captcha",
                     "captcha_id": cid,
                     "images": {str(g["index"]): g["image"] for g in generated},
@@ -168,7 +195,7 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
                     "owner_label": "replay",
                     "owner_api_key_id": -1,
                 }
-            )
+            push_sse(sse)
             time.sleep(1)
 
     t = threading.Thread(target=send_captchas, daemon=True)
