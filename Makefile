@@ -14,6 +14,9 @@ run-prod-stop:
 
 run-prod-restart: run-prod-stop run-prod-start
 
+docker-build:
+	docker compose build eopp-prod
+
 # === Frontend ===
 
 install-frontend:
