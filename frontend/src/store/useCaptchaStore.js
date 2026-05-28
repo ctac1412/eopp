@@ -99,19 +99,19 @@ const useCaptchaStore = create((set) => ({
           solved: false,
           solvedBySuper: false,
           solverLabel: null,
+          confident: false,
           createdAt: captcha.created_at * 1000,
           timeout: captcha.timeout || 10,
         },
       ],
     })),
 
-  markSolved: (captchaId, solvedBySuper = false, solverLabel = null) =>
+  markSolved: (captchaId, solvedBySuper = false, solverLabel = null, confident = false) =>
     set((state) => ({
-      selectedCard: null,
       queue: state.queue.map((q) =>
         q.id === captchaId
-          ? { ...q, solved: true, solvedBySuper, solverLabel }
-          : q,
+          ? { ...q, solved: true, solvedBySuper, solverLabel, confident }
+          : q
       ),
     })),
 

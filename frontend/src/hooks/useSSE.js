@@ -101,7 +101,7 @@ function useSSE(enabled = true) {
         }
 
         if (msg.type === "captcha_solved") {
-          markSolved(msg.captcha_id, msg.solved_by_super || false, msg.solver_label || null);
+          markSolved(msg.captcha_id, msg.solved_by_super || false, msg.solver_label || null, msg.confident || false);
           sounded.delete(msg.captcha_id);
           if (msg.solved_by_super) {
             addLog(`Капча ${msg.captcha_id} — решена из Супер Киоска (${msg.solver_label || "?"})`, "success");

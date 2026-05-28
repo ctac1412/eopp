@@ -497,6 +497,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 "solver_label": solver_label,
                 "owner_label": owner_label,
                 "owner_api_key_id": owner_id,
+                "confident": False,  # manual solve = not auto-confident
             },
             api_key_id=owner_id,
         )

@@ -64,7 +64,7 @@ function CaptchaCard({ entry, index }) {
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
           <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>
-            {entry.solvedBySuper ? `Супер: ${entry.solverLabel || "?"}` : "Решено"}
+            {entry.solvedBySuper ? `Супер: ${entry.solverLabel || "?"}` : entry.confident ? "Авто ✓" : "Решено"}
           </span>
         </div>
       )}
@@ -72,7 +72,14 @@ function CaptchaCard({ entry, index }) {
         className="captcha-card__img"
         src={"data:image/png;base64," + entry.images[index]}
         alt={`Вариант ${index}`}
-        style={entry.solved ? { opacity: 0.5 } : {}}
+        style={{
+          ...(entry.solved ? { opacity: 0.5 } : {}),
+          ...(entry.solved && entry.confident ? {
+            border: "3px solid #28a745",
+            borderRadius: "6px",
+            boxShadow: "0 0 12px rgba(40,167,69,0.5)",
+          } : {}),
+        }}
       />
       <div className="text-center py-2" style={{
         fontSize: "0.75rem",
