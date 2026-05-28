@@ -22,6 +22,8 @@ import time
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from src.models import SolveCaptchaBody, SolveRequest
+
 from captcha_solver import solve_captcha
 from src.captcha_assembly import (
     assemble_captchas,
@@ -37,8 +39,19 @@ from src.db import (
     get_key_by_id,
     get_key_record,
 )
-from src.models import SolveCaptchaBody, SolveRequest
+
 from src.services import captcha_file_service
+
+
+def _is_confident(results: list[dict]) -> bool:
+    """Check if solver is confident based on gap between best and second-best scores."""
+    if len(results) < 2:
+        return False
+    scores = sorted([r.get("score", 0) for r in results], reverse=True)
+    best, second = scores[0], scores[1]
+    if abs(best) < 0.001:
+        return False
+    return abs(best - second) / abs(best) > 0.15
 from src.services import captcha_service
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
 from src.test_runner import next_result_id
@@ -184,6 +197,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                     "variantTiles": tile_order,
                     "usage_log_id": usage_log_id,
                     "captcha_id": captcha_id,
+                    "confident": _is_confident(results),
                 }
             )
 

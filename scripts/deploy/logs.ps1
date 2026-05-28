@@ -6,4 +6,4 @@ $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Require-SSHHost
 
 Log-Info "Streaming logs from $script:SshTarget..."
-& $script:SshExe -p $script:SshPort -o StrictHostKeyChecking=no -t $script:SshTarget "cd $script:RemoteDir && docker compose logs -f --tail=100"
+& $script:SshExe -p $script:SshPort -o StrictHostKeyChecking=no -t $script:SshTarget "cd $script:RemoteDir && docker compose logs -f --tail=1000"

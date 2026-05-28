@@ -56,13 +56,6 @@ function CaptchaCard({ entry, index }) {
       data-index={index}
       onClick={entry.solved ? undefined : handleClick}
     >
-      {rank >= 0 && !entry.solved && (
-        <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
-          <span className={`rank-badge rank-badge--${rank + 1}`}>
-            TOP {rank + 1}
-          </span>
-        </div>
-      )}
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
           <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>

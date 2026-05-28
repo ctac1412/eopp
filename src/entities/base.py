@@ -29,7 +29,14 @@ def set_db_path(path: str) -> None:
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_engine(f"sqlite:///{_get_db_path()}", future=True, echo=False)
+        from sqlalchemy.pool import StaticPool
+        _engine = create_engine(
+            f"sqlite:///{_get_db_path()}",
+            future=True,
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
     return _engine
 
 

@@ -31,3 +31,4 @@ class SolverOutput:
     results: list[dict[str, Any]]
     classification: CaptchaClassification
     solver_name: str
+    confident: bool = False  # gap-based: True = solver is sure about Top1

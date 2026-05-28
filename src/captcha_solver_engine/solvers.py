@@ -105,6 +105,18 @@ class SeamMetricsSolver(BaseCaptchaSolver):
                 best_variant = i
 
         sorted_results = sort_results(results, reverse=True)  # ML: higher=better
+
+        # Confidence: gap between best and second-best
+        confident = False
+        if len(sorted_results) >= 2:
+            best = sorted_results[0]["score"]
+            second = sorted_results[1]["score"]
+            if ml_scorer is not None:
+                confident = (best - second) > 0.15
+            else:
+                if abs(best) > 0.001:
+                    confident = abs(best - second) / abs(best) > 0.15
+
         tile_order = context.variants[best_variant] if best_variant is not None else []
         return SolverOutput(
             best_variant=best_variant,
@@ -112,6 +124,7 @@ class SeamMetricsSolver(BaseCaptchaSolver):
             results=sorted_results,
             classification=classification,
             solver_name=self.name,
+            confident=confident,
         )
 
 
@@ -190,7 +203,15 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
         if len(known) < 2:
             if verbose:
                 print(f"[{self.name}] Too few digits — using seam metrics fallback")
-            return SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+            fallback = SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+            return SolverOutput(
+                best_variant=fallback.best_variant,
+                tile_order=fallback.tile_order,
+                results=fallback.results,
+                classification=classification,
+                solver_name=self.name,
+                confident=False,  # never confident on fallback
+            )
 
         # Deduce missing digits and find best arrangement
         found_set = set(known.values())
@@ -221,12 +242,14 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
         }]
 
         tile_order = variants[best_variant] if best_variant is not None else []
+        confident = best_count >= 7  # 7+ of 9 tiles matched
         return SolverOutput(
             best_variant=best_variant,
             tile_order=tile_order,
             results=results,
             classification=classification,
             solver_name=self.name,
+            confident=confident,
         )
 
 
@@ -327,7 +350,14 @@ class FigureCaptchaSolver(BaseCaptchaSolver):
                 best_score = score
                 best_variant = vi
 
-        sorted_results = sort_results(results)
+        sorted_results = sort_results(results, reverse=True)
+        # Relative gap: gap / best_score
+        confident = False
+        if len(sorted_results) >= 2:
+            best = sorted_results[0]["score"]
+            second = sorted_results[1]["score"]
+            if best > 0.001:
+                confident = (best - second) / best > 0.3
         tile_order = context.variants[best_variant] if best_variant is not None else []
         return SolverOutput(
             best_variant=best_variant,
@@ -335,6 +365,7 @@ class FigureCaptchaSolver(BaseCaptchaSolver):
             results=sorted_results,
             classification=classification,
             solver_name=self.name,
+            confident=confident,
         )
 
 
