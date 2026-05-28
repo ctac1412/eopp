@@ -63,13 +63,6 @@ function CaptchaCard({ entry, index }) {
           : "0 0 6px rgba(40,167,69,0.3)",
       } : undefined}
     >
-      {rank === 0 && !entry.solved && (
-        <div className="position-absolute" style={{ top: "4px", right: "4px", zIndex: 2 }}>
-          <span className="badge bg-success" style={{ fontSize: "0.6rem" }}>
-            {entry.confident ? "100% ✓" : "100%"}
-          </span>
-        </div>
-      )}
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
           <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>
@@ -87,10 +80,26 @@ function CaptchaCard({ entry, index }) {
         fontSize: "0.75rem",
         color: "#484f58",
         borderTop: "1px solid var(--border)",
-        background: "var(--surface-raised)",
+        background: rank === 0 && !entry.solved
+          ? "linear-gradient(135deg, rgba(40,167,69,0.15), rgba(40,167,69,0.05))"
+          : "var(--surface-raised)",
         fontFamily: "var(--bs-font-monospace)",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
       }}>
         #{index}
+        {rank === 0 && entry.confident && !entry.solved && (
+          <span style={{
+            background: "linear-gradient(135deg, #28a745, #1e7e34)",
+            color: "#fff",
+            fontSize: "0.7rem",
+            fontWeight: "bold",
+            padding: "3px 10px",
+            borderRadius: "10px",
+            animation: "pulse 2s infinite",
+          }}>
+            AUTO 100%
+          </span>
+        )}
       </div>
     </div>
   );

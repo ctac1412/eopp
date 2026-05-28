@@ -41,6 +41,32 @@ from src.db import (
 )
 
 from src.services import captcha_file_service, captcha_service
+from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
+from src.test_runner import next_result_id
+
+logger = logging.getLogger("eopp.captcha")
+
+
+def _ms_since(start: float) -> float:
+    return (time.perf_counter() - start) * 1000
+
+
+def _log_solve_step(
+    rid: str,
+    captcha_id: str | None,
+    step: str,
+    start: float,
+    level: int = logging.INFO,
+    **fields,
+) -> None:
+    parts = [
+        f"rid={rid}",
+        f"captcha={captcha_id or '-'}",
+        f"step={step}",
+        f"duration_ms={_ms_since(start):.1f}",
+    ]
+    parts.extend(f"{key}={value}" for key, value in fields.items() if value is not None)
+    logger.log(level, "solve_captcha %s", " ".join(parts))
 
 
 def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):

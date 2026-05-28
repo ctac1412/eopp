@@ -92,6 +92,7 @@ function useSSE(enabled = true) {
             timeout: msg.timeout || 10,
             ownerLabel: msg.owner_label || null,
             ownerApiKeyId: msg.owner_api_key_id || null,
+            confident: msg.confident || false,
           });
           if (wasEmpty) {
             playNewCaptchaSound();

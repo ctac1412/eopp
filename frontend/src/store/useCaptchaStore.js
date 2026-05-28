@@ -99,7 +99,6 @@ const useCaptchaStore = create((set) => ({
           solved: false,
           solvedBySuper: false,
           solverLabel: null,
-          confident: false,
           createdAt: captcha.created_at * 1000,
           timeout: captcha.timeout || 10,
         },
