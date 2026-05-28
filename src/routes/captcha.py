@@ -191,24 +191,12 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 mode="auto",
                 status="success",
             )
-            confident = _is_confident(results)
-            # Push SSE so frontend can show confidence
-            push_sse({
-                "type": "captcha_solved",
-                "captcha_id": captcha_id,
-                "solved_by_super": False,
-                "solver_label": "auto",
-                "owner_label": owner_label if 'owner_label' in dir() else None,
-                "owner_api_key_id": api_key_id,
-                "confident": confident,
-            }, api_key_id=api_key_id)
             return JSONResponse(
                 content={
                     "variantIndex": best_variant,
                     "variantTiles": tile_order,
                     "usage_log_id": usage_log_id,
                     "captcha_id": captcha_id,
-                    "confident": confident,
                 }
             )
 
@@ -216,6 +204,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         step_start = time.perf_counter()
         top3 = get_top3_from_solver(data)
+        confident = _is_confident(data.get("solver_results", []))
         _log_solve_step(rid, captcha_id, "top3", step_start, top3=",".join(top3))
         step_start = time.perf_counter()
         generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
@@ -255,6 +244,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 "images": entry["images"],
                 "count": len(entry["images"]),
                 "top3": top3,
+                "confident": confident,
                 "created_at": time.time(),
                 "timeout": captcha_timeout,
                 "owner_label": owner_label,

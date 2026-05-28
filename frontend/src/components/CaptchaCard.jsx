@@ -56,14 +56,18 @@ function CaptchaCard({ entry, index }) {
       data-index={index}
       onClick={entry.solved ? undefined : handleClick}
       style={rank === 0 && !entry.solved ? {
-        border: "3px solid #28a745",
+        border: entry.confident ? "4px solid #28a745" : "3px solid #28a745",
         borderRadius: "8px",
-        boxShadow: "0 0 10px rgba(40,167,69,0.5)",
+        boxShadow: entry.confident
+          ? "0 0 16px rgba(40,167,69,0.7)"
+          : "0 0 6px rgba(40,167,69,0.3)",
       } : undefined}
     >
       {rank === 0 && !entry.solved && (
         <div className="position-absolute" style={{ top: "4px", right: "4px", zIndex: 2 }}>
-          <span className="badge bg-success" style={{ fontSize: "0.6rem" }}>TOP1</span>
+          <span className="badge bg-success" style={{ fontSize: "0.6rem" }}>
+            {entry.confident ? "TOP1 ✓" : "TOP1"}
+          </span>
         </div>
       )}
       {entry.solved && (
