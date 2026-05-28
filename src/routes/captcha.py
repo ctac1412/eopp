@@ -40,7 +40,7 @@ from src.db import (
     get_key_record,
 )
 
-from src.services import captcha_file_service
+from src.services import captcha_file_service, captcha_service
 
 
 def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
