@@ -34,7 +34,12 @@ class BaseCaptchaSolver:
 
 
 class SeamMetricsSolver(BaseCaptchaSolver):
-    """Default solver based on seam metrics (discontinuity, SSIM, coherence, Sobel)."""
+    """Solver using learned ML weights on seam metrics.
+
+    Uses LogisticRegression trained on 141 labeled puzzle captchas
+    to score variants by probability of being correct.
+    Falls back to hardcoded weights if model is unavailable.
+    """
 
     name = "seam_metrics"
 
@@ -47,7 +52,19 @@ class SeamMetricsSolver(BaseCaptchaSolver):
     ) -> SolverOutput:
         results = []
         best_variant = None
-        best_score = float("inf")
+        best_score = -float("inf")  # ML uses higher=better
+
+        # Try loading ML model
+        ml_scorer = None
+        try:
+            import os as _os
+            import pickle
+            model_path = _os.path.join(_os.path.dirname(__file__), '..', '..', 'data', 'puzzle_scorer.pkl')
+            if _os.path.exists(model_path):
+                with open(model_path, 'rb') as f:
+                    ml_scorer = pickle.load(f)
+        except Exception:
+            pass
 
         for i, variant in enumerate(context.variants):
             disc = calculate_seam_discontinuity(variant, context.images_dict, edge_trim)
@@ -55,7 +72,14 @@ class SeamMetricsSolver(BaseCaptchaSolver):
             seam_s = calculate_seam_ssim(variant, context.images_dict, edge_trim)
             sobel = calculate_sobel_continuity(variant, context.images_dict, edge_trim)
 
-            score = disc * W_DISC + (1.0 - seam_s) * W_SSIM - coh * W_COH + sobel * W_SOBEL
+            if ml_scorer is not None:
+                import numpy as np
+                feats = np.array([[disc, coh, seam_s, sobel]])
+                feats_s = ml_scorer['scaler'].transform(feats)
+                score = float(ml_scorer['clf'].predict_proba(feats_s)[0, 1])  # prob of correct
+                # want HIGH prob = better
+            else:
+                score = -(disc * W_DISC + (1.0 - seam_s) * W_SSIM - coh * W_COH + sobel * W_SOBEL)
 
             results.append(
                 {
@@ -72,15 +96,15 @@ class SeamMetricsSolver(BaseCaptchaSolver):
 
             if verbose:
                 print(
-                    f"Variant {i:2d}: score = {score:8.2f} "
+                    f"Variant {i:2d}: score = {score:10.6f} "
                     f"(disc={disc:6.2f}, coh={coh:5.2f}, ssim={seam_s:.3f}, sobel={sobel:.2f})"
                 )
 
-            if score < best_score:
+            if score > best_score:
                 best_score = score
                 best_variant = i
 
-        sorted_results = sort_results(results)
+        sorted_results = sort_results(results, reverse=True)  # ML: higher=better
         tile_order = context.variants[best_variant] if best_variant is not None else []
         return SolverOutput(
             best_variant=best_variant,
@@ -94,9 +118,12 @@ class SeamMetricsSolver(BaseCaptchaSolver):
 class DigitCaptchaSolver(BaseCaptchaSolver):
     """Solver for digit-based captchas.
 
-    Strategy: recognize digits on each tile, build the correct ordering
-    from the digit sequence (1-9). Falls back to seam metrics if digit
-    detection fails.
+    Strategy:
+    1. EasyOCR multi-preprocessing to read digits 1-9 on tiles
+    2. Known digits fix their positions in the 1-9 sequence
+    3. Unknown tiles permuted to fill gaps (≤5! = 120 permutations)
+    4. Best variant matched against the inferred order
+    5. Falls back to SeamMetrics if digit detection finds <2 digits
     """
 
     name = "digit_solver"
@@ -108,12 +135,99 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
         edge_trim: int,
         verbose: bool = True,
     ) -> SolverOutput:
-        # TODO: implement digit recognition + ordering
-        # For now, fall back to seam metrics
-        if verbose:
-            print(f"[{self.name}] Digit captcha detected — using seam metrics fallback")
+        import itertools
 
-        return SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+        images_dict = context.images_dict
+        tiles = context.tiles
+        variants = context.variants
+
+        # Read digits via EasyOCR
+        try:
+            import easyocr
+            reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+        except ImportError:
+            if verbose:
+                print(f"[{self.name}] EasyOCR not available — using seam metrics fallback")
+            return SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+
+        known: dict[str, int] = {}  # tile_id -> digit
+        unknown: list[str] = []     # tile_ids without digit
+
+        for tile in tiles:
+            tid = tile["tileId"]
+            arr = images_dict.get(tid)
+            if arr is None:
+                unknown.append(tid)
+                continue
+
+            gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+            h, w = gray.shape
+
+            best: dict[int, float] = {}
+            pipelines = [
+                cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB),
+                cv2.cvtColor(cv2.bilateralFilter(gray, 9, 75, 75), cv2.COLOR_GRAY2RGB),
+                cv2.cvtColor(255 - gray, cv2.COLOR_GRAY2RGB),
+                cv2.cvtColor(cv2.resize(gray, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC), cv2.COLOR_GRAY2RGB),
+            ]
+            for rgb in pipelines:
+                results = reader.readtext(rgb, allowlist='0123456789')
+                for _bbox, text, conf in results:
+                    if conf > 0.3 and text.isdigit():
+                        d = int(text)
+                        if 1 <= d <= 9 and conf > best.get(d, 0):
+                            best[d] = conf
+
+            if best:
+                best_d = max(best.items(), key=lambda x: x[1])
+                known[tid] = best_d[0]
+            else:
+                unknown.append(tid)
+
+        if verbose:
+            print(f"[{self.name}] OCR: {len(known)}/9 digits read, {len(unknown)} unknown")
+
+        if len(known) < 2:
+            if verbose:
+                print(f"[{self.name}] Too few digits — using seam metrics fallback")
+            return SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+
+        # Deduce missing digits and find best arrangement
+        found_set = set(known.values())
+        missing = sorted(set(range(1, 10)) - found_set)
+
+        best_variant = None
+        best_count = 0
+
+        for perm in itertools.permutations(unknown, len(missing)):
+            assignment = dict(known)
+            for tid, d in zip(perm, missing):
+                assignment[tid] = d
+
+            target = sorted(assignment.items(), key=lambda x: x[1])
+            target_ids = [tid for tid, _ in target]
+
+            for vi, variant in enumerate(variants):
+                cnt = sum(1 for pos, tid in enumerate(target_ids) if pos < 9 and variant[pos] == tid)
+                if cnt > best_count:
+                    best_count = cnt
+                    best_variant = vi
+
+        results = [{
+            "variant": best_variant if best_variant is not None else -1,
+            "score": float(best_count),
+            "solver": self.name,
+            "classification": classification.kind,
+        }]
+
+        tile_order = variants[best_variant] if best_variant is not None else []
+        return SolverOutput(
+            best_variant=best_variant,
+            tile_order=tile_order,
+            results=results,
+            classification=classification,
+            solver_name=self.name,
+        )
 
 
 class FigureCaptchaSolver(BaseCaptchaSolver):

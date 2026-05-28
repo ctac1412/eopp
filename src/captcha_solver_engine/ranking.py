@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def sort_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def sort_results(results: list[dict[str, Any]], reverse: bool = False) -> list[dict[str, Any]]:
     """Sort solver results by score, best first."""
-    return sorted(results, key=lambda item: item["score"])
+    return sorted(results, key=lambda item: item["score"], reverse=reverse)
 
 
 def assign_ranks(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

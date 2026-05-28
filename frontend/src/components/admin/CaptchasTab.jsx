@@ -55,6 +55,27 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const [labelSelectedIndex, setLabelSelectedIndex] = useState(null);
   const [labelLoading, setLabelLoading] = useState(false);
   const [labelSaving, setLabelSaving] = useState(false);
+  const [recomputeResult, setRecomputeResult] = useState(null);
+  const [recomputeLoading, setRecomputeLoading] = useState(false);
+
+  const handleRecompute = async () => {
+    if (!labelingCaptcha) return;
+    setRecomputeLoading(true);
+    setRecomputeResult(null);
+    try {
+      const res = await fetch(
+        `/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/recompute`,
+        { method: "POST", headers: adminHeaders(adminToken) }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setRecomputeResult(data);
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setRecomputeLoading(false);
+    }
+  };
 
   const setFileClassification = async (captchaId, classification) => {
     // Optimistic local update
@@ -163,6 +184,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const openLabelingPopup = async (captchaId) => {
     setLabelLoading(true);
     setLabelSelectedIndex(null);
+    setRecomputeResult(null);
     try {
       const res = await fetch(`/admin/captcha-label/${encodeURIComponent(captchaId)}`, {
         headers: adminHeadersJson(adminToken),
@@ -1028,6 +1050,9 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                               {solverTop3.has(index) && solverResultByVariant.get(index)?.rank !== 1 && (
                                 <span className="badge bg-info text-dark">Top 3</span>
                               )}
+                              {recomputeResult?.best_variant === index && (
+                                <span className="badge bg-success">New Top1</span>
+                              )}
                               {solverResultByVariant.get(index) && (
                                 <span className="badge bg-light text-dark border">
                                   #{solverResultByVariant.get(index).rank} score {solverResultByVariant.get(index).score}
@@ -1047,23 +1072,40 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                       </div>
                     ))}
                   </div>
-                  <div className="d-flex justify-content-end gap-2 mt-3">
+                  <div className="d-flex gap-2 mt-3 align-items-center">
                     <button
                       type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => setLabelingCaptcha(null)}
-                      disabled={labelSaving}
+                      className="btn btn-sm btn-outline-info"
+                      onClick={handleRecompute}
+                      disabled={recomputeLoading}
                     >
-                      Отмена
+                      {recomputeLoading ? "Считаю..." : "Пересчитать"}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={saveLabelingChoice}
-                      disabled={labelSaving || labelSelectedIndex == null}
-                    >
-                      {labelSaving ? "Сохранение..." : "Сохранить как верный"}
-                    </button>
+                    {recomputeResult && (
+                      <span className="small">
+                        <span className="badge bg-info text-dark me-1">{recomputeResult.classification}</span>
+                        <span className="text-muted">{recomputeResult.solver}</span>
+                        <span className="ms-1">Top1: <b>{recomputeResult.best_variant}</b></span>
+                      </span>
+                    )}
+                    <div className="ms-auto d-flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setLabelingCaptcha(null)}
+                        disabled={labelSaving}
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={saveLabelingChoice}
+                        disabled={labelSaving || labelSelectedIndex == null}
+                      >
+                        {labelSaving ? "Сохранение..." : "Сохранить как верный"}
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

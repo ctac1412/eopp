@@ -167,6 +167,41 @@ def register_admin_routes(app):
         status, content = captcha_service.save_captcha_label(body.captcha_id, body.variant_index)
         return JSONResponse(status_code=status, content=content)
 
+    @app.post("/admin/captcha-label/{captcha_id}/recompute")
+    async def admin_captcha_label_recompute(captcha_id: str):
+        """Recompute solver Top-1 using current classification-based solver."""
+        from src.services import captcha_file_service
+        from src.captcha_solver_engine.classifier import classify_captcha
+        from src.captcha_solver_engine.common import build_captcha_context
+        from src.captcha_solver_engine.solvers import solver_for_classification
+
+        data = captcha_file_service.load_captcha_payload(captcha_id)
+        if data is None:
+            return JSONResponse(status_code=404, content={"error": "Captcha not found"})
+
+        context = build_captcha_context(data)
+        classification = classify_captcha(context)
+        solver = solver_for_classification(classification)
+
+        solver_output = solver.solve(context, classification, edge_trim=3, verbose=False)
+
+        # Return top3 solver results with ranks
+        top3 = []
+        for r in solver_output.results[:3]:
+            top3.append({
+                "variant": r["variant"],
+                "rank": r.get("rank", 0),
+                "score": round(r.get("score", 0), 2),
+            })
+
+        return JSONResponse(content={
+            "captcha_id": captcha_id,
+            "classification": classification.kind,
+            "solver": solver_output.solver_name,
+            "best_variant": solver_output.best_variant,
+            "top3": top3,
+        })
+
     @app.get("/admin/tariffs/{api_key_id}")
     async def get_admin_tariff(api_key_id: int):
         return _json_result(billing_service.get_tariff(api_key_id))
