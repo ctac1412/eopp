@@ -1,21 +1,15 @@
-FROM python:3.13-slim AS builder
-
-RUN pip install uv
-
-WORKDIR /app
-
-COPY pyproject.toml .
-RUN uv sync --no-dev --no-install-project
-
 FROM python:3.13-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pip install uv
+
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
+COPY pyproject.toml .
+RUN uv sync --no-dev --no-install-project && uv cache clean
 
 COPY . .
 
