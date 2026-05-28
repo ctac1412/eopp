@@ -106,11 +106,11 @@ const useCaptchaStore = create((set) => ({
       ],
     })),
 
-  markSolved: (captchaId, solvedBySuper = false, solverLabel = null, confident = false) =>
+  markSolved: (captchaId, solvedBySuper = false, solverLabel = null) =>
     set((state) => ({
       queue: state.queue.map((q) =>
         q.id === captchaId
-          ? { ...q, solved: true, solvedBySuper, solverLabel, confident }
+          ? { ...q, solved: true, solvedBySuper, solverLabel }
           : q
       ),
     })),

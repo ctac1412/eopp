@@ -43,44 +43,6 @@ from src.db import (
 from src.services import captcha_file_service
 
 
-def _is_confident(results: list[dict]) -> bool:
-    """Check if solver is confident based on gap between best and second-best scores."""
-    if len(results) < 2:
-        return False
-    scores = sorted([r.get("score", 0) for r in results], reverse=True)
-    best, second = scores[0], scores[1]
-    if abs(best) < 0.001:
-        return False
-    return abs(best - second) / abs(best) > 0.15
-from src.services import captcha_service
-from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
-from src.test_runner import next_result_id
-
-logger = logging.getLogger("eopp.captcha")
-
-
-def _ms_since(start: float) -> float:
-    return (time.perf_counter() - start) * 1000
-
-
-def _log_solve_step(
-    rid: str,
-    captcha_id: str | None,
-    step: str,
-    start: float,
-    level: int = logging.INFO,
-    **fields,
-) -> None:
-    parts = [
-        f"rid={rid}",
-        f"captcha={captcha_id or '-'}",
-        f"step={step}",
-        f"duration_ms={_ms_since(start):.1f}",
-    ]
-    parts.extend(f"{key}={value}" for key, value in fields.items() if value is not None)
-    logger.log(level, "solve_captcha %s", " ".join(parts))
-
-
 def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
     @app.post("/solve-captcha")
     async def handle_captcha(body: SolveCaptchaBody):
@@ -204,8 +166,20 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         step_start = time.perf_counter()
         top3 = get_top3_from_solver(data)
-        confident = _is_confident(data.get("solver_results", []))
-        _log_solve_step(rid, captcha_id, "top3", step_start, top3=",".join(top3))
+        # Run solver to get real confidence
+        confident = False
+        try:
+            from src.captcha_solver_engine.common import build_captcha_context
+            from src.captcha_solver_engine.classifier import classify_captcha
+            from src.captcha_solver_engine.solvers import solver_for_classification
+            ctx = build_captcha_context(data)
+            clf_result = classify_captcha(ctx)
+            solver = solver_for_classification(clf_result)
+            solver_out = solver.solve(ctx, clf_result, edge_trim=3, verbose=False)
+            confident = solver_out.confident
+        except Exception:
+            pass
+        _log_solve_step(rid, captcha_id, "top3", step_start, top3=",".join(top3), confident=confident)
         step_start = time.perf_counter()
         generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
         _log_solve_step(
@@ -498,7 +472,6 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 "solver_label": solver_label,
                 "owner_label": owner_label,
                 "owner_api_key_id": owner_id,
-                "confident": False,  # manual solve = not auto-confident
             },
             api_key_id=owner_id,
         )
