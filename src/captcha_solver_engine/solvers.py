@@ -161,7 +161,15 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
         except ImportError:
             if verbose:
                 print(f"[{self.name}] EasyOCR not available — using seam metrics fallback")
-            return SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+            fallback = SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+            return SolverOutput(
+                best_variant=fallback.best_variant,
+                tile_order=fallback.tile_order,
+                results=fallback.results,
+                classification=classification,
+                solver_name=self.name,
+                confident=False,
+            )
 
         known: dict[str, int] = {}  # tile_id -> digit
         unknown: list[str] = []     # tile_ids without digit
