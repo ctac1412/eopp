@@ -30,7 +30,6 @@ from src.routes.admin import admin_auth_middleware_factory
 from src.services import telegram_service
 from src.sse import lock, pending
 
-configure_logging()
 logger = logging.getLogger("eopp")
 
 
@@ -78,4 +77,5 @@ def create_app(captcha_timeout=CAPTCHA_TIMEOUT) -> FastAPI:
     admin_auth_middleware_factory(app)
     register_all_routes(app, captcha_timeout)
 
+    configure_logging()
     return app

@@ -12,22 +12,14 @@ def _level_from_env(name: str, default: str) -> int:
 
 
 def configure_logging() -> int:
-    """Configure root and app loggers from environment.
-
-    EOPP_LOG_LEVEL controls application logs. Use DEBUG for detailed timings.
-    """
+    """Configure root and app loggers from environment."""
     level = _level_from_env("EOPP_LOG_LEVEL", "INFO")
-    fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    handler = logging.StreamHandler()
-    handler.setFormatter(fmt)
+    fmt = "%(asctime)s.%(msecs)03d [%(levelname)-5s] %(name)s %(message)s"
 
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.addHandler(handler)
-    root.setLevel(level)
+    logging.basicConfig(level=level, format=fmt, datefmt="%H:%M:%S", force=True)
+    # Also patch any existing handlers directly
+    for h in logging.getLogger().handlers:
+        h.setFormatter(logging.Formatter(fmt, datefmt="%H:%M:%S"))
 
     logging.getLogger("eopp").setLevel(level)
     return level

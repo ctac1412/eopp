@@ -55,6 +55,11 @@ function CaptchaCard({ entry, index }) {
       className={`captcha-card position-relative ${isSelected ? "captcha-card--selected" : ""} ${entry.solved ? "captcha-card--solved" : ""}`}
       data-index={index}
       onClick={entry.solved ? undefined : handleClick}
+      style={rank === 0 && !entry.solved ? {
+        border: "3px solid #28a745",
+        borderRadius: "8px",
+        boxShadow: "0 0 8px rgba(40,167,69,0.4)",
+      } : undefined}
     >
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
