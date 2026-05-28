@@ -58,9 +58,14 @@ function CaptchaCard({ entry, index }) {
       style={rank === 0 && !entry.solved ? {
         border: "3px solid #28a745",
         borderRadius: "8px",
-        boxShadow: "0 0 8px rgba(40,167,69,0.4)",
+        boxShadow: "0 0 10px rgba(40,167,69,0.5)",
       } : undefined}
     >
+      {rank === 0 && !entry.solved && (
+        <div className="position-absolute" style={{ top: "4px", right: "4px", zIndex: 2 }}>
+          <span className="badge bg-success" style={{ fontSize: "0.6rem" }}>TOP1</span>
+        </div>
+      )}
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
           <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>

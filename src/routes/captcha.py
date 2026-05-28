@@ -191,13 +191,24 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 mode="auto",
                 status="success",
             )
+            confident = _is_confident(results)
+            # Push SSE so frontend can show confidence
+            push_sse({
+                "type": "captcha_solved",
+                "captcha_id": captcha_id,
+                "solved_by_super": False,
+                "solver_label": "auto",
+                "owner_label": owner_label if 'owner_label' in dir() else None,
+                "owner_api_key_id": api_key_id,
+                "confident": confident,
+            }, api_key_id=api_key_id)
             return JSONResponse(
                 content={
                     "variantIndex": best_variant,
                     "variantTiles": tile_order,
                     "usage_log_id": usage_log_id,
                     "captcha_id": captcha_id,
-                    "confident": _is_confident(results),
+                    "confident": confident,
                 }
             )
 
