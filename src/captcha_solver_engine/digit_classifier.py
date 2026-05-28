@@ -21,7 +21,7 @@ from .models import CaptchaClassification, CaptchaContext
 
 _MODEL_PATH = os.environ.get(
     "EOPP_TILE_MODEL_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "..", "data", "tile_classifier.pkl"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "models", "tile_classifier.pkl"),
 )
 _model_cache: dict | None = None
 

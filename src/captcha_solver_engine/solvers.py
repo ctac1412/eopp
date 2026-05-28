@@ -59,7 +59,7 @@ class SeamMetricsSolver(BaseCaptchaSolver):
         try:
             import os as _os
             import pickle
-            model_path = _os.path.join(_os.path.dirname(__file__), '..', '..', 'data', 'puzzle_scorer.pkl')
+            model_path = _os.path.join(_os.path.dirname(__file__), '..', '..', 'models', 'puzzle_scorer.pkl')
             if _os.path.exists(model_path):
                 with open(model_path, 'rb') as f:
                     ml_scorer = pickle.load(f)

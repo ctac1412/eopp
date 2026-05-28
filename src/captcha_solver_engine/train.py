@@ -3,14 +3,8 @@
 Usage:
     python -m src.captcha_solver_engine.train
 
-Reads ground truth from captcha_files DB table, extracts HOG features from all tiles,
-trains Linear SVM with stratified CV, saves model to data/tile_classifier.pkl.
-
 Artifacts produced:
-    data/tile_classifier.pkl  — {'scaler': StandardScaler, 'clf': LinearSVC}
-
-Paths are resolved via EOPP_DB_PATH / EOPP_CAPTCHA_DIR env vars,
-falling back to PROJECT_DIR from constants.
+    models/tile_classifier.pkl  — {'scaler': StandardScaler, 'clf': LinearSVC}
 """
 
 from __future__ import annotations
@@ -40,9 +34,9 @@ CAPTCHA_DIR = os.environ.get(
 )
 MODEL_PATH = os.environ.get(
     "EOPP_TILE_MODEL_PATH",
-    os.path.join(PROJECT_DIR, "data", "tile_classifier.pkl"),
+    os.path.join(PROJECT_DIR, "models", "tile_classifier.pkl"),
 )
-MODELS_DIR = os.path.join(PROJECT_DIR, "data", "models")
+MODELS_DIR = os.path.join(PROJECT_DIR, "models")
 
 # HOG parameters
 TILE_SIZE = (64, 36)
@@ -187,7 +181,7 @@ def save_model(scaler: StandardScaler, clf: LinearSVC, name: str = "hog_svm") ->
         pickle.dump({"scaler": scaler, "clf": clf, "name": name, "version": version}, f)
 
     # Also save as default model for production use
-    default_path = os.path.join(PROJECT_DIR, "data", "tile_classifier.pkl")
+    default_path = os.path.join(PROJECT_DIR, "models", "tile_classifier.pkl")
     with open(default_path, "wb") as f:
         pickle.dump({"scaler": scaler, "clf": clf, "name": name, "version": version}, f)
 
