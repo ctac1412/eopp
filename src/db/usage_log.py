@@ -272,17 +272,22 @@ def fail_usage(
     return True
 
 
-def list_usages(api_key_id: int | None = None) -> list[dict]:
+def list_usages(api_key_id: int | None = None, invoice_id: int | None = None) -> list[dict]:
     conn = get_connection()
+    conditions = []
+    params = []
+
     if api_key_id is not None:
-        rows = conn.execute(
-            "SELECT u.*, k.label FROM usage_log u LEFT JOIN api_keys k ON u.api_key_id = k.id WHERE u.api_key_id = ? ORDER BY u.created_at DESC",
-            (api_key_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT u.*, k.label FROM usage_log u LEFT JOIN api_keys k ON u.api_key_id = k.id ORDER BY u.created_at DESC"
-        ).fetchall()
+        conditions.append("u.api_key_id = ?")
+        params.append(api_key_id)
+    if invoice_id is not None:
+        conditions.append("u.invoice_id = ?")
+        params.append(invoice_id)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    query = f"SELECT u.*, k.label FROM usage_log u LEFT JOIN api_keys k ON u.api_key_id = k.id {where} ORDER BY u.created_at DESC"
+
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     result = []
     for r in rows:

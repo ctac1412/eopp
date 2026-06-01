@@ -19,6 +19,8 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   });
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [usageLogs, setUsageLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     if (show && invoice) {
@@ -34,6 +36,13 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         tax_user_id: invoice.tax_user_id || null,
       });
       setItems(invoice.items || []);
+      // Load usage logs for this invoice
+      setLogsLoading(true);
+      fetch(`/usage-log?invoice_id=${invoice.id}`, { headers: { "X-Admin-Token": adminToken } })
+        .then((r) => r.json())
+        .then((data) => setUsageLogs(Array.isArray(data) ? data : []))
+        .catch(() => setUsageLogs([]))
+        .finally(() => setLogsLoading(false));
     }
   }, [show, invoice]);
 
@@ -145,6 +154,38 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
               ))}
               {items.length > 0 && (
                 <div className="small text-muted">Сумма строк: {formatMoney(itemsTotal)}</div>
+              )}
+            </div>
+
+            <hr />
+
+            {/* Linked usage logs */}
+            <div className="mb-3">
+              <label className="form-label fw-bold">Записи в счёте</label>
+              {logsLoading && <div className="text-muted small">Загрузка...</div>}
+              {!logsLoading && usageLogs.length === 0 && (
+                <div className="text-muted small">Нет привязанных записей</div>
+              )}
+              {usageLogs.length > 0 && (
+                <div style={{ maxHeight: "150px", overflowY: "auto" }}>
+                  <table className="table table-sm table-borderless small mb-0">
+                    <thead>
+                      <tr className="text-muted">
+                        <th>ID</th><th>Дата</th><th>Ключ</th><th>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usageLogs.map((log) => (
+                        <tr key={log.id}>
+                          <td>{log.id}</td>
+                          <td>{log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : "—"}</td>
+                          <td>{log.label || log.api_key_id || "—"}</td>
+                          <td>{formatMoney(log.price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 

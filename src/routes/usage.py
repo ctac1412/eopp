@@ -35,6 +35,7 @@ def register_usage_routes(app):
         request: Request,
         api_key_id: int | None = Query(None),
         api_key: str | None = Query(None),
+        invoice_id: int | None = Query(None),
         hide_test: bool = Query(True),
     ):
         status, content = usage_service.list_usage(
@@ -42,6 +43,7 @@ def register_usage_routes(app):
             api_key_id=api_key_id,
             api_key=api_key,
             hide_test=hide_test,
+            invoice_id=invoice_id,
         )
         return JSONResponse(status_code=status, content=content)
 

@@ -56,11 +56,13 @@ def get_usage(usage_log_id: int) -> UsageLog | None:
         )
 
 
-def list_usage(api_key_id: int | None = None) -> list[UsageLog]:
+def list_usage(api_key_id: int | None = None, invoice_id: int | None = None) -> list[UsageLog]:
     with get_session() as session:
         q = session.query(UsageLog).options(joinedload(UsageLog.api_key))
         if api_key_id is not None:
             q = q.filter(UsageLog.api_key_id == api_key_id)
+        if invoice_id is not None:
+            q = q.filter(UsageLog.invoice_id == invoice_id)
         return q.order_by(UsageLog.created_at.desc()).all()
 
 
