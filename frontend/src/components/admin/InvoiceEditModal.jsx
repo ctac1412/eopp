@@ -63,10 +63,12 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   if (!show || !invoice) return null;
 
   const printTotal = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-  const printPercent = Math.round(printTotal * (invoice.percent_rate || 0) / 100);
-  const printTax = Math.round(printTotal * (invoice.tax_rate || 0) / 100);
-  const printDebt = invoice.debt_amount || 0;
-  const printFinal = invoice.total_amount || (printTotal + printPercent + printTax);
+  const printRate = form.percent_rate || invoice.percent_rate || 0;
+  const printTaxRate = form.tax_rate || invoice.tax_rate || 0;
+  const printPercent = Math.round(printTotal * printRate / 100);
+  const printTax = Math.round(printTotal * printTaxRate / 100);
+  const printDebt = form.debt_amount || invoice.debt_amount || 0;
+  const printFinal = form.total_amount || invoice.total_amount || (printTotal + printPercent + printTax);
 
   return (
     <>
@@ -197,10 +199,10 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                 <td style={{ padding: "4px 8px", textAlign: "right", whiteSpace: "nowrap" }}>{formatMoney(it.amount)}</td></tr>))}</tbody></table>
             <div style={{ textAlign: "right", fontSize: "13px", marginBottom: "8px" }}>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", borderTop: "1px solid #ccc", paddingTop: "6px" }}><span>Строки:</span><span>{formatMoney(printTotal)}</span></div>
-              {(invoice.percent_rate || 0) > 0 && (<div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
-                <span>Комиссия ({invoice.percent_rate}%):</span><span>{formatMoney(printPercent)}</span></div>)}
-              {(invoice.tax_rate || 0) > 0 && (<div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
-                <span>Налог ({invoice.tax_rate}%):</span><span>{formatMoney(printTax)}</span></div>)}
+              {(printRate) > 0 && (<div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
+                <span>Комиссия ({printRate}%):</span><span>{formatMoney(printPercent)}</span></div>)}
+              {(printTaxRate) > 0 && (<div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
+                <span>Налог ({printTaxRate}%):</span><span>{formatMoney(printTax)}</span></div>)}
               {printDebt > 0 && (<div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
                 <span>Долг:</span><span>{formatMoney(printDebt)}</span></div>)}
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", borderTop: "1px solid #000", paddingTop: "6px", fontWeight: "bold", fontSize: "15px" }}>
