@@ -65,10 +65,12 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const printTotal = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
   const printRate = form.percent_rate || invoice.percent_rate || 0;
   const printTaxRate = form.tax_rate || invoice.tax_rate || 0;
-  const printPercent = Math.round(printTotal * printRate / 100);
-  const printTax = Math.round(printTotal * printTaxRate / 100);
+  const printPercent = form.percent_amount || invoice.percent_amount || Math.round(printTotal * printRate / 100);
+  const printTax = form.tax_amount || invoice.tax_amount || Math.round(printTotal * printTaxRate / 100);
   const printDebt = form.debt_amount || invoice.debt_amount || 0;
   const printFinal = form.total_amount || invoice.total_amount || (printTotal + printPercent + printTax);
+
+  console.log("PRINT DEBUG", { invoice_rate: invoice.percent_rate, invoice_tax: invoice.tax_rate, form_rate: form.percent_rate, form_tax: form.tax_rate, printRate, printTaxRate, printPercent, printTax, printTotal });
 
   return (
     <>
