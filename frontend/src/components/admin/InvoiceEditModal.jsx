@@ -22,6 +22,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const [usageLogs, setUsageLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [screenMode, setScreenMode] = useState(false);
+  const [printMode, setPrintMode] = useState(false);
 
   useEffect(() => {
     if (show && invoice) {
@@ -37,7 +38,6 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         tax_user_id: invoice.tax_user_id || null,
       });
       setItems(invoice.items || []);
-      // Load usage logs for this invoice
       setLogsLoading(true);
       fetch(`/usage-log?invoice_id=${invoice.id}`, { headers: { "X-Admin-Token": adminToken } })
         .then((r) => r.json())
@@ -47,11 +47,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
     }
   }, [show, invoice]);
 
-  const combinedRate = (form.percent_rate || 0) + (form.tax_rate || 0);
-  const divisor = combinedRate < 100 ? 1 - combinedRate / 100 : 0;
-  const calcTotal = divisor > 0 ? Math.round(form.debt_amount / divisor) : 0;
-  const calcPercent = Math.round(calcTotal * (form.percent_rate || 0) / 100);
-  const calcTax = Math.round(calcTotal * (form.tax_rate || 0) / 100);
+  const itemsTotal = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
 
   const addItem = () => {
     setItems((prev) => [...prev, { id: null, description: "", amount: 0, sort_order: prev.length }]);
@@ -68,8 +64,6 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
       return next;
     });
   };
-
-  const itemsTotal = items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -106,265 +100,250 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
     }
   };
 
+  const renderPrintContent = () => (
+    <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "2px solid #000", paddingBottom: "8px" }}>
+        <div>
+          <div style={{ fontSize: "20px", fontWeight: "bold" }}>Счёт #{invoice.id}</div>
+          {invoice.invoice_number && <div style={{ fontSize: "13px", color: "#555" }}>№ {invoice.invoice_number}</div>}
+        </div>
+        <button onClick={() => { setPrintMode(false); setTimeout(() => window.print(), 100); }} style={{ padding: "6px 16px", fontSize: "13px", cursor: "pointer" }}>Печатать</button>
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "12px" }}>
+        <thead>
+          <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left", fontSize: "12px", color: "#555" }}>
+            <th style={{ padding: "4px 8px" }}>#</th>
+            <th style={{ padding: "4px 8px" }}>Описание</th>
+            <th style={{ padding: "4px 8px", textAlign: "right" }}>Сумма</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => (
+            <tr key={i} style={{ borderBottom: "1px solid #eee", fontSize: "13px" }}>
+              <td style={{ padding: "4px 8px", color: "#888" }}>{i + 1}</td>
+              <td style={{ padding: "4px 8px" }}>{it.description || `Строка ${i + 1}`}</td>
+              <td style={{ padding: "4px 8px", textAlign: "right", whiteSpace: "nowrap" }}>{formatMoney(it.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ textAlign: "right", fontSize: "13px", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", borderTop: "1px solid #000", paddingTop: "6px", fontWeight: "bold", fontSize: "15px" }}>
+          <span>Итого:</span><span>{formatMoney(itemsTotal)}</span>
+        </div>
+      </div>
+      {usageLogs.length > 0 && (
+        <div style={{ fontSize: "12px", marginBottom: "8px" }}>
+          <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Записи:</div>
+          {usageLogs.map((log) => (
+            <div key={log.id} style={{ display: "flex", justifyContent: "space-between", maxWidth: "500px", color: "#555" }}>
+              <span>#{log.id} — {log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : "—"} — {log.label || "—"}</span>
+              <span>{formatMoney(log.price)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {form.comment && (
+        <div style={{ padding: "8px", background: "#f5f5f5", borderRadius: "4px", fontSize: "12px", color: "#555", fontStyle: "italic" }}>
+          {form.comment}
+        </div>
+      )}
+    </div>
+  );
+
   if (!show || !invoice) return null;
 
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-dialog modal-dialog-centered modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">Редактировать счёт #{invoice.id}</h5>
-            <div className="d-flex gap-2">
-              <button type="button" className={`btn btn-sm ${screenMode ? "btn-warning" : "btn-outline-light"}`}
-                onClick={() => setScreenMode(!screenMode)}>
-                {screenMode ? "✕ Скрин" : "📷 Скрин"}
-              </button>
-              <button type="button" className="btn-close" onClick={onClose}></button>
-            </div>
-          </div>
-          <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
-            {!screenMode && (<>
-            {/* Line items */}
-            <div className="mb-3">
-              <div className="d-flex justify-content-between align-items-center mb-2">
-                <label className="form-label fw-bold mb-0">Строки счёта</label>
-                <button type="button" className="btn btn-sm btn-outline-primary" onClick={addItem}>+ Добавить</button>
+    <>
+      <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="modal-dialog modal-dialog-centered modal-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title">Редактировать счёт #{invoice.id}</h5>
+              <div className="d-flex gap-2">
+                <button type="button" className="btn btn-sm btn-outline-light" onClick={() => setPrintMode(true)}>🖨</button>
+                <button type="button" className={`btn btn-sm ${screenMode ? "btn-warning" : "btn-outline-light"}`}
+                  onClick={() => setScreenMode(!screenMode)}>
+                  {screenMode ? "✕" : "📷"}
+                </button>
+                <button type="button" className="btn-close" onClick={onClose}></button>
               </div>
-              {items.length === 0 && (
-                <div className="text-muted small mb-2">Нет строк</div>
-              )}
-              {items.map((it, idx) => (
-                <div key={idx} className="row g-2 mb-2 align-items-center">
-                  <div className="col-8">
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      placeholder="Описание"
-                      value={it.description}
-                      onChange={(e) => updateItem(idx, "description", e.target.value)}
-                    />
+            </div>
+            <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+              {!screenMode && (<>
+                {/* Line items */}
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <label className="form-label fw-bold mb-0">Строки счёта</label>
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={addItem}>+ Добавить</button>
                   </div>
-                  <div className="col-3">
-                    <div className="input-group input-group-sm">
-                      <input
-                        type="number"
-                        className="form-control"
-                        value={it.amount}
-                        onChange={(e) => updateItem(idx, "amount", e.target.value)}
-                      />
-                      <span className="input-group-text">₽</span>
+                  {items.length === 0 && <div className="text-muted small mb-2">Нет строк</div>}
+                  {items.map((it, idx) => (
+                    <div key={idx} className="row g-2 mb-2 align-items-center">
+                      <div className="col-8">
+                        <input type="text" className="form-control form-control-sm" placeholder="Описание"
+                          value={it.description} onChange={(e) => updateItem(idx, "description", e.target.value)} />
+                      </div>
+                      <div className="col-3">
+                        <div className="input-group input-group-sm">
+                          <input type="number" className="form-control" value={it.amount}
+                            onChange={(e) => updateItem(idx, "amount", e.target.value)} />
+                          <span className="input-group-text">₽</span>
+                        </div>
+                      </div>
+                      <div className="col-1 text-center">
+                        <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(idx)}>×</button>
+                      </div>
+                    </div>
+                  ))}
+                  {items.length > 0 && <div className="small text-muted">Сумма строк: {formatMoney(itemsTotal)}</div>}
+                </div>
+
+                <hr />
+
+                {/* Linked usage logs */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold">Записи в счёте</label>
+                  {logsLoading && <div className="text-muted small">Загрузка...</div>}
+                  {!logsLoading && usageLogs.length === 0 && <div className="text-muted small">Нет привязанных записей</div>}
+                  {usageLogs.length > 0 && (
+                    <div style={{ maxHeight: "150px", overflowY: "auto" }}>
+                      <table className="table table-sm table-borderless small mb-0">
+                        <thead><tr className="text-muted"><th>ID</th><th>Дата</th><th>Ключ</th><th>Сумма</th></tr></thead>
+                        <tbody>
+                          {usageLogs.map((log) => (
+                            <tr key={log.id}>
+                              <td>{log.id}</td>
+                              <td>{log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : "—"}</td>
+                              <td>{log.label || log.api_key_id || "—"}</td>
+                              <td>{formatMoney(log.price)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <hr />
+
+                {/* Amounts */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold">Суммы</label>
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Сумма долга (debt)</label>
+                      <input type="number" className="form-control form-control-sm" value={form.debt_amount}
+                        onChange={(e) => setForm((p) => ({ ...p, debt_amount: Number(e.target.value) || 0 }))} />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Итого (total)</label>
+                      <input type="number" className="form-control form-control-sm" value={form.total_amount}
+                        onChange={(e) => setForm((p) => ({ ...p, total_amount: Number(e.target.value) || 0 }))} />
                     </div>
                   </div>
-                  <div className="col-1 text-center">
-                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeItem(idx)}>×</button>
+                </div>
+
+                {/* Rates */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold">Ставки</label>
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Комиссия (%)</label>
+                      <input type="number" step="0.01" className="form-control form-control-sm" value={form.percent_rate}
+                        onChange={(e) => setForm((p) => ({ ...p, percent_rate: Number(e.target.value) || 0 }))} />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Налог (%)</label>
+                      <input type="number" step="0.01" className="form-control form-control-sm" value={form.tax_rate}
+                        onChange={(e) => setForm((p) => ({ ...p, tax_rate: Number(e.target.value) || 0 }))} />
+                    </div>
                   </div>
                 </div>
-              ))}
-              {items.length > 0 && (
-                <div className="small text-muted">Сумма строк: {formatMoney(itemsTotal)}</div>
-              )}
-            </div>
 
-            <hr />
-
-            {/* Linked usage logs */}
-            <div className="mb-3">
-              <label className="form-label fw-bold">Записи в счёте</label>
-              {logsLoading && <div className="text-muted small">Загрузка...</div>}
-              {!logsLoading && usageLogs.length === 0 && (
-                <div className="text-muted small">Нет привязанных записей</div>
-              )}
-              {usageLogs.length > 0 && (
-                <div style={{ maxHeight: "150px", overflowY: "auto" }}>
-                  <table className="table table-sm table-borderless small mb-0">
-                    <thead>
-                      <tr className="text-muted">
-                        <th>ID</th><th>Дата</th><th>Ключ</th><th>Сумма</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {usageLogs.map((log) => (
-                        <tr key={log.id}>
-                          <td>{log.id}</td>
-                          <td>{log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : "—"}</td>
-                          <td>{log.label || log.api_key_id || "—"}</td>
-                          <td>{formatMoney(log.price)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            <hr />
-
-            {/* Amounts */}
-            <div className="mb-3">
-              <label className="form-label fw-bold">Суммы</label>
-              <div className="row g-2">
-                <div className="col-6">
-                  <label className="form-label small text-muted">Сумма долга (debt)</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={form.debt_amount}
-                    onChange={(e) => setForm((p) => ({ ...p, debt_amount: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label small text-muted">Итого (total)</label>
-                  <input
-                    type="number"
-                    className="form-control form-control-sm"
-                    value={form.total_amount}
-                    onChange={(e) => setForm((p) => ({ ...p, total_amount: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Rates */}
-            <div className="mb-3">
-              <label className="form-label fw-bold">Ставки</label>
-              <div className="row g-2">
-                <div className="col-6">
-                  <label className="form-label small text-muted">Комиссия (%)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="form-control form-control-sm"
-                    value={form.percent_rate}
-                    onChange={(e) => setForm((p) => ({ ...p, percent_rate: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label small text-muted">Налог (%)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="form-control form-control-sm"
-                    value={form.tax_rate}
-                    onChange={(e) => setForm((p) => ({ ...p, tax_rate: Number(e.target.value) || 0 }))}
-                  />
-                </div>
-              </div>
-              <div className="small text-muted mt-1">
-                Расчёт: debt {formatMoney(form.debt_amount)} / (1 − {((form.percent_rate || 0) + (form.tax_rate || 0)).toFixed(2)}%) = {formatMoney(calcTotal)}
-              </div>
-            </div>
-
-            {/* User assignments */}
-            <div className="mb-3">
-              <label className="form-label fw-bold">Распределение</label>
-              <div className="row g-2">
-                <div className="col-6">
-                  <label className="form-label small text-muted">Кто получает комиссию</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={form.commission_user_id ?? ""}
-                    onChange={(e) => setForm((p) => ({ ...p, commission_user_id: e.target.value ? Number(e.target.value) : null }))}
-                  >
-                    <option value="">— Не указан —</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-6">
-                  <label className="form-label small text-muted">Кто платит налог</label>
-                  <select
-                    className="form-select form-select-sm"
-                    value={form.tax_user_id ?? ""}
-                    onChange={(e) => setForm((p) => ({ ...p, tax_user_id: e.target.value ? Number(e.target.value) : null }))}
-                  >
-                    <option value="">— Не указан —</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Comment */}
-            <div className="mb-3">
-              <label className="form-label">Комментарий</label>
-              <textarea
-                className="form-control"
-                rows={2}
-                value={form.comment}
-                onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
-              />
-            </div>
-            </>)}
-            {screenMode && (
-              <div style={{ background: "#0d1117", color: "#c9d1d9", borderRadius: "8px", padding: "16px", fontFamily: "monospace", fontSize: "13px", lineHeight: "1.6" }}>
-                <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "12px", borderBottom: "1px solid #30363d", paddingBottom: "8px" }}>
-                  Счёт #{invoice.id} {invoice.invoice_number ? `(${invoice.invoice_number})` : ""}
+                {/* User assignments */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold">Распределение</label>
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Кто получает комиссию</label>
+                      <select className="form-select form-select-sm" value={form.commission_user_id ?? ""}
+                        onChange={(e) => setForm((p) => ({ ...p, commission_user_id: e.target.value ? Number(e.target.value) : null }))}>
+                        <option value="">— Не указан —</option>
+                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label small text-muted">Кто платит налог</label>
+                      <select className="form-select form-select-sm" value={form.tax_user_id ?? ""}
+                        onChange={(e) => setForm((p) => ({ ...p, tax_user_id: e.target.value ? Number(e.target.value) : null }))}>
+                        <option value="">— Не указан —</option>
+                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Items */}
-                <div style={{ marginBottom: "8px" }}>
+                {/* Comment */}
+                <div className="mb-3">
+                  <label className="form-label">Комментарий</label>
+                  <textarea className="form-control" rows={2} value={form.comment}
+                    onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))} />
+                </div>
+              </>)}
+
+              {screenMode && (
+                <div style={{ background: "#0d1117", color: "#c9d1d9", borderRadius: "8px", padding: "16px", fontFamily: "monospace", fontSize: "13px", lineHeight: "1.6" }}>
+                  <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "12px", borderBottom: "1px solid #30363d", paddingBottom: "8px" }}>
+                    Счёт #{invoice.id} {invoice.invoice_number ? `(${invoice.invoice_number})` : ""}
+                  </div>
                   {items.map((it, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>{it.description || `Строка ${i + 1}`}</span>
                       <span>{formatMoney(it.amount)}</span>
                     </div>
                   ))}
-                </div>
-
-                <div style={{ borderTop: "1px solid #30363d", paddingTop: "8px", marginTop: "4px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-                    <span>Итого</span><span>{formatMoney(itemsTotal)}</span>
+                  <div style={{ borderTop: "1px solid #30363d", paddingTop: "8px", marginTop: "4px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+                      <span>Итого</span><span>{formatMoney(itemsTotal)}</span>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
-                    <span>Комиссия ({form.percent_rate}%)</span>
-                    <span>{formatMoney(Math.round(itemsTotal * (form.percent_rate || 0) / 100))}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
-                    <span>Налог ({form.tax_rate}%)</span>
-                    <span>{formatMoney(Math.round(itemsTotal * (form.tax_rate || 0) / 100))}</span>
-                  </div>
-                  {form.total_amount > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: "4px", borderTop: "1px solid #30363d", paddingTop: "4px" }}>
-                      <span>К оплате</span><span>{formatMoney(form.total_amount)}</span>
+                  {usageLogs.length > 0 && (
+                    <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px" }}>
+                      <div style={{ marginBottom: "4px", fontWeight: "bold", color: "#c9d1d9" }}>Записи:</div>
+                      {usageLogs.map((log) => (
+                        <div key={log.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>#{log.id} {log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : ""} {log.label || ""}</span>
+                          <span>{formatMoney(log.price)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {form.comment && (
+                    <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px", fontStyle: "italic" }}>
+                      {form.comment}
                     </div>
                   )}
                 </div>
-
-                {/* Usage logs */}
-                {usageLogs.length > 0 && (
-                  <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px" }}>
-                    <div style={{ marginBottom: "4px", fontWeight: "bold", color: "#c9d1d9" }}>Записи:</div>
-                    {usageLogs.map((log) => (
-                      <div key={log.id} style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span>#{log.id} {log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : ""} {log.label || ""}</span>
-                        <span>{formatMoney(log.price)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Comment */}
-                {form.comment && (
-                  <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px", fontStyle: "italic" }}>
-                    {form.comment}
-                  </div>
-                )}
-              </div>
+              )}
+            </div>
+            {!screenMode && (
+            <div className="modal-footer">
+              <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>Отмена</button>
+              <button type="button" className="btn btn-sm btn-primary" onClick={handleSubmit} disabled={loading}>
+                {loading ? "Сохранение..." : "Сохранить"}
+              </button>
+            </div>
             )}
           </div>
-          {!screenMode && (
-          <div className="modal-footer">
-            <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>Отмена</button>
-            <button type="button" className="btn btn-sm btn-primary" onClick={handleSubmit} disabled={loading}>
-              {loading ? "Сохранение..." : "Сохранить"}
-            </button>
-          </div>
-          )}
         </div>
       </div>
-    </div>
+
+      {printMode && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: "#fff", color: "#000", fontFamily: "Arial, sans-serif", overflow: "auto", padding: "20px 32px" }}>
+          {renderPrintContent()}
+        </div>
+      )}
+    </>
   );
 }
