@@ -21,6 +21,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const [loading, setLoading] = useState(false);
   const [usageLogs, setUsageLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [screenMode, setScreenMode] = useState(false);
 
   useEffect(() => {
     if (show && invoice) {
@@ -113,9 +114,16 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title">Редактировать счёт #{invoice.id}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
+            <div className="d-flex gap-2">
+              <button type="button" className={`btn btn-sm ${screenMode ? "btn-warning" : "btn-outline-light"}`}
+                onClick={() => setScreenMode(!screenMode)}>
+                {screenMode ? "✕ Скрин" : "📷 Скрин"}
+              </button>
+              <button type="button" className="btn-close" onClick={onClose}></button>
+            </div>
           </div>
           <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+            {!screenMode && (<>
             {/* Line items */}
             <div className="mb-3">
               <div className="d-flex justify-content-between align-items-center mb-2">
@@ -289,13 +297,72 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                 onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
               />
             </div>
+            </>)}
+            {screenMode && (
+              <div style={{ background: "#0d1117", color: "#c9d1d9", borderRadius: "8px", padding: "16px", fontFamily: "monospace", fontSize: "13px", lineHeight: "1.6" }}>
+                <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "12px", borderBottom: "1px solid #30363d", paddingBottom: "8px" }}>
+                  Счёт #{invoice.id} {invoice.invoice_number ? `(${invoice.invoice_number})` : ""}
+                </div>
+
+                {/* Items */}
+                <div style={{ marginBottom: "8px" }}>
+                  {items.map((it, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>{it.description || `Строка ${i + 1}`}</span>
+                      <span>{formatMoney(it.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ borderTop: "1px solid #30363d", paddingTop: "8px", marginTop: "4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+                    <span>Итого</span><span>{formatMoney(itemsTotal)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
+                    <span>Комиссия ({form.percent_rate}%)</span>
+                    <span>{formatMoney(Math.round(itemsTotal * (form.percent_rate || 0) / 100))}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
+                    <span>Налог ({form.tax_rate}%)</span>
+                    <span>{formatMoney(Math.round(itemsTotal * (form.tax_rate || 0) / 100))}</span>
+                  </div>
+                  {form.total_amount > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: "4px", borderTop: "1px solid #30363d", paddingTop: "4px" }}>
+                      <span>К оплате</span><span>{formatMoney(form.total_amount)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Usage logs */}
+                {usageLogs.length > 0 && (
+                  <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px" }}>
+                    <div style={{ marginBottom: "4px", fontWeight: "bold", color: "#c9d1d9" }}>Записи:</div>
+                    {usageLogs.map((log) => (
+                      <div key={log.id} style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span>#{log.id} {log.created_at ? new Date(log.created_at).toLocaleDateString("ru-RU") : ""} {log.label || ""}</span>
+                        <span>{formatMoney(log.price)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comment */}
+                {form.comment && (
+                  <div style={{ marginTop: "12px", borderTop: "1px solid #30363d", paddingTop: "8px", color: "#8b949e", fontSize: "12px", fontStyle: "italic" }}>
+                    {form.comment}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+          {!screenMode && (
           <div className="modal-footer">
             <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>Отмена</button>
             <button type="button" className="btn btn-sm btn-primary" onClick={handleSubmit} disabled={loading}>
               {loading ? "Сохранение..." : "Сохранить"}
             </button>
           </div>
+          )}
         </div>
       </div>
     </div>
