@@ -63,7 +63,11 @@ def update_api_key(api_key_id: int, body) -> tuple[int, dict]:
 
 
 def update_usage_log(usage_log_id: int, body) -> tuple[int, dict]:
-    log = usage_log_repo.update_usage_log(usage_log_id, body)
+    log = usage_log_repo.update_usage_log(
+        usage_log_id,
+        price=body.price,
+        paid=body.paid,
+    )
     if not log:
         return 404, {"error": "Usage log not found"}
     return 200, log
