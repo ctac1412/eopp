@@ -128,8 +128,26 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         </tbody>
       </table>
       <div style={{ textAlign: "right", fontSize: "13px", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", borderTop: "1px solid #ccc", paddingTop: "6px" }}>
+          <span>Строки:</span><span>{formatMoney(itemsTotal)}</span>
+        </div>
+        {form.percent_rate > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
+            <span>Комиссия ({form.percent_rate}%):</span><span>{formatMoney(Math.round(itemsTotal * form.percent_rate / 100))}</span>
+          </div>
+        )}
+        {form.tax_rate > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
+            <span>Налог ({form.tax_rate}%):</span><span>{formatMoney(Math.round(itemsTotal * form.tax_rate / 100))}</span>
+          </div>
+        )}
+        {form.debt_amount > 0 && (
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
+            <span>Долг:</span><span>{formatMoney(form.debt_amount)}</span>
+          </div>
+        )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", borderTop: "1px solid #000", paddingTop: "6px", fontWeight: "bold", fontSize: "15px" }}>
-          <span>Итого:</span><span>{formatMoney(itemsTotal)}</span>
+          <span>Итого к оплате:</span><span>{formatMoney(form.total_amount || itemsTotal)}</span>
         </div>
       </div>
       {usageLogs.length > 0 && (
@@ -304,8 +322,26 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                     </div>
                   ))}
                   <div style={{ borderTop: "1px solid #30363d", paddingTop: "8px", marginTop: "4px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-                      <span>Итого</span><span>{formatMoney(itemsTotal)}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Строки</span><span>{formatMoney(itemsTotal)}</span>
+                    </div>
+                    {form.percent_rate > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
+                        <span>Комиссия ({form.percent_rate}%)</span><span>{formatMoney(Math.round(itemsTotal * form.percent_rate / 100))}</span>
+                      </div>
+                    )}
+                    {form.tax_rate > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
+                        <span>Налог ({form.tax_rate}%)</span><span>{formatMoney(Math.round(itemsTotal * form.tax_rate / 100))}</span>
+                      </div>
+                    )}
+                    {form.debt_amount > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
+                        <span>Долг</span><span>{formatMoney(form.debt_amount)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: "4px", borderTop: "1px solid #30363d", paddingTop: "4px" }}>
+                      <span>К оплате</span><span>{formatMoney(form.total_amount || itemsTotal)}</span>
                     </div>
                   </div>
                   {usageLogs.length > 0 && (
