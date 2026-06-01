@@ -133,12 +133,12 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         </div>
         {form.percent_rate > 0 && (
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
-            <span>Комиссия ({form.percent_rate}%):</span><span>{formatMoney(Math.round(itemsTotal * form.percent_rate / 100))}</span>
+            <span>Комиссия ({form.percent_rate}%):</span><span>{formatMoney(form.percent_amount || Math.round(itemsTotal * form.percent_rate / 100))}</span>
           </div>
         )}
         {form.tax_rate > 0 && (
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "100px", color: "#555" }}>
-            <span>Налог ({form.tax_rate}%):</span><span>{formatMoney(Math.round(itemsTotal * form.tax_rate / 100))}</span>
+            <span>Налог ({form.tax_rate}%):</span><span>{formatMoney(form.tax_amount || Math.round(itemsTotal * form.tax_rate / 100))}</span>
           </div>
         )}
         {form.debt_amount > 0 && (
@@ -327,12 +327,12 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                     </div>
                     {form.percent_rate > 0 && (
                       <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
-                        <span>Комиссия ({form.percent_rate}%)</span><span>{formatMoney(Math.round(itemsTotal * form.percent_rate / 100))}</span>
+                        <span>Комиссия ({form.percent_rate}%)</span><span>{formatMoney(form.percent_amount || Math.round(itemsTotal * form.percent_rate / 100))}</span>
                       </div>
                     )}
                     {form.tax_rate > 0 && (
                       <div style={{ display: "flex", justifyContent: "space-between", color: "#8b949e" }}>
-                        <span>Налог ({form.tax_rate}%)</span><span>{formatMoney(Math.round(itemsTotal * form.tax_rate / 100))}</span>
+                        <span>Налог ({form.tax_rate}%)</span><span>{formatMoney(form.tax_amount || Math.round(itemsTotal * form.tax_rate / 100))}</span>
                       </div>
                     )}
                     {form.debt_amount > 0 && (
