@@ -330,13 +330,23 @@ def create_captcha_records(
     now = datetime.now(UTC).isoformat()
     created_ids = []
 
+    usage_created_at = _get_usage_created_at(conn, usage_log_id)
+    duration_ms = None
+    if usage_created_at:
+        try:
+            start = datetime.fromisoformat(usage_created_at)
+            end = datetime.fromisoformat(now)
+            duration_ms = int((end - start).total_seconds() * 1000)
+        except Exception:
+            pass
+
     # 1) solved correctly
     for cid, valid_index in passed:
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, "passed", usage_log_id, tiles_hash, None, now),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, "passed", usage_log_id, tiles_hash, None, duration_ms, now),
         )
         created_ids.append(cursor.lastrowid)
         if payload_data is not None:
@@ -349,8 +359,8 @@ def create_captcha_records(
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, "failed", usage_log_id, tiles_hash, reason, now),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, "failed", usage_log_id, tiles_hash, reason, duration_ms, now),
         )
         created_ids.append(cursor.lastrowid)
         if payload_data is not None and no_valid_index is not None:
@@ -363,8 +373,8 @@ def create_captcha_records(
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
         cursor = conn.execute(
-            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (cid, "failed", usage_log_id, tiles_hash, reason, now),
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, "failed", usage_log_id, tiles_hash, reason, duration_ms, now),
         )
         created_ids.append(cursor.lastrowid)
         _sync_captcha_files_unsolved(conn, cid, now, payload_data)
@@ -372,6 +382,13 @@ def create_captcha_records(
     conn.commit()
     conn.close()
     return created_ids
+
+
+def _get_usage_created_at(conn, usage_log_id: int) -> str | None:
+    row = conn.execute(
+        "SELECT created_at FROM usage_log WHERE id = ?", (usage_log_id,)
+    ).fetchone()
+    return row["created_at"] if row else None
 
 
 def list_captchas(usage_log_id: int | None = None) -> list[dict]:
@@ -392,6 +409,7 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
             "usage_log_id": r["usage_log_id"],
             "tiles_hash": r["tiles_hash"],
             "fail_reason": r["fail_reason"],
+            "duration_ms": r["duration_ms"],
             "created_at": r["created_at"],
         }
         for r in rows

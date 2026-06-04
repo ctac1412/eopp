@@ -21,6 +21,7 @@ class CaptchaRecord(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     tiles_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     fail_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     usage_log: Mapped[UsageLog] = relationship(back_populates="captcha_records")
 

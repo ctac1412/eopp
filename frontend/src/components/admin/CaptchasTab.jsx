@@ -20,6 +20,15 @@ function formatDate(iso) {
   });
 }
 
+function formatDuration(durationMs) {
+  if (durationMs == null) return "—";
+  if (durationMs < 1000) return `${durationMs} мс`;
+  if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} с`;
+  const mins = Math.floor(durationMs / 60000);
+  const secs = ((durationMs % 60000) / 1000).toFixed(1);
+  return `${mins}м ${secs}с`;
+}
+
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 function pageCount(total, pageSize) {
@@ -906,6 +915,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                 <th style={{ width: "120px" }}>Пользователь</th>
                   <th style={{ width: "100px" }}>Usage Log</th>
                 <th style={{ width: "160px" }}>Дата</th>
+                <th style={{ width: "80px" }}>Время</th>
                   <th style={{ width: "90px" }}>Превью</th>
                 </tr>
             </thead>
@@ -939,6 +949,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                   <td className="small">{c.key_label || "—"}</td>
                   <td>{c.usage_log_id}</td>
                   <td className="small">{formatDate(c.created_at)}</td>
+                  <td className="small">{formatDuration(c.duration_ms)}</td>
                   <td>
                     {fileValidIndex.has(c.captcha_id) ? (
                       <img

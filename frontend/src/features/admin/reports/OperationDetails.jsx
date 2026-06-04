@@ -11,6 +11,15 @@ import {
   getVehicleNumberFull,
 } from "./reportUtils";
 
+function formatDuration(durationMs) {
+  if (durationMs == null) return "—";
+  if (durationMs < 1000) return `${durationMs} мс`;
+  if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} с`;
+  const mins = Math.floor(durationMs / 60000);
+  const secs = ((durationMs % 60000) / 1000).toFixed(1);
+  return `${mins}м ${secs}с`;
+}
+
 function Field({ label, value, mono = false }) {
   return (
     <div>
@@ -83,6 +92,7 @@ export function OperationDetails({
                   <tr>
                     <th>ID</th>
                     <th>Статус</th>
+                    <th>Время</th>
                     <th>Ответ</th>
                     <th>Причина</th>
                   </tr>
@@ -92,6 +102,7 @@ export function OperationDetails({
                     <tr key={captcha.id}>
                       <td className="font-monospace small">{captcha.captcha_id}</td>
                       <td><CaptchaStatus status={captcha.status} /></td>
+                      <td className="small">{formatDuration(captcha.duration_ms)}</td>
                       <td className="small">{captcha.correct_answer ?? "—"}</td>
                       <td className="small text-danger">{captcha.fail_reason || "—"}</td>
                     </tr>
