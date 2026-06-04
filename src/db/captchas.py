@@ -182,7 +182,10 @@ def extract_unsolved_captchas_from_logs(logs: list[str] | None) -> list[tuple[st
 
 
 def extract_captcha_durations_from_logs(logs: list[str] | None) -> dict[str, int]:
-    """Extract per-captcha solving durations from stage_end events."""
+    """Extract per-captcha solving durations from stage_end events.
+    
+    Prefers 'success' status over 'error' when both exist for the same captcha_id.
+    """
     if not logs:
         return {}
     durations: dict[str, int] = {}
@@ -192,11 +195,17 @@ def extract_captcha_durations_from_logs(logs: list[str] | None) -> dict[str, int
         event = _parse_v2_event(line)
         if not event:
             continue
-        if not _event_matches(event, "solving", "success", "solve-captcha"):
+        if event.get("event") != "stage_end":
+            continue
+        if event.get("stage") != "solving":
+            continue
+        if event.get("endpoint") != "solve-captcha":
             continue
         cid = event.get("captcha_id")
         dur = _event_int(event, "duration_ms")
-        if isinstance(cid, str) and dur is not None:
+        if not isinstance(cid, str) or dur is None:
+            continue
+        if cid not in durations or event.get("status") == "success":
             durations[cid] = dur
     return durations
 
@@ -430,29 +439,41 @@ def _ensure_duration_ms_column(conn):
 
 
 def backfill_duration_ms() -> int:
-    """Backfill duration_ms for existing captcha records using usage_log.created_at."""
+    """Backfill duration_ms from logs stored in usage_log."""
     conn = get_connection()
     _ensure_duration_ms_column(conn)
 
     rows = conn.execute(
-        "SELECT c.id, c.created_at, u.created_at AS usage_created_at "
+        "SELECT c.id, c.captcha_id, c.created_at, c.usage_log_id, u.logs, u.created_at AS usage_created_at "
         "FROM captchas c JOIN usage_log u ON c.usage_log_id = u.id "
         "WHERE c.duration_ms IS NULL"
     ).fetchall()
 
     updated = 0
     for r in rows:
+        dur = None
+        logs = None
         try:
-            captcha_time = _parse_naive_dt(r["created_at"])
-            usage_time = _parse_naive_dt(r["usage_created_at"])
-            duration_ms = int((captcha_time - usage_time).total_seconds() * 1000)
-            conn.execute(
-                "UPDATE captchas SET duration_ms = ? WHERE id = ?",
-                (duration_ms, r["id"]),
-            )
-            updated += 1
+            import json as _json
+            raw = r["logs"]
+            logs = _json.loads(raw) if isinstance(raw, str) else raw
         except Exception:
-            continue
+            pass
+
+        if isinstance(logs, list):
+            from_logs = extract_captcha_durations_from_logs(logs)
+            dur = from_logs.get(r["captcha_id"])
+
+        if dur is None:
+            try:
+                captcha_time = _parse_naive_dt(r["created_at"])
+                usage_time = _parse_naive_dt(r["usage_created_at"])
+                dur = int((captcha_time - usage_time).total_seconds() * 1000)
+            except Exception:
+                continue
+
+        conn.execute("UPDATE captchas SET duration_ms = ? WHERE id = ?", (dur, r["id"]))
+        updated += 1
 
     conn.commit()
     conn.close()
