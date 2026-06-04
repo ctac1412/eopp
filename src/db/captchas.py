@@ -335,8 +335,8 @@ def create_captcha_records(
     duration_ms = None
     if usage_created_at:
         try:
-            start = datetime.fromisoformat(usage_created_at)
-            end = datetime.fromisoformat(now)
+            start = _parse_naive_dt(usage_created_at)
+            end = _parse_naive_dt(now)
             duration_ms = int((end - start).total_seconds() * 1000)
         except Exception:
             pass
@@ -392,6 +392,11 @@ def _get_usage_created_at(conn, usage_log_id: int) -> str | None:
     return row["created_at"] if row else None
 
 
+def _parse_naive_dt(iso: str):
+    dt = datetime.fromisoformat(iso)
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
 def _ensure_duration_ms_column(conn):
     try:
         conn.execute("ALTER TABLE captchas ADD COLUMN duration_ms INTEGER DEFAULT NULL")
@@ -414,8 +419,8 @@ def backfill_duration_ms() -> int:
     updated = 0
     for r in rows:
         try:
-            captcha_time = datetime.fromisoformat(r["created_at"])
-            usage_time = datetime.fromisoformat(r["usage_created_at"])
+            captcha_time = _parse_naive_dt(r["created_at"])
+            usage_time = _parse_naive_dt(r["usage_created_at"])
             duration_ms = int((captcha_time - usage_time).total_seconds() * 1000)
             conn.execute(
                 "UPDATE captchas SET duration_ms = ? WHERE id = ?",
