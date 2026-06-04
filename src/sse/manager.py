@@ -54,6 +54,11 @@ def push_sse(msg, api_key_id=None):
     )
 
 
+def operator_api_key_id(operator_id: int) -> int:
+    """Map operator ID to a negative api_key_id namespace."""
+    return -(operator_id + 100000)
+
+
 def register_sse_connection(
     api_key_id: int | None,
     ip: str,

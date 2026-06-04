@@ -3,26 +3,18 @@ EOPP Captcha Solver - Frontend Routes
 
 Эндпоинты раздачи статики:
 - GET /{path} - раздача React SPA из frontend/dist/
-- GET /test-injector/edit - тестовая страница создания брони
-- GET /test-injector/reschedule - тестовая страница переноса брони
-
-Логика:
-- Если FRONTEND_DIST существует - раздаём React приложение
-- Иначе возвращаем 503 с ошибкой
-- fallback на index.html для SPA роутов
+- GET /test-injector/* - тестовые страницы
 """
 
 import os
 
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from src.constants import FRONTEND_DIST
 
 
 def register_frontend_routes(app):
     if os.path.isdir(FRONTEND_DIST):
-        from fastapi.responses import FileResponse
-
         @app.get("/{full_path:path}")
         async def serve_frontend(full_path: str = ""):
             if not full_path:
@@ -31,9 +23,7 @@ def register_frontend_routes(app):
             if os.path.isfile(file_path):
                 return FileResponse(file_path)
             return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
-
     else:
-
         @app.get("/{full_path:path}")
         async def serve_frontend_fallback(full_path: str = ""):
             index_path = os.path.join(FRONTEND_DIST, "index.html")

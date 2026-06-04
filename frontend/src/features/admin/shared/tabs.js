@@ -1,6 +1,7 @@
 ﻿export const ADMIN_TABS = [
   { id: "reports", label: "Журнал" },
   { id: "keys", label: "API Keys" },
+  { id: "operators", label: "Операторы" },
   { id: "captchas", label: "Капчи" },
   { id: "ai", label: "ИИ" },
   { id: "invoices", label: "Счета" },

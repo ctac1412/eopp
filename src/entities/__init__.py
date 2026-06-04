@@ -2,6 +2,8 @@ from src.entities.api_key import ApiKey
 from src.entities.base import Base, get_engine, get_session, get_session_factory, set_db_path
 from src.entities.billing import CompanyAlias, CompanyBillingSetting
 from src.entities.captcha import CaptchaFile, CaptchaRecord
+from src.entities.distribution_answer import DistributionAnswer
+from src.entities.operator import Operator, OperatorMasterLink
 from src.entities.expense import Expense
 from src.entities.invoice import Invoice, InvoiceItem
 from src.entities.payout import Payout, PayoutExpense, PayoutInvoice, PayoutShare
@@ -33,4 +35,7 @@ __all__ = [
     "PrepaidDeduction",
     "CompanyBillingSetting",
     "CompanyAlias",
+    "DistributionAnswer",
+    "Operator",
+    "OperatorMasterLink",
 ]

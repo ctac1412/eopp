@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { formatMoney } from "../utils/format";
 import useCaptchaStore from "../store/useCaptchaStore";
@@ -18,6 +18,20 @@ function isLocalhost() {
   return LOCALHOST_ORIGINS.includes(window.location.hostname);
 }
 
+function loadPersisted(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePersisted(key, val) {
+  try {
+    localStorage.setItem(key, val);
+  } catch { /* noop */ }
+}
+
 function StatusBar() {
   const queue = useCaptchaStore((s) => s.queue);
   const unsolved = queue.filter((q) => !q.solved);
@@ -30,8 +44,11 @@ function StatusBar() {
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const setSuperKioskMode = useCaptchaStore((s) => s.setSuperKioskMode);
   const [showChange, setShowChange] = useState(false);
-  const [testCaptchaId, setTestCaptchaId] = useState("");
-  const [showTestId, setShowTestId] = useState(false);
+  const [testCaptchaId, setTestCaptchaId] = useState(() => loadPersisted("test_captcha_id", ""));
+  const [testNoTimeout, setTestNoTimeout] = useState(() => loadPersisted("test_no_timeout", "0") === "1");
+  const [sequentialIcons, setSequentialIcons] = useState(() => loadPersisted("click_sequential_icons", "0") === "1");
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsRef = useRef(null);
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
@@ -70,17 +87,44 @@ function StatusBar() {
       });
   }, [apiKey]);
 
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setShowSettings(false);
+      }
+    }
+    if (showSettings) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSettings]);
+
+  const handleCaptchaIdChange = (val) => {
+    setTestCaptchaId(val);
+    savePersisted("test_captcha_id", val);
+  };
+
+  const handleNoTimeoutChange = (val) => {
+    setTestNoTimeout(val);
+    savePersisted("test_no_timeout", val ? "1" : "0");
+  };
+
+  const handleSequentialIconsChange = (val) => {
+    setSequentialIcons(val);
+    savePersisted("click_sequential_icons", val ? "1" : "0");
+  };
+
   const handleTestRun = async () => {
     setLoading(true);
+    setShowSettings(false);
     try {
+      const body = { api_key: apiKey };
+      if (testCaptchaId) body.captcha_id = testCaptchaId;
+      if (testNoTimeout) body.test_no_timeout = true;
       await fetch("/trigger-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: apiKey,
-          reservation_id: "00000000-0000-0000-0000-000000000000",
-          captcha_id: testCaptchaId || undefined,
-        }),
+        body: JSON.stringify(body),
       });
     } finally {
       setLoading(false);
@@ -98,6 +142,10 @@ function StatusBar() {
     const url = `${window.location.origin}${path}`;
     window.open(url, "_blank");
   };
+
+  const truncatedId = testCaptchaId.length > 16
+    ? testCaptchaId.slice(0, 16) + "…"
+    : testCaptchaId;
 
   return (
     <div className="status-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -149,23 +197,66 @@ function StatusBar() {
             <button className="btn btn-sm btn-outline-secondary" onClick={() => openTestPage("/test-injector/reschedule")}>Перенос</button>
           </div>
         )}
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={() => setShowTestId(!showTestId)}
-          style={{ fontSize: "0.75rem" }}
-        >
-          ID
-        </button>
-        {showTestId && (
-          <input
-            type="text"
-            className="form-control form-control-sm"
-            style={{ width: "280px", fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)" }}
-            placeholder="captcha_id (пусто = рандом)"
-            value={testCaptchaId}
-            onChange={(e) => setTestCaptchaId(e.target.value)}
-          />
-        )}
+        <div className="d-flex align-items-center gap-0" ref={settingsRef} style={{ position: "relative" }}>
+          {testCaptchaId && (
+            <span
+              className="api-key-limit"
+              style={{ borderRight: "none", borderRadius: "0.25rem 0 0 0.25rem", cursor: "default" }}
+              title={testCaptchaId}
+            >
+              {truncatedId}
+            </span>
+          )}
+          <button
+            className={`btn btn-sm ${showSettings ? "btn-outline-primary" : "btn-outline-secondary"}`}
+            onClick={() => setShowSettings(!showSettings)}
+            title="Настройки тестового запуска"
+            style={{ borderRadius: testCaptchaId ? "0 0.5rem 0.5rem 0" : "0.5rem", fontSize: "0.75rem" }}
+          >
+            ⚙
+          </button>
+          {showSettings && (
+            <div style={{
+              position: "absolute", top: "100%", right: 0, marginTop: 6, minWidth: 260,
+              background: "var(--surface)", border: "1px solid var(--border)",
+              borderRadius: "0.5rem", padding: "0.625rem", zIndex: 1050,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+            }}>
+              <div style={{ fontSize: "0.6875rem", color: "#8b949e", fontWeight: 600, marginBottom: 8 }}>
+                ⚙ Настройки тестового запуска
+              </div>
+              <input
+                type="text"
+                className="form-control form-control-sm"
+                style={{ fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)", marginBottom: 8 }}
+                placeholder="ID капчи (пусто = случайная)"
+                value={testCaptchaId}
+                onChange={(e) => handleCaptchaIdChange(e.target.value)}
+              />
+              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  style={{ margin: 0 }}
+                  checked={testNoTimeout}
+                  onChange={(e) => handleNoTimeoutChange(e.target.checked)}
+                />
+                Без таймаута
+              </label>
+              <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />
+              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  style={{ margin: 0 }}
+                  checked={sequentialIcons}
+                  onChange={(e) => handleSequentialIconsChange(e.target.checked)}
+                />
+                Иконки по очереди
+              </label>
+            </div>
+          )}
+        </div>
         <button
           className="btn btn-sm btn-primary"
           onClick={handleTestRun}

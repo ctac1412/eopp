@@ -130,6 +130,15 @@ const useCaptchaStore = create((set) => ({
   setSelectedCard: (captchaId, cardIndex) =>
     set({ selectedCard: cardIndex, selectedCaptchaId: captchaId }),
 
+  updateDistributionProgress: (captchaId, solvedCount, answeredPositions, allCoords) =>
+    set((state) => ({
+      queue: state.queue.map((q) =>
+        q.id === captchaId && q.distribution
+          ? { ...q, _distSolvedCount: solvedCount, _distAnsweredPositions: answeredPositions, _distAllCoords: allCoords }
+          : q
+      ),
+    })),
+
   getActiveCaptcha: () => {
     const state = useCaptchaStore.getState();
     return state.queue.find((q) => !q.solved) || null;

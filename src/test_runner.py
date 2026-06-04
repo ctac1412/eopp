@@ -25,7 +25,7 @@ def next_result_id():
         return result_counter
 
 
-def _http_post(path, body, extra_headers=None):
+def _http_post(path, body, extra_headers=None, http_timeout=15):
     headers = {"Content-Type": "application/json"}
     if extra_headers:
         headers.update(extra_headers)
@@ -36,9 +36,9 @@ def _http_post(path, body, extra_headers=None):
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        conn = http.client.HTTPSConnection("127.0.0.1", constants.PORT, context=ctx, timeout=15)
+        conn = http.client.HTTPSConnection("127.0.0.1", constants.PORT, context=ctx, timeout=http_timeout)
     else:
-        conn = http.client.HTTPConnection("127.0.0.1", constants.PORT, timeout=15)
+        conn = http.client.HTTPConnection("127.0.0.1", constants.PORT, timeout=http_timeout)
 
     conn.request("POST", path, body=body, headers=headers)
     resp = conn.getresponse()
@@ -145,7 +145,7 @@ def send_test_cases_with_key(api_key=None):
         time.sleep(1)
 
 
-def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None):
+def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, test_no_timeout=False):
     files = _captcha_files(labeled=True)
     if not files:
         print(f"No labeled test files found in {captcha_file_service.all_dir()}")
@@ -162,10 +162,10 @@ def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None):
     with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")
-    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id)
+    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id, test_no_timeout)
 
 
-def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None):
+def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None, test_no_timeout=False):
     try:
         if api_key is None:
             from src.constants import get_test_api_key
@@ -175,11 +175,15 @@ def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_
         data = json.loads(body)
         data["api_key"] = api_key
         data["reservation_id"] = reservation_id or "unknown"
+        if test_no_timeout:
+            data["test_no_timeout"] = True
         wrapped_body = json.dumps(data)
+        http_timeout = 3600 if test_no_timeout else 15
         _http_post(
             path="/solve-captcha",
             body=wrapped_body,
             extra_headers={"X-Admin-Token": admin_token},
+            http_timeout=http_timeout,
         )
     except Exception as e:
         print(f"Error sending test captcha: {e}")

@@ -35,6 +35,7 @@ class SolveCaptchaBody(BaseModel):
     silhouette: str | None = None
     puzzle: dict[str, Any] | None = None
     valid_index: int | None = None
+    test_no_timeout: bool = False
 
 
 class CreateApiKeyBody(BaseModel):
@@ -238,3 +239,21 @@ class CaptchaLabelSaveBody(BaseModel):
 
 class SendSelectedCaptchasBody(BaseModel):
     captcha_ids: list[str] = []
+
+
+class OperatorSubscribeBody(BaseModel):
+    operator_key: str
+    master_key: str
+
+
+class OperatorUnsubscribeBody(BaseModel):
+    operator_key: str
+    master_key: str
+
+
+class DistributionAnswerBody(BaseModel):
+    captcha_id: str
+    operator_id: int
+    icon_position: int
+    x: int
+    y: int

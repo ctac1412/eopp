@@ -129,3 +129,85 @@ def assemble_icon_click_preview(
         result["icons"] = base64.b64encode(buf.getvalue()).decode()
 
     return [result]
+
+
+def crop_icons_for_distribution(
+    main_b64: str,
+    coordinates: list[dict],
+    pad: int = 60,
+) -> dict[int, dict]:
+    """Pre-compute cropped regions around each icon coordinate.
+
+    Returns {position: {image: base64_png, crop_box: (left, top, right, bottom)}}
+    where position is 0..N-1 and crop_box is relative to the original image.
+    """
+    main_img = _decode_b64_image(main_b64)
+    if not main_img:
+        return {}
+
+    W, H = main_img.size
+    cache: dict[int, dict] = {}
+
+    for pos, coord in enumerate(coordinates[:5]):
+        x, y = coord["x"], coord["y"]
+        left = max(0, x - pad)
+        top = max(0, y - pad)
+        right = min(W, x + pad)
+        bottom = min(H, y + pad)
+
+        if right <= left or bottom <= top:
+            continue
+
+        cropped = main_img.crop((left, top, right, bottom))
+        buf = io.BytesIO()
+        cropped.save(buf, format="PNG")
+        cache[pos] = {
+            "image": base64.b64encode(buf.getvalue()).decode(),
+            "crop_box": (left, top, right, bottom),
+        }
+
+    return cache
+
+
+def prepare_distribution_icons(
+    main_b64: str,
+    icons_b64: str,
+) -> dict[int, dict]:
+    """Extract individual icons from the icons strip for distribution.
+
+    Runs solver once to find icon positions, then stores for each position:
+    {position: {image: base64 (full main image), icon: base64 (individual icon)}}
+    """
+    from src.captcha_solver_engine.icon_click_solver import _decode_b64_image as _solver_decode
+    from src.captcha_solver_engine.icon_click_solver import _extract_icons
+
+    cache: dict[int, dict] = {}
+    individual = []
+    icons_np = None
+
+    try:
+        icons_np = _solver_decode(icons_b64)
+        individual = _extract_icons(icons_np)
+    except Exception:
+        pass
+
+    if len(individual) < 5 and icons_np is not None and icons_np.shape[1] > 20:
+        w = icons_np.shape[1]
+        equal = w / 5
+        individual = [icons_np[:, int(i * equal):int((i + 1) * equal)] for i in range(5)]
+
+    if len(individual) < 5:
+        return cache
+
+    for pos, icon_np in enumerate(individual[:5]):
+        if icon_np.shape[0] < 4 or icon_np.shape[1] < 4:
+            continue
+        icon_pil = Image.fromarray(icon_np).convert("RGBA")
+        buf = io.BytesIO()
+        icon_pil.save(buf, format="PNG")
+        cache[pos] = {
+            "image": main_b64,
+            "icon": base64.b64encode(buf.getvalue()).decode(),
+        }
+
+    return cache

@@ -50,6 +50,7 @@ def list_keys() -> list[dict]:
                     "price_create": k.tariff.price_create,
                     "price_reschedule": k.tariff.price_reschedule,
                     "price_create_peak": k.tariff.price_create_peak,
+                    "price_custom_slots": k.tariff.price_custom_slots,
                 }
             d["debt"] = calc_debt(k.id)
             result.append(d)

@@ -77,6 +77,7 @@ export function HomePage() {
           </button>
         </li>
       </ul>
+
       <div className="mt-3">
         {activeTab === "captchas" ? (
           <CaptchaTab />

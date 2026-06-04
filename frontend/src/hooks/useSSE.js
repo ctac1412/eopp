@@ -95,6 +95,7 @@ function useSSE(enabled = true) {
             confident: msg.confident || false,
             captchaType: msg.captcha_type || 0,
             iconsImage: msg.icons_image || "",
+            distribution: msg.distribution || null,
           });
           if (wasEmpty) {
             playNewCaptchaSound();
@@ -117,6 +118,15 @@ function useSSE(enabled = true) {
           removeCaptcha(msg.captcha_id);
           sounded.delete(msg.captcha_id);
           addLog(`Капча ${msg.captcha_id} — таймаут`, "error");
+        }
+
+        if (msg.type === "distribution_progress") {
+          useCaptchaStore.getState().updateDistributionProgress(
+            msg.captcha_id,
+            msg.solved_count,
+            msg.answered_positions || [],
+            msg.all_coords || {},
+          );
         }
       };
 

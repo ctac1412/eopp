@@ -35,6 +35,7 @@ from src.captcha_assembly import (
 )
 from src.constants import (
     CAPTCHA_TIMEOUT,
+    DISTRIBUTION,
 )
 from src.db import (
     get_key_by_id,
@@ -197,6 +198,9 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         step_start = time.perf_counter()
         top3 = get_top3_from_solver(data)
         confident = False
+        is_distributed = False
+        icons_cache = {}
+        dist = None
 
         if not is_icon_click_type(data):
             solver_out = None
@@ -215,35 +219,95 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         step_start = time.perf_counter()
 
         if is_icon_click_type(data):
-            from src.captcha_solver_engine.images import assemble_icon_click_preview
+            from src.captcha_solver_engine.images import assemble_icon_click_preview, crop_icons_for_distribution
+            from src.captcha_solver_engine.icon_click_solver import solve_icon_click
+            from src.routes.distribution import init_distribution_state
+
             puzzle_data = data.get("puzzle", data)
             main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
             icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
 
-            try:
-                generated = await asyncio.to_thread(
-                    assemble_icon_click_preview, main_b64, icons_b64
-                )
-            except Exception as exc:
-                _log_solve_step(rid, captcha_id, "assemble_icon_click_failed", step_start,
-                                error=str(exc), level=logging.WARNING)
-                generated = []
-
+            from src.repositories import operator_repo
+            op_ids = operator_repo.get_subscribed_operators(api_key_id)
             _log_solve_step(
-                rid, captcha_id, "assemble_icon_click", step_start, generated=len(generated),
+                rid, captcha_id, "operator_lookup",
+                step_start, ops=len(op_ids) if op_ids else 0, found=bool(op_ids),
             )
+            icons_cache = {}
+            if op_ids:
+                try:
+                    from src.captcha_solver_engine.images import prepare_distribution_icons
+                    icons_cache = await asyncio.to_thread(
+                        prepare_distribution_icons, main_b64, icons_b64
+                    )
+                    if len(icons_cache) == 5:
+                        is_distributed = True
+                        init_distribution_state(
+                            captcha_id=captcha_id,
+                            event=event,
+                            usage_log_id=usage_log_id,
+                            api_key_id=api_key_id,
+                            num_operators=2,
+                            icons_cache=icons_cache,
+                            captcha_data=data,
+                        )
+                        _log_solve_step(
+                            rid, captcha_id, "distribution_init",
+                            step_start, ops=2, icons=len(icons_cache),
+                        )
+                except Exception as exc:
+                    _log_solve_step(
+                        rid, captcha_id, "distribution_init_failed",
+                        step_start, error=str(exc), level=logging.WARNING,
+                    )
 
-            entry = {
-                "captcha_id": captcha_id,
-                "captcha_type": 1,
-                "variants": [],
-                "images": {str(g["index"]): g["image"] for g in generated},
-                "icons_image": generated[0].get("icons", "") if generated else "",
-                "event": event,
-                "result": None,
-                "usage_log_id": usage_log_id,
-                "api_key_id": api_key_id,
-            }
+            if not is_distributed:
+                try:
+                    generated = await asyncio.to_thread(
+                        assemble_icon_click_preview, main_b64, icons_b64
+                    )
+                except Exception as exc:
+                    _log_solve_step(rid, captcha_id, "assemble_icon_click_failed", step_start,
+                                    error=str(exc), level=logging.WARNING)
+                    generated = []
+
+                _log_solve_step(
+                    rid, captcha_id, "assemble_icon_click", step_start, generated=len(generated),
+                )
+
+            if is_distributed:
+                dist_assignments = DISTRIBUTION[2]
+                first_pos = dist_assignments.get("0", [0])[0] if dist_assignments.get("0") else 0
+                first_icon = icons_cache.get(first_pos, {})
+                entry = {
+                    "captcha_id": captcha_id,
+                    "captcha_type": 1,
+                    "variants": [],
+                    "images": {str(0): main_b64},
+                    "icons_image": first_icon.get("icon", ""),
+                    "event": event,
+                    "result": None,
+                    "usage_log_id": usage_log_id,
+                    "api_key_id": api_key_id,
+                    "distribution": {
+                        "operator_id": 0,
+                        "assigned": dist_assignments.get("0", []),
+                        "num_operators": 2,
+                    },
+                    "icons_cache": icons_cache,
+                }
+            else:
+                entry = {
+                    "captcha_id": captcha_id,
+                    "captcha_type": 1,
+                    "variants": [],
+                    "images": {str(g["index"]): g["image"] for g in generated},
+                    "icons_image": generated[0].get("icons", "") if generated else "",
+                    "event": event,
+                    "result": None,
+                    "usage_log_id": usage_log_id,
+                    "api_key_id": api_key_id,
+                }
         else:
             generated = await asyncio.to_thread(assemble_captchas, tiles, variants, valid_index)
             _log_solve_step(
@@ -290,12 +354,51 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         if is_icon_click_type(data):
             sse_event["captcha_type"] = 1
             sse_event["icons_image"] = entry.get("icons_image", "")
+        if is_distributed:
+            sse_event["distribution"] = entry.get("distribution")
         push_sse(sse_event, api_key_id=api_key_id)
         _log_solve_step(rid, captcha_id, "push_sse_new_captcha", step_start)
 
+        if is_distributed and is_icon_click_type(data):
+            from src.repositories import operator_repo
+            from src.sse.manager import operator_api_key_id
+            assignments = DISTRIBUTION[2]
+            operator_ids = operator_repo.get_subscribed_operators(api_key_id)
+            for op_id_str, assigned in assignments.items():
+                op_id = int(op_id_str)
+                if op_id == 0:
+                    continue
+                first_icon = icons_cache.get(assigned[0], {})
+                op_sse = {
+                    "type": "new_captcha",
+                    "captcha_id": captcha_id,
+                    "captcha_type": 1,
+                    "images": {str(0): main_b64},
+                    "icons_image": first_icon.get("icon", ""),
+                    "count": 1,
+                    "top3": [],
+                    "confident": False,
+                    "created_at": time.time(),
+                    "timeout": captcha_timeout,
+                    "owner_label": owner_label,
+                    "owner_api_key_id": api_key_id,
+                    "distribution": {
+                        "operator_id": op_id,
+                        "assigned": assigned,
+                        "num_operators": 2,
+                    },
+                }
+                for op_real_id in operator_ids:
+                    push_sse(op_sse, api_key_id=operator_api_key_id(op_real_id))
+            _log_solve_step(
+                rid, captcha_id, "push_sse_operators",
+                step_start, operators=len(operator_ids),
+            )
+
         step_start = time.perf_counter()
+        effective_timeout = 3600 if body.test_no_timeout else captcha_timeout
         await asyncio.get_event_loop().run_in_executor(
-            None, lambda: event.wait(timeout=captcha_timeout)
+            None, lambda: event.wait(timeout=effective_timeout)
         )
         _log_solve_step(
             rid,
@@ -317,6 +420,10 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
                 },
                 api_key_id=api_key_id,
             )
+            if is_distributed:
+                from src.routes.distribution import distribution_states, _dist_lock
+                with _dist_lock:
+                    distribution_states.pop(captcha_id, None)
             _log_solve_step(rid, captcha_id, "push_sse_timeout", step_start)
             if body.timeout_metadata:
                 entry["result"] = {
@@ -582,6 +689,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
         api_key = body.get("api_key")
         reservation_id = body.get("reservation_id")
         captcha_id = body.get("captcha_id")
+        test_no_timeout = body.get("test_no_timeout", False)
 
         if api_key:
             key_record = get_key_record(api_key)
@@ -590,7 +698,7 @@ def register_captcha_routes(app, captcha_timeout=CAPTCHA_TIMEOUT):
 
         t = threading.Thread(
             target=send_one_test_captcha,
-            kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id},
+            kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id, "test_no_timeout": test_no_timeout},
             daemon=True,
         )
         t.start()

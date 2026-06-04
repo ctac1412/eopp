@@ -17,6 +17,12 @@ PORT = 8765
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAPTCHA_TIMEOUT = 10
 
+DISTRIBUTION = {
+    1: {"0": [0, 1, 2, 3, 4]},
+    2: {"0": [0, 1, 2], "1": [4, 3]},
+}
+DISTRIBUTION_CROP_PAD = 60
+
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN") or 13243546
 if not ADMIN_TOKEN:
     admin_token_path = os.path.join(PROJECT_DIR, "data", "admin_token")

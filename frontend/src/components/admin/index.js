@@ -15,4 +15,5 @@ export { UsersTab } from "./UsersTab";
 export { UserModal } from "./UserModal";
 export { CaptchasTab } from "./CaptchasTab";
 export { AITab } from "./AITab";
+export { OperatorsTab } from "./OperatorsTab";
 export { PrepaidPackagesTab } from "./PrepaidPackagesTab";

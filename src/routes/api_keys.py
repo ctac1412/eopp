@@ -33,6 +33,14 @@ def _make_masked(record):
 
 
 def register_api_key_routes(app):
+    @app.get("/api-keys/public")
+    async def list_public_keys():
+        keys = api_key_repo.list_keys()
+        return JSONResponse(content=[
+            {"key": k["key"], "label": k["label"], "active": k["active"]}
+            for k in keys
+        ])
+
     @app.post("/api-keys")
     async def create_api_key(body: CreateApiKeyBody):
         record = api_key_repo.create_key(body.label, body.max_uses)
