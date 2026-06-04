@@ -384,6 +384,8 @@ def register_admin_routes(app):
         updated = backfill_duration_ms()
         logger.info("backfill_duration_ms updated=%d", updated)
         return JSONResponse(content={"updated": updated})
+
+    @app.get("/admin/captchas")
     async def list_admin_captchas(
         status: str | None = None,
         api_key_id: int | None = None,
