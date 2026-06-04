@@ -168,17 +168,37 @@ def extract_unsolved_captchas_from_logs(logs: list[str] | None) -> list[tuple[st
             continue
         event = _parse_v2_event(line)
         if event:
-            if not _event_matches(event, "solving", "error", "solve-captcha"):
+            if not _event_matches(event, "captcha", "error", "generateCaptcha"):
                 continue
             captcha_id = event.get("captcha_id")
             if isinstance(captcha_id, str):
-                error = str(event.get("error") or "").strip()
-                unsolved.append((captcha_id, f"solve_error: {error}"))
+                reason = str(event.get("error") or "").strip()
+                unsolved.append((captcha_id, f"captcha_generation_failed: {reason}" if reason else "captcha_generation_failed"))
             continue
-        m = _V2_SOLVING_ERROR_EVENT_RE.search(line)
+        m = _V2_UNSOLVED_EVENT_RE.search(line)
         if m:
-            unsolved.append((m.group(2), f"solve_error: {m.group(1).strip()}"))
+            unsolved.append((m.group(2), m.group(1).strip()))
     return unsolved
+
+
+def extract_captcha_durations_from_logs(logs: list[str] | None) -> dict[str, int]:
+    """Extract per-captcha solving durations from stage_end events."""
+    if not logs:
+        return {}
+    durations: dict[str, int] = {}
+    for line in logs:
+        if not isinstance(line, str):
+            continue
+        event = _parse_v2_event(line)
+        if not event:
+            continue
+        if not _event_matches(event, "solving", "success", "solve-captcha"):
+            continue
+        cid = event.get("captcha_id")
+        dur = _event_int(event, "duration_ms")
+        if isinstance(cid, str) and dur is not None:
+            durations[cid] = dur
+    return durations
 
 
 def _sync_captcha_files_label(
@@ -323,6 +343,7 @@ def create_captcha_records(
     passed = extract_passed_captchas_from_logs(logs)
     invalid = extract_invalid_captchas_from_logs(logs)
     unsolved = extract_unsolved_captchas_from_logs(logs)
+    cap_durations = extract_captcha_durations_from_logs(logs)
     if not passed and not invalid and not unsolved:
         return []
 
@@ -345,9 +366,10 @@ def create_captcha_records(
     for cid, valid_index in passed:
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
+        dur = cap_durations.get(cid, duration_ms)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (cid, "passed", usage_log_id, tiles_hash, None, duration_ms, now),
+            (cid, "passed", usage_log_id, tiles_hash, None, dur, now),
         )
         created_ids.append(cursor.lastrowid)
         if payload_data is not None:
@@ -359,9 +381,10 @@ def create_captcha_records(
     for cid, no_valid_index, reason in invalid:
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
+        dur = cap_durations.get(cid, duration_ms)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (cid, "failed", usage_log_id, tiles_hash, reason, duration_ms, now),
+            (cid, "failed", usage_log_id, tiles_hash, reason, dur, now),
         )
         created_ids.append(cursor.lastrowid)
         if payload_data is not None and no_valid_index is not None:
@@ -373,9 +396,10 @@ def create_captcha_records(
     for cid, reason in unsolved:
         payload_data = _load_payload(cid)
         tiles_hash = _payload_tiles_hash(payload_data)
+        dur = cap_durations.get(cid, duration_ms)
         cursor = conn.execute(
             "INSERT INTO captchas (captcha_id, status, usage_log_id, tiles_hash, fail_reason, duration_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (cid, "failed", usage_log_id, tiles_hash, reason, duration_ms, now),
+            (cid, "failed", usage_log_id, tiles_hash, reason, dur, now),
         )
         created_ids.append(cursor.lastrowid)
         _sync_captcha_files_unsolved(conn, cid, now, payload_data)
