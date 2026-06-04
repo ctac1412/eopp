@@ -373,7 +373,17 @@ def register_admin_routes(app):
             return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
         return JSONResponse(content={"sent": sent})
 
-    @app.get("/admin/captchas")
+    @app.post("/admin/captchas/backfill-duration")
+    async def backfill_captcha_duration(request: Request):
+        from src.policies.access_policy import is_admin_token
+
+        if not is_admin_token(request.headers.get("X-Admin-Token")):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        from src.db.captchas import backfill_duration_ms
+
+        updated = backfill_duration_ms()
+        logger.info("backfill_duration_ms updated=%d", updated)
+        return JSONResponse(content={"updated": updated})
     async def list_admin_captchas(
         status: str | None = None,
         api_key_id: int | None = None,

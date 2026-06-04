@@ -400,6 +400,36 @@ def _ensure_duration_ms_column(conn):
         pass
 
 
+def backfill_duration_ms() -> int:
+    """Backfill duration_ms for existing captcha records using usage_log.created_at."""
+    conn = get_connection()
+    _ensure_duration_ms_column(conn)
+
+    rows = conn.execute(
+        "SELECT c.id, c.created_at, u.created_at AS usage_created_at "
+        "FROM captchas c JOIN usage_log u ON c.usage_log_id = u.id "
+        "WHERE c.duration_ms IS NULL"
+    ).fetchall()
+
+    updated = 0
+    for r in rows:
+        try:
+            captcha_time = datetime.fromisoformat(r["created_at"])
+            usage_time = datetime.fromisoformat(r["usage_created_at"])
+            duration_ms = int((captcha_time - usage_time).total_seconds() * 1000)
+            conn.execute(
+                "UPDATE captchas SET duration_ms = ? WHERE id = ?",
+                (duration_ms, r["id"]),
+            )
+            updated += 1
+        except Exception:
+            continue
+
+    conn.commit()
+    conn.close()
+    return updated
+
+
 def list_captchas(usage_log_id: int | None = None) -> list[dict]:
     conn = get_connection()
     if usage_log_id is not None:
