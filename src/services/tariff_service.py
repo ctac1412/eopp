@@ -14,7 +14,8 @@ def get_tariff(api_key_id: int) -> tuple[int, dict]:
 def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
     return 200, entity_to_dict(
         tariff_repo.upsert_tariff(
-            api_key_id, body.price_create, body.price_reschedule, body.price_create_peak
+            api_key_id, body.price_create, body.price_reschedule,
+            body.price_create_peak, body.price_custom_slots,
         )
     )
 

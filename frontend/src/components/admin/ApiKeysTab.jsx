@@ -99,6 +99,7 @@ export function ApiKeysTab({
               <th style={{ width: "80px" }}>Бронь</th>
               <th style={{ width: "80px" }}>Перенос</th>
               <th style={{ width: "95px" }}>Бронь 12:00</th>
+              <th style={{ width: "80px" }}>Свои слоты</th>
               <th style={{ width: "90px" }}>Использование</th>
               <th style={{ width: "80px" }}>Долг</th>
               <th style={{ width: "40px" }}>Актив</th>
@@ -139,6 +140,11 @@ export function ApiKeysTab({
                     <td className="text-center">
                       {tariff && tariff.price_create_peak != null
                         ? formatMoney(tariff.price_create_peak)
+                        : "—"}
+                    </td>
+                    <td className="text-center">
+                      {tariff && tariff.price_custom_slots != null
+                        ? formatMoney(tariff.price_custom_slots)
                         : "—"}
                     </td>
                     <td className="text-center">

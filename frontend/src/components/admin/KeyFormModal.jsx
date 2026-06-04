@@ -102,6 +102,17 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
                         min="0"
                       />
                     </div>
+                    <div className="col">
+                      <label className="form-label">Свои слоты (₽)</label>
+                      <input
+                        type="number"
+                        value={form.priceCustomSlots}
+                        onChange={(e) => setForm((p) => ({ ...p, priceCustomSlots: e.target.value }))}
+                        placeholder="0"
+                        className="form-control"
+                        min="0"
+                      />
+                    </div>
                   </div>
                 </div>
               )}

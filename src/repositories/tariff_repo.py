@@ -13,6 +13,7 @@ def upsert_tariff(
     price_create: int,
     price_reschedule: int,
     price_create_peak: int | None = None,
+    price_custom_slots: int | None = None,
 ) -> Tariff:
     now = datetime.now(UTC).isoformat()
     with get_session() as session:
@@ -21,6 +22,7 @@ def upsert_tariff(
             tariff.price_create = price_create
             tariff.price_reschedule = price_reschedule
             tariff.price_create_peak = price_create_peak
+            tariff.price_custom_slots = price_custom_slots
             tariff.updated_at = now
         else:
             tariff = Tariff(
@@ -28,6 +30,7 @@ def upsert_tariff(
                 price_create=price_create,
                 price_reschedule=price_reschedule,
                 price_create_peak=price_create_peak,
+                price_custom_slots=price_custom_slots,
                 created_at=now,
                 updated_at=now,
             )

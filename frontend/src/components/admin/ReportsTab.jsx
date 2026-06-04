@@ -512,6 +512,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
                   <th>ФИО</th>
                   <th>Компания</th>
                   <th>Машина</th>
+                  <th className="text-center">Свои слоты</th>
                   <th className="text-end">Цена</th>
                   <th>Счёт</th>
                   <th className="text-center">Опл.</th>
@@ -522,7 +523,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
               <tbody>
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="text-center text-muted py-3">Нет записей</td>
+                    <td colSpan={17} className="text-center text-muted py-3">Нет записей</td>
                   </tr>
                 ) : (
                   filteredRecords.map((record, idx) => {
@@ -560,6 +561,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
                           <td className="small">{renderClip(getFio(record), "")}</td>
                           <td className="small">{renderClip(getCompany(record))}</td>
                           <td className="small">{renderClip(getVehicleNumber(record), "font-monospace")}</td>
+                          <td className="small text-center">{record.has_custom_slots ? "✅" : "—"}</td>
                           <td className="small text-end text-nowrap">
                             {record.price != null ? formatMoney(record.price) : "—"}
                           </td>

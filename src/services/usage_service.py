@@ -39,6 +39,7 @@ def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
         "fio": record.fio,
         "vehicle_number": record.vehicle_number,
         "is_test": bool(record.is_test) if record.is_test is not None else False,
+        "has_custom_slots": bool(record.has_custom_slots) if record.has_custom_slots is not None else False,
         "invoice_id": record.invoice_id,
     }
 

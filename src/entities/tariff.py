@@ -21,6 +21,7 @@ class Tariff(Base):
     price_create: Mapped[int] = mapped_column(Integer, nullable=False)
     price_reschedule: Mapped[int] = mapped_column(Integer, nullable=False)
     price_create_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

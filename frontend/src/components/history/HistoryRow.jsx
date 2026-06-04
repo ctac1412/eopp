@@ -61,6 +61,7 @@ const COLUMN_CONFIGS = {
   slot: { header: "Дата слота", key: "slot" },
   fio: { header: "ФИО", key: "fio" },
   test: { header: "Тестовая", key: "test" },
+  custom_slots: { header: "Свои слоты", key: "custom_slots" },
   price: { header: "Цена", key: "price" },
   paid: { header: "Оплата", key: "paid" },
   error: { header: "Ошибка", key: "error" },
@@ -71,11 +72,11 @@ const COLUMN_CONFIGS = {
 
 const PRESETS = {
   user: {
-    columns: ["id", "type", "time", "status", "slot", "resid", "captcha", "paid", "error", "actions"],
+    columns: ["id", "type", "time", "status", "custom_slots", "slot", "resid", "captcha", "paid", "error", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: false, showDelete: false, showCheckbox: false },
   },
   admin: {
-    columns: ["checkbox", "id", "type", "time", "status", "slot", "fio", "test", "price", "paid", "error", "actions"],
+    columns: ["checkbox", "id", "type", "time", "status", "slot", "fio", "custom_slots", "test", "price", "paid", "error", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: true, showDelete: true, showCheckbox: true },
   },
 };
@@ -164,6 +165,8 @@ export function HistoryRow({
         return <td className="align-middle small">{maskFio(record.fio)}</td>;
       case "test":
         return <td className="align-middle small">{isTestRecord(record) ? "Да" : "Нет"}</td>;
+      case "custom_slots":
+        return <td className="align-middle small">{record.has_custom_slots ? "✅" : "—"}</td>;
       case "resid": {
         const rid = record.reservation_id || "";
         return (

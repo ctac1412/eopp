@@ -33,6 +33,7 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
             "company": None,
             "fio": None,
             "vehicle_number": None,
+            "has_custom_slots": False,
         }
     op_type = config_json.get("mode")
     company = normalize_company(
@@ -46,11 +47,21 @@ def _extract_fields_from_config(config_json: dict | None) -> dict:
             if isinstance(v, dict) and v.get("subTypeId") == 1:
                 vehicle_number = v.get("regNumber") or None
                 break
+    # priority slots: timeOrder содержит непустые группы слотов
+    time_order = config_json.get("timeOrder", [])
+    has_custom_slots = bool(
+        isinstance(time_order, list)
+        and any(
+            isinstance(g, list) and any(s for s in g if s)
+            for g in time_order
+        )
+    )
     return {
         "op_type": op_type,
         "company": company,
         "fio": fio,
         "vehicle_number": vehicle_number,
+        "has_custom_slots": has_custom_slots,
     }
 
 
@@ -108,12 +119,18 @@ def _is_peak_create_time(confirmed_at_iso: str) -> bool:
     return confirmed_at.astimezone(_MSK_TZ).hour == 12
 
 
-def _calculate_usage_price(mode: str, tariff: dict, confirmed_at_iso: str) -> int:
+def _calculate_usage_price(
+    mode: str, tariff: dict, confirmed_at_iso: str, has_custom_slots: bool = False
+) -> int:
     if mode == "reschedule":
-        return tariff["price_reschedule"]
-    if mode == "create" and _is_peak_create_time(confirmed_at_iso):
-        return tariff["price_create_peak"] or tariff["price_reschedule"]
-    return tariff["price_create"]
+        base = tariff["price_reschedule"]
+    elif mode == "create" and _is_peak_create_time(confirmed_at_iso):
+        base = tariff["price_create_peak"] or tariff["price_reschedule"]
+    else:
+        base = tariff["price_create"]
+    if has_custom_slots and tariff.get("price_custom_slots"):
+        base += tariff["price_custom_slots"]
+    return base
 
 
 def get_usage_log_entry(usage_log_id: int) -> dict | None:
@@ -143,6 +160,7 @@ def get_usage_log_entry(usage_log_id: int) -> dict | None:
         "fio": row["fio"],
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
+        "has_custom_slots": bool(row["has_custom_slots"]) if row["has_custom_slots"] is not None else False,
         "invoice_id": row["invoice_id"],
     }
 
@@ -173,8 +191,8 @@ def log_usage(
     cursor = conn.execute(
         """INSERT INTO usage_log
            (api_key_id, reservation_id, status, created_at, config_json,
-            op_type, company, fio, vehicle_number, is_test)
-           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)""",
+            op_type, company, fio, vehicle_number, is_test, has_custom_slots)
+           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             row["id"],
             reservation_id,
@@ -185,6 +203,7 @@ def log_usage(
             extracted["fio"],
             extracted["vehicle_number"],
             is_test,
+            1 if extracted["has_custom_slots"] else 0,
         ),
     )
     conn.commit()
@@ -217,7 +236,7 @@ def confirm_usage(
         price = 0
         company = row["company"]
         if tariff:
-            price = _calculate_usage_price(mode, tariff, now)
+            price = _calculate_usage_price(mode, tariff, now, bool(row["has_custom_slots"]))
         conn.execute(
             "UPDATE usage_log SET price = ? WHERE id = ?",
             (price, usage_log_id),
@@ -316,6 +335,7 @@ def list_usages(api_key_id: int | None = None, invoice_id: int | None = None) ->
                 "fio": r["fio"],
                 "vehicle_number": r["vehicle_number"],
                 "is_test": bool(r["is_test"]) if r["is_test"] is not None else False,
+                "has_custom_slots": bool(r["has_custom_slots"]) if r["has_custom_slots"] is not None else False,
                 "invoice_id": r["invoice_id"],
             }
         )
@@ -385,5 +405,6 @@ def update_usage_log(
         "fio": row["fio"],
         "vehicle_number": row["vehicle_number"],
         "is_test": bool(row["is_test"]) if row["is_test"] is not None else False,
+        "has_custom_slots": bool(row["has_custom_slots"]) if row["has_custom_slots"] is not None else False,
         "invoice_id": row["invoice_id"],
     }

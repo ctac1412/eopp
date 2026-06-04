@@ -64,6 +64,7 @@ function AdminPage() {
     priceCreate: "",
     priceReschedule: "",
     priceCreatePeak: "",
+    priceCustomSlots: "",
   });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
@@ -496,7 +497,8 @@ function AdminPage() {
       if (
         editForm.priceCreate !== "" ||
         editForm.priceReschedule !== "" ||
-        editForm.priceCreatePeak !== ""
+        editForm.priceCreatePeak !== "" ||
+        editForm.priceCustomSlots !== ""
       ) {
         const tariffBody = {};
         if (editForm.priceCreate !== "") {
@@ -507,6 +509,8 @@ function AdminPage() {
         }
         tariffBody.price_create_peak =
           editForm.priceCreatePeak !== "" ? parseInt(editForm.priceCreatePeak, 10) : null;
+        tariffBody.price_custom_slots =
+          editForm.priceCustomSlots !== "" ? parseInt(editForm.priceCustomSlots, 10) : null;
         await fetch(`/admin/tariffs/${showEdit}`, {
           method: "PUT",
           headers: adminHeaders(adminToken),
@@ -573,6 +577,8 @@ function AdminPage() {
       priceReschedule: tariff ? String(tariff.price_reschedule) : "7000",
       priceCreatePeak:
         tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
+      priceCustomSlots:
+        tariff && tariff.price_custom_slots != null ? String(tariff.price_custom_slots) : "",
     });
     setShowEdit(keyObj.id);
   };

@@ -37,6 +37,7 @@ class UsageLog(Base):
     fio: Mapped[str | None] = mapped_column(String, nullable=True)
     vehicle_number: Mapped[str | None] = mapped_column(String, nullable=True)
     is_test: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    has_custom_slots: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     invoice_number: Mapped[str | None] = mapped_column(String, nullable=True)
 
     api_key: Mapped[ApiKey] = relationship(back_populates="usage_logs")

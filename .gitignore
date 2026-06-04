@@ -21,9 +21,13 @@ frontend/dist/
 # IDE
 .idea/
 
+# AI tools
+.qwen/
+
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Build artifacts
 *.egg-info/
