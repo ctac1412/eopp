@@ -327,6 +327,7 @@ def create_captcha_records(
         return []
 
     conn = get_connection()
+    _ensure_duration_ms_column(conn)
     now = datetime.now(UTC).isoformat()
     created_ids = []
 
@@ -391,6 +392,14 @@ def _get_usage_created_at(conn, usage_log_id: int) -> str | None:
     return row["created_at"] if row else None
 
 
+def _ensure_duration_ms_column(conn):
+    try:
+        conn.execute("ALTER TABLE captchas ADD COLUMN duration_ms INTEGER DEFAULT NULL")
+        conn.commit()
+    except Exception:
+        pass
+
+
 def list_captchas(usage_log_id: int | None = None) -> list[dict]:
     conn = get_connection()
     if usage_log_id is not None:
@@ -409,7 +418,7 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
             "usage_log_id": r["usage_log_id"],
             "tiles_hash": r["tiles_hash"],
             "fail_reason": r["fail_reason"],
-            "duration_ms": r["duration_ms"],
+            "duration_ms": r["duration_ms"] if "duration_ms" in r.keys() else None,
             "created_at": r["created_at"],
         }
         for r in rows
