@@ -12,11 +12,11 @@ import re
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"))
 
 from src.db.captchas import _extract_v2
 
-DEV_DB = "data/api_keys_dev.db"
+DEFAULT_DB = "server/data/api_keys.db"
 
 _V2_VERSION_RE = re.compile(r"<log-version>v2</log-version>")
 
@@ -47,7 +47,7 @@ def is_v2_log(logs: list[str] | None) -> bool:
     return bool(_V2_VERSION_RE.search(logs[0]))
 
 
-def migrate(db_path: str = DEV_DB):
+def migrate(db_path: str = DEFAULT_DB):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
@@ -168,6 +168,6 @@ def migrate(db_path: str = DEV_DB):
 
 
 if __name__ == "__main__":
-    db = sys.argv[1] if len(sys.argv) > 1 else DEV_DB
+    db = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB
     print(f"DB: {db}")
     migrate(db)

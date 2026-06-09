@@ -12,9 +12,9 @@ import re
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"))
 
-DEV_DB = "data/api_keys_dev.db"
+DEFAULT_DB = "server/data/api_keys.db"
 
 _CAPTCHA_ID_RE = re.compile(r'"captcha_id":\s*"([a-f0-9]+)"')
 _CAPTCHA_VALIDATED_RE = re.compile(r"Капча валидирована")
@@ -117,7 +117,7 @@ def extract_v1_captchas(logs: list[str]) -> list[tuple[str, str, str | None, str
     return results
 
 
-def migrate(db_path: str = DEV_DB):
+def migrate(db_path: str = DEFAULT_DB):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
@@ -240,6 +240,6 @@ def migrate(db_path: str = DEV_DB):
 
 
 if __name__ == "__main__":
-    db = sys.argv[1] if len(sys.argv) > 1 else DEV_DB
+    db = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB
     print(f"DB: {db}")
     migrate(db)

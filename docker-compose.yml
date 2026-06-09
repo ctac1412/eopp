@@ -4,8 +4,8 @@ services:
     ports:
       - "8765:8765"
     volumes:
-      - ./data:/app/data
-      - ./certs:/app/certs:ro
+      - ./server/data:/app/data
+      - ./server/certs:/app/certs:ro
       - ./plugins:/app/plugins
     environment:
       - EOPP_DB_PATH=/app/data/api_keys.db
@@ -17,7 +17,7 @@ services:
       - TELEGRAM_TIMEOUT_SECONDS=${TELEGRAM_TIMEOUT_SECONDS:-5}
       - TELEGRAM_DAILY_REPORT_HOUR=${TELEGRAM_DAILY_REPORT_HOUR:-12}
       - TELEGRAM_DAILY_REPORT_MINUTE=${TELEGRAM_DAILY_REPORT_MINUTE:-10}
-    command: ["python", "scripts/run_with_log.py", "/app/data/backend.log", "python", "manage.py", "--host", "0.0.0.0"]
+    command: ["python", "scripts/run_with_log.py", "/app/data/backend.log", "python", "server/manage.py", "--host", "0.0.0.0"]
     restart: unless-stopped
 
   sqlite-web:

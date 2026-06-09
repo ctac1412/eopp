@@ -16,7 +16,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Browser Extension (yandex-browser-plugin/)                 │
+│  Browser Extension (extension/)                 │
 │  content.js  ──port──▶  background.js  ──fetch──▶  Server  │
 │  (EOPP API)            (прокси к нашему серверу)            │
 └─────────────────────────────────────────────────────────────┘
@@ -63,23 +63,23 @@
 
 Дополнительно: динамическая обрезка чёрных коррумпированных бордеров с тайлов перед анализом.
 
-### 2. Python Server (`src/`)
+### 2. Python Server (`server/`)
 
 **Основные модули:**
 
 | Файл | Назначение |
 |------|-----------|
-| `manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
-| `src/app.py` | FastAPI-приложение: создание app, lifespan, CORS, middleware |
-| `src/routes.py` | Точка входа: регистрирует все роутеры из `src/routes/` |
-| `src/routes/*.py` | Роутеры по модулям: `captcha.py`, `sse.py`, `api_keys.py`, `usage.py`, `slots.py`, `mock.py`, `admin.py`, `plugins.py`, `frontend.py` |
-| `src/models.py` | Pydantic-модели для валидации запросов |
-| `src/constants.py` | Константы: порты, пути, токены, настройки |
-| `src/utils.py` | Утилиты: хеширование, сборка изображений, SSE push, тесты, benchmark |
-| `src/db/` | SQLite-слой: `api_keys.py`, `usage_log.py`, `tariffs.py`, `withdrawals.py`, `init.py`, `connection.py` |
-| `src/plugins.py` | Система плагинов: загрузка, хранение, версионирование |
-| `scripts/` | Скрипты: `bump_plugin_version.py`, `copy_plugin_to_plugins.py` |
-| `captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
+| `server/manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
+| `server/src/app.py` | FastAPI-приложение: создание app, lifespan, CORS, middleware |
+| `server/src/routes.py` | Точка входа: регистрирует все роутеры из `server/src/routes/` |
+| `server/src/routes/*.py` | Роутеры по модулям: `captcha.py`, `sse.py`, `api_keys.py`, `usage.py`, `slots.py`, `mock.py`, `admin.py`, `plugins.py`, `frontend.py` |
+| `server/src/models.py` | Pydantic-модели для валидации запросов |
+| `server/src/constants.py` | Константы: порты, пути, токены, настройки |
+| `server/src/utils.py` | Утилиты: хеширование, сборка изображений, SSE push, тесты, benchmark |
+| `server/src/db/` | SQLite-слой: `api_keys.py`, `usage_log.py`, `tariffs.py`, `withdrawals.py`, `init.py`, `connection.py` |
+| `server/src/plugins.py` | Система плагинов: загрузка, хранение, версионирование |
+| `server/scripts/` | Скрипты: `bump_plugin_version.py`, `copy_plugin_to_plugins.py` |
+| `server/captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
 
 **Эндпоинты:**
 
@@ -122,14 +122,13 @@
 | `POST` | `/reservations-api/v1/SubmitDraft` | Создание брони |
 
 **Режимы запуска сервера:**
-- `make run` — обычный режим, слушает капчи (HTTPS)
-- `make run-http` — обычный режим без SSL (HTTP)
+- `make run-prod` — обычный режим (HTTP :8766, server/data/api_keys.db)
 - `make run-test` — автоматически посылает тестовые капчи из `tests/test_cases/valid/`
 - `make run-write` — labeling mode: капчи из `tests/test_cases/no_valid/`, ответ сохраняется обратно
 
-### 3. Browser Extension (`yandex-browser-plugin/`)
+### 3. Browser Extension (`extension/`)
 
-> **ВАЖНО:** Перед релизом плагина ВСЕГДА читай `yandex-browser-plugin/AGENTS.md` — там описан точный порядок действий.
+> **ВАЖНО:** Перед релизом плагина ВСЕГДА читай `extension/AGENTS.md` — там описан точный порядок действий.
 
 Manifest V3 расширение для Яндекс.Браузера (совместимо с Chrome).
 
@@ -247,16 +246,16 @@ Vite + React 18 + React Router + Zustand.
 
 | Файл | Назначение |
 |------|-----------|
-| `manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
-| `src/app.py` | FastAPI-приложение: роуты, SSE, обработка капч, serve фронтенда |
-| `src/routes.py` | Все роуты: капчи, SSE, API ключи, usage log, mock EOPP, slots groups (1219 строк) |
-| `src/utils.py` | Утилиты: хеширование капч, сборка изображений, SSE push, загрузка тестов, benchmark |
-| `captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
-| `yandex-browser-plugin/manifest.json` | Manifest V3, permissions, content script match |
-| `yandex-browser-plugin/src/` | TypeScript-источники расширения (Vite-билд → `dist/`) |
+| `server/manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
+| `server/src/app.py` | FastAPI-приложение: роуты, SSE, обработка капч, serve фронтенда |
+| `server/src/routes.py` | Все роуты: капчи, SSE, API ключи, usage log, mock EOPP, slots groups (1219 строк) |
+| `server/src/utils.py` | Утилиты: хеширование капч, сборка изображений, SSE push, загрузка тестов, benchmark |
+| `server/captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
+| `extension/manifest.json` | Manifest V3, permissions, content script match |
+| `extension/src/` | TypeScript-источники расширения (Vite-билд → `dist/`) |
 | `frontend/src/App.jsx` | Главная страница: SSE + CaptchaGrid + StatusBar + LogViewer |
 | `frontend/src/AdminPage.jsx` | Админ-панель |
-| `index.html` | Фоллбэк HTML-UI для капч (vanilla JS, SSE, без React) |
+| `server/index.html` | Фоллбэк HTML-UI для капч (vanilla JS, SSE, без React) |
 
 ---
 
@@ -269,11 +268,7 @@ make install-frontend
 make install-extension
 
 # Запуск сервера
-make run           # обычный режим (HTTPS)
-make run-http      # обычный режим (HTTP)
-make run-test      # с тестовыми капчами
-make run-write     # labeling mode
-make run-dev       # dev режим (HTTP :8766, своя БД)
+make run-prod       # HTTP :8766, server/data/api_keys.db
 
 # Разработка фронтенда
 make dev-frontend  # Vite dev server
@@ -323,67 +318,45 @@ make bench
 - zustand — state management
 - vite — сборка
 
-**Extension** (yandex-browser-plugin/package.json):
+**Extension** (extension/package.json):
 - react, react-dom, zustand — UI/state
 - vite — сборка
 - typescript, @types/chrome — типы
 
 ---
 
-## Dev/Prod Изоляция (Docker)
+## Запуск (Docker)
 
-Проект поддерживает изоляцию Dev и Prod контуров на одном ПК.
+Проект запускается локально или через Docker. База данных всегда одна — `server/data/api_keys.db`.
 
 ### Архитектура
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Windows (Docker Desktop)                │
-│                                                              │
-│  make run-dev ──► :8766 (HTTP) ──► data/api_keys_dev.db    │
+│  make run-prod ──► :8766 (HTTP) ──► server/data/api_keys.db  │
 │                                                              │
 │  docker compose up ──► :8765 (HTTPS) ──► eopp_prod_data   │
 │                           (volume)                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Компоненты изоляции
-
-| Компонент | Dev | Prod |
-|-----------|-----|------|
-| **Порт** | 8766 (HTTP) | 8765 (HTTPS) |
-| **База данных** | `data/api_keys_dev.db` | Volume `eopp_eopp_prod_data` |
-| **Запуск** | `make run-dev` | `docker compose up -d` |
-
-### Файлы конфигурации
-
-| Файл | Назначение |
-|------|-----------|
-| `manage.py` | + `--db-path` аргумент для кастомной БД |
-| `src/api_keys.py` | Поддержка `EOPP_DB_PATH` env variable |
-| `Makefile` | + `run-dev` target |
-| `Dockerfile` | Multi-stage build для prod |
-| `docker-compose.yml` | Prod сервис с named volume |
-| `.dockerignore` | Исключения для Docker сборки |
-
 ### Команды
 
 ```bash
-# Dev-контур (локально, без Docker)
-make run-dev                  # HTTP :8766, своя БД
+# Локальный запуск
+make run-prod                  # HTTP :8766, server/data/api_keys.db
 
-# Prod-контур (Docker)
+# Docker
 docker compose up -d --build  # HTTPS :8765, volume
 docker compose down           # Остановить
 docker compose logs -f        # Логи
 
-# Бекап prod БД
+# Бекап БД
 docker run --rm -v eopp_eopp_prod_data:/data -v $(pwd):/backup alpine tar czf /backup.tar.gz -C /data .
 ```
 
 ### Важные детали
 
 - **SSL**: Сертификат генерируется автоматически при старте контейнера
-- **Volume**: Данные prod сохраняются между перезапусками контейнера
-- **Изоляция**: Dev и Prod используют **разные БД** — изменения в dev не влияют на prod
+- **Volume**: Данные сохраняются между перезапусками контейнера
 - **Фронтенд**: При сборке Docker автоматически включает `frontend/dist/`

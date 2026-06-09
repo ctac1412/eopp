@@ -1,7 +1,7 @@
 import json
 import os
 
-os.chdir(r"D:\Projects\eopp\prod\data\captcha_examples\valid")
+os.chdir(r"D:\Projects\eopp\server\data\captcha_examples\valid")
 files = ["4e903cf78973e3a3.json", "399affe7090b9887.json", "2d9a408be4c3d6a9.json"]
 
 all_tile_ids = {}

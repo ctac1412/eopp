@@ -11,11 +11,11 @@ import re
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"))
 
 _UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")
 
-DEV_DB = "data/api_keys_dev.db"
+DEFAULT_DB = "server/data/api_keys.db"
 
 
 def extract_fields(config_json: dict | None) -> dict:
@@ -57,7 +57,7 @@ def calc_is_test(reservation_id: str, config_json: dict | None) -> int:
 
 
 def backfill():
-    conn = sqlite3.connect(DEV_DB)
+    conn = sqlite3.connect(DEFAULT_DB)
     conn.row_factory = sqlite3.Row
 
     # Читаем все записи где op_type IS NULL (ещё не backfill-ены)

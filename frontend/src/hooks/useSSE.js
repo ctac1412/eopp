@@ -30,15 +30,20 @@ function useSSE(enabled = true) {
   const removeCaptcha = useCaptchaStore((s) => s.removeCaptcha);
   const addLog = useCaptchaStore((s) => s.addLog);
   const setSseError = useCaptchaStore((s) => s.setSseError);
+  const setSseConnected = useCaptchaStore((s) => s.setSseConnected);
+  const reconnectKey = useCaptchaStore((s) => s.reconnectKey);
 
   useEffect(() => {
     if (!enabled) return;
     let es;
     let closed = false;
     let retryCount = 0;
+    let wasForceReconnect = false;
 
     function connect() {
       if (closed) return;
+      const store = useCaptchaStore.getState();
+      const useForce = store.pendingForceReconnect;
       let url = "/stream";
       if (apiKey) {
         const params = new URLSearchParams({ api_key: apiKey });
@@ -48,6 +53,11 @@ function useSSE(enabled = true) {
             params.set("help_for", helpFor.join(","));
           }
         }
+        if (useForce) {
+          params.set("force", "1");
+          store.setPendingForceReconnect(false);
+          wasForceReconnect = true;
+        }
         url += `?${params.toString()}`;
       } else {
         addLog("SSE: API ключ не установлен, подключение невозможно", "error");
@@ -55,13 +65,18 @@ function useSSE(enabled = true) {
       }
       es = new EventSource(url);
 
+      es.onopen = () => {
+        setSseConnected(true);
+        if (wasForceReconnect) {
+          addLog("SSE: подключение перехвачено", "success");
+          wasForceReconnect = false;
+        }
+      };
+
       es.onmessage = (e) => {
         if (closed) return;
-        const wasRetrying = retryCount > 0;
         retryCount = 0;
-        if (wasRetrying) {
-          setSseError(null);
-        }
+        setSseError(null);
         const msg = JSON.parse(e.data);
 
         if (msg.type === "disconnected") {
@@ -76,6 +91,26 @@ function useSSE(enabled = true) {
           es.close();
           closed = true;
           return;
+        }
+
+        if (msg.type === "connected" && msg.operators_online) {
+          useCaptchaStore.getState().setConnectedOperators(msg.operators_online);
+        }
+
+        if (msg.type === "operator_connected") {
+          const store = useCaptchaStore.getState();
+          const current = new Set(store.connectedOperators);
+          current.add(msg.operator_id);
+          store.setConnectedOperators([...current]);
+          addLog(`Оператор «${msg.operator_nickname}» подключился`, "success");
+        }
+
+        if (msg.type === "operator_disconnected") {
+          const store = useCaptchaStore.getState();
+          const current = new Set(store.connectedOperators);
+          current.delete(msg.operator_id);
+          store.setConnectedOperators([...current]);
+          addLog(`Оператор «${msg.operator_nickname}» отключился`, "error");
         }
 
         if (msg.type === "new_captcha") {
@@ -96,6 +131,7 @@ function useSSE(enabled = true) {
             captchaType: msg.captcha_type || 0,
             iconsImage: msg.icons_image || "",
             distribution: msg.distribution || null,
+            allIcons: msg.all_icons || [],
           });
           if (wasEmpty) {
             playNewCaptchaSound();
@@ -131,6 +167,7 @@ function useSSE(enabled = true) {
       };
 
       es.onerror = () => {
+        setSseConnected(false);
         const status = es.readyState === EventSource.CONNECTING ? 0 : es.url;
         es.close();
         if (closed) return;
@@ -150,9 +187,10 @@ function useSSE(enabled = true) {
 
     return () => {
       closed = true;
+      setSseConnected(false);
       if (es) es.close();
     };
-  }, [apiKey, superKioskMode, helpFor, addCaptcha, markSolved, removeCaptcha, addLog, setSseError, enabled]);
+  }, [apiKey, superKioskMode, helpFor, addCaptcha, markSolved, removeCaptcha, addLog, setSseError, enabled, reconnectKey]);
 }
 
 export default useSSE;

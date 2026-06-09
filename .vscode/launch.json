@@ -8,7 +8,7 @@
             "name": "Сервер HTTP",
             "type": "debugpy",
             "request": "launch",
-            "program": "manage.py",
+            "program": "server/manage.py",
             "console": "integratedTerminal",
             "args": "--no-ssl"
         },
@@ -20,7 +20,7 @@
                 "<node_internals>/**"
             ],
             "args": [
-                "tests/test_cases/valid/188742fa80a73ebd.json",
+                "server/tests/test_cases/valid/188742fa80a73ebd.json",
             ],
             "type": "node"
         },
@@ -32,7 +32,7 @@
                 "<node_internals>/**"
             ],
             "args": [
-                "tests/test_cases/valid/188742fa80a73ebd.json",
+                "server/tests/test_cases/valid/188742fa80a73ebd.json",
                 "--auto",
             ],
             "type": "node"

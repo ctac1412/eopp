@@ -61,6 +61,10 @@ const useCaptchaStore = create((set) => ({
   superKioskMode: loadSuperKioskMode(),
   helpFor: loadHelpFor(),
   sseError: null,
+  sseConnected: false,
+  connectedOperators: 0,
+  pendingForceReconnect: false,
+  reconnectKey: 0,
 
   setApiKey: (key) => {
     localStorage.setItem(STORAGE_KEY, key);
@@ -88,6 +92,15 @@ const useCaptchaStore = create((set) => ({
   },
 
   setSseError: (err) => set({ sseError: err }),
+
+  setSseConnected: (v) => set({ sseConnected: v }),
+
+  setConnectedOperators: (ids) =>
+    set({ connectedOperators: Array.isArray(ids) ? ids : [] }),
+
+  setPendingForceReconnect: (v) => set({ pendingForceReconnect: v }),
+
+  triggerReconnect: () => set((s) => ({ reconnectKey: s.reconnectKey + 1 })),
 
   addCaptcha: (captcha) =>
     set((state) => ({

@@ -12,7 +12,7 @@
 | Изменить billing/admin finance | `src/domain/billing/README.md` | `src/services/billing_service.py`, `src/repositories/billing_repo.py`, `src/routes/admin.py`, `src/schemas/billing.py` | `uv run pytest tests/test_admin_billing.py tests/test_admin_auth.py -q` |
 | Изменить вкладки админки | `frontend/src/features/admin/shared/tabs.js` | `frontend/src/AdminPage.jsx`, `frontend/src/components/admin/` | `npm run build` in `frontend/` |
 | Изменить admin API headers | `frontend/src/features/admin/shared/adminClient.js` | `frontend/src/AdminPage.jsx`, admin tab components | `npm run build` in `frontend/` |
-| Изменить extension release gate | `yandex-browser-plugin/AGENTS.md` | `yandex-browser-plugin/package.json`, `.github/` or release scripts | `npm run typecheck` in `yandex-browser-plugin/` |
+| Изменить extension release gate | `extension/AGENTS.md` | `extension/package.json`, `.github/` or release scripts | `npm run typecheck` in `extension/` |
 
 ## Общие правила
 

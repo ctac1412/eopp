@@ -10,12 +10,12 @@ import os
 import sys
 
 # Добавляем корень проекта в путь
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"))
 
 import sqlite3
 
-PROD_DB = "data/api_keys_prod.db"
-DEV_DB = "data/api_keys_dev.db"
+PROD_DB = "server/data/api_keys.db"
+DEV_DB = "data/api_keys_new.db"
 
 
 def migrate():

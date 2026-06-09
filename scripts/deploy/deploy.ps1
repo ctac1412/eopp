@@ -45,9 +45,9 @@ $null = Remote-Exec "mkdir -p $script:RemoteDir/data $script:RemoteDir/plugins $
 Log-Success "Remote dirs ready"
 
 Log-Info "Transferring docker-compose.yml and nginx config..."
-$prodDir = Join-Path $PSScriptRoot "..\..\prod"
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$prodDir\docker-compose.yml" "${script:SshTarget}:${script:RemoteDir}/docker-compose.yml"
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$prodDir\nginx-default.conf" "${script:SshTarget}:${script:RemoteDir}/nginx/default.conf"
+$deployDir = Join-Path $PSScriptRoot "..\..\server\deploy"
+& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$deployDir\docker-compose.yml" "${script:SshTarget}:${script:RemoteDir}/docker-compose.yml"
+& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$deployDir\nginx-default.conf" "${script:SshTarget}:${script:RemoteDir}/nginx/default.conf"
 Log-Success "Config files transferred"
 
 Log-Info "Deploying container..."

@@ -35,39 +35,31 @@ dist/
 build/
 
 *.db
-
+*.pkl
+.env
 # SSL certs (auto-generated)
-certs/
+server/certs/
 
-# Runtime data
-data/
+# Runtime data — ignore DB files
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+server/data/captcha_examples
+server/data/icons
+server/data/classification_results/
+server/data/server.log
 
-# opencode plans
-.opencode/
-
-# Server config
-server.json
-
-# Deploy env (contains sensitive data)
-prod/.env.deploy
-
-# Server config (contains server URLs)
-prod/.env.server
-
-# Server config example (template, safe to commit)
-!prod/.env.server.example
-
-# Prod data
-prod/data/
-
-# Prod plugins
-prod/plugins/
-
-# Local data
-data/*.db
-
+# Backups
 prod/backups/
+server/data/backups/
+backups/
 
 # EOPP original JS dump
 eopp_original.js
 .run-prod.pid
+server/models/hog_svm_v1.pkl
+server/models/puzzle_scorer.pkl
+server/models/tile_classifier.pkl
+server/deploy/.env.deploy
+server/deploy/.env.server
+.pytest-tmp/

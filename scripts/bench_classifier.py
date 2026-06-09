@@ -13,11 +13,12 @@ from datetime import datetime
 
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 
-BASE = r'D:\Projects\eopp\prod\data\captcha_examples\all'
-REPORT_DIR = r'D:\Projects\eopp\data\classification_results'
-DB_PATH = r'D:\Projects\eopp\prod\data\api_keys.db'
+_BS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE = os.path.join(_BS, 'server', 'data', 'captcha_examples', 'all')
+REPORT_DIR = os.path.join(_BS, 'server', 'data', 'classification_results')
+DB_PATH = os.path.join(_BS, 'server', 'data', 'api_keys.db')
 
-sys.path.insert(0, r'D:\Projects\eopp\src')
+sys.path.insert(0, os.path.join(_BS, 'server'))
 from captcha_solver_engine.classifier import ChainClassifier
 from captcha_solver_engine.models import CaptchaContext
 

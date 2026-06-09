@@ -4,7 +4,7 @@
 .vscode
 .git
 frontend/node_modules
-yandex-browser-plugin
+extension
 tests
 __pycache__
 *.pyc

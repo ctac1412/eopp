@@ -45,9 +45,9 @@ Log-Info "Preparing remote directories..."
 $null = Remote-Exec "mkdir -p $script:RemoteDir/nginx /var/www/certbot /opt/eopp/certs"
 
 # Ensure nginx config with ACME location is on server
-$prodDir = Join-Path $PSScriptRoot "..\..\prod"
+$deployDir = Join-Path $PSScriptRoot "..\..\server\deploy"
 Log-Info "Transferring nginx config with ACME location..."
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$prodDir\nginx-default.conf" "${script:SshTarget}:${script:RemoteDir}/nginx/default.conf"
+& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$deployDir\nginx-default.conf" "${script:SshTarget}:${script:RemoteDir}/nginx/default.conf"
 if ($LASTEXITCODE -ne 0) {
     Log-Error "Failed to transfer nginx config"
     exit 1

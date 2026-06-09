@@ -71,7 +71,7 @@ d334e92fdbf86994, e518ac2a4d823dbe, f1a1f7cea6686fb8,
 1. **HOG features**: tile resized to 64×36, Histogram of Oriented Gradients (756-dim vector)
 2. **Linear SVM**: trained on 90 positive + 1332 negative tiles
 3. **Captcha-level**: if ≥5 of 9 tiles classified as "digit" → digit captcha
-4. Model artifact: `data/tile_classifier.pkl` (StandardScaler + LinearSVC, 52 KB)
+4. Model artifact: `server/models/tile_classifier.pkl` (StandardScaler + LinearSVC, 52 KB)
 
 ### Open questions for expert
 - How to **recognize which digit** is on each tile? (EasyOCR works for 9/10 captchas, fails on e518ac)

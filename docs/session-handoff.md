@@ -45,7 +45,7 @@ Staged files seen in the previous session included:
 - `src/routes/frontend.py`
 - `src/routes/slots.py`
 - `src/services/slots_group_service.py`
-- many `yandex-browser-plugin/src/*` files
+- many `extension/src/*` files
 
 Unstaged partial B1 files seen in the previous session:
 - `migrations/versions/8814b9cb1e05_initial_schema.py`
@@ -120,7 +120,7 @@ Extension:
 - fallback to direct EOPP fetch on timeout or failure.
 
 Verified previously:
-- `cmd /c npm run typecheck` in `yandex-browser-plugin`
+- `cmd /c npm run typecheck` in `extension`
 - `uv run pytest tests/test_api_routes.py -k SlotsGroup`
 
 ### Finance Admin Tabs
@@ -168,9 +168,9 @@ Improved plugin popup:
 - less clutter in normal path.
 
 Files included:
-- `yandex-browser-plugin/src/components/ConfigForm.tsx`
-- `yandex-browser-plugin/src/store.ts`
-- `yandex-browser-plugin/src/types.ts`
+- `extension/src/components/ConfigForm.tsx`
+- `extension/src/store.ts`
+- `extension/src/types.ts`
 
 Plugin version was bumped to `1.3.8` during that task according to plugin `AGENTS.md`.
 

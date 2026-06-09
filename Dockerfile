@@ -21,4 +21,4 @@ ENV EOPP_DB_PATH=/app/data/api_keys.db
 
 EXPOSE 8765
 
-CMD ["python", "manage.py", "--host", "0.0.0.0"]
+CMD ["python", "server/manage.py", "--host", "0.0.0.0"]

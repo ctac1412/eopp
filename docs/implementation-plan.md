@@ -119,6 +119,6 @@
 ## Проверка
 
 - Frontend: `npm run build` в `frontend/`.
-- Extension: `npm run typecheck` и, при необходимости, `npm run build` в `yandex-browser-plugin/`.
+- Extension: `npm run typecheck` и, при необходимости, `npm run build` в `extension/`.
 - Backend/tests: `uv run pytest` для затронутых backend-блоков.
 - Для benchmark-аудита: отдельный отчет со списком перемещенных/исправленных captcha examples.

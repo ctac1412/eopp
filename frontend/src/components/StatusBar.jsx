@@ -49,6 +49,9 @@ function StatusBar() {
   const [sequentialIcons, setSequentialIcons] = useState(() => loadPersisted("click_sequential_icons", "0") === "1");
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
+  const connectedOperators = useCaptchaStore((s) => s.connectedOperators);
+  const sseConnected = useCaptchaStore((s) => s.sseConnected);
+  const operatorCount = Array.isArray(connectedOperators) ? connectedOperators.length : 0;
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
@@ -150,7 +153,7 @@ function StatusBar() {
   return (
     <div className="status-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
       <div className="d-flex align-items-center gap-2">
-        <span className={`status-dot ${sseError ? "status-dot--error" : isActive ? "status-dot--active" : "status-dot--idle"}`} />
+        <span className={`status-dot ${sseError ? "status-dot--error" : isActive || sseConnected ? "status-dot--active" : "status-dot--idle"}`} />
         {isActive && (
           <span style={{ fontSize: "0.8125rem" }}>
             <span style={{ color: "#6e7681" }}>Активная:</span>{" "}
@@ -158,9 +161,36 @@ function StatusBar() {
           </span>
         )}
         {!isActive && !sseError && (
-          <span style={{ fontSize: "0.8125rem", color: "#484f58" }}>Ожидание...</span>
+          <span style={{ fontSize: "0.8125rem", color: sseConnected ? "#3fb950" : "#484f58" }}>
+            {sseConnected ? "Подключено" : "Ожидание..."}
+          </span>
         )}
-        {sseError && <span style={{ fontSize: "0.75rem", color: "var(--bs-danger)" }}>{sseError}</span>}
+        {sseError && (
+          <>
+            <span style={{ fontSize: "0.75rem", color: "var(--bs-danger)" }}>{sseError}</span>
+            {sseError.includes("Другое подключение") && (
+              <button
+                className="btn btn-sm btn-warning"
+                style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                onClick={() => {
+                  const store = useCaptchaStore.getState();
+                  store.setPendingForceReconnect(true);
+                  store.triggerReconnect();
+                }}
+              >
+                Перехватить
+              </button>
+            )}
+          </>
+        )}
+        {operatorCount > 0 && (
+          <span style={{
+            fontSize: "0.75rem", background: "#1a3320", color: "#3fb950",
+            padding: "2px 8px", borderRadius: 10, border: "1px solid #238636",
+          }}>
+            👥 {operatorCount}
+          </span>
+        )}
         {localMode && <span className="local-tag">LOCAL</span>}
         {superKioskMode && isAdmin && <span className="super-kiosk-tag">СУПЕР</span>}
       </div>

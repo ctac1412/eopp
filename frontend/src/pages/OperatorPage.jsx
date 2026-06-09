@@ -27,6 +27,7 @@ export function OperatorPage() {
   const [masterId, setMasterId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [masterOnline, setMasterOnline] = useState(false);
   const [captchaId, setCaptchaId] = useState("");
   const [operatorId, setOperatorId] = useState(0);
   const [currentPos, setCurrentPos] = useState(null);
@@ -37,6 +38,7 @@ export function OperatorPage() {
   const [complete, setComplete] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [answeredPositions, setAnsweredPositions] = useState([]);
+  const [allIcons, setAllIcons] = useState([]);
   const [markers, setMarkers] = useState([]);
   const [foreignMarkers, setForeignMarkers] = useState([]);
   const [answering, setAnswering] = useState(false);
@@ -47,6 +49,7 @@ export function OperatorPage() {
   const captchaIdRef = useRef("");
   const assignedRef = useRef([]);
   const operatorIdRef = useRef(0);
+  const masterIdRef = useRef(null);
 
   const addLog = (msg, cls) => {
     setLog((prev) => [{ time: new Date().toLocaleTimeString(), msg, cls: cls || "info" }, ...prev.slice(0, 49)]);
@@ -58,6 +61,7 @@ export function OperatorPage() {
       esRef.current = null;
     }
     setConnected(false);
+    setMasterOnline(false);
     setCaptchaId("");
     captchaIdRef.current = "";
     setMainImage("");
@@ -66,6 +70,7 @@ export function OperatorPage() {
     setMarkers([]);
     setForeignMarkers([]);
     setAnsweredPositions([]);
+    setAllIcons([]);
   }, []);
 
   const clearCaptcha = useCallback(() => {
@@ -76,11 +81,16 @@ export function OperatorPage() {
     setMarkers([]);
     setForeignMarkers([]);
     setAnsweredPositions([]);
+    setAllIcons([]);
   }, []);
 
   useEffect(() => {
     return () => disconnect();
   }, [disconnect]);
+
+  useEffect(() => {
+    masterIdRef.current = masterId;
+  }, [masterId]);
 
   const connectViaId = useCallback(async (mid) => {
     if (!mid) return;
@@ -107,6 +117,22 @@ export function OperatorPage() {
         addLog(`Подключён (оператор #${msg.operator_id})`, "success");
         setConnected(true);
         setConnecting(false);
+        const online = msg.masters_online || [];
+        setMasterOnline(online.includes(masterIdRef.current));
+        return;
+      }
+      if (msg.type === "master_online") {
+        if (msg.master_key_id === masterIdRef.current) {
+          setMasterOnline(true);
+          addLog(`Мастер «${msg.master_label}» онлайн`, "success");
+        }
+        return;
+      }
+      if (msg.type === "master_offline") {
+        if (msg.master_key_id === masterIdRef.current) {
+          setMasterOnline(false);
+          addLog(`Мастер «${msg.master_label}» офлайн`, "error");
+        }
         return;
       }
       if (msg.type === "disconnected") {
@@ -129,6 +155,7 @@ export function OperatorPage() {
         setMarkers([]);
         setForeignMarkers([]);
         setAnsweredPositions([]);
+        setAllIcons(msg.all_icons || []);
         setCurrentPos(msg.distribution.assigned[0]);
         addLog(`Капча, ваши иконки: ${msg.distribution.assigned.map((i) => i + 1).join(", ")}`);
       }
@@ -210,6 +237,9 @@ export function OperatorPage() {
     } else {
       setSearchParams({});
     }
+    if (mid && connected) {
+      connectViaId(mid);
+    }
   };
 
   const handleReconnect = () => {
@@ -244,6 +274,7 @@ export function OperatorPage() {
       }
       if (data.image) setMainImage(data.image);
       if (data.icon) setIconImage(data.icon);
+      if (data.all_icons) setAllIcons(data.all_icons);
       setCurrentPos(data.icon_position);
       setSolvedCount(data.solved_count);
       if (data.answered_positions) setAnsweredPositions(data.answered_positions);
@@ -277,16 +308,33 @@ export function OperatorPage() {
         <div className="card" style={{ background: "#161b22", border: "1px solid #30363d" }}>
           <div className="d-flex justify-content-between align-items-center p-3 border-bottom" style={{ borderColor: "#30363d" }}>
             <div className="d-flex align-items-center gap-2">
+              <span
+                style={{
+                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                  background: masterOnline ? "#3fb950" : "#f85149",
+                  boxShadow: masterOnline ? "0 0 6px #3fb950" : "0 0 6px #f85149",
+                }}
+                title={masterOnline ? "Мастер онлайн" : "Мастер офлайн"}
+              />
               <span className="fw-semibold" style={{ color: "#f0f6fc" }}>
-                {captchaId ? `Капча ${captchaId.slice(0, 8)}` : complete ? "Решено" : "Ожидание капчи"}
+                {captchaId ? `Капча ${captchaId.slice(0, 8)}` : complete ? "Решено" : `Ожидание капчи (мастер ${masterOnline ? "онлайн" : "офлайн"})`}
               </span>
-              {selectedMaster && (
-                <span className="badge" style={{ background: "#30363d", fontSize: "0.7rem" }}>
-                  {selectedMaster.label || `#${selectedMaster.id}`}
-                </span>
-              )}
             </div>
             <div className="d-flex align-items-center gap-2">
+              <select
+                className="form-select form-select-sm"
+                value={masterId || ""}
+                onChange={(e) => handleMasterChange(e.target.value)}
+                style={{
+                  background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d",
+                  fontSize: "0.75rem", width: "auto", minWidth: "140px",
+                }}
+              >
+                <option value="">Выберите мастера</option>
+                {masters.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label || `Мастер #${m.id}`}</option>
+                ))}
+              </select>
               <span className="badge" style={{ background: complete ? "#198754" : waiting ? "#f59e0b" : "#495057", fontSize: "0.8rem" }}>
                 {complete ? "Решено" : waiting ? "Пауза" : captchaId ? `${solvedCount}/${assigned.length}` : "—"}
               </span>
@@ -338,9 +386,52 @@ export function OperatorPage() {
                     );
                   })}
                 </div>
-                {iconImage && (
-                  <div style={{ marginTop: 8 }}>
-                    <img src={"data:image/png;base64," + iconImage} alt="Иконка" style={{ height: 40, borderRadius: 4 }} draggable={false} />
+                {allIcons.length > 0 && (
+                  <div style={{
+                    display: "flex", gap: 6, justifyContent: "center", alignItems: "center",
+                    marginTop: 10, padding: "8px 6px",
+                    background: "#0d1117", borderRadius: 8, border: "1px solid #21262d",
+                  }}>
+                    {allIcons.map((ic) => {
+                      const isCurrent = ic.position === currentPos;
+                      const isAnswered = answeredPositions.includes(ic.position);
+                      return (
+                        <div
+                          key={ic.position}
+                          style={{
+                            position: "relative",
+                            width: isCurrent ? 52 : 36,
+                            height: isCurrent ? 52 : 36,
+                            borderRadius: 6,
+                            border: isCurrent ? "2px solid #58a6ff" : "1px solid #30363d",
+                            opacity: isAnswered && !isCurrent ? 0.35 : isCurrent ? 1 : 0.55,
+                            background: isAnswered ? "#1a3320" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            flexShrink: 0,
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          {ic.icon && (
+                            <img
+                              src={"data:image/png;base64," + ic.icon}
+                              alt={`#${ic.position + 1}`}
+                              style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }}
+                              draggable={false}
+                            />
+                          )}
+                          {isAnswered && (
+                            <div style={{
+                              position: "absolute", top: -6, right: -6,
+                              width: 16, height: 16, borderRadius: "50%",
+                              background: "#3fb950", display: "flex",
+                              alignItems: "center", justifyContent: "center",
+                              fontSize: 10, color: "#fff", fontWeight: "bold",
+                              border: "1.5px solid #0d1117",
+                            }}>✓</div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 8 }}>

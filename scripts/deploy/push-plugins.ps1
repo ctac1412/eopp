@@ -10,7 +10,7 @@ $pluginsDir = Join-Path $ProjectRoot "plugins"
 
 # --- Build extension ---
 Log-Info "Building extension..."
-Push-Location (Join-Path $ProjectRoot "yandex-browser-plugin")
+Push-Location (Join-Path $ProjectRoot "extension")
 npm run build
 Pop-Location
 Log-Success "Extension built"
@@ -18,13 +18,9 @@ Log-Success "Extension built"
 # --- Pack CRX ---
 Log-Info "Packing extension to CRX..."
 $browserExe = "C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe"
-$extDistDir = Join-Path $ProjectRoot "yandex-browser-plugin/dist"
-$pemKey = Join-Path $ProjectRoot "data/my.pem"
-& $browserExe --pack-extension="$extDistDir" --no-sandbox --pack-extension-key="$pemKey"
-if ($LASTEXITCODE -ne 0) { Log-Error "Failed to pack CRX"; exit 1 }
+$extDistDir = Join-Path $ProjectRoot "extension/dist"
 
-$ver = (Get-Content "$extDistDir/manifest.json" | ConvertFrom-Json).version
-$crxSrc = Join-Path $ProjectRoot "yandex-browser-plugin/dist.crx"
+$crxSrc = Join-Path $ProjectRoot "extension/dist.crx"
 $crxDst = Join-Path $pluginsDir "my-helper-v$ver.crx"
 New-Item -ItemType Directory -Force -Path $pluginsDir | Out-Null
 if (Test-Path $crxSrc) {
@@ -37,7 +33,7 @@ if (Test-Path $crxSrc) {
 
 # --- Update update.xml ---
 Log-Info "Updating update.xml..."
-$envFile = Join-Path $ProjectRoot "prod/.env.server"
+$envFile = Join-Path $ProjectRoot "server/deploy/.env.server"
 $serverUrl = "https://localhost:8765"
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {

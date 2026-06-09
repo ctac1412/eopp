@@ -16,7 +16,7 @@ Write-Header "EOPP Deploy Pre-flight Check"
 # --- Local checks ---
 Info "=== Local Environment ==="
 
-if (Test-Path $EnvFile) { Pass "prod/.env.deploy exists" } else { Fail "prod/.env.deploy not found" }
+if (Test-Path $EnvFile) { Pass "server/deploy/.env.deploy exists" } else { Fail "server/deploy/.env.deploy not found" }
 
 if ($script:SshHost) { Pass "SSH_HOST is set: $script:SshHost" } else { Fail "SSH_HOST is not defined" }
 

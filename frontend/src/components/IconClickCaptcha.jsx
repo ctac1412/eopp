@@ -112,6 +112,7 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
   const [currentPosition, setCurrentPosition] = useState(assigned[0] ?? null);
   const [solvedCount, setSolvedCount] = useState(0);
   const [answeredPositions, setAnsweredPositions] = useState([]);
+  const [allIcons, setAllIcons] = useState(entry.allIcons || []);
   const [markers, setMarkers] = useState([]);
   const [complete, setComplete] = useState(false);
   const [answering, setAnswering] = useState(false);
@@ -134,7 +135,10 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
 
   const allMarkers = [...markers, ...foreignMarkers];
 
-  const role = operatorId === 0 ? "Мастер" : `Оператор #${operatorId}`;
+  const connectedOps = entry.distribution?.connected_operators || 0;
+  const role = operatorId === 0
+    ? (connectedOps > 0 ? `Мастер (+${connectedOps})` : "Мастер")
+    : `Оператор #${operatorId}`;
 
   const handleClick = async (e) => {
     if (entry.solved || complete || answering) return;
@@ -176,6 +180,7 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
       setCurrentPosition(data.icon_position);
       setSolvedCount(data.solved_count);
       if (data.answered_positions) setAnsweredPositions(data.answered_positions);
+      if (data.all_icons) setAllIcons(data.all_icons);
     } catch (err) {
       console.error("Distribution answer failed:", err);
     } finally {
@@ -215,7 +220,56 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
             onClick={handleClick}
           />
         )}
-        {currentIcon && (
+        {allIcons.length > 0 && (
+          <div style={{
+            display: "flex", gap: 6, justifyContent: "center", alignItems: "center",
+            marginTop: 4, padding: "8px 6px",
+            background: "#0d1117", borderRadius: 8, border: "1px solid #21262d",
+          }}>
+            {allIcons.map((ic) => {
+              const isCurrent = ic.position === currentPosition;
+              const isAnswered = (entry._distAnsweredPositions || answeredPositions).includes(ic.position);
+              return (
+                <div
+                  key={ic.position}
+                  style={{
+                    position: "relative",
+                    width: isCurrent ? 52 : 36,
+                    height: isCurrent ? 52 : 36,
+                    borderRadius: 6,
+                    border: isCurrent ? "2px solid #58a6ff" : "1px solid #30363d",
+                    opacity: isAnswered && !isCurrent ? 0.35 : isCurrent ? 1 : 0.55,
+                    background: isAnswered ? "#1a3320" : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {ic.icon && (
+                    <img
+                      src={"data:image/png;base64," + ic.icon}
+                      alt={`#${ic.position + 1}`}
+                      style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }}
+                      draggable={false}
+                    />
+                  )}
+                  {isAnswered && (
+                    <div style={{
+                      position: "absolute", top: -6, right: -6,
+                      width: 16, height: 16, borderRadius: "50%",
+                      background: "#3fb950", display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      fontSize: 10, color: "#fff", fontWeight: "bold",
+                      border: "1.5px solid #0d1117",
+                    }}>✓</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!allIcons.length && currentIcon && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "#8b949e", marginBottom: 4 }}>
               Иконка #{currentPosition != null ? currentPosition + 1 : "?"}

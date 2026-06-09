@@ -6,8 +6,7 @@ $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Require-SSHHost
 Check-SSH
 
-$prodDir = Join-Path $ProjectRoot "prod"
-$prodDataDir = Join-Path $prodDir "data"
+$dataDir = Join-Path $ProjectRoot "server" "data"
 $pluginsDir = Join-Path $ProjectRoot "plugins"
 
 # --- Stop container before replacing DB ---
@@ -22,9 +21,9 @@ $null = Remote-Exec "mkdir -p $script:RemoteDir/backups/db_$timestamp && cp $scr
 Log-Success "Remote DB backed up"
 
 # --- Push data ---
-Log-Info "Pushing local $prodDataDir/ to ${script:SshTarget}:${script:RemoteDir}/data/ ..."
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$prodDataDir/api_keys.db" "${script:SshTarget}:${script:RemoteDir}/data/api_keys.db"
-& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no -r "$prodDataDir/captcha_examples" "${script:SshTarget}:${script:RemoteDir}/data/"
+Log-Info "Pushing local $dataDir/ to ${script:SshTarget}:${script:RemoteDir}/data/ ..."
+& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no "$dataDir/api_keys.db" "${script:SshTarget}:${script:RemoteDir}/data/api_keys.db"
+& $script:ScpExe -P $script:SshPort -o StrictHostKeyChecking=no -r "$dataDir/captcha_examples" "${script:SshTarget}:${script:RemoteDir}/data/"
 Log-Success "Data pushed to ${script:RemoteDir}/data/"
 
 # --- Remove stale WAL files (SQLite will create fresh ones on startup) ---

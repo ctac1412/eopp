@@ -12,8 +12,8 @@
 | C1 | Benchmark/captcha examples audit | done | `tests/test_solve_captcha.py`, `src/utils.py`, `data/captcha_examples/**` | Valid set now contains only examples with integer in-range `valid_index`; 41 `null` examples moved to `no_valid`. |
 | C2 | Починить сохранение valid example без варианта | done | `src/utils.py`, routes captcha/admin | `valid_index` is accepted only when it is an integer inside `variantsCapture`; `0` remains a valid first-variant label. |
 | C3 | Frontend labeling mode для капч | planned-only | frontend/admin + backend route TBD | По просьбе можно пока только спланировать. |
-| E1 | UI расширения: обзор и улучшения | done | `yandex-browser-plugin/src/**` | Основной запуск стал компактнее: дата рядом с режимом, редкие настройки свернуты, добавлены чипы состояния. |
-| E2 | Shared slots под feature toggle | done | `src/routes/slots.py`, `src/services/slots_group_service.py`, `yandex-browser-plugin/src/api/**`, `ConfigForm.tsx`, store/types | Реализовано через claim/wait/publish/fail, toggle выключен по умолчанию, fallback сохраняет старое поведение. |
+| E1 | UI расширения: обзор и улучшения | done | `extension/src/**` | Основной запуск стал компактнее: дата рядом с режимом, редкие настройки свернуты, добавлены чипы состояния. |
+| E2 | Shared slots под feature toggle | done | `src/routes/slots.py`, `src/services/slots_group_service.py`, `extension/src/api/**`, `ConfigForm.tsx`, store/types | Реализовано через claim/wait/publish/fail, toggle выключен по умолчанию, fallback сохраняет старое поведение. |
 | B1 | Тарифы по времени/окнам | pending | `src/db/tariffs.py`, `src/services/billing_service.py`, admin UI | Новый сценарий: бронь в 12 тарифицируется как перенос или дороже. |
 | B2 | Открытый счет компании | pending | billing repo/service, invoices UI | Новые usage-записи копятся в открытом счете до выписки. |
 | B3 | Предоплаченный пакет | pending | new db/service/routes/admin UI TBD | Баланс денег/логов, списание по тарифу, связь с логами. |
