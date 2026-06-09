@@ -20,7 +20,6 @@ Log-Success "Frontend built"
 
 Log-Info "Building Docker image $script:ImageFull..."
 docker build -t $script:ImageFull .
-Pop-Location
 Log-Success "Docker image built"
 
 # --- Transfer ---

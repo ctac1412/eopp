@@ -3,7 +3,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\scripts\deploy\setup-ssl-ip.ps1 -Staging
 #   powershell -ExecutionPolicy Bypass -File .\scripts\deploy\setup-ssl-ip.ps1
 #
-# Required env in prod/.env.deploy:
+# Required env in server/deploy/.env.deploy:
 #   SSH_HOST=<vps_ip_or_host>
 # Optional:
 #   CERTBOT_EMAIL=<you@example.com>    # for renewal notifications (recommended)

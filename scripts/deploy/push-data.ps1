@@ -6,7 +6,7 @@ $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Require-SSHHost
 Check-SSH
 
-$dataDir = Join-Path $ProjectRoot "server" "data"
+$dataDir = Join-Path (Join-Path $ProjectRoot "server") "data"
 $pluginsDir = Join-Path $ProjectRoot "plugins"
 
 # --- Stop container before replacing DB ---

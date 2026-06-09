@@ -1,7 +1,7 @@
 """add has_custom_slots and price_custom_slots
 
 Revision ID: f4827f618ac7
-Revises: b56f4f4c8036
+Revises: ec1272781f23
 Create Date: 2026-06-03 14:47:46.245416
 
 """

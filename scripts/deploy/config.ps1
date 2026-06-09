@@ -5,7 +5,7 @@
 $DeployDir = Split-Path -Parent $PSCommandPath
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $DeployDir)
 # .env.deploy is now in project_root/server/deploy/
-$EnvFile = Join-Path (Join-Path $ProjectRoot "server" "deploy") ".env.deploy"
+$EnvFile = Join-Path (Join-Path (Join-Path $ProjectRoot "server") "deploy") ".env.deploy"
 
 if (Test-Path $EnvFile) {
     Get-Content $EnvFile | ForEach-Object {
@@ -40,7 +40,7 @@ $script:SshPort = if ($env:SSH_PORT) { $env:SSH_PORT } else { "22" }
 $script:ImageName = if ($env:IMAGE_NAME) { $env:IMAGE_NAME } else { "eopp" }
 $script:ImageTag = if ($env:IMAGE_TAG) { $env:IMAGE_TAG } else { "latest" }
 $script:RemoteDir = if ($env:REMOTE_DIR) { $env:REMOTE_DIR } else { "/opt/eopp" }
-$script:LocalBackupDir = if ($env:LOCAL_BACKUP_DIR) { $env:LOCAL_BACKUP_DIR } else { (Join-Path (Join-Path $ProjectRoot "server" "deploy") "backups") }
+$script:LocalBackupDir = if ($env:LOCAL_BACKUP_DIR) { $env:LOCAL_BACKUP_DIR } else { (Join-Path (Join-Path (Join-Path $ProjectRoot "server") "deploy") "backups") }
 $script:HealthCheckRetriesRaw = if ($env:HEALTH_CHECK_RETRIES) { $env:HEALTH_CHECK_RETRIES } else { "30" }
 $script:HealthCheckRetries = [int]$script:HealthCheckRetriesRaw
 $script:HealthCheckIntervalRaw = if ($env:HEALTH_CHECK_INTERVAL) { $env:HEALTH_CHECK_INTERVAL } else { "5" }

@@ -19,6 +19,7 @@ Log-Success "Extension built"
 Log-Info "Packing extension to CRX..."
 $browserExe = "C:\Users\BAZA\AppData\Local\Yandex\YandexBrowser\Application\browser.exe"
 $extDistDir = Join-Path $ProjectRoot "extension/dist"
+$ver = (Get-Content (Join-Path $extDistDir "manifest.json") | ConvertFrom-Json).version
 
 $crxSrc = Join-Path $ProjectRoot "extension/dist.crx"
 $crxDst = Join-Path $pluginsDir "my-helper-v$ver.crx"
