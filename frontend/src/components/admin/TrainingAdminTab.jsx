@@ -70,6 +70,7 @@ export function TrainingAdminTab({ adminToken, onError }) {
                     <th>Название</th>
                     <th>Описание</th>
                     <th>Капч</th>
+                    <th>Режим</th>
                     <th>Создан</th>
                     <th></th>
                   </tr>
@@ -81,6 +82,11 @@ export function TrainingAdminTab({ adminToken, onError }) {
                       <td>{c.name}</td>
                       <td className="text-muted">{c.description || "—"}</td>
                       <td>{c.captcha_count}</td>
+                      <td>
+                        <span className={`badge ${c.pause_between === false ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: "0.65rem" }}>
+                          {c.pause_between === false ? "тренировка" : "экзамен"}
+                        </span>
+                      </td>
                       <td>{c.created_at?.slice(0, 16)}</td>
                       <td>
                         <button

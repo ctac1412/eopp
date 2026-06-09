@@ -207,6 +207,48 @@ def extract_solving_errors_from_logs(logs: list[str] | None) -> list[tuple[str, 
     return errors
 
 
+_SERVER_ANSWER_RE = re.compile(
+    r"Server answer:\s.*?\bcaptcha=([a-f0-9]+)\b.*?\btiles=\[([^\]]*)\]"
+)
+
+
+def extract_icon_coordinates_from_logs(logs: list[str] | None) -> dict[str, list[dict[str, int]]]:
+    """Extract icon-click coordinates from 'Server answer' log lines.
+
+    Returns {captcha_id: [{x, y}, ...]}.
+    Only includes entries where coords look like icon-click (semicolons between pairs).
+    Puzzle tile-id answers (commas, no coordinates) are skipped.
+    """
+    if not logs:
+        return {}
+    result: dict[str, list[dict[str, int]]] = {}
+    for line in logs:
+        if not isinstance(line, str):
+            continue
+        m = _SERVER_ANSWER_RE.search(line)
+        if not m:
+            continue
+        captcha_id = m.group(1)
+        tiles_str = m.group(2).strip()
+        # Icon-click: "x1,y1; x2,y2; x3,y3; ..."
+        if ";" not in tiles_str:
+            continue  # puzzle answer, skip
+        coords = []
+        for pair in tiles_str.split(";"):
+            pair = pair.strip()
+            if not pair:
+                continue
+            parts = pair.split(",")
+            if len(parts) == 2:
+                try:
+                    coords.append({"x": int(parts[0].strip()), "y": int(parts[1].strip())})
+                except ValueError:
+                    pass
+        if coords:
+            result[captcha_id] = coords
+    return result
+
+
 def extract_captcha_durations_from_logs(logs: list[str] | None) -> dict[str, int]:
     """Extract per-captcha solving durations from stage_end events.
     
@@ -380,6 +422,7 @@ def create_captcha_records(
     unsolved = extract_unsolved_captchas_from_logs(logs)
     solve_errors = extract_solving_errors_from_logs(logs)
     cap_durations = extract_captcha_durations_from_logs(logs)
+    icon_coords = extract_icon_coordinates_from_logs(logs)
     if not passed and not invalid and not unsolved and not solve_errors:
         return []
         return []
@@ -452,6 +495,12 @@ def create_captcha_records(
         )
         created_ids.append(cursor.lastrowid)
         _sync_captcha_files_unsolved(conn, cid, now, payload_data)
+
+    # 5) save icon-click coordinates to JSON files
+    for cid, coords in icon_coords.items():
+        payload_data = _load_payload(cid) or {}
+        payload_data["coordinates"] = coords
+        _write_payload(cid, payload_data)
 
     conn.commit()
     conn.close()

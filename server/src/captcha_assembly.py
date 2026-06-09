@@ -38,12 +38,17 @@ def get_by_path(obj: dict | None, *keys, default=None):
 
 
 def captcha_hash(data):
+    """Stable hash of captcha content — depends ONLY on image data, not on metadata.
+
+    Adding fields (coordinates, solver_results, etc.) to the JSON does NOT change the hash.
+    """
     if is_icon_click_type(data):
         puzzle = data.get("puzzle", data)
+        image_b64 = puzzle.get("imageBase64", "") if isinstance(puzzle, dict) else ""
+        icons_b64 = puzzle.get("iconsBase64", "") if isinstance(puzzle, dict) else ""
         hash_input = json.dumps({
-            "imageBase64": puzzle.get("imageBase64", "")[:500] if isinstance(puzzle, dict) else "",
-            "iconsBase64": puzzle.get("iconsBase64", "")[:500] if isinstance(puzzle, dict) else "",
-            "token": data.get("token", "")[:100],
+            "imageBase64": image_b64[:1000] if image_b64 else "",
+            "iconsBase64": icons_b64[:1000] if icons_b64 else "",
         }, sort_keys=True)
         return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
 
@@ -129,3 +134,30 @@ def get_top3_from_solver(data):
         return [str(variant) for variant in top_variants(results)]
     except Exception:
         return []
+
+
+def hit_test(point: dict, box: dict) -> bool:
+    """Check if a coordinate point falls inside a bounding box.
+
+    Args:
+        point: {"x": int, "y": int} — user click coordinate
+        box:   {"x": int, "y": int, "w": int, "h": int} — top-left + size
+
+    Returns True if point is inside (or on the border of) the box.
+    """
+    px, py = point.get("x"), point.get("y")
+    bx, by, bw, bh = box.get("x"), box.get("y"), box.get("w"), box.get("h")
+    if None in (px, py, bx, by, bw, bh):
+        return False
+    return (bx <= px <= bx + bw) and (by <= py <= by + bh)
+
+
+def check_icon_click_answer(coords: list[dict], boxes: list[dict]) -> bool:
+    """Check if all icon-click coordinates fall within their corresponding boxes.
+
+    Returns True only if EVERY coordinate hits its box (same index).
+    If lengths differ, returns False.
+    """
+    if len(coords) != len(boxes):
+        return False
+    return all(hit_test(c, boxes[i]) for i, c in enumerate(coords))

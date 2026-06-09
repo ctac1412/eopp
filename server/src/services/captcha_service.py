@@ -53,6 +53,14 @@ def load_captcha_file(captcha_id: str) -> dict | None:
 
 def read_label_captcha(captcha_id: str) -> dict | None:
     source_path = captcha_file_service.captcha_file_path(captcha_id)
+
+    # Fallback: if file not in all_dir(), try file_path from DB
+    if not os.path.exists(source_path):
+        from src.repositories import captcha_file_repo
+        cf = captcha_file_repo.get_by_captcha_id(captcha_id)
+        if cf and cf.file_path and os.path.isfile(cf.file_path):
+            source_path = cf.file_path
+
     if not os.path.exists(source_path):
         return None
     try:
@@ -67,6 +75,47 @@ def read_label_captcha(captcha_id: str) -> dict | None:
     puzzle = data.get("puzzle", data)
     tiles = puzzle.get("tiles", [])
     variants = puzzle.get("variantsCapture", [])
+
+    from src.captcha_assembly import is_icon_click_type
+
+    if is_icon_click_type(data):
+        from src.captcha_solver_engine.images import assemble_icon_click_preview
+        main_b64 = puzzle.get("imageBase64", "") if isinstance(puzzle, dict) else ""
+        icons_b64 = puzzle.get("iconsBase64", "") if isinstance(puzzle, dict) else ""
+        # Extract ground-truth coordinates from the captcha file
+        coords = None
+        # Check root level first (written by usage_log parsing)
+        if isinstance(data.get("coordinates"), list):
+            coords = data["coordinates"]
+        # Fallback: check inside puzzle
+        if not coords and isinstance(puzzle, dict):
+            for k in ("coordinates", "boxes", "icon_positions", "answer"):
+                val = puzzle.get(k)
+                if isinstance(val, list) and len(val) > 0:
+                    if all(isinstance(v, dict) and "x" in v and "y" in v for v in val):
+                        coords = [{"x": v["x"], "y": v["y"]} for v in val]
+                        break
+        try:
+            gen = assemble_icon_click_preview(main_b64, icons_b64, coords)
+        except Exception:
+            gen = []
+        return {
+            "captcha_id": captcha_id,
+            "filename": f"{captcha_id}.json",
+            "captcha_type": "icon_click",
+            "valid_index": get_valid_variant_index(data),
+            "no_valid_index": data.get("no_valid_index") if isinstance(data.get("no_valid_index"), int) else None,
+            "manual_labeled": data.get("manual_labeled") is True,
+            "label_source": data.get("label_source") if isinstance(data.get("label_source"), str) else None,
+            "solver_top3": [],
+            "solver_results": [],
+            "variants_count": 1,
+            "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
+            "icons_image": gen[0].get("icons", "") if gen else "",
+            "coordinates": coords,
+            "boxes": data.get("boxes") if isinstance(data.get("boxes"), list) else None,
+        }
+
     if not tiles or not variants:
         return None
 
@@ -201,3 +250,58 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
     t = threading.Thread(target=send_captchas, daemon=True)
     t.start()
     return len(captcha_ids)
+
+
+def save_captcha_boxes(captcha_id: str, boxes: list[dict]) -> tuple[int, dict]:
+    """Save bounding boxes for an icon-click captcha.
+
+    Args:
+        captcha_id: captcha identifier
+        boxes: [{x, y, w, h}, ...] — up to 5 boxes, one per icon position
+    """
+    if len(boxes) != 5:
+        return 422, {"error": f"expected 5 boxes, got {len(boxes)}"}
+    for i, b in enumerate(boxes):
+        for k in ("x", "y", "w", "h"):
+            if not isinstance(b.get(k), (int, float)):
+                return 422, {"error": f"box[{i}] missing or invalid field: {k}"}
+
+    source_path = captcha_file_service.captcha_file_path(captcha_id)
+    if not os.path.exists(source_path):
+        return 404, {"error": "captcha file not found"}
+    try:
+        with open(source_path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["boxes"] = boxes
+        data["manual_labeled"] = True
+        data["label_source"] = "manual_boxes"
+        captcha_file_service.write_captcha_json(source_path, data)
+        captcha_file_service.upsert_captcha_file_data(source_path, data, captcha_id)
+        return 200, {"ok": True, "captcha_id": captcha_id, "boxes": boxes}
+    except Exception as exc:
+        return 500, {"error": f"save failed: {exc}"}
+
+
+def save_captcha_coordinates(captcha_id: str, coordinates: list[dict]) -> tuple[int, dict]:
+    """Save click coordinates for an icon-click captcha (points mode labeling)."""
+    if len(coordinates) != 5:
+        return 422, {"error": f"expected 5 coordinates, got {len(coordinates)}"}
+    for i, c in enumerate(coordinates):
+        for k in ("x", "y"):
+            if not isinstance(c.get(k), (int, float)):
+                return 422, {"error": f"coordinate[{i}] missing or invalid field: {k}"}
+
+    source_path = captcha_file_service.captcha_file_path(captcha_id)
+    if not os.path.exists(source_path):
+        return 404, {"error": "captcha file not found"}
+    try:
+        with open(source_path, encoding="utf-8") as f:
+            data = json.load(f)
+        data["coordinates"] = coordinates
+        data["manual_labeled"] = True
+        data["label_source"] = "manual_points"
+        captcha_file_service.write_captcha_json(source_path, data)
+        captcha_file_service.upsert_captcha_file_data(source_path, data, captcha_id)
+        return 200, {"ok": True, "captcha_id": captcha_id, "coordinates": coordinates}
+    except Exception as exc:
+        return 500, {"error": f"save failed: {exc}"}

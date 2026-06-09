@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 
 const API = "";
 
@@ -10,7 +10,9 @@ function randomInterval(min, max) {
 export default function TrainingRunPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const runId = parseInt(id);
+  const pauseBetween = searchParams.get("pause") !== "0"; // default true (exam mode)
 
   const [status, setStatus] = useState(null);  // null=loading, {total_captchas, solved, ...}
   const [current, setCurrent] = useState(null);  // current captcha data
@@ -74,13 +76,16 @@ export default function TrainingRunPage() {
   useEffect(() => {
     loadStatus().then(data => {
       if (data && data.status === "running" && data.remaining > 0) {
-        // Start with random delay
-        const delay = randomInterval(2, 7);
-        setWaiting(true);
-        delayRef.current = setTimeout(() => {
-          setWaiting(false);
+        if (pauseBetween) {
+          const delay = randomInterval(2, 7);
+          setWaiting(true);
+          delayRef.current = setTimeout(() => {
+            setWaiting(false);
+            loadNext();
+          }, delay);
+        } else {
           loadNext();
-        }, delay);
+        }
       } else if (data && data.remaining === 0) {
         setDone(true);
         completeRun();
@@ -181,18 +186,32 @@ export default function TrainingRunPage() {
   // Move to next after feedback
   useEffect(() => {
     if (feedback && !done) {
-      const delay = randomInterval(2, 7);
-      setWaiting(true);
-      delayRef.current = setTimeout(async () => {
-        setWaiting(false);
-        const st = await loadStatus();
-        if (st && st.remaining > 0) {
-          loadNext();
-        } else {
-          setDone(true);
-          completeRun();
-        }
-      }, delay);
+      if (!pauseBetween) {
+        // No delay — immediately check if more captchas
+        setWaiting(true);
+        loadStatus().then(st => {
+          setWaiting(false);
+          if (st && st.remaining > 0) {
+            loadNext();
+          } else {
+            setDone(true);
+            completeRun();
+          }
+        });
+      } else {
+        const delay = randomInterval(2, 7);
+        setWaiting(true);
+        delayRef.current = setTimeout(async () => {
+          setWaiting(false);
+          const st = await loadStatus();
+          if (st && st.remaining > 0) {
+            loadNext();
+          } else {
+            setDone(true);
+            completeRun();
+          }
+        }, delay);
+      }
     }
     return () => clearTimeout(delayRef.current);
   }, [feedback]);

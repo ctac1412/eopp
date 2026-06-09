@@ -6,7 +6,7 @@ def list_files() -> list[CaptchaFile]:
     with get_session() as session:
         return (
             session.query(CaptchaFile)
-            .order_by(CaptchaFile.usage_log_id.desc().nullslast(), CaptchaFile.id.desc())
+            .order_by(CaptchaFile.action_date.desc().nullslast(), CaptchaFile.id.desc())
             .all()
         )
 
@@ -75,3 +75,53 @@ def update_classification(captcha_id: str, classification: str | None) -> bool:
     updated = cur.rowcount > 0
     conn.close()
     return updated
+
+
+def get_usage_log_date(captcha_id: str) -> str | None:
+    """Return usage_log.created_at for the given captcha_id, if any."""
+    conn = get_connection()
+    row = conn.execute(
+        """
+        SELECT ul.created_at
+        FROM captchas c
+        JOIN usage_log ul ON ul.id = c.usage_log_id
+        WHERE c.captcha_id = ?
+        ORDER BY ul.created_at DESC
+        LIMIT 1
+        """,
+        (captcha_id,),
+    ).fetchone()
+    conn.close()
+    return row["created_at"] if row else None
+
+
+def get_usage_log_id_for_captcha(captcha_id: str) -> int | None:
+    """Return usage_log_id for the given captcha_id from captchas table."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT usage_log_id FROM captchas WHERE captcha_id = ? ORDER BY id DESC LIMIT 1",
+        (captcha_id,),
+    ).fetchone()
+    conn.close()
+    return row["usage_log_id"] if row else None
+
+
+def update_action_date(captcha_id: str, action_date: str) -> bool:
+    conn = get_connection()
+    cur = conn.execute(
+        "UPDATE captcha_files SET action_date = ? WHERE captcha_id = ?",
+        (action_date, captcha_id),
+    )
+    conn.commit()
+    updated = cur.rowcount > 0
+    conn.close()
+    return updated
+
+
+def get_captcha_files_without_action_date() -> list[str]:
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT captcha_id FROM captcha_files WHERE action_date IS NULL ORDER BY id ASC"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]

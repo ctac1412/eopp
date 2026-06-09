@@ -14,6 +14,7 @@ class Course(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    pause_between: Mapped[bool] = mapped_column(default=True)
 
 
 class CourseCaptcha(Base):

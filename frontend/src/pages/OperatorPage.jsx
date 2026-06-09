@@ -322,6 +322,7 @@ export function OperatorPage() {
               <span className="fw-semibold" style={{ color: "#f0f6fc" }}>
                 {captchaId ? `Капча ${captchaId.slice(0, 8)}` : complete ? "Решено" : `Ожидание капчи (мастер ${masterOnline ? "онлайн" : "офлайн"})`}
               </span>
+              <a href={`/training?op=${encodeURIComponent(uuid)}`} style={{ fontSize: "0.75rem", color: "#58a6ff", textDecoration: "none" }}>🎓</a>
             </div>
             <div className="d-flex align-items-center gap-2">
               <select

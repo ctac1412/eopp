@@ -56,16 +56,9 @@ def tiles_hash(tiles: list[dict]) -> str | None:
 
 
 def icon_click_hash(data: dict) -> str | None:
-    puzzle = data.get("puzzle", data)
-    image_b64 = puzzle.get("imageBase64", "") if isinstance(puzzle, dict) else ""
-    icons_b64 = puzzle.get("iconsBase64", "") if isinstance(puzzle, dict) else ""
-    if not image_b64 and not icons_b64:
-        return None
-    hash_input = json.dumps({
-        "image_prefix": image_b64[:300] if image_b64 else "",
-        "icons_prefix": icons_b64[:300] if icons_b64 else "",
-    }, sort_keys=True)
-    return hashlib.sha256(hash_input.encode()).hexdigest()[:16]
+    """Stable hash — delegates to captcha_assembly.captcha_hash for consistency."""
+    from src.captcha_assembly import captcha_hash
+    return captcha_hash(data)
 
 
 def calculate_solver_results(data: dict) -> list[dict]:
@@ -179,6 +172,8 @@ def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> d
         "file_mtime": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
         "created_at": now,
         "last_seen_at": now,
+        "has_coordinates": isinstance(data.get("coordinates"), list) and len(data["coordinates"]) == 5,
+        "has_boxes": isinstance(data.get("boxes"), list) and len(data["boxes"]) == 5,
     }
 
 
@@ -365,3 +360,157 @@ def backfill_captcha_dates() -> dict:
         "linked": len(linked_ids),
         "unlinked": len(all_ids) - len(linked_ids),
     }
+
+
+def sync_captcha_files_full() -> dict:
+    """Full sync: add missing files to DB, update existing, set action_date.
+
+    For every JSON file on disk:
+      - Missing in DB → insert with full metadata
+      - Already in DB → refresh classification, usage_log_id, file_status
+      - Resolve action_date from usage_log.created_at via captchas table
+    """
+    os.makedirs(all_dir(), exist_ok=True)
+
+    new_count = 0
+    updated_count = 0
+    action_date_set = 0
+    errors = 0
+
+    for name in sorted(os.listdir(all_dir())):
+        if not name.endswith(".json"):
+            continue
+
+        path = os.path.join(all_dir(), name)
+        captcha_id = Path(path).stem
+        data = read_json(path)
+        if data is None:
+            errors += 1
+            continue
+
+        try:
+            existing = captcha_file_repo.get_by_captcha_id(captcha_id)
+
+            if existing is None:
+                # New file — full insert
+                row_id = upsert_captcha_file_data(path, data, captcha_id)
+                if row_id is None:
+                    errors += 1
+                    continue
+                new_count += 1
+            else:
+                # Existing — refresh key fields
+                ensure_analysis_metadata(data)
+                meta = metadata_for_data(path, data, captcha_id)
+                # Only update fields that may need refreshing
+                updates = {
+                    k: meta[k]
+                    for k in (
+                        "file_status", "captcha_type", "tiles_hash",
+                        "valid_index", "no_valid_index", "manual_labeled",
+                        "label_source", "solver_valid_rank", "variants_count",
+                        "file_size", "file_mtime", "last_seen_at",
+                    )
+                    if k in meta
+                }
+                # Carry over classification if not set in DB
+                if existing.classification:
+                    updates["classification"] = existing.classification
+                captcha_file_repo.upsert_file({**meta, **updates})
+                updated_count += 1
+
+            # Resolve action_date and usage_log_id
+            need_action_date = (existing is None) or (not existing.action_date)
+            need_usage_log = (existing is None) or (not existing.usage_log_id)
+
+            if need_action_date or need_usage_log:
+                action_date = captcha_file_repo.get_usage_log_date(captcha_id)
+                usage_log_id = captcha_file_repo.get_usage_log_id_for_captcha(captcha_id) if need_usage_log else None
+
+                if action_date and need_action_date:
+                    captcha_file_repo.update_action_date(captcha_id, action_date)
+                    action_date_set += 1
+                if usage_log_id and need_usage_log:
+                    from src.entities import get_session, CaptchaFile
+                    with get_session() as session:
+                        session.query(CaptchaFile).filter(
+                            CaptchaFile.captcha_id == captcha_id,
+                            CaptchaFile.usage_log_id.is_(None),
+                        ).update({"usage_log_id": usage_log_id}, synchronize_session=False)
+                        session.commit()
+
+        except Exception:
+            errors += 1
+
+    # Backfill icon_coordinates from usage_log logs
+    icon_coords_backfilled = 0
+    try:
+        icon_coords_backfilled = _backfill_icon_coordinates()
+    except Exception:
+        pass
+
+    return {
+        "new": new_count,
+        "updated": updated_count,
+        "action_date_set": action_date_set,
+        "icon_coords_backfilled": icon_coords_backfilled,
+        "errors": errors,
+    }
+
+
+def _backfill_icon_coordinates() -> int:
+    """Scan JSON files without icon_coordinates, extract from linked usage_log."""
+    from src.db.connection import get_connection
+    from src.db.captchas import extract_icon_coordinates_from_logs
+
+    count = 0
+    os.makedirs(all_dir(), exist_ok=True)
+
+    for name in sorted(os.listdir(all_dir())):
+        if not name.endswith(".json"):
+            continue
+
+        path = os.path.join(all_dir(), name)
+        captcha_id = Path(path).stem
+        data = read_json(path)
+        if data is None:
+            continue
+
+        # Only icon-click captchas, and only if coords not already present
+        from src.captcha_assembly import is_icon_click_type
+        if not is_icon_click_type(data):
+            continue
+        if isinstance(data.get("coordinates"), list) and len(data["coordinates"]) > 0:
+            continue
+
+        # Find usage_log.logs for this captcha
+        conn = get_connection()
+        rows = conn.execute(
+            """
+            SELECT ul.logs FROM captchas c
+            JOIN usage_log ul ON ul.id = c.usage_log_id
+            WHERE c.captcha_id = ?
+            ORDER BY ul.created_at DESC
+            LIMIT 1
+            """,
+            (captcha_id,),
+        ).fetchall()
+        conn.close()
+
+        for row in rows:
+            if not row["logs"]:
+                continue
+            try:
+                logs = json.loads(row["logs"]) if isinstance(row["logs"], str) else row["logs"]
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(logs, list):
+                continue
+            coords = extract_icon_coordinates_from_logs(logs)
+            if captcha_id in coords:
+                data["coordinates"] = coords[captcha_id]
+                write_captcha_json(path, data)
+                count += 1
+                break
+
+    return count

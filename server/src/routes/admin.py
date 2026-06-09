@@ -178,6 +178,26 @@ async def admin_captcha_label_save(body: CaptchaLabelSaveBody):
     return JSONResponse(status_code=status, content=content)
 
 
+@router.post("/captcha-label/{captcha_id}/save-boxes")
+async def admin_captcha_label_save_boxes(captcha_id: str, body: dict):
+    """Save bounding boxes for icon-click captcha labeling."""
+    boxes = body.get("boxes", [])
+    if not isinstance(boxes, list):
+        return JSONResponse(status_code=400, content={"error": "boxes must be a list"})
+    status, content = captcha_service.save_captcha_boxes(captcha_id, boxes)
+    return JSONResponse(status_code=status, content=content)
+
+
+@router.post("/captcha-label/{captcha_id}/save-coordinates")
+async def admin_captcha_label_save_coordinates(captcha_id: str, body: dict):
+    """Save click coordinates for icon-click captcha labeling (points mode)."""
+    coordinates = body.get("coordinates", [])
+    if not isinstance(coordinates, list):
+        return JSONResponse(status_code=400, content={"error": "coordinates must be a list"})
+    status, content = captcha_service.save_captcha_coordinates(captcha_id, coordinates)
+    return JSONResponse(status_code=status, content=content)
+
+
 @router.post("/captcha-label/{captcha_id}/recompute")
 async def admin_captcha_label_recompute(captcha_id: str):
     """Recompute solver Top-1 using current classification-based solver."""
@@ -576,6 +596,17 @@ async def admin_backfill_dates():
     from src.services import captcha_file_service
 
     result = captcha_file_service.backfill_captcha_dates()
+    return JSONResponse(content=result)
+
+
+@router.post("/captcha-files/sync")
+async def admin_sync_captcha_files(request: Request):
+    from src.policies.access_policy import is_admin_token
+    if not is_admin_token(request.headers.get("X-Admin-Token")):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    from src.services import captcha_file_service
+
+    result = captcha_file_service.sync_captcha_files_full()
     return JSONResponse(content=result)
 
 

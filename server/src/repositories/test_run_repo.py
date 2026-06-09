@@ -131,7 +131,7 @@ def get_test_run_results(test_run_id: int) -> list[dict]:
                 "variant_index": r.variant_index,
                 "duration_ms": r.duration_ms,
                 "icon_times": json.loads(r.icon_times) if r.icon_times else None,
-                "captcha_type": cf.captcha_type,
+                "captcha_type": int(cf.captcha_type) if cf.captcha_type is not None and cf.captcha_type.isdigit() else None,
                 "valid_index": cf.valid_index,
                 "created_at": r.created_at,
             }

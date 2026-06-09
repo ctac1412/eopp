@@ -96,7 +96,8 @@ export default function TrainingPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        navigate(`/training/run/${data.id}`);
+        const pauseParam = data.pause_between === false ? "?pause=0" : "";
+        navigate(`/training/run/${data.id}${pauseParam}`);
       } else {
         setError(data.error || "Ошибка запуска");
       }
@@ -113,7 +114,8 @@ export default function TrainingPage() {
 
   return (
     <div className="container py-3" style={{ maxWidth: 900 }}>
-      <h4 className="mb-1">🎓 Обучение</h4>
+      <a href="/" style={{ fontSize: "0.8rem", color: "#58a6ff", textDecoration: "none" }}>← На главную</a>
+      <h4 className="mb-1 mt-1">🎓 Обучение</h4>
       <p className="text-muted" style={{ fontSize: "0.85rem" }}>
         Тестовый полигон для тренировки решения капч
       </p>

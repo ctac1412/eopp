@@ -36,8 +36,9 @@ async def admin_create_course(request: Request):
         return JSONResponse(status_code=400, content={"error": "captcha_file_ids is required"})
     description = body.get("description", "")
     created_by = body.get("created_by", "")
+    pause_between = body.get("pause_between", True)
 
-    course = course_repo.create_course(name, captcha_file_ids, description, created_by)
+    course = course_repo.create_course(name, captcha_file_ids, description, created_by, pause_between)
     logger.info("course_created id=%d name=%s count=%d", course["id"], name, course["captcha_count"])
     return JSONResponse(content=course)
 
@@ -151,6 +152,7 @@ async def training_start(request: Request):
         **tr,
         "total_captchas": len(course["captchas"]),
         "captcha_ids": [c["captcha_id"] for c in course["captchas"]],
+        "pause_between": course.get("pause_between", True),
     })
 
 
@@ -177,6 +179,17 @@ async def training_next_captcha(run_id: int, request: Request):
     next_captcha = remaining[0]
     captcha_id = next_captcha["captcha_id"]
     data = load_captcha_file(captcha_id)
+
+    # Fallback: if file not in all_dir(), try file_path from DB
+    if not data:
+        from src.repositories import captcha_file_repo
+        cf = captcha_file_repo.get_by_captcha_id(captcha_id)
+        if cf and cf.file_path and os.path.isfile(cf.file_path):
+            try:
+                with open(cf.file_path, encoding="utf-8") as f:
+                    data = _json.load(f)
+            except Exception:
+                data = None
 
     if not data:
         return JSONResponse(status_code=500, content={"error": f"Failed to load captcha {captcha_id}"})
@@ -230,7 +243,6 @@ async def training_submit_answer(run_id: int, request: Request):
 
     raw = await request.body()
     body = _json.loads(raw) if raw else {}
-    captcha_file_id = body.get("captcha_file_id")
     captcha_id = body.get("captcha_id", "")
     variant_index = body.get("variant_index")
     duration_ms = body.get("duration_ms")
@@ -250,18 +262,31 @@ async def training_submit_answer(run_id: int, request: Request):
             captcha_info = c
             break
 
+    captcha_file_id = body.get("captcha_file_id") or (captcha_info.get("captcha_file_id") if captcha_info else None)
+
     valid_index = captcha_info.get("valid_index") if captcha_info else None
     is_correct = None
     if valid_index is not None and variant_index is not None:
         is_correct = (variant_index == valid_index)
         status = "correct" if is_correct else "incorrect"
+    elif icon_times and captcha_info:
+        # Icon-click: check against boxes if available
+        from src.captcha_assembly import check_icon_click_answer
+        data = load_captcha_file(captcha_id)
+        boxes = data.get("boxes") if data else None
+        if boxes and isinstance(boxes, list) and len(boxes) == len(icon_times):
+            coords = [{"x": it.get("x", 0), "y": it.get("y", 0)} for it in icon_times]
+            is_correct = check_icon_click_answer(coords, boxes)
+            status = "correct" if is_correct else "incorrect"
+        else:
+            status = "pending"
     else:
         status = "pending"
         is_correct = None
 
     result = test_run_repo.save_test_result(
         test_run_id=run_id,
-        captcha_file_id=captcha_file_id or 0,
+        captcha_file_id=captcha_file_id,
         captcha_id=captcha_id,
         status=status,
         variant_index=variant_index,
@@ -390,6 +415,18 @@ async def training_resolve_operator(uuid: str):
 async def training_get_captcha(captcha_id: str):
     """Load a single captcha's assembled images for review."""
     data = load_captcha_file(captcha_id)
+
+    # Fallback: if file not in all_dir(), try file_path from DB
+    if not data:
+        from src.repositories import captcha_file_repo
+        cf = captcha_file_repo.get_by_captcha_id(captcha_id)
+        if cf and cf.file_path and os.path.isfile(cf.file_path):
+            try:
+                with open(cf.file_path, encoding="utf-8") as f:
+                    data = _json.load(f)
+            except Exception:
+                data = None
+
     if not data:
         return JSONResponse(status_code=404, content={"error": "Captcha not found"})
 
@@ -417,6 +454,8 @@ async def training_get_captcha(captcha_id: str):
             "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
             "icons_image": gen[0].get("icons", "") if gen else "",
             "meta": extra if extra else None,
+            "coordinates": data.get("coordinates") if isinstance(data.get("coordinates"), list) else None,
+            "boxes": data.get("boxes") if isinstance(data.get("boxes"), list) else None,
         })
     else:
         from src.captcha_solver_engine.images import assemble_captchas

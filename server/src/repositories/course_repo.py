@@ -5,13 +5,14 @@ from datetime import UTC, datetime
 from src.entities import Course, CourseCaptcha, CaptchaFile, get_session
 
 
-def create_course(name: str, captcha_file_ids: list[int], description: str = "", created_by: str = "") -> dict:
+def create_course(name: str, captcha_file_ids: list[int], description: str = "", created_by: str = "", pause_between: bool = True) -> dict:
     with get_session() as session:
         course = Course(
             name=name,
             description=description,
             created_by=created_by,
             created_at=datetime.now(UTC).isoformat(),
+            pause_between=pause_between,
         )
         session.add(course)
         session.flush()
@@ -25,7 +26,7 @@ def create_course(name: str, captcha_file_ids: list[int], description: str = "",
             session.add(cc)
 
         session.commit()
-        return {"id": course.id, "name": course.name, "captcha_count": len(captcha_file_ids)}
+        return {"id": course.id, "name": course.name, "pause_between": course.pause_between, "captcha_count": len(captcha_file_ids)}
 
 
 def list_courses() -> list[dict]:
@@ -45,6 +46,7 @@ def list_courses() -> list[dict]:
                 "created_by": c.created_by,
                 "created_at": c.created_at,
                 "captcha_count": count,
+                "pause_between": c.pause_between if c.pause_between is not None else True,
             })
         return result
 
@@ -67,7 +69,7 @@ def get_course(course_id: int) -> dict | None:
                 "captcha_file_id": cf.id,
                 "captcha_id": cf.captcha_id,
                 "file_path": cf.file_path,
-                "captcha_type": cf.captcha_type,
+                "captcha_type": int(cf.captcha_type) if cf.captcha_type is not None and cf.captcha_type.isdigit() else None,
                 "valid_index": cf.valid_index,
                 "variants_count": cf.variants_count,
                 "sort_order": cc.sort_order,
@@ -80,6 +82,7 @@ def get_course(course_id: int) -> dict | None:
             "description": course.description,
             "created_by": course.created_by,
             "created_at": course.created_at,
+            "pause_between": course.pause_between if course.pause_between is not None else True,
             "captchas": captchas,
         }
 

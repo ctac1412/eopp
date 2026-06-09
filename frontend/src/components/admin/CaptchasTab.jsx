@@ -52,6 +52,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [courseName, setCourseName] = useState("");
   const [courseDescription, setCourseDescription] = useState("");
+  const [coursePauseBetween, setCoursePauseBetween] = useState(true);
   const [courseCreating, setCourseCreating] = useState(false);
   const [preset, setPreset] = useState("all");
   const [search, setSearch] = useState("");
@@ -63,6 +64,8 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const [operationsPage, setOperationsPage] = useState(1);
   const [filesPage, setFilesPage] = useState(1);
   const [sending, setSending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);  // {new, updated, action_date_set, errors}
   const [previewCaptchaId, setPreviewCaptchaId] = useState(null);
   const [previewMode, setPreviewMode] = useState(null);
   const [labelingCaptcha, setLabelingCaptcha] = useState(null);
@@ -142,6 +145,25 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     }
   }, [adminToken, onError]);
 
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/admin/captcha-files/sync", {
+        method: "POST",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSyncResult(data);
+      await fetchCaptchaFiles();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   useEffect(() => {
     fetchCaptchas();
     fetchCaptchaFiles();
@@ -200,6 +222,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           name: courseName.trim(),
           description: courseDescription.trim(),
           captcha_file_ids: [...selectedFileIds],
+          pause_between: coursePauseBetween,
         }),
       });
       if (res.ok) {
@@ -635,6 +658,23 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
         >
           Обновить
         </button>
+        {subtab === "files" && (
+          <button
+            className="btn btn-sm btn-outline-success"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            {syncing ? "Синхронизация…" : "Синхронизировать"}
+          </button>
+        )}
+        {syncResult && subtab === "files" && (
+          <span className="badge bg-success" style={{ fontSize: "0.75rem" }}>
+            +{syncResult.new} новых, ↻{syncResult.updated} обновлено
+            {syncResult.action_date_set > 0 && `, 📅${syncResult.action_date_set} дат`}
+            {syncResult.icon_coords_backfilled > 0 && `, 🖱${syncResult.icon_coords_backfilled} иконок`}
+            {syncResult.errors > 0 && `, ⚠${syncResult.errors} ошибок`}
+          </span>
+        )}
         {subtab === "operations" && (
           <button
             className="btn btn-sm btn-primary"
@@ -873,7 +913,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                   <th style={{ width: "90px" }}>Rank</th>
                   <th style={{ width: "110px" }}>Вариант</th>
 
-                  <th style={{ width: "110px" }}>{"Источник"}</th>
+                  <th style={{ width: "100px" }}>{"Разм."}</th>
                   <th style={{ width: "120px" }}>Tiles Hash</th>
                   <th style={{ width: "130px" }}>Usage Log IDs</th>
                   <th style={{ width: "110px" }}>Размер</th>
@@ -927,11 +967,17 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                           : "—"}
                     </td>
 
-                    <td>
-                      {c.manual_labeled ? (
-                        <span className="badge bg-warning text-dark">{"Ручная"}</span>
+                    <td className="text-center" style={{ fontSize: "0.7rem" }}>
+                      {c.has_coordinates && c.has_boxes ? (
+                        <span className="badge bg-success">точки+боксы</span>
+                      ) : c.has_coordinates ? (
+                        <span className="badge bg-danger">точки</span>
+                      ) : c.has_boxes ? (
+                        <span className="badge bg-primary">боксы</span>
+                      ) : c.manual_labeled ? (
+                        <span className="badge bg-warning text-dark">пазл</span>
                       ) : (
-                        <span className="badge bg-secondary">{"Исходная"}</span>
+                        <span className="text-muted">—</span>
                       )}
                     </td>
                     <td className="font-monospace small">{c.tiles_hash || "—"}</td>
@@ -1111,62 +1157,71 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                 <div className="text-center text-muted py-4">Загрузка...</div>
               ) : (
                 <>
-                  <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-2">
-                    {labelVariantIndexes.map((index) => (
-                      <div className="col" key={index}>
-                        <button
-                          type="button"
-                          className={`card w-100 text-start ${labelSelectedIndex === index ? "border-primary border-2" : ""}`}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setLabelSelectedIndex(index)}
-                        >
-                          <img
-                            src={`data:image/png;base64,${labelingCaptcha.images[String(index)]}`}
-                            alt={`Вариант ${index}`}
-                            style={{ width: "100%", objectFit: "contain", maxHeight: 160 }}
-                          />
-                          <div className="card-body py-2 px-3">
-                            <div className="d-flex justify-content-between align-items-center mb-2">
-                              <span className="fw-semibold">{"Вариант"} {index}</span>
-                              {labelSelectedIndex === index && (
-                                <span className="badge bg-primary">{"Выбран"}</span>
-                              )}
-                            </div>
-                            <div className="d-flex flex-wrap gap-1">
-                              {labelingCaptcha.valid_index === index && (
-                                <span className="badge bg-success">{"Был выдан"}</span>
-                              )}
-                              {labelingCaptcha.no_valid_index === index && (
-                                <span className="badge bg-danger">{"Не выбран"}</span>
-                              )}
-                              {solverResultByVariant.get(index)?.rank === 1 && (
-                                <span className="badge bg-info text-dark">{"Прогноз"}</span>
-                              )}
-                              {solverTop3.has(index) && solverResultByVariant.get(index)?.rank !== 1 && (
-                                <span className="badge bg-info text-dark">Top 3</span>
-                              )}
-                              {recomputeResult?.best_variant === index && (
-                                <span className="badge bg-success">New Top1</span>
-                              )}
-                              {solverResultByVariant.get(index) && (
-                                <span className="badge bg-light text-dark border">
-                                  #{solverResultByVariant.get(index).rank} score {solverResultByVariant.get(index).score}
-                                </span>
-                              )}
-                              {solverResultByVariant.get(index) && (
-                                <span className="badge bg-secondary">{"Расчеты"}</span>
-                              )}
-                            </div>
-                            {solverResultByVariant.get(index) && (
-                              <div className="small text-muted mt-1">
-                                d {solverResultByVariant.get(index).discontinuity} · ssim {solverResultByVariant.get(index).ssim} · coh {solverResultByVariant.get(index).coherence} · sobel {solverResultByVariant.get(index).sobel}
+                  {labelingCaptcha?.captcha_type === "icon_click" ? (
+                    <IconClickLabelView
+                      labelingCaptcha={labelingCaptcha}
+                      adminToken={adminToken}
+                      onError={(msg) => onError?.(msg)}
+                      onSaved={() => { setLabelingCaptcha(null); setLabelSelectedIndex(0); fetchCaptchaFiles(); }}
+                    />
+                  ) : (
+                    <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-2">
+                      {labelVariantIndexes.map((index) => (
+                        <div className="col" key={index}>
+                          <button
+                            type="button"
+                            className={`card w-100 text-start ${labelSelectedIndex === index ? "border-primary border-2" : ""}`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => setLabelSelectedIndex(index)}
+                          >
+                            <img
+                              src={`data:image/png;base64,${labelingCaptcha.images[String(index)]}`}
+                              alt={`Вариант ${index}`}
+                              style={{ width: "100%", objectFit: "contain", maxHeight: 160 }}
+                            />
+                            <div className="card-body py-2 px-3">
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <span className="fw-semibold">{"Вариант"} {index}</span>
+                                {labelSelectedIndex === index && (
+                                  <span className="badge bg-primary">{"Выбран"}</span>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                              <div className="d-flex flex-wrap gap-1">
+                                {labelingCaptcha.valid_index === index && (
+                                  <span className="badge bg-success">{"Был выдан"}</span>
+                                )}
+                                {labelingCaptcha.no_valid_index === index && (
+                                  <span className="badge bg-danger">{"Не выбран"}</span>
+                                )}
+                                {solverResultByVariant.get(index)?.rank === 1 && (
+                                  <span className="badge bg-info text-dark">{"Прогноз"}</span>
+                                )}
+                                {solverTop3.has(index) && solverResultByVariant.get(index)?.rank !== 1 && (
+                                  <span className="badge bg-info text-dark">Top 3</span>
+                                )}
+                                {recomputeResult?.best_variant === index && (
+                                  <span className="badge bg-success">New Top1</span>
+                                )}
+                                {solverResultByVariant.get(index) && (
+                                  <span className="badge bg-light text-dark border">
+                                    #{solverResultByVariant.get(index).rank} score {solverResultByVariant.get(index).score}
+                                  </span>
+                                )}
+                                {solverResultByVariant.get(index) && (
+                                  <span className="badge bg-secondary">{"Расчеты"}</span>
+                                )}
+                              </div>
+                              {solverResultByVariant.get(index) && (
+                                <div className="small text-muted mt-1">
+                                  d {solverResultByVariant.get(index).discontinuity} · ssim {solverResultByVariant.get(index).ssim} · coh {solverResultByVariant.get(index).coherence} · sobel {solverResultByVariant.get(index).sobel}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="d-flex gap-2 mt-3 align-items-center">
                     <button
                       type="button"
@@ -1242,6 +1297,18 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                     placeholder="Инструкции или заметки к курсу"
                   />
                 </div>
+                <div className="mb-3 form-check">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    id="coursePauseBetween"
+                    checked={coursePauseBetween}
+                    onChange={(e) => setCoursePauseBetween(e.target.checked)}
+                  />
+                  <label className="form-check-label" htmlFor="coursePauseBetween" style={{ fontSize: "0.85rem" }}>
+                    Режим экзамена — паузы 2–7 сек между капчами
+                  </label>
+                </div>
               </div>
               <div className="modal-footer">
                 <button
@@ -1263,6 +1330,357 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
+  const imgRef = React.useRef(null);
+  const [naturalSize, setNaturalSize] = React.useState(null);
+  const [mode, setMode] = React.useState("points"); // "points" | "boxes"
+  const mainImg = labelingCaptcha?.images?.["0"];
+  const iconsImg = labelingCaptcha?.icons_image;
+  const savedCoordinates = labelingCaptcha?.coordinates || [];
+  const savedBoxes = labelingCaptcha?.boxes || [];
+  const COLORS = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
+
+  // Points mode state
+  const [points, setPoints] = React.useState(() =>
+    savedCoordinates.length === 5 ? savedCoordinates : Array(5).fill(null).map(() => ({ x: 0, y: 0 }))
+  );
+  const [pointsCount, setPointsCount] = React.useState(savedCoordinates.length === 5 ? 5 : 0);
+  const [pointsStarted, setPointsStarted] = React.useState(false);
+
+  // Box drawing state
+  const [boxes, setBoxes] = React.useState(() => {
+    if (savedBoxes.length === 5) return savedBoxes;
+    return Array(5).fill(null).map(() => ({ x: 0, y: 0, w: 0, h: 0 }));
+  });
+  const [activePos, setActivePos] = React.useState(0); // 0-4
+  const [dragStart, setDragStart] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+
+  // Reset points when captcha changes
+  React.useEffect(() => {
+    setPoints(savedCoordinates.length === 5 ? savedCoordinates : Array(5).fill(null).map(() => ({ x: 0, y: 0 })));
+    setPointsCount(savedCoordinates.length === 5 ? 5 : 0);
+    setPointsStarted(false);
+  }, [labelingCaptcha?.captcha_id]);
+
+  const handleImageLoad = (e) => {
+    setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight });
+  };
+
+  const toImageCoords = (clientX, clientY) => {
+    if (!imgRef.current || !naturalSize) return null;
+    const rect = imgRef.current.getBoundingClientRect();
+    const x = Math.round((clientX - rect.left) * naturalSize.w / rect.width);
+    const y = Math.round((clientY - rect.top) * naturalSize.h / rect.height);
+    return { x: Math.max(0, Math.min(x, naturalSize.w)), y: Math.max(0, Math.min(y, naturalSize.h)) };
+  };
+
+  // ── Points mode: click to place markers ──
+  const handlePointClick = (e) => {
+    if (mode !== "points") return;
+    const coords = toImageCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    setPointsStarted(true);
+    setPoints(prev => {
+      const next = [...prev];
+      next[pointsCount] = coords;
+      return next;
+    });
+    setPointsCount(prev => Math.min(prev + 1, 5));
+  };
+
+  const resetPoints = () => {
+    setPoints(Array(5).fill(null).map(() => ({ x: 0, y: 0 })));
+    setPointsCount(0);
+    setPointsStarted(false);
+  };
+
+  // ── Boxes mode: drag to draw ──
+  const handleMouseDown = (e) => {
+    if (mode !== "boxes") return;
+    const coords = toImageCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    setDragStart(coords);
+    setBoxes(prev => {
+      const next = [...prev];
+      next[activePos] = { x: coords.x, y: coords.y, w: 0, h: 0 };
+      return next;
+    });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!dragStart) return;
+    const coords = toImageCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    setBoxes(prev => {
+      const next = [...prev];
+      next[activePos] = {
+        x: Math.min(dragStart.x, coords.x),
+        y: Math.min(dragStart.y, coords.y),
+        w: Math.abs(coords.x - dragStart.x),
+        h: Math.abs(coords.y - dragStart.y),
+      };
+      return next;
+    });
+  };
+
+  const handleMouseUp = () => {
+    setDragStart(null);
+  };
+
+  const clearBox = (pos) => {
+    setBoxes(prev => {
+      const next = [...prev];
+      next[pos] = { x: 0, y: 0, w: 0, h: 0 };
+      return next;
+    });
+  };
+
+  // ── Save ──
+  const handleSavePoints = async () => {
+    if (pointsCount < 5) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-coordinates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        body: JSON.stringify({ coordinates: points.slice(0, 5) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      onSaved?.();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveBoxes = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-boxes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        body: JSON.stringify({ boxes }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      onSaved?.();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+      {/* Mode toggle */}
+      <div className="btn-group btn-group-sm">
+        <button
+          className={`btn ${mode === "points" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setMode("points")}
+        >Точки</button>
+        <button
+          className={`btn ${mode === "boxes" ? "btn-primary" : "btn-outline-secondary"}`}
+          onClick={() => setMode("boxes")}
+        >Боксы</button>
+      </div>
+
+      {/* Main image */}
+      <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", lineHeight: 0 }}>
+        {mainImg && (
+          <img
+            ref={imgRef}
+            src={"data:image/png;base64," + mainImg}
+            alt="Капча"
+            onLoad={handleImageLoad}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onClick={handlePointClick}
+            style={{
+              width: "100%", maxWidth: "800px", maxHeight: "65vh",
+              objectFit: "contain", borderRadius: 8,
+              border: "2px solid var(--border)", display: "block",
+              cursor: mode === "boxes" ? "crosshair" : mode === "points" && pointsCount < 5 ? "crosshair" : "default",
+            }}
+            draggable={false}
+          />
+        )}
+
+        {/* Points mode: coordinate markers */}
+        {mode === "points" && naturalSize && (pointsStarted ? (
+          points.map((c, i) => {
+            if (i >= pointsCount) return null;
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                left: `${((c.x / naturalSize.w) * 100).toFixed(2)}%`,
+                top: `${((c.y / naturalSize.h) * 100).toFixed(2)}%`,
+                transform: "translate(-50%, -50%)",
+                pointerEvents: "none", zIndex: 1,
+              }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: COLORS[i % COLORS.length],
+                  border: "3px solid #fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff", fontSize: 16, fontWeight: "bold",
+                  boxShadow: "0 0 12px rgba(0,0,0,0.6)",
+                }}>{i + 1}</div>
+              </div>
+            );
+          })
+        ) : (
+          savedCoordinates.length === 5 ? savedCoordinates.map((sc, i) => (
+            <div key={i} style={{
+              position: "absolute",
+              left: `${((sc.x / naturalSize.w) * 100).toFixed(2)}%`,
+              top: `${((sc.y / naturalSize.h) * 100).toFixed(2)}%`,
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none", zIndex: 1,
+            }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: COLORS[i % COLORS.length],
+                border: "3px solid #fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontSize: 16, fontWeight: "bold",
+                boxShadow: "0 0 12px rgba(0,0,0,0.6)",
+              }}>{i + 1}</div>
+            </div>
+          )) : null
+        ))}
+
+        {/* Boxes overlay — shown in boxes mode, or in points mode if saved */}
+        {naturalSize && (mode === "boxes" ? (
+          boxes.map((b, i) => {
+            if (!b || (b.w === 0 && b.h === 0)) return null;
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                left: `${((b.x / naturalSize.w) * 100).toFixed(2)}%`,
+                top: `${((b.y / naturalSize.h) * 100).toFixed(2)}%`,
+                width: `${((b.w / naturalSize.w) * 100).toFixed(2)}%`,
+                height: `${((b.h / naturalSize.h) * 100).toFixed(2)}%`,
+                pointerEvents: "none", zIndex: 1,
+                border: `2px solid ${COLORS[i % COLORS.length]}`,
+                background: COLORS[i % COLORS.length] + "33",
+              }}>
+                <div style={{
+                  position: "absolute", top: -20, left: 4,
+                  fontSize: "0.7rem", fontWeight: 700,
+                  color: COLORS[i % COLORS.length],
+                  background: "rgba(0,0,0,0.7)", padding: "0 4px", borderRadius: 3,
+                }}>#{i + 1} ({b.w}x{b.h})</div>
+              </div>
+            );
+          })
+        ) : savedBoxes.length === 5 ? (
+          savedBoxes.map((b, i) => {
+            if (!b || (b.w === 0 && b.h === 0)) return null;
+            return (
+              <div key={i} style={{
+                position: "absolute",
+                left: `${((b.x / naturalSize.w) * 100).toFixed(2)}%`,
+                top: `${((b.y / naturalSize.h) * 100).toFixed(2)}%`,
+                width: `${((b.w / naturalSize.w) * 100).toFixed(2)}%`,
+                height: `${((b.h / naturalSize.h) * 100).toFixed(2)}%`,
+                pointerEvents: "none", zIndex: 0,
+                border: `2px dashed ${COLORS[i % COLORS.length]}`,
+                background: COLORS[i % COLORS.length] + "15",
+              }}>
+                <div style={{
+                  position: "absolute", top: -20, left: 4,
+                  fontSize: "0.7rem", fontWeight: 700,
+                  color: COLORS[i % COLORS.length],
+                  background: "rgba(0,0,0,0.7)", padding: "0 4px", borderRadius: 3,
+                }}>#{i + 1} ({b.w}x{b.h})</div>
+              </div>
+            );
+          })
+        ) : null)}
+      </div>
+
+      {/* Points mode controls */}
+      {mode === "points" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            Кликов: {pointsCount}/5 — кликайте по иконкам в порядке 1→5
+          </span>
+          <button className="btn btn-sm btn-outline-secondary" onClick={resetPoints} style={{ fontSize: "0.7rem" }}>
+            Сбросить
+          </button>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={handleSavePoints}
+            disabled={saving || pointsCount < 5}
+          >
+            {saving ? "Сохранение..." : "Сохранить точки"}
+          </button>
+        </div>
+      )}
+
+      {/* Box position selector */}
+      {mode === "boxes" && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {[0, 1, 2, 3, 4].map(pos => (
+            <button
+              key={pos}
+              className={`btn btn-sm ${activePos === pos ? "btn-primary" : "btn-outline-secondary"}`}
+              style={{ minWidth: 36, fontSize: "0.8rem" }}
+              onClick={() => setActivePos(pos)}
+            >
+              {pos + 1}
+            </button>
+          ))}
+          <button
+            className="btn btn-sm btn-outline-danger"
+            style={{ fontSize: "0.7rem" }}
+            onClick={() => clearBox(activePos)}
+          >✕</button>
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Выделите область для иконки #{activePos + 1}
+          </span>
+        </div>
+      )}
+
+      {/* Icons strip */}
+      {iconsImg && (
+        <div style={{ textAlign: "center", marginTop: 4 }}>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 4 }}>
+            Порядок иконок (слева направо)
+          </div>
+          <img
+            src={"data:image/png;base64," + iconsImg}
+            alt="Иконки"
+            style={{ height: 50, borderRadius: 4, display: "block", margin: "0 auto" }}
+            draggable={false}
+          />
+        </div>
+      )}
+
+      {/* Save boxes button */}
+      {mode === "boxes" && (
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={handleSaveBoxes}
+          disabled={saving}
+        >
+          {saving ? "Сохранение..." : "Сохранить боксы"}
+        </button>
       )}
     </div>
   );

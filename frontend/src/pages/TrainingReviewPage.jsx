@@ -121,7 +121,7 @@ export default function TrainingReviewPage() {
               draggable={false}
             />
           )}
-          {/* Ground-truth boxes (if captcha has labeled coordinates) */}
+          {/* Ground-truth boxes (from labeling) */}
           {imgSize && meta?.coordinates && meta.coordinates.map((c, i) => (
             <div
               key={"gt-" + i}
@@ -146,6 +146,50 @@ export default function TrainingReviewPage() {
               }}>
                 #{i + 1}
               </div>
+            </div>
+          ))}
+          {/* Labeled boxes (from captcha file root) */}
+          {imgSize && captchaData?.boxes && captchaData.boxes.map((b, i) => {
+            if (!b || (b.w === 0 && b.h === 0)) return null;
+            return (
+              <div key={"box-" + i} style={{
+                position: "absolute",
+                left: `${((b.x / imgSize.w) * 100).toFixed(2)}%`,
+                top: `${((b.y / imgSize.h) * 100).toFixed(2)}%`,
+                width: `${((b.w / imgSize.w) * 100).toFixed(2)}%`,
+                height: `${((b.h / imgSize.h) * 100).toFixed(2)}%`,
+                pointerEvents: "none", zIndex: 0,
+                border: `2px solid ${COLORS[i % COLORS.length]}`,
+                background: COLORS[i % COLORS.length] + "18",
+              }}>
+                <div style={{
+                  position: "absolute", top: -18, left: 4,
+                  fontSize: "0.6rem", fontWeight: 700,
+                  color: COLORS[i % COLORS.length],
+                  background: "rgba(0,0,0,0.7)", padding: "0 3px", borderRadius: 3,
+                }}>#{i + 1}</div>
+              </div>
+            );
+          })}
+          {/* Labeled points (from captcha file root, if no meta coords) */}
+          {imgSize && !meta?.coordinates && captchaData?.coordinates && captchaData.coordinates.map((c, i) => (
+            <div
+              key={"lbl-" + i}
+              style={{
+                position: "absolute",
+                left: `${((c.x / imgSize.w) * 100).toFixed(2)}%`,
+                top: `${((c.y / imgSize.h) * 100).toFixed(2)}%`,
+                transform: "translate(-50%, -50%)",
+                pointerEvents: "none", zIndex: 1,
+              }}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%",
+                border: `2px dashed ${COLORS[i % COLORS.length]}`,
+                background: COLORS[i % COLORS.length] + "22",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: COLORS[i % COLORS.length], fontSize: 12, fontWeight: "bold",
+              }}>{i + 1}</div>
             </div>
           ))}
           {/* Operator click markers */}
