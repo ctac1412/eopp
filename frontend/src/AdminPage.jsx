@@ -34,6 +34,7 @@ import {
   AITab,
   OperatorsTab,
   PrepaidPackagesTab,
+  TrainingAdminTab,
 } from "./components/admin";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
@@ -1265,6 +1266,10 @@ function AdminPage() {
           adminToken={adminToken}
           onError={(msg) => setError(msg)}
         />
+      )}
+
+      {activeTab === "training" && (
+        <TrainingAdminTab adminToken={adminToken} onError={(msg) => setError(msg)} />
       )}
 
       <KeyFormModal

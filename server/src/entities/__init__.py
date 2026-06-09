@@ -2,6 +2,7 @@ from src.entities.api_key import ApiKey
 from src.entities.base import Base, get_engine, get_session, get_session_factory, set_db_path
 from src.entities.billing import CompanyAlias, CompanyBillingSetting
 from src.entities.captcha import CaptchaFile, CaptchaRecord
+from src.entities.course import Course, CourseCaptcha, TestRun, TestRunResult
 from src.entities.distribution_answer import DistributionAnswer
 from src.entities.operator import Operator, OperatorMasterLink
 from src.entities.expense import Expense
@@ -23,6 +24,10 @@ __all__ = [
     "UsageLog",
     "CaptchaRecord",
     "CaptchaFile",
+    "Course",
+    "CourseCaptcha",
+    "TestRun",
+    "TestRunResult",
     "Invoice",
     "InvoiceItem",
     "User",

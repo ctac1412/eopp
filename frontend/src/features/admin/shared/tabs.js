@@ -10,6 +10,7 @@
   { id: "payouts", label: "Выплаты" },
   { id: "users", label: "Пользователи" },
   { id: "testbench", label: "Тесты и бенчмарк" },
+  { id: "training", label: "Обучение" },
   { id: "streams", label: "Стримы" },
   { id: "backend-logs", label: "Backend logs" },
 ];

@@ -92,6 +92,14 @@ def unlink_operator(operator_id: int, master_key_id: int) -> bool:
         return True
 
 
+def get_operator_by_id(operator_id: int) -> dict | None:
+    with get_session() as session:
+        op = session.get(Operator, operator_id)
+        if not op:
+            return None
+        return {"id": op.id, "uuid": op.uuid, "nickname": op.nickname}
+
+
 def get_operator_masters(operator_id: int) -> list[int]:
     with get_session() as session:
         links = (

@@ -291,7 +291,10 @@ export function OperatorPage() {
     <div className="container py-3" style={{ maxWidth: "700px" }}>
       {!connected ? (
         <div className="card p-4" style={{ background: "#161b22", border: "1px solid #30363d" }}>
-          <h5 style={{ color: "#f0f6fc", marginBottom: 16 }}>Оператор распределённого решения</h5>
+          <h5 style={{ color: "#f0f6fc", marginBottom: 16 }}>
+            Оператор распределённого решения
+            <a href={`/training?op=${encodeURIComponent(uuid)}`} className="ms-2" style={{ fontSize: "0.8rem", color: "#58a6ff" }}>🎓 Тренировка</a>
+          </h5>
           <label style={{ fontSize: 13, color: "#8b949e", marginBottom: 4 }}>Помогать мастеру</label>
           <select className="form-select mb-3" value={masterId || ""} onChange={(e) => handleMasterChange(e.target.value)}
             style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}>

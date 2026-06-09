@@ -76,6 +76,11 @@ export function HomePage() {
             История
           </button>
         </li>
+        <li className="nav-item">
+          <a className="nav-link" href="/training" style={{ color: "var(--bs-nav-link-color)" }}>
+            🎓 Обучение
+          </a>
+        </li>
       </ul>
 
       <div className="mt-3">

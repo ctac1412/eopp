@@ -17,3 +17,4 @@ export { CaptchasTab } from "./CaptchasTab";
 export { AITab } from "./AITab";
 export { OperatorsTab } from "./OperatorsTab";
 export { PrepaidPackagesTab } from "./PrepaidPackagesTab";
+export { TrainingAdminTab } from "./TrainingAdminTab";

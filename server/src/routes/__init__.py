@@ -34,6 +34,7 @@ def register_all_routes(app):
     from src.routes.plugin_files import router as plugin_router
     from src.routes.slots import router as slots_router
     from src.routes.sse import router as sse_router
+    from src.routes.training import router as training_router
     from src.routes.usage import router as usage_router
 
     admin_auth_middleware_factory(app)
@@ -46,6 +47,7 @@ def register_all_routes(app):
     app.include_router(slots_router)
     app.include_router(captchas_router)
     app.include_router(operator_router)
+    app.include_router(training_router)
     app.include_router(mock_router)
     app.include_router(admin_router)
 

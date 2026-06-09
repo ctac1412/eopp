@@ -48,6 +48,11 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const subtab = activeSubtab ?? localSubtab;
   const setSubtab = onSubtabChange ?? setLocalSubtab;
   const [selected, setSelected] = useState(new Set());
+  const [selectedFileIds, setSelectedFileIds] = useState(new Set());
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [courseName, setCourseName] = useState("");
+  const [courseDescription, setCourseDescription] = useState("");
+  const [courseCreating, setCourseCreating] = useState(false);
   const [preset, setPreset] = useState("all");
   const [search, setSearch] = useState("");
   const [keyFilter, setKeyFilter] = useState("all");
@@ -161,6 +166,55 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       }
       return new Set([...prev, ...pagedCaptchas.map((captcha) => captcha.id)]);
     });
+  };
+
+  const toggleFileSelect = (id) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFileSelectAll = () => {
+    setSelectedFileIds((prev) => {
+      const allSelected = pagedCaptchaFiles.every((f) => prev.has(f.id));
+      if (allSelected) {
+        const next = new Set(prev);
+        pagedCaptchaFiles.forEach((f) => next.delete(f.id));
+        return next;
+      }
+      return new Set([...prev, ...pagedCaptchaFiles.map((f) => f.id)]);
+    });
+  };
+
+  const handleCreateCourse = async () => {
+    if (selectedFileIds.size === 0 || !courseName.trim()) return;
+    setCourseCreating(true);
+    try {
+      const res = await fetch("/admin/courses", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          name: courseName.trim(),
+          description: courseDescription.trim(),
+          captcha_file_ids: [...selectedFileIds],
+        }),
+      });
+      if (res.ok) {
+        setShowCourseModal(false);
+        setCourseName("");
+        setCourseDescription("");
+        setSelectedFileIds(new Set());
+      } else {
+        const data = await res.json();
+        onError?.(data.error || "Ошибка создания курса");
+      }
+    } catch (e) {
+      onError?.("Сетевая ошибка");
+    }
+    setCourseCreating(false);
   };
 
   const handleSendSelected = async () => {
@@ -787,10 +841,30 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
         ) : (
           <>
           {renderPagination(currentFilesPage, filesPageCount, setFilesPage, filteredCaptchaFiles.length, pagedCaptchaFiles.length)}
+          {selectedFileIds.size > 0 && (
+            <div className="mb-2">
+              <span className="text-muted me-2" style={{ fontSize: "0.85rem" }}>
+                Выбрано: {selectedFileIds.size}
+              </span>
+              <button
+                className="btn btn-sm btn-success"
+                onClick={() => setShowCourseModal(true)}
+              >
+                📚 Создать курс
+              </button>
+            </div>
+          )}
           <div className="table-responsive">
             <table className="table table-sm table-hover table-bordered align-middle mb-0">
               <thead className="table-light">
                 <tr>
+                  <th style={{ width: "30px" }}>
+                    <input
+                      type="checkbox"
+                      checked={pagedCaptchaFiles.length > 0 && pagedCaptchaFiles.every((f) => selectedFileIds.has(f.id))}
+                      onChange={toggleFileSelectAll}
+                    />
+                  </th>
                   <th style={{ width: "50px" }}>ID</th>
                   <th>Captcha ID</th>
                    <th style={{ width: "110px" }}>Тип</th>
@@ -811,6 +885,13 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
               <tbody>
                 {pagedCaptchaFiles.map((c) => (
                   <tr key={c.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedFileIds.has(c.id)}
+                        onChange={() => toggleFileSelect(c.id)}
+                      />
+                    </td>
                     <td>{c.id}</td>
                     <td className="font-monospace small">{c.captcha_id}</td>
                     <td className="small">{c.captcha_type || "unknown"}</td>
@@ -1123,6 +1204,62 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Course creation modal */}
+      {showCourseModal && (
+        <div className="modal d-block" tabIndex="-1" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Создать курс</h5>
+                <button type="button" className="btn-close" onClick={() => setShowCourseModal(false)} />
+              </div>
+              <div className="modal-body">
+                <p className="text-muted" style={{ fontSize: "0.85rem" }}>
+                  Выбрано капч: <strong>{selectedFileIds.size}</strong>
+                </p>
+                <div className="mb-3">
+                  <label className="form-label">Название курса</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={courseName}
+                    onChange={(e) => setCourseName(e.target.value)}
+                    placeholder="Например: Базовый курс для новичков"
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Описание (опционально)</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    value={courseDescription}
+                    onChange={(e) => setCourseDescription(e.target.value)}
+                    placeholder="Инструкции или заметки к курсу"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowCourseModal(false)}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={handleCreateCourse}
+                  disabled={courseCreating || !courseName.trim()}
+                >
+                  {courseCreating ? "Создание..." : "Создать курс"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
