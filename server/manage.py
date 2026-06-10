@@ -130,7 +130,7 @@ def main(
 
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
-    max_workers = int(os.environ.get("EOPP_THREAD_POOL", "50"))
+    max_workers = int(os.environ.get("EOPP_THREAD_POOL", "100"))
     asyncio.get_event_loop().set_default_executor(ThreadPoolExecutor(max_workers=max_workers))
     typer.echo(f"  Thread pool     : {max_workers} max workers")
 
@@ -162,7 +162,7 @@ def main(
         "port": port,
         "log_level": os.environ.get("EOPP_UVICORN_LOG_LEVEL", log_level),
         "timeout_graceful_shutdown": 2,
-        "limit_concurrency": int(os.environ.get("EOPP_CONCURRENCY", "50")),
+        "limit_concurrency": int(os.environ.get("EOPP_CONCURRENCY", "100")),
     }
     if certfile and keyfile:
         uvicorn_kwargs["ssl_certfile"] = certfile
