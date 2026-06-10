@@ -117,11 +117,11 @@ function StatusBar() {
     savePersisted("click_sequential_icons", val ? "1" : "0");
   };
 
-  const handleTestRun = async () => {
+  const handleTestRun = async (count = 1) => {
     setLoading(true);
     setShowSettings(false);
     try {
-      const body = { api_key: apiKey };
+      const body = { api_key: apiKey, count };
       if (testCaptchaId) body.captcha_id = testCaptchaId;
       if (testNoTimeout) body.test_no_timeout = true;
       await fetch("/trigger-test", {
@@ -289,10 +289,29 @@ function StatusBar() {
         </div>
         <button
           className="btn btn-sm btn-primary"
-          onClick={handleTestRun}
+          onClick={() => handleTestRun(1)}
           disabled={loading}
+          title="1 случайная капча"
         >
           {loading ? "Запуск..." : "Тест"}
+        </button>
+        <button
+          className="btn btn-sm btn-outline-primary"
+          onClick={() => handleTestRun(2)}
+          disabled={loading}
+          title="2 капчи одновременно"
+          style={{ padding: "2px 6px", fontSize: "0.7rem" }}
+        >
+          ×2
+        </button>
+        <button
+          className="btn btn-sm btn-outline-primary"
+          onClick={() => handleTestRun(3)}
+          disabled={loading}
+          title="3 капчи одновременно"
+          style={{ padding: "2px 6px", fontSize: "0.7rem" }}
+        >
+          ×3
         </button>
         <Link to="/admin" className="btn btn-sm btn-outline-secondary">
           Админ

@@ -706,6 +706,7 @@ async def trigger_test(request: Request):
     api_key = body.get("api_key")
     reservation_id = body.get("reservation_id")
     captcha_id = body.get("captcha_id")
+    count = body.get("count", 1)
     test_no_timeout = body.get("test_no_timeout", False)
 
     if api_key:
@@ -713,13 +714,16 @@ async def trigger_test(request: Request):
         if not key_record:
             return JSONResponse(status_code=403, content={"error": "Invalid API key"})
 
-    t = threading.Thread(
-        target=send_one_test_captcha,
-        kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id, "test_no_timeout": test_no_timeout},
-        daemon=True,
-    )
-    t.start()
-    return JSONResponse(content={"ok": True})
+    for i in range(min(count, 10)):
+        t = threading.Thread(
+            target=send_one_test_captcha,
+            kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id if i == 0 else None, "test_no_timeout": test_no_timeout},
+            daemon=True,
+        )
+        t.start()
+        if count > 1:
+            time.sleep(0.3)
+    return JSONResponse(content={"ok": True, "sent": count})
 
 
 @router.post("/broadcast")
