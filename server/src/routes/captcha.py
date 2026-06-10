@@ -745,7 +745,7 @@ async def trigger_test(request: Request):
         )
         t.start()
         if count > 1:
-            time.sleep(interval)
+            await asyncio.sleep(interval)
     return JSONResponse(content={"ok": True, "sent": count})
 
 
