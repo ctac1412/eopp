@@ -177,13 +177,14 @@ export function OperatorPage() {
         const entry = makeQueueEntry(msg);
         setCaptchaQueue((prev) => {
           const next = [...prev, entry];
-          if (activeIndex === -1) {
+          const wasIdle = prev.length === 0;
+          if (wasIdle) {
             setActiveIndex(next.length - 1);
             updateActiveRef(next, next.length - 1);
           }
           addLog(
             `Капча ${msg.captcha_id.slice(0, 8)}, иконки: ${msg.distribution.assigned.map((i) => i + 1).join(", ")}`
-            + (activeIndex >= 0 ? ` (в очереди: ${next.length})` : ""),
+            + (!wasIdle ? ` (в очереди: ${next.length})` : ""),
             "info",
           );
           return next;
@@ -194,19 +195,17 @@ export function OperatorPage() {
         setCaptchaQueue((prev) => {
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
-          if (idx === activeIndex) {
-            addLog("Капча решена!", "success");
-            const next = prev.filter((_, i) => i !== idx);
-            const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-            setActiveIndex(newIdx);
-            updateActiveRef(next, newIdx);
-            addLog(newIdx >= 0
-              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
-              : "Очередь пуста, ожидание...", "info");
-            return next;
-          }
-          addLog(`Капча ${msg.captcha_id.slice(0, 8)} решена (вне очереди)`, "success");
-          return prev.filter((_, i) => i !== idx);
+          const next = prev.filter((_, i) => i !== idx);
+          const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          setActiveIndex(newIdx);
+          updateActiveRef(next, newIdx);
+          addLog(idx === activeIndex
+            ? "Капча решена!"
+            : `Капча ${msg.captcha_id.slice(0, 8)} решена (вне очереди)`, "success");
+          addLog(newIdx >= 0
+            ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+            : "Очередь пуста, ожидание...", "info");
+          return next;
         });
         return;
       }
@@ -214,19 +213,17 @@ export function OperatorPage() {
         setCaptchaQueue((prev) => {
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
-          if (idx === activeIndex) {
-            addLog("Капча: таймаут", "error");
-            const next = prev.filter((_, i) => i !== idx);
-            const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-            setActiveIndex(newIdx);
-            updateActiveRef(next, newIdx);
-            addLog(newIdx >= 0
-              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
-              : "Очередь пуста, ожидание...", "info");
-            return next;
-          }
-          addLog(`Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
-          return prev.filter((_, i) => i !== idx);
+          const next = prev.filter((_, i) => i !== idx);
+          const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          setActiveIndex(newIdx);
+          updateActiveRef(next, newIdx);
+          addLog(idx === activeIndex
+            ? "Капча: таймаут"
+            : `Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
+          addLog(newIdx >= 0
+            ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+            : "Очередь пуста, ожидание...", "info");
+          return next;
         });
         return;
       }
