@@ -115,6 +115,12 @@ def main(
     typer.echo(f"  DB path         : {os.environ.get('EOPP_DB_PATH', 'data/api_keys.db')}")
     typer.echo(f"  Log level       : {os.environ.get('EOPP_LOG_LEVEL', 'INFO')}")
 
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    max_workers = int(os.environ.get("EOPP_THREAD_POOL", "20"))
+    asyncio.get_event_loop().set_default_executor(ThreadPoolExecutor(max_workers=max_workers))
+    typer.echo(f"  Thread pool     : {max_workers} max workers")
+
     import captcha_solver
 
     typer.echo(
@@ -143,6 +149,7 @@ def main(
         "port": port,
         "log_level": os.environ.get("EOPP_UVICORN_LOG_LEVEL", log_level),
         "timeout_graceful_shutdown": 2,
+        "limit_concurrency": int(os.environ.get("EOPP_CONCURRENCY", "20")),
     }
     if certfile and keyfile:
         uvicorn_kwargs["ssl_certfile"] = certfile
