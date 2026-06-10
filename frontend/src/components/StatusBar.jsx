@@ -106,9 +106,9 @@ function StatusBar() {
 
   useEffect(() => {
     fetch("/training/courses")
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(setCourses)
-      .catch(() => {});
+      .catch((err) => console.warn("Failed to load courses:", err));
   }, []);
 
   const handleCaptchaIdChange = (val) => {
