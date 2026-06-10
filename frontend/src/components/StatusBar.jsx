@@ -105,11 +105,13 @@ function StatusBar() {
   }, [showSettings]);
 
   useEffect(() => {
-    fetch("/training/courses")
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setCourses)
-      .catch((err) => console.warn("Failed to load courses:", err));
-  }, []);
+    if (showSettings && courses.length === 0) {
+      fetch("/training/courses")
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+        .then(setCourses)
+        .catch((err) => console.warn("Failed to load courses:", err));
+    }
+  }, [showSettings, courses.length]);
 
   const handleCaptchaIdChange = (val) => {
     setTestCaptchaId(val);
