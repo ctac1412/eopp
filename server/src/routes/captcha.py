@@ -706,6 +706,7 @@ async def trigger_test(request: Request):
     api_key = body.get("api_key")
     reservation_id = body.get("reservation_id")
     captcha_id = body.get("captcha_id")
+    course_id = body.get("course_id")
     count = body.get("count", 1)
     test_no_timeout = body.get("test_no_timeout", False)
 
@@ -714,15 +715,37 @@ async def trigger_test(request: Request):
         if not key_record:
             return JSONResponse(status_code=403, content={"error": "Invalid API key"})
 
-    for i in range(min(count, 10)):
+    captcha_ids = []
+
+    if course_id:
+        from src.repositories import course_repo
+        try:
+            course = course_repo.get_course(int(course_id))
+        except (ValueError, TypeError):
+            return JSONResponse(status_code=400, content={"error": "Invalid course_id"})
+        if not course:
+            return JSONResponse(status_code=404, content={"error": "Course not found"})
+        captcha_ids = [c["captcha_id"] for c in course.get("captchas", [])]
+        if not captcha_ids:
+            return JSONResponse(status_code=400, content={"error": "Course has no captchas"})
+        count = len(captcha_ids)
+
+    for i in range(min(count, 50)):
+        cid = captcha_ids[i] if captcha_ids else (captcha_id if i == 0 else None)
+        interval = 0.15 if course_id else 0.3
         t = threading.Thread(
             target=send_one_test_captcha,
-            kwargs={"api_key": api_key, "reservation_id": reservation_id, "captcha_id": captcha_id if i == 0 else None, "test_no_timeout": test_no_timeout},
+            kwargs={
+                "api_key": api_key,
+                "reservation_id": reservation_id,
+                "captcha_id": cid,
+                "test_no_timeout": test_no_timeout,
+            },
             daemon=True,
         )
         t.start()
         if count > 1:
-            time.sleep(0.3)
+            time.sleep(interval)
     return JSONResponse(content={"ok": True, "sent": count})
 
 

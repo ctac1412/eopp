@@ -45,6 +45,8 @@ function StatusBar() {
   const setSuperKioskMode = useCaptchaStore((s) => s.setSuperKioskMode);
   const [showChange, setShowChange] = useState(false);
   const [testCaptchaId, setTestCaptchaId] = useState(() => loadPersisted("test_captcha_id", ""));
+  const [testCourseId, setTestCourseId] = useState(() => loadPersisted("test_course_id", ""));
+  const [courses, setCourses] = useState([]);
   const [testNoTimeout, setTestNoTimeout] = useState(() => loadPersisted("test_no_timeout", "0") === "1");
   const [sequentialIcons, setSequentialIcons] = useState(() => loadPersisted("click_sequential_icons", "0") === "1");
   const [showSettings, setShowSettings] = useState(false);
@@ -102,6 +104,13 @@ function StatusBar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showSettings]);
 
+  useEffect(() => {
+    fetch("/training/courses")
+      .then((r) => r.json())
+      .then(setCourses)
+      .catch(() => {});
+  }, []);
+
   const handleCaptchaIdChange = (val) => {
     setTestCaptchaId(val);
     savePersisted("test_captcha_id", val);
@@ -121,9 +130,11 @@ function StatusBar() {
     setLoading(true);
     setShowSettings(false);
     try {
-      const body = { api_key: apiKey, count };
+      const body = { api_key: apiKey };
       if (testCaptchaId) body.captcha_id = testCaptchaId;
+      if (testCourseId) body.course_id = testCourseId;
       if (testNoTimeout) body.test_no_timeout = true;
+      if (count > 1) body.count = count;
       await fetch("/trigger-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -258,11 +269,27 @@ function StatusBar() {
               <input
                 type="text"
                 className="form-control form-control-sm"
-                style={{ fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)", marginBottom: 8 }}
+                style={{ fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)", marginBottom: 6 }}
                 placeholder="ID капчи (пусто = случайная)"
                 value={testCaptchaId}
                 onChange={(e) => handleCaptchaIdChange(e.target.value)}
               />
+              <select
+                className="form-select form-select-sm"
+                style={{ fontSize: "0.72rem", marginBottom: 8 }}
+                value={testCourseId || ""}
+                onChange={(e) => {
+                  setTestCourseId(e.target.value);
+                  savePersisted("test_course_id", e.target.value);
+                }}
+              >
+                <option value="">Сценарий (курс)</option>
+                {courses.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.name} ({c.captcha_count})
+                  </option>
+                ))}
+              </select>
               <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
                 <input
                   type="checkbox"
@@ -289,29 +316,11 @@ function StatusBar() {
         </div>
         <button
           className="btn btn-sm btn-primary"
-          onClick={() => handleTestRun(1)}
+          onClick={() => handleTestRun(testCourseId ? 0 : 1)}
           disabled={loading}
-          title="1 случайная капча"
+          title={testCourseId ? "Запустить все капчи курса" : "1 случайная капча"}
         >
-          {loading ? "Запуск..." : "Тест"}
-        </button>
-        <button
-          className="btn btn-sm btn-outline-primary"
-          onClick={() => handleTestRun(2)}
-          disabled={loading}
-          title="2 капчи одновременно"
-          style={{ padding: "2px 6px", fontSize: "0.7rem" }}
-        >
-          ×2
-        </button>
-        <button
-          className="btn btn-sm btn-outline-primary"
-          onClick={() => handleTestRun(3)}
-          disabled={loading}
-          title="3 капчи одновременно"
-          style={{ padding: "2px 6px", fontSize: "0.7rem" }}
-        >
-          ×3
+          {loading ? "Запуск..." : testCourseId ? "Сценарий" : "Тест"}
         </button>
         <Link to="/admin" className="btn btn-sm btn-outline-secondary">
           Админ
