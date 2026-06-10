@@ -196,15 +196,24 @@ export function OperatorPage() {
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
           const next = prev.filter((_, i) => i !== idx);
-          const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          let newIdx;
+          if (idx === activeIndex) {
+            newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          } else if (idx < activeIndex) {
+            newIdx = activeIndex - 1;
+          } else {
+            newIdx = activeIndex;
+          }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
           addLog(idx === activeIndex
             ? "Капча решена!"
             : `Капча ${msg.captcha_id.slice(0, 8)} решена (вне очереди)`, "success");
-          addLog(newIdx >= 0
-            ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
-            : "Очередь пуста, ожидание...", "info");
+          if (idx === activeIndex) {
+            addLog(newIdx >= 0
+              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+              : "Очередь пуста, ожидание...", "info");
+          }
           return next;
         });
         return;
@@ -214,15 +223,24 @@ export function OperatorPage() {
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
           const next = prev.filter((_, i) => i !== idx);
-          const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          let newIdx;
+          if (idx === activeIndex) {
+            newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+          } else if (idx < activeIndex) {
+            newIdx = activeIndex - 1;
+          } else {
+            newIdx = activeIndex;
+          }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
           addLog(idx === activeIndex
             ? "Капча: таймаут"
             : `Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
-          addLog(newIdx >= 0
-            ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
-            : "Очередь пуста, ожидание...", "info");
+          if (idx === activeIndex) {
+            addLog(newIdx >= 0
+              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+              : "Очередь пуста, ожидание...", "info");
+          }
           return next;
         });
         return;
