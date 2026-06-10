@@ -12,7 +12,7 @@ import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from src.constants import DISTRIBUTION
+from src.constants import DISTRIBUTION, ICON_ORDER
 from src.models import DistributionAnswerBody
 from src.repositories import distribution_repo
 from src.sse import push_sse
@@ -25,17 +25,8 @@ distribution_states: dict[str, dict] = {}
 
 
 def build_icon_order(operator_id: int, num_operators: int) -> list[int]:
-    """Return ordered list of icon positions for a participant.
-
-    Master (id=0): left-to-right  [0, 1, 2, 3, 4]
-    Operator (id>0): right-to-left [4, 3, 2, 1, 0]
-    """
-    assignments = DISTRIBUTION[num_operators]
-    assigned = assignments.get(str(operator_id), [])
-    remaining = [p for p in range(5) if p not in assigned]
-    if operator_id == 0:
-        return assigned + sorted(remaining)
-    return assigned + sorted(remaining, reverse=True)
+    """Return full icon order for a participant from the hardcoded ICON_ORDER map."""
+    return list(ICON_ORDER.get(num_operators, {}).get(str(operator_id), list(range(5))))
 
 
 def make_all_icons(icons_cache: dict, icon_order: list[int]) -> list[dict]:
@@ -95,22 +86,15 @@ def init_distribution_state(
 
 
 def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
-    op = state["operators"][operator_id]
-    assigned = op["assigned"]
+    op = state["operators"].get(operator_id)
+    if not op:
+        return None
     all_answers = state["all_answers"]
+    icon_order = build_icon_order(operator_id, state["num_operators"])
 
-    while op["idx"] < len(assigned):
-        pos = assigned[op["idx"]]
+    while op["idx"] < len(icon_order):
+        pos = icon_order[op["idx"]]
         op["idx"] += 1
-        if pos not in all_answers:
-            return pos
-
-    if operator_id == 0:
-        fallthrough = range(state["total_icons"])
-    else:
-        fallthrough = range(state["total_icons"] - 1, -1, -1)
-
-    for pos in fallthrough:
         if pos not in all_answers:
             return pos
 
@@ -147,7 +131,7 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
         op_info.setdefault("idx", 0)
         assigned = op_info.get("assigned", [])
 
-        if operator_id != 0 and icon_position not in assigned:
+        if operator_id > 0 and icon_position not in assigned:
             own_remaining = [p for p in assigned if p not in state["all_answers"]]
             if own_remaining:
                 return JSONResponse(

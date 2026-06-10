@@ -49,6 +49,7 @@ function StatusBar() {
   const [courses, setCourses] = useState([]);
   const [testNoTimeout, setTestNoTimeout] = useState(() => loadPersisted("test_no_timeout", "0") === "1");
   const [sequentialIcons, setSequentialIcons] = useState(() => loadPersisted("click_sequential_icons", "0") === "1");
+  const [autoSolveRucaptcha, setAutoSolveRucaptcha] = useState(() => loadPersisted("auto_solve_rucaptcha", "0") === "1");
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
   const connectedOperators = useCaptchaStore((s) => s.connectedOperators);
@@ -128,6 +129,11 @@ function StatusBar() {
     savePersisted("click_sequential_icons", val ? "1" : "0");
   };
 
+  const handleAutoSolveRucaptchaChange = (val) => {
+    setAutoSolveRucaptcha(val);
+    savePersisted("auto_solve_rucaptcha", val ? "1" : "0");
+  };
+
   const handleTestRun = async (count = 1) => {
     setLoading(true);
     setShowSettings(false);
@@ -136,6 +142,7 @@ function StatusBar() {
       if (testCaptchaId) body.captcha_id = testCaptchaId;
       if (testCourseId) body.course_id = testCourseId;
       if (testNoTimeout) body.test_no_timeout = true;
+      if (autoSolveRucaptcha) body.auto_solve_rucaptcha = true;
       if (count > 1) body.count = count;
       await fetch("/trigger-test", {
         method: "POST",
@@ -312,6 +319,17 @@ function StatusBar() {
                   onChange={(e) => handleSequentialIconsChange(e.target.checked)}
                 />
                 Иконки по очереди
+              </label>
+              <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />
+              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  style={{ margin: 0 }}
+                  checked={autoSolveRucaptcha}
+                  onChange={(e) => handleAutoSolveRucaptchaChange(e.target.checked)}
+                />
+                RuCaptcha авто-солв
               </label>
             </div>
           )}

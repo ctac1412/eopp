@@ -152,11 +152,27 @@ class TestDistributionFlow:
 
     def test_distribution_constants(self):
         """Verify distribution constants are correct."""
-        from src.constants import DISTRIBUTION
+        from src.constants import DISTRIBUTION, ICON_ORDER
         assert DISTRIBUTION[1] == {"0": [0, 1, 2, 3, 4]}
         assert DISTRIBUTION[2] == {"0": [0, 1, 2], "1": [4, 3]}
-        assert len(DISTRIBUTION[2]["0"]) == 3  # master gets 3
-        assert len(DISTRIBUTION[2]["1"]) == 2  # operator gets 2
+        assert len(DISTRIBUTION[2]["0"]) == 3
+        assert len(DISTRIBUTION[2]["1"]) == 2
+        # 3 participants (2 ops): each gets unique first icon
+        assert DISTRIBUTION[3] == {"0": [0, 1], "1": [4, 3], "2": [2]}
+        # 4 participants (3 ops)
+        assert DISTRIBUTION[4] == {"0": [0, 1], "1": [4], "2": [3], "3": [2]}
+        # 5 participants (4 ops)
+        assert DISTRIBUTION[5] == {"0": [0], "1": [4], "2": [3], "3": [2], "4": [1]}
+        # 6 participants (5 ops) — master sits out
+        assert DISTRIBUTION[6] == {"0": [], "1": [4], "2": [3], "3": [2], "4": [1], "5": [0]}
+        # ICON_ORDER has full order for each config
+        assert len(ICON_ORDER) == 5
+        for n, ops in ICON_ORDER.items():
+            for op_id, order in ops.items():
+                assert len(order) == 5, f"n={n} op={op_id} has {len(order)} icons"
+                assert set(order) == set(range(5)), f"n={n} op={op_id} missing icons"
+                assigned = DISTRIBUTION[n].get(op_id, [])
+                assert order[:len(assigned)] == assigned, f"n={n} op={op_id}: assigned not first"
 
     def test_crop_icons(self):
         """Verify crop function works for distribution."""

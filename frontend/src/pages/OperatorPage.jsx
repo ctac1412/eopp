@@ -47,6 +47,7 @@ export function OperatorPage() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [masterOnline, setMasterOnline] = useState(false);
+  const [fellowOperators, setFellowOperators] = useState([]);
   const [captchaQueue, setCaptchaQueue] = useState([]);
   const [activeIndex, setActiveIndexRaw] = useState(-1);
   const [answering, setAnswering] = useState(false);
@@ -158,6 +159,11 @@ export function OperatorPage() {
         setConnecting(false);
         const online = msg.masters_online || [];
         setMasterOnline(online.includes(masterIdRef.current));
+        const fellows = msg.fellow_operators || [];
+        setFellowOperators(fellows);
+        if (fellows.length > 0) {
+          addLog(`Операторов в сделке: ${fellows.length + 1} (${fellows.map(f => f.nickname || `#${f.id}`).join(", ")})`, "info");
+        }
         return;
       }
       if (msg.type === "master_online") {
@@ -172,6 +178,23 @@ export function OperatorPage() {
           setMasterOnline(false);
           addLog(`Мастер «${msg.master_label}» офлайн`, "error");
         }
+        return;
+      }
+      if (msg.type === "operator_connected") {
+        setFellowOperators((prev) => {
+          if (prev.find((f) => f.id === msg.operator_id)) return prev;
+          addLog(`Оператор «${msg.operator_nickname || `#${msg.operator_id}`}» подключился`, "success");
+          return [...prev, { id: msg.operator_id, nickname: msg.operator_nickname }];
+        });
+        return;
+      }
+      if (msg.type === "operator_disconnected") {
+        setFellowOperators((prev) => {
+          const fop = prev.find((f) => f.id === msg.operator_id);
+          if (!fop) return prev;
+          addLog(`Оператор «${msg.operator_nickname || `#${msg.operator_id}`}» отключился`, "error");
+          return prev.filter((f) => f.id !== msg.operator_id);
+        });
         return;
       }
       if (msg.type === "disconnected") {
@@ -454,6 +477,12 @@ export function OperatorPage() {
               {queueLen > 1 && (
                 <span className="badge" style={{ background: "#58a6ff", fontSize: "0.7rem" }}>
                   +{queueLen - 1}
+                </span>
+              )}
+              {fellowOperators.length > 0 && (
+                <span className="badge" style={{ background: "#8b949e", fontSize: "0.7rem" }}
+                  title={fellowOperators.map(f => f.nickname || `#${f.id}`).join(", ")}>
+                  +{fellowOperators.length} оп.
                 </span>
               )}
               <a href={`/training?op=${encodeURIComponent(uuid)}`} style={{ fontSize: "0.75rem", color: "#58a6ff", textDecoration: "none" }}>🎓</a>

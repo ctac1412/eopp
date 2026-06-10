@@ -18,9 +18,57 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__
 CAPTCHA_TIMEOUT = 10
 
 DISTRIBUTION = {
-    1: {"0": [0, 1, 2, 3, 4]},
-    2: {"0": [0, 1, 2], "1": [4, 3]},
+    1: {"0": [0, 1, 2, 3, 4]},                                          # соло
+    2: {"0": [0, 1, 2],        "1": [4, 3]},                            # 1 оп
+    3: {"0": [0, 1],           "1": [4, 3],   "2": [2]},                # 2 оп
+    4: {"0": [0, 1],           "1": [4],      "2": [3],   "3": [2]},    # 3 оп
+    5: {"0": [0],              "1": [4],      "2": [3],   "3": [2],   "4": [1]},  # 4 оп
+    6: {"0": [],               "1": [4],      "2": [3],   "3": [2],   "4": [1],   "5": [0]},  # 5 оп
 }
+
+# Full icon order per operator: own assigned first, then fallthrough.
+# Master (op=0): exhausts each operator's queue from the end (busiest first).
+# Operators (op>0): round-robin — one end-icon from each other operator, repeat.
+ICON_ORDER = {
+    2: {
+        "0": [0, 1, 2, 3, 4],
+        "1": [4, 3, 2, 1, 0],
+    },
+    3: {
+        "0": [0, 1, 3, 4, 2],
+        "1": [4, 3, 1, 2, 0],
+        "2": [2, 1, 3, 0, 4],
+    },
+    4: {
+        "0": [0, 1, 4, 3, 2],
+        "1": [4, 1, 3, 2, 0],
+        "2": [3, 1, 4, 2, 0],
+        "3": [2, 1, 4, 3, 0],
+    },
+    5: {
+        "0": [0, 4, 3, 2, 1],
+        "1": [4, 3, 2, 1, 0],
+        "2": [3, 2, 1, 0, 4],
+        "3": [2, 1, 0, 4, 3],
+        "4": [1, 0, 4, 3, 2],
+    },
+    6: {
+        "0": [4, 3, 2, 1, 0],
+        "1": [4, 3, 2, 1, 0],
+        "2": [3, 2, 1, 0, 4],
+        "3": [2, 1, 0, 4, 3],
+        "4": [1, 0, 4, 3, 2],
+        "5": [0, 4, 3, 2, 1],
+    },
+}
+
+# Auto-solver: which icons to dispatch to rucaptcha per configuration.
+# Sent from the END of the queue — skip first/eonly icons of operators.
+AUTO_SOLVER_ORDER = {
+    1: [4, 3, 2],    # solo master: queue from end, skip first (0)
+    2: [3],          # master + 1 op: middle icon only
+}
+
 DISTRIBUTION_CROP_PAD = 60
 
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN") or 13243546

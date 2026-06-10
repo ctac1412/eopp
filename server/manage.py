@@ -23,6 +23,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Project root is one level above the server/ directory
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Load .env from project root (and server/ as fallback)
+try:
+    from dotenv import load_dotenv
+    for env_path in [
+        Path(_PROJECT_ROOT) / ".env",
+        Path(__file__).parent / ".env",
+    ]:
+        if env_path.exists():
+            load_dotenv(env_path)
+            logging.info(f"Loaded env from {env_path}")
+except ImportError:
+    pass
+
 import typer
 
 # Импортируем только константы, не зависящие от EOPP_DATA_DIR
@@ -117,7 +130,7 @@ def main(
 
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
-    max_workers = int(os.environ.get("EOPP_THREAD_POOL", "20"))
+    max_workers = int(os.environ.get("EOPP_THREAD_POOL", "50"))
     asyncio.get_event_loop().set_default_executor(ThreadPoolExecutor(max_workers=max_workers))
     typer.echo(f"  Thread pool     : {max_workers} max workers")
 
@@ -149,7 +162,7 @@ def main(
         "port": port,
         "log_level": os.environ.get("EOPP_UVICORN_LOG_LEVEL", log_level),
         "timeout_graceful_shutdown": 2,
-        "limit_concurrency": int(os.environ.get("EOPP_CONCURRENCY", "20")),
+        "limit_concurrency": int(os.environ.get("EOPP_CONCURRENCY", "50")),
     }
     if certfile and keyfile:
         uvicorn_kwargs["ssl_certfile"] = certfile

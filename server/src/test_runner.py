@@ -145,7 +145,7 @@ def send_test_cases_with_key(api_key=None):
         time.sleep(1)
 
 
-def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, test_no_timeout=False):
+def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
     files = _captcha_files(labeled=True)
     if not files:
         print(f"No labeled test files found in {captcha_file_service.all_dir()}")
@@ -162,10 +162,10 @@ def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, te
     with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")
-    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id, test_no_timeout)
+    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id, test_no_timeout, auto_solve_rucaptcha)
 
 
-def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None, test_no_timeout=False):
+def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
     try:
         if api_key is None:
             from src.constants import get_test_api_key
@@ -177,6 +177,8 @@ def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_
         data["reservation_id"] = reservation_id or "unknown"
         if test_no_timeout:
             data["test_no_timeout"] = True
+        if auto_solve_rucaptcha:
+            data["auto_solve_rucaptcha"] = True
         wrapped_body = json.dumps(data)
         http_timeout = 3600 if test_no_timeout else 15
         _http_post(

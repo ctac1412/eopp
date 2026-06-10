@@ -34,6 +34,7 @@ from src.captcha_assembly import (
     is_icon_click_type,
 )
 from src.constants import (
+    AUTO_SOLVER_ORDER,
     CAPTCHA_TIMEOUT,
     DISTRIBUTION,
 )
@@ -235,38 +236,65 @@ async def handle_captcha(body: SolveCaptchaBody):
             step_start, ops=len(op_ids) if op_ids else 0, found=bool(op_ids),
         )
         icons_cache = {}
-        if op_ids:
+        num_operators = 1 + len(op_ids)
+        operator_id_map = {0: 0}
+
+        # Build icons cache always — needed for auto-solver even without operators
+        try:
+            from src.captcha_solver_engine.images import prepare_distribution_icons
+            icons_cache = await asyncio.to_thread(
+                prepare_distribution_icons, main_b64, icons_b64
+            )
+        except Exception:
+            pass
+
+        if op_ids and len(icons_cache) == 5 and num_operators in DISTRIBUTION:
             try:
-                from src.captcha_solver_engine.images import prepare_distribution_icons
-                icons_cache = await asyncio.to_thread(
-                    prepare_distribution_icons, main_b64, icons_b64
+                is_distributed = True
+                for idx, real_id in enumerate(op_ids):
+                    operator_id_map[idx + 1] = real_id
+                init_distribution_state(
+                    captcha_id=captcha_id,
+                    event=event,
+                    usage_log_id=usage_log_id,
+                    api_key_id=api_key_id,
+                    num_operators=num_operators,
+                    icons_cache=icons_cache,
+                    captcha_data=data,
+                    operator_id_map=operator_id_map,
                 )
-                if len(icons_cache) == 5:
-                    num_operators = 1 + len(op_ids)
-                    if num_operators in DISTRIBUTION:
-                        is_distributed = True
-                        operator_id_map = {0: 0}
-                        for idx, real_id in enumerate(op_ids):
-                            operator_id_map[idx + 1] = real_id
-                        init_distribution_state(
-                            captcha_id=captcha_id,
-                            event=event,
-                            usage_log_id=usage_log_id,
-                            api_key_id=api_key_id,
-                            num_operators=num_operators,
-                            icons_cache=icons_cache,
-                            captcha_data=data,
-                            operator_id_map=operator_id_map,
-                        )
-                        _log_solve_step(
-                            rid, captcha_id, "distribution_init",
-                            step_start, ops=num_operators, icons=len(icons_cache),
-                        )
+                _log_solve_step(
+                    rid, captcha_id, "distribution_init",
+                    step_start, ops=num_operators, icons=len(icons_cache),
+                )
             except Exception as exc:
                 _log_solve_step(
                     rid, captcha_id, "distribution_init_failed",
                     step_start, error=str(exc), level=logging.WARNING,
                 )
+                is_distributed = False
+
+        # Auto-solver dispatch — works for solo master and with operators
+        if len(icons_cache) == 5 and num_operators in AUTO_SOLVER_ORDER and body.auto_solve_rucaptcha:
+            if not is_distributed:
+                # Solo master: create minimal distribution state for auto-solver
+                init_distribution_state(
+                    captcha_id=captcha_id,
+                    event=event,
+                    usage_log_id=usage_log_id,
+                    api_key_id=api_key_id,
+                    num_operators=1,
+                    icons_cache=icons_cache,
+                    captcha_data=data,
+                    operator_id_map={0: 0},
+                )
+                is_distributed = True
+            from src.auto_operator import dispatch_auto_solve
+            dispatch_auto_solve(
+                captcha_id=captcha_id,
+                num_operators=num_operators,
+                icons_cache=icons_cache,
+            )
 
         if not is_distributed:
             try:
@@ -283,7 +311,7 @@ async def handle_captcha(body: SolveCaptchaBody):
             )
 
         if is_distributed:
-            dist_assignments = DISTRIBUTION[2]
+            dist_assignments = DISTRIBUTION[num_operators]
             first_pos = dist_assignments.get("0", [0])[0] if dist_assignments.get("0") else 0
             first_icon = icons_cache.get(first_pos, {})
             entry = {
@@ -299,7 +327,7 @@ async def handle_captcha(body: SolveCaptchaBody):
                 "distribution": {
                     "operator_id": 0,
                     "assigned": dist_assignments.get("0", []),
-                    "num_operators": 2,
+                    "num_operators": num_operators,
                     "connected_operators": len(op_ids),
                 },
                 "icons_cache": icons_cache,
@@ -365,18 +393,20 @@ async def handle_captcha(body: SolveCaptchaBody):
     if is_distributed:
         sse_event["distribution"] = entry.get("distribution")
         from src.routes.distribution import build_icon_order, make_all_icons
-        sse_event["all_icons"] = make_all_icons(icons_cache, build_icon_order(0, 2))
+        sse_event["all_icons"] = make_all_icons(icons_cache, build_icon_order(0, num_operators))
     push_sse(sse_event, api_key_id=api_key_id)
     _log_solve_step(rid, captcha_id, "push_sse_new_captcha", step_start)
 
     if is_distributed and is_icon_click_type(data):
         from src.repositories import operator_repo
         from src.sse.manager import operator_api_key_id
-        assignments = DISTRIBUTION[2]
-        operator_ids = operator_repo.get_subscribed_operators(api_key_id)
+        assignments = DISTRIBUTION[num_operators]
         for op_id_str, assigned in assignments.items():
             op_id = int(op_id_str)
             if op_id == 0:
+                continue
+            op_real_id = operator_id_map.get(op_id)
+            if op_real_id is None:
                 continue
             first_icon = icons_cache.get(assigned[0], {})
             op_sse = {
@@ -395,15 +425,14 @@ async def handle_captcha(body: SolveCaptchaBody):
                 "distribution": {
                     "operator_id": op_id,
                     "assigned": assigned,
-                    "num_operators": 2,
+                    "num_operators": num_operators,
                 },
-                "all_icons": make_all_icons(icons_cache, build_icon_order(op_id, 2)),
+                "all_icons": make_all_icons(icons_cache, build_icon_order(op_id, num_operators)),
             }
-            for op_real_id in operator_ids:
-                push_sse(op_sse, api_key_id=operator_api_key_id(op_real_id))
+            push_sse(op_sse, api_key_id=operator_api_key_id(op_real_id))
         _log_solve_step(
             rid, captcha_id, "push_sse_operators",
-            step_start, operators=len(operator_ids),
+            step_start, operators=len(operator_id_map) - 1,
         )
 
     step_start = time.perf_counter()
@@ -435,6 +464,8 @@ async def handle_captcha(body: SolveCaptchaBody):
             if state:
                 async with state["lock"]:
                     distribution_states.pop(captcha_id, None)
+            from src.auto_operator import cancel_auto_solve
+            cancel_auto_solve(captcha_id)
             from src.repositories import operator_repo
             from src.sse.manager import operator_api_key_id
             for op_real_id in operator_repo.get_subscribed_operators(api_key_id):
@@ -709,6 +740,7 @@ async def trigger_test(request: Request):
     course_id = body.get("course_id")
     count = body.get("count", 1)
     test_no_timeout = body.get("test_no_timeout", False)
+    auto_solve_rucaptcha = body.get("auto_solve_rucaptcha", False)
 
     if api_key:
         key_record = get_key_record(api_key)
@@ -740,6 +772,7 @@ async def trigger_test(request: Request):
                 "reservation_id": reservation_id,
                 "captcha_id": cid,
                 "test_no_timeout": test_no_timeout,
+                "auto_solve_rucaptcha": auto_solve_rucaptcha,
             },
             daemon=True,
         )

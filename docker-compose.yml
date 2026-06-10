@@ -18,6 +18,9 @@ services:
       - TELEGRAM_TIMEOUT_SECONDS=${TELEGRAM_TIMEOUT_SECONDS:-5}
       - TELEGRAM_DAILY_REPORT_HOUR=${TELEGRAM_DAILY_REPORT_HOUR:-12}
       - TELEGRAM_DAILY_REPORT_MINUTE=${TELEGRAM_DAILY_REPORT_MINUTE:-10}
+      - RUCAPTCHA_API_KEY=${RUCAPTCHA_API_KEY:-}
+      - RUCAPTCHA_CALLBACK_URL=${RUCAPTCHA_CALLBACK_URL:-}
+      - EOPP_AUTO_SOLVER_ENABLED=${EOPP_AUTO_SOLVER_ENABLED:-1}
     command: ["python", "scripts/run_with_log.py", "/app/data/backend.log", "python", "server/manage.py", "--host", "0.0.0.0"]
     restart: unless-stopped
 

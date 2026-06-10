@@ -44,24 +44,15 @@ def delete_operator(operator_id: int) -> bool:
 
 
 def link_operator_to_master(operator_id: int, master_key_id: int) -> tuple[int, list[int]]:
-    """Create or reactivate operator-master link, evicting other operators from this master.
+    """Create or reactivate operator-master link. Multiple operators per master allowed.
 
-    Returns (link_id, evicted_operator_ids).
+    Returns (link_id, evicted_operator_ids) — evicted is always empty now.
     """
     with get_session() as session:
         session.query(OperatorMasterLink).filter(
             OperatorMasterLink.operator_id == operator_id,
             OperatorMasterLink.active == True,
         ).update({"active": False})
-
-        evicted = session.query(OperatorMasterLink).filter(
-            OperatorMasterLink.master_key_id == master_key_id,
-            OperatorMasterLink.operator_id != operator_id,
-            OperatorMasterLink.active == True,
-        ).all()
-        evicted_ids = [e.operator_id for e in evicted]
-        for e in evicted:
-            e.active = False
 
         existing = (
             session.query(OperatorMasterLink)
@@ -74,7 +65,7 @@ def link_operator_to_master(operator_id: int, master_key_id: int) -> tuple[int, 
         if existing:
             existing.active = True
             session.commit()
-            return existing.id, evicted_ids
+            return existing.id, []
 
         link = OperatorMasterLink(
             operator_id=operator_id,
@@ -85,7 +76,7 @@ def link_operator_to_master(operator_id: int, master_key_id: int) -> tuple[int, 
         session.add(link)
         session.flush()
         session.commit()
-        return link.id, evicted_ids
+        return link.id, []
 
 
 def unlink_operator(operator_id: int, master_key_id: int) -> bool:

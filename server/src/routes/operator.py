@@ -32,19 +32,8 @@ async def operator_link(uuid: str, request: Request):
         master = api_key_repo.get_key_record(master_key)
     if not master:
         return JSONResponse(status_code=403, content={"error": "Invalid master key"})
-    link_id, evicted_ids = operator_repo.link_operator_to_master(op["id"], master.id)
-    for evicted_op_id in evicted_ids:
-        push_sse(
-            {"type": "disconnected", "message": "Другой оператор забрал мастера"},
-            api_key_id=operator_api_key_id(evicted_op_id),
-        )
-    if evicted_ids:
-        logger.info(
-            "operator_link op_id=%s uuid=%s master_id=%s evicted=%s",
-            op["id"], uuid, master.id, evicted_ids,
-        )
-    else:
-        logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
+    link_id, _ = operator_repo.link_operator_to_master(op["id"], master.id)
+    logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
     return JSONResponse(content={"ok": True, "operator_id": op["id"]})
 
 
@@ -98,19 +87,29 @@ async def operator_sse(uuid: str, request: Request):
 
     async def event_stream():
         master_ids = operator_repo.get_operator_masters(op["id"])
-        from src.sse.manager import push_sse as sse_push, sse_queues as _sse_queues, lock as _sse_lock
+        from src.sse.manager import push_sse as sse_push, sse_queues as _sse_queues, lock as _sse_lock, operator_api_key_id as _op_key_id
 
         online_masters = []
+        fellow_ops: dict[int, dict] = {}  # {op_id: {id, nickname, master_id}}
         with _sse_lock:
             for mid in master_ids:
                 if _sse_queues.get(mid):
                     online_masters.append(mid)
+                for fid in operator_repo.get_subscribed_operators(mid):
+                    if fid == op["id"]:
+                        continue
+                    neg_id = _op_key_id(fid)
+                    if _sse_queues.get(neg_id):
+                        fop = operator_repo.get_operator_by_id(fid)
+                        if fop:
+                            fellow_ops[fid] = {"id": fid, "nickname": fop.get("nickname", ""), "master_id": mid}
 
         yield "data: %s\n\n" % _json.dumps({
             "type": "connected",
             "operator_id": op["id"],
             "uuid": uuid,
             "masters_online": online_masters,
+            "fellow_operators": list(fellow_ops.values()),
         })
 
         for mid in master_ids:
@@ -131,13 +130,19 @@ async def operator_sse(uuid: str, request: Request):
         except Exception:
             pass
         finally:
-            unregister_sse_connection(q, neg_id)
-            for mid in master_ids:
-                sse_push({
-                    "type": "operator_disconnected",
-                    "operator_id": op["id"],
-                    "operator_nickname": op["nickname"],
-                }, api_key_id=mid)
+            try:
+                unregister_sse_connection(q, neg_id)
+            except Exception as exc:
+                logger.error("operator_sse_cleanup_error op_id=%s %s", op["id"], exc)
+            try:
+                for mid in master_ids:
+                    sse_push({
+                        "type": "operator_disconnected",
+                        "operator_id": op["id"],
+                        "operator_nickname": op["nickname"],
+                    }, api_key_id=mid)
+            except Exception as exc:
+                logger.error("operator_sse_disconnect_push_error op_id=%s %s", op["id"], exc)
             logger.info("operator_sse_offline op_id=%s uuid=%s masters=%s", op["id"], uuid, master_ids)
 
     return StreamingResponse(

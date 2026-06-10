@@ -25,6 +25,7 @@ def register_all_routes(app):
     from src.routes.admin import admin_auth_middleware_factory
     from src.routes.admin import router as admin_router
     from src.routes.api_keys import router as api_keys_router
+    from src.routes.callback import router as callback_router, txt_router as callback_txt_router
     from src.routes.captcha import router as captcha_router
     from src.routes.captchas import router as captchas_router
     from src.routes.distribution import router as distribution_router
@@ -40,6 +41,8 @@ def register_all_routes(app):
     admin_auth_middleware_factory(app)
 
     app.include_router(sse_router)
+    app.include_router(callback_router)
+    app.include_router(callback_txt_router)
     app.include_router(captcha_router)
     app.include_router(distribution_router)
     app.include_router(api_keys_router)
