@@ -48,7 +48,7 @@ export function OperatorPage() {
   const [connected, setConnected] = useState(false);
   const [masterOnline, setMasterOnline] = useState(false);
   const [captchaQueue, setCaptchaQueue] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(-1);
+  const [activeIndex, setActiveIndexRaw] = useState(-1);
   const [answering, setAnswering] = useState(false);
   const [log, setLog] = useState([]);
   const imgRef = useRef(null);
@@ -61,6 +61,7 @@ export function OperatorPage() {
   const assignedRef = useRef([]);
   const operatorIdRef = useRef(0);
   const masterIdRef = useRef(null);
+  const activeIndexRef = useRef(-1);
 
   const addLog = useCallback((msg, cls) => {
     setLog((prev) => [{ time: new Date().toLocaleTimeString(), msg, cls: cls || "info" }, ...prev.slice(0, 49)]);
@@ -124,6 +125,11 @@ export function OperatorPage() {
   useEffect(() => {
     masterIdRef.current = masterId;
   }, [masterId]);
+
+  const setActiveIndex = useCallback((idx) => {
+    activeIndexRef.current = idx;
+    setActiveIndexRaw(idx);
+  }, []);
 
   const connectViaId = useCallback(async (mid) => {
     if (!mid) return;
@@ -193,23 +199,24 @@ export function OperatorPage() {
       }
       if (msg.type === "captcha_solved") {
         setCaptchaQueue((prev) => {
+          const cur = activeIndexRef.current;
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
           const next = prev.filter((_, i) => i !== idx);
           let newIdx;
-          if (idx === activeIndex) {
+          if (idx === cur) {
             newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-          } else if (idx < activeIndex) {
-            newIdx = activeIndex - 1;
+          } else if (idx < cur) {
+            newIdx = cur - 1;
           } else {
-            newIdx = activeIndex;
+            newIdx = cur;
           }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
-          addLog(idx === activeIndex
+          addLog(idx === cur
             ? "Капча решена!"
             : `Капча ${msg.captcha_id.slice(0, 8)} решена (вне очереди)`, "success");
-          if (idx === activeIndex) {
+          if (idx === cur) {
             addLog(newIdx >= 0
               ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
               : "Очередь пуста, ожидание...", "info");
@@ -220,23 +227,24 @@ export function OperatorPage() {
       }
       if (msg.type === "captcha_timeout") {
         setCaptchaQueue((prev) => {
+          const cur = activeIndexRef.current;
           const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
           if (idx < 0) return prev;
           const next = prev.filter((_, i) => i !== idx);
           let newIdx;
-          if (idx === activeIndex) {
+          if (idx === cur) {
             newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-          } else if (idx < activeIndex) {
-            newIdx = activeIndex - 1;
+          } else if (idx < cur) {
+            newIdx = cur - 1;
           } else {
-            newIdx = activeIndex;
+            newIdx = cur;
           }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
-          addLog(idx === activeIndex
+          addLog(idx === cur
             ? "Капча: таймаут"
             : `Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
-          if (idx === activeIndex) {
+          if (idx === cur) {
             addLog(newIdx >= 0
               ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
               : "Очередь пуста, ожидание...", "info");
@@ -270,7 +278,7 @@ export function OperatorPage() {
       addLog("SSE соединение установлено", "info");
     };
     es.onerror = () => addLog("SSE ошибка", "error");
-  }, [uuid, disconnect, addLog, activeIndex, updateActiveRef]);
+  }, [uuid, disconnect, addLog, updateActiveRef]);
 
   useEffect(() => {
     fetch(`/operators/${uuid}/masters`)
@@ -373,12 +381,17 @@ export function OperatorPage() {
       }
 
       if (data.coordinates) {
-        updateEntry(activeIndex, { complete: true });
         addLog("Капча решена!", "success");
         return;
       }
       if (data.waiting) {
-        clearCaptcha();
+        setCaptchaQueue((prev) => {
+          const idx = prev.findIndex((e) => e.captchaId === active.captchaId);
+          if (idx < 0) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], waiting: true, mainImage: "", iconImage: "", markers: [], foreignMarkers: [], allIcons: [] };
+          return next;
+        });
         addLog("Ваши иконки пройдены, ожидание...", "info");
         return;
       }

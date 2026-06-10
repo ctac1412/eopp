@@ -32,7 +32,7 @@ function CaptchaGrid() {
   }
 
   if (active.captchaType === 1) {
-    return <IconClickCaptcha entry={active} />;
+    return <IconClickCaptcha key={active.id} entry={active} />;
   }
 
   const imgKeys = Object.keys(active.images);
