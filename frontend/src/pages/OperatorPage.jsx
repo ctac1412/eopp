@@ -20,6 +20,25 @@ function saveMaster(uuid, id, label) {
   } catch { /* noop */ }
 }
 
+/** Create a fresh captcha entry for the queue. */
+function makeQueueEntry(msg) {
+  return {
+    captchaId: msg.captcha_id,
+    operatorId: msg.distribution.operator_id,
+    assigned: msg.distribution.assigned,
+    mainImage: msg.images?.["0"] || "",
+    iconImage: msg.icons_image || "",
+    allIcons: msg.all_icons || [],
+    currentPos: msg.distribution.assigned[0],
+    solvedCount: 0,
+    answeredPositions: [],
+    markers: [],
+    foreignMarkers: [],
+    complete: false,
+    waiting: false,
+  };
+}
+
 export function OperatorPage() {
   const { uuid } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -28,32 +47,33 @@ export function OperatorPage() {
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const [masterOnline, setMasterOnline] = useState(false);
-  const [captchaId, setCaptchaId] = useState("");
-  const [operatorId, setOperatorId] = useState(0);
-  const [currentPos, setCurrentPos] = useState(null);
-  const [assigned, setAssigned] = useState([]);
-  const [mainImage, setMainImage] = useState("");
-  const [iconImage, setIconImage] = useState("");
-  const [solvedCount, setSolvedCount] = useState(0);
-  const [complete, setComplete] = useState(false);
-  const [waiting, setWaiting] = useState(false);
-  const [answeredPositions, setAnsweredPositions] = useState([]);
-  const [allIcons, setAllIcons] = useState([]);
-  const [markers, setMarkers] = useState([]);
-  const [foreignMarkers, setForeignMarkers] = useState([]);
+  const [captchaQueue, setCaptchaQueue] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [answering, setAnswering] = useState(false);
   const [log, setLog] = useState([]);
   const imgRef = useRef(null);
   const [naturalSize, setNaturalSize] = useState(null);
   const esRef = useRef(null);
+
+  /* refs point to the active entry (or null when idle) */
+  const activeRef = useRef(null);
   const captchaIdRef = useRef("");
   const assignedRef = useRef([]);
   const operatorIdRef = useRef(0);
   const masterIdRef = useRef(null);
 
-  const addLog = (msg, cls) => {
+  const addLog = useCallback((msg, cls) => {
     setLog((prev) => [{ time: new Date().toLocaleTimeString(), msg, cls: cls || "info" }, ...prev.slice(0, 49)]);
-  };
+  }, []);
+
+  /* keep activeRef in sync with queue + index */
+  const updateActiveRef = useCallback((queue, idx) => {
+    const entry = idx >= 0 ? queue[idx] : null;
+    activeRef.current = entry;
+    captchaIdRef.current = entry ? entry.captchaId : "";
+    assignedRef.current = entry ? entry.assigned : [];
+    operatorIdRef.current = entry ? entry.operatorId : 0;
+  }, []);
 
   const disconnect = useCallback(() => {
     if (esRef.current) {
@@ -62,27 +82,40 @@ export function OperatorPage() {
     }
     setConnected(false);
     setMasterOnline(false);
-    setCaptchaId("");
-    captchaIdRef.current = "";
-    setMainImage("");
-    setIconImage("");
-    setWaiting(false);
-    setMarkers([]);
-    setForeignMarkers([]);
-    setAnsweredPositions([]);
-    setAllIcons([]);
+    setCaptchaQueue([]);
+    setActiveIndex(-1);
+    updateActiveRef([], -1);
+    setNaturalSize(null);
+  }, [updateActiveRef]);
+
+  /** Update a field on the entry at the given index. */
+  const updateEntry = useCallback((index, updates) => {
+    setCaptchaQueue((prev) => {
+      const next = [...prev];
+      if (index >= 0 && index < next.length) {
+        next[index] = { ...next[index], ...updates };
+      }
+      return next;
+    });
   }, []);
 
   const clearCaptcha = useCallback(() => {
-    setMainImage("");
-    setIconImage("");
-    setComplete(false);
-    setWaiting(true);
-    setMarkers([]);
-    setForeignMarkers([]);
-    setAnsweredPositions([]);
-    setAllIcons([]);
-  }, []);
+    setCaptchaQueue((prev) => {
+      if (activeIndex < 0 || activeIndex >= prev.length) return prev;
+      const next = [...prev];
+      next[activeIndex] = {
+        ...next[activeIndex],
+        mainImage: "",
+        iconImage: "",
+        waiting: true,
+        markers: [],
+        foreignMarkers: [],
+        answeredPositions: next[activeIndex].answeredPositions,
+        allIcons: [],
+      };
+      return next;
+    });
+  }, [activeIndex]);
 
   useEffect(() => {
     return () => disconnect();
@@ -141,62 +174,88 @@ export function OperatorPage() {
         return;
       }
       if (msg.type === "new_captcha" && msg.distribution && msg.distribution.operator_id > 0) {
-        setCaptchaId(msg.captcha_id);
-        captchaIdRef.current = msg.captcha_id;
-        setOperatorId(msg.distribution.operator_id);
-        operatorIdRef.current = msg.distribution.operator_id;
-        setAssigned(msg.distribution.assigned);
-        assignedRef.current = msg.distribution.assigned;
-        setMainImage(msg.images?.["0"] || "");
-        setIconImage(msg.icons_image || "");
-        setSolvedCount(0);
-        setComplete(false);
-        setWaiting(false);
-        setMarkers([]);
-        setForeignMarkers([]);
-        setAnsweredPositions([]);
-        setAllIcons(msg.all_icons || []);
-        setCurrentPos(msg.distribution.assigned[0]);
-        addLog(`Капча, ваши иконки: ${msg.distribution.assigned.map((i) => i + 1).join(", ")}`);
+        const entry = makeQueueEntry(msg);
+        setCaptchaQueue((prev) => {
+          const next = [...prev, entry];
+          if (activeIndex === -1) {
+            setActiveIndex(next.length - 1);
+            updateActiveRef(next, next.length - 1);
+          }
+          addLog(
+            `Капча ${msg.captcha_id.slice(0, 8)}, иконки: ${msg.distribution.assigned.map((i) => i + 1).join(", ")}`
+            + (activeIndex >= 0 ? ` (в очереди: ${next.length})` : ""),
+            "info",
+          );
+          return next;
+        });
+        return;
       }
-      if (msg.type === "captcha_solved" && msg.captcha_id === captchaIdRef.current) {
-        setComplete(true);
-        setCaptchaId("");
-        captchaIdRef.current = "";
-        setWaiting(false);
-        setMainImage("");
-        setIconImage("");
-        setMarkers([]);
-        setForeignMarkers([]);
-        addLog("Капча решена!", "success");
+      if (msg.type === "captcha_solved") {
+        setCaptchaQueue((prev) => {
+          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
+          if (idx < 0) return prev;
+          if (idx === activeIndex) {
+            addLog("Капча решена!", "success");
+            const next = prev.filter((_, i) => i !== idx);
+            const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+            setActiveIndex(newIdx);
+            updateActiveRef(next, newIdx);
+            addLog(newIdx >= 0
+              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+              : "Очередь пуста, ожидание...", "info");
+            return next;
+          }
+          addLog(`Капча ${msg.captcha_id.slice(0, 8)} решена (вне очереди)`, "success");
+          return prev.filter((_, i) => i !== idx);
+        });
+        return;
       }
-      if (msg.type === "captcha_timeout" && msg.captcha_id === captchaIdRef.current) {
-        clearCaptcha();
-        addLog("Капча: таймаут", "error");
+      if (msg.type === "captcha_timeout") {
+        setCaptchaQueue((prev) => {
+          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
+          if (idx < 0) return prev;
+          if (idx === activeIndex) {
+            addLog("Капча: таймаут", "error");
+            const next = prev.filter((_, i) => i !== idx);
+            const newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
+            setActiveIndex(newIdx);
+            updateActiveRef(next, newIdx);
+            addLog(newIdx >= 0
+              ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
+              : "Очередь пуста, ожидание...", "info");
+            return next;
+          }
+          addLog(`Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
+          return prev.filter((_, i) => i !== idx);
+        });
+        return;
       }
-      if (msg.type === "distribution_progress" && msg.captcha_id === captchaIdRef.current) {
-        if (msg.answered_positions) {
-          setAnsweredPositions(msg.answered_positions);
-          const own = msg.answered_positions.filter((p) => assignedRef.current.includes(p)).length;
-          setSolvedCount(own);
-        }
-        if (msg.all_coords) {
-          const foreign = [];
-          Object.keys(msg.all_coords).forEach((pos) => {
-            const c = msg.all_coords[pos];
-            if (c.operator_id !== operatorIdRef.current) {
-              foreign.push({ x: c.x, y: c.y, label: parseInt(pos) + 1 });
-            }
-          });
-          setForeignMarkers(foreign);
-        }
+      if (msg.type === "distribution_progress") {
+        setCaptchaQueue((prev) => {
+          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
+          if (idx < 0) return prev;
+          const next = [...prev];
+          const entry = { ...next[idx] };
+          if (msg.answered_positions) {
+            entry.answeredPositions = msg.answered_positions;
+            entry.solvedCount = msg.answered_positions.filter((p) => entry.assigned.includes(p)).length;
+          }
+          if (msg.all_coords) {
+            entry.foreignMarkers = Object.keys(msg.all_coords)
+              .filter((pos) => msg.all_coords[pos].operator_id !== entry.operatorId)
+              .map((pos) => ({ x: msg.all_coords[pos].x, y: msg.all_coords[pos].y, label: parseInt(pos) + 1 }));
+          }
+          next[idx] = entry;
+          return next;
+        });
+        return;
       }
     };
     es.onopen = () => {
       addLog("SSE соединение установлено", "info");
     };
     es.onerror = () => addLog("SSE ошибка", "error");
-  }, [uuid, disconnect, addLog, clearCaptcha]);
+  }, [uuid, disconnect, addLog, activeIndex, updateActiveRef]);
 
   useEffect(() => {
     fetch(`/operators/${uuid}/masters`)
@@ -251,8 +310,11 @@ export function OperatorPage() {
     if (masterId) connectViaId(masterId);
   };
 
+  /* ---- derived from active queue entry ---- */
+  const active = activeIndex >= 0 ? captchaQueue[activeIndex] : null;
+
   const handleClick = async (e) => {
-    if (complete || waiting || !captchaId || !naturalSize || answering) return;
+    if (!active || active.complete || active.waiting || answering || !naturalSize) return;
     const rect = imgRef.current.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left) * naturalSize.w / rect.width);
     const y = Math.round((e.clientY - rect.top) * naturalSize.h / rect.height);
@@ -262,26 +324,27 @@ export function OperatorPage() {
       const r = await fetch("/distribution/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ captcha_id: captchaId, operator_id: operatorId, icon_position: currentPos ?? assigned[0], x, y }),
+        body: JSON.stringify({
+          captcha_id: active.captchaId,
+          operator_id: active.operatorId,
+          icon_position: active.currentPos ?? active.assigned[0],
+          x, y,
+        }),
       });
       const data = await r.json();
 
       if (!r.ok) {
         const nextPos = data.next_available ?? data.next_assigned;
         if ((r.status === 409 || r.status === 403) && nextPos != null) {
-          setCurrentPos(nextPos);
-          if (data.answered_positions) setAnsweredPositions(data.answered_positions);
+          updateEntry(activeIndex, { currentPos: nextPos });
+          if (data.answered_positions) updateEntry(activeIndex, { answeredPositions: data.answered_positions });
           if (data.all_coords) {
-            const foreign = [];
-            Object.keys(data.all_coords).forEach((pos) => {
-              const c = data.all_coords[pos];
-              if (c.operator_id !== operatorIdRef.current) {
-                foreign.push({ x: c.x, y: c.y, label: parseInt(pos) + 1 });
-              }
-            });
-            setForeignMarkers(foreign);
+            const f = Object.keys(data.all_coords)
+              .filter((pos) => data.all_coords[pos].operator_id !== active.operatorId)
+              .map((pos) => ({ x: data.all_coords[pos].x, y: data.all_coords[pos].y, label: parseInt(pos) + 1 }));
+            updateEntry(activeIndex, { foreignMarkers: f });
           }
-          addLog(`Пропуск: иконка #${(currentPos ?? 0) + 1} уже отвечена`, "info");
+          addLog(`Пропуск: иконка #${(active.currentPos ?? 0) + 1} уже отвечена`, "info");
         } else if ((r.status === 409 || r.status === 403) && nextPos == null) {
           clearCaptcha();
           addLog("Все иконки отвечены, ожидание...", "info");
@@ -295,7 +358,7 @@ export function OperatorPage() {
       }
 
       if (data.coordinates) {
-        setComplete(true);
+        updateEntry(activeIndex, { complete: true });
         addLog("Капча решена!", "success");
         return;
       }
@@ -304,20 +367,24 @@ export function OperatorPage() {
         addLog("Ваши иконки пройдены, ожидание...", "info");
         return;
       }
-      if (data.image) setMainImage(data.image);
-      if (data.icon) setIconImage(data.icon);
-      if (data.all_icons) setAllIcons(data.all_icons);
-      setCurrentPos(data.icon_position);
-      setSolvedCount(data.solved_count);
-      if (data.answered_positions) setAnsweredPositions(data.answered_positions);
-      setMarkers((prev) => [...prev, { x, y, label: (currentPos ?? 0) + 1 }]);
-      addLog(`Иконка #${(data.icon_position ?? 0) + 1} (${data.solved_count}/${assigned.length})`);
+      updateEntry(activeIndex, {
+        mainImage: data.image || active.mainImage,
+        iconImage: data.icon || active.iconImage,
+        currentPos: data.icon_position,
+        solvedCount: data.solved_count,
+        answeredPositions: data.answered_positions || active.answeredPositions,
+        allIcons: data.all_icons || active.allIcons,
+        markers: [...active.markers, { x, y, label: (active.currentPos ?? 0) + 1 }],
+      });
+      addLog(`Иконка #${(data.icon_position ?? 0) + 1} (${data.solved_count}/${active.assigned.length})`);
     } finally {
       setAnswering(false);
     }
   };
 
   const selectedMaster = masters.find((m) => m.id === masterId);
+  const queueLen = captchaQueue.length;
+  const hasActive = active && !active.complete && !active.waiting;
 
   return (
     <div className="container py-3" style={{ maxWidth: "700px" }}>
@@ -352,8 +419,15 @@ export function OperatorPage() {
                 title={masterOnline ? "Мастер онлайн" : "Мастер офлайн"}
               />
               <span className="fw-semibold" style={{ color: "#f0f6fc" }}>
-                {captchaId ? `Капча ${captchaId.slice(0, 8)}` : complete ? "Решено" : `Ожидание капчи (мастер ${masterOnline ? "онлайн" : "офлайн"})`}
+                {hasActive
+                  ? `Капча ${active.captchaId.slice(0, 8)}`
+                  : active?.complete ? "Решено" : active?.waiting ? "Пауза" : `Ожидание капчи (мастер ${masterOnline ? "онлайн" : "офлайн"})`}
               </span>
+              {queueLen > 1 && (
+                <span className="badge" style={{ background: "#58a6ff", fontSize: "0.7rem" }}>
+                  +{queueLen - 1}
+                </span>
+              )}
               <a href={`/training?op=${encodeURIComponent(uuid)}`} style={{ fontSize: "0.75rem", color: "#58a6ff", textDecoration: "none" }}>🎓</a>
             </div>
             <div className="d-flex align-items-center gap-2">
@@ -371,8 +445,8 @@ export function OperatorPage() {
                   <option key={m.id} value={m.id}>{m.label || `Мастер #${m.id}`}</option>
                 ))}
               </select>
-              <span className="badge" style={{ background: complete ? "#198754" : waiting ? "#f59e0b" : "#495057", fontSize: "0.8rem" }}>
-                {complete ? "Решено" : waiting ? "Пауза" : captchaId ? `${solvedCount}/${assigned.length}` : "—"}
+              <span className="badge" style={{ background: active?.complete ? "#198754" : active?.waiting ? "#f59e0b" : "#495057", fontSize: "0.8rem" }}>
+                {active?.complete ? "Решено" : active?.waiting ? "Пауза" : active ? `${active.solvedCount}/${active.assigned.length}` : "—"}
               </span>
               <button className="btn btn-sm btn-outline-secondary" onClick={handleReconnect}
                 style={{ fontSize: "0.7rem", padding: "2px 6px" }} title="Переподключиться">
@@ -381,19 +455,19 @@ export function OperatorPage() {
             </div>
           </div>
           <div className="p-3 text-center">
-            {mainImage && !waiting && !complete ? (
+            {active?.mainImage && !active.waiting && !active.complete ? (
               <>
                 <div style={{ position: "relative", display: "inline-block" }}>
                   <img
                     ref={imgRef}
-                    src={"data:image/png;base64," + mainImage}
+                    src={"data:image/png;base64," + active.mainImage}
                     alt="Капча"
                     onLoad={(e) => setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
                     onClick={handleClick}
                     style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", cursor: "crosshair", borderRadius: 6, border: "1px solid #30363d" }}
                     draggable={false}
                   />
-                  {naturalSize && [...markers, ...foreignMarkers].map((m, i) => {
+                  {naturalSize && [...active.markers, ...active.foreignMarkers].map((m, i) => {
                     const colors = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
                     const label = m.label != null ? m.label : i + 1;
                     const colorIdx = (m.label != null ? m.label - 1 : i) % colors.length;
@@ -422,15 +496,15 @@ export function OperatorPage() {
                     );
                   })}
                 </div>
-                {allIcons.length > 0 && (
+                {active.allIcons.length > 0 && (
                   <div style={{
                     display: "flex", gap: 6, justifyContent: "center", alignItems: "center",
                     marginTop: 10, padding: "8px 6px",
                     background: "#0d1117", borderRadius: 8, border: "1px solid #21262d",
                   }}>
-                    {allIcons.map((ic) => {
-                      const isCurrent = ic.position === currentPos;
-                      const isAnswered = answeredPositions.includes(ic.position);
+                    {active.allIcons.map((ic) => {
+                      const isCurrent = ic.position === active.currentPos;
+                      const isAnswered = active.answeredPositions.includes(ic.position);
                       return (
                         <div
                           key={ic.position}
@@ -471,23 +545,24 @@ export function OperatorPage() {
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 8 }}>
-                  {(function () {
-                    return Array.from({ length: 5 }, (_, i) => (
-                      <div key={i} style={{
-                        width: 10, height: 10, borderRadius: "50%",
-                        background: assigned.includes(i)
-                          ? (answeredPositions.includes(i) ? "#3fb950" : i === currentPos ? "#58a6ff" : "#6c757d")
-                          : answeredPositions.includes(i) ? "#2ea043" : "#30363d",
-                      }} />
-                    ));
-                  })()}
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <div key={i} style={{
+                      width: 10, height: 10, borderRadius: "50%",
+                      background: active.assigned.includes(i)
+                        ? (active.answeredPositions.includes(i) ? "#3fb950" : i === active.currentPos ? "#58a6ff" : "#6c757d")
+                        : active.answeredPositions.includes(i) ? "#2ea043" : "#30363d",
+                    }} />
+                  ))}
                 </div>
               </>
             ) : (
               <div style={{ padding: "24px 0" }}>
                 <div className="idle-spinner" style={{ margin: "0 auto" }} />
                 <div style={{ color: "#8b949e", fontSize: "0.85rem", marginTop: 12 }}>
-                  {complete ? "Капча решена, ожидание следующей..." : "Ожидание новой капчи..."}
+                  {active?.complete ? "Капча решена, ожидание следующей..."
+                    : active?.waiting ? "Иконки пройдены, ожидание..."
+                    : queueLen > 0 ? `В очереди: ${queueLen}`
+                    : "Ожидание новой капчи..."}
                 </div>
               </div>
             )}
