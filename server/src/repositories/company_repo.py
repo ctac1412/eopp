@@ -1,69 +1,130 @@
+"""Company entity repository.
+
+Provides CRUD operations for the companies table, plus
+name/alias-based lookup and get-or-create helpers.
+"""
+
+import json
+import logging
 from datetime import UTC, datetime
 
-from src.entities import CompanyAlias, CompanyBillingSetting, get_session
+from src.entities import Company, get_session
+
+logger = logging.getLogger("eopp.company_repo")
 
 
-def list_company_billing_settings() -> list[CompanyBillingSetting]:
-    with get_session() as session:
-        return session.query(CompanyBillingSetting).order_by(CompanyBillingSetting.company).all()
+def _company_to_dict(c: Company) -> dict:
+    return {
+        "id": c.id,
+        "name": c.name,
+        "aliases": json.loads(c.aliases) if c.aliases else None,
+        "notes": c.notes,
+        "created_at": c.created_at,
+        "updated_at": c.updated_at,
+    }
 
 
-def get_company_billing_settings(company: str) -> CompanyBillingSetting:
-    with get_session() as session:
-        setting = session.get(CompanyBillingSetting, company)
-        if setting:
-            return setting
-        return CompanyBillingSetting(company=company, auto_invoice_reopen=False, updated_at=None)
-
-
-def upsert_company_billing_settings(
-    company: str, auto_invoice_reopen: bool
-) -> CompanyBillingSetting:
+def create_company(
+    name: str,
+    aliases: list[str] | None = None,
+    notes: str | None = None,
+) -> Company:
+    """Create a new company.  *name* must be non-empty and unique."""
     now = datetime.now(UTC).isoformat()
+    aliases_json = json.dumps(aliases, ensure_ascii=False) if aliases else None
     with get_session() as session:
-        setting = session.get(CompanyBillingSetting, company)
-        if setting:
-            setting.auto_invoice_reopen = auto_invoice_reopen
-            setting.updated_at = now
-        else:
-            setting = CompanyBillingSetting(
-                company=company, auto_invoice_reopen=auto_invoice_reopen, updated_at=now
-            )
-            session.add(setting)
+        c = Company(
+            name=name,
+            aliases=aliases_json,
+            notes=notes,
+            created_at=now,
+        )
+        session.add(c)
+        session.flush()
         session.commit()
-        session.refresh(setting)
-        return setting
+        session.refresh(c)
+        return c
 
 
-def list_company_aliases() -> list[CompanyAlias]:
+def list_companies() -> list[dict]:
+    """Return all companies ordered by name."""
     with get_session() as session:
-        return session.query(CompanyAlias).order_by(CompanyAlias.company, CompanyAlias.alias).all()
+        rows = session.query(Company).order_by(Company.name).all()
+        return [_company_to_dict(r) for r in rows]
 
 
-def upsert_company_alias(alias: str, company: str) -> CompanyAlias:
-    now = datetime.now(UTC).isoformat()
-    clean_alias = " ".join(alias.split())
-    clean_company = " ".join(company.split())
+def get_company(company_id: int) -> Company | None:
     with get_session() as session:
-        existing = session.get(CompanyAlias, clean_alias)
-        if existing:
-            existing.company = clean_company
-            existing.updated_at = now
-        else:
-            existing = CompanyAlias(
-                alias=clean_alias, company=clean_company, created_at=now, updated_at=now
-            )
-            session.add(existing)
+        return session.get(Company, company_id)
+
+
+def get_company_by_name(name: str) -> Company | None:
+    with get_session() as session:
+        return session.query(Company).filter(Company.name == name).first()
+
+
+def find_company_by_name_or_alias(name: str | None) -> Company | None:
+    """Look up a company by exact name or any of its aliases (JSON array)."""
+    if not name:
+        return None
+    clean = " ".join(name.split())
+    with get_session() as session:
+        # 1) exact name match
+        c = session.query(Company).filter(Company.name == clean).first()
+        if c:
+            return c
+        # 2) scan aliases column
+        all_companies = session.query(Company).filter(Company.aliases.isnot(None)).all()
+        for c in all_companies:
+            try:
+                alias_list = json.loads(c.aliases)
+                if isinstance(alias_list, list) and clean in alias_list:
+                    return c
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return None
+
+
+def update_company(company_id: int, **kwargs) -> Company | None:
+    """Update fields: name, aliases, notes.  Returns updated Company or None."""
+    with get_session() as session:
+        c = session.get(Company, company_id)
+        if not c:
+            return None
+        now = datetime.now(UTC).isoformat()
+        if "name" in kwargs and kwargs["name"] is not None:
+            c.name = kwargs["name"]
+        if "aliases" in kwargs:
+            val = kwargs["aliases"]
+            c.aliases = json.dumps(val, ensure_ascii=False) if val else None
+        if "notes" in kwargs:
+            c.notes = kwargs["notes"]
+        c.updated_at = now
         session.commit()
-        session.refresh(existing)
-        return existing
+        session.refresh(c)
+        return c
 
 
-def delete_company_alias(alias: str) -> bool:
+def delete_company(company_id: int) -> bool:
     with get_session() as session:
-        existing = session.get(CompanyAlias, alias)
-        if not existing:
+        c = session.get(Company, company_id)
+        if not c:
             return False
-        session.delete(existing)
+        session.delete(c)
         session.commit()
         return True
+
+
+def get_or_create_company(name: str | None) -> Company | None:
+    """Find a company by name or aliases; if not found, create it.
+
+    Returns None when *name* is falsy (so callers can gracefully skip).
+    """
+    if not name:
+        return None
+    clean = " ".join(name.split())
+    existing = find_company_by_name_or_alias(clean)
+    if existing:
+        return existing
+    logger.info("get_or_create_company: creating new company name=%r", clean)
+    return create_company(name=clean)

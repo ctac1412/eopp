@@ -22,6 +22,8 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.repositories import api_key_repo
+from src.routes.chat import get_chat_history
+from src.routes.scheduled import get_scheduled_events_for_masters
 from src.sse import lock, register_sse_connection, sse_queues, unregister_sse_connection
 
 logger = logging.getLogger("eopp.sse")
@@ -180,16 +182,31 @@ async def sse_stream(
             from src.sse.manager import operator_api_key_id as op_neg_id, sse_queues as _sse_queues, lock as _sse_lock, push_sse as _push
             op_ids = operator_repo.get_subscribed_operators(key_record.id)
             online_ops = []
+            online_ops_info = []
             with _sse_lock:
                 for oid in op_ids:
                     if _sse_queues.get(op_neg_id(oid)):
                         online_ops.append(oid)
+                        op_info = operator_repo.get_operator_by_id(oid)
+                        online_ops_info.append({
+                            "id": oid,
+                            "nickname": op_info.get("nickname", f"#{oid}") if op_info else f"#{oid}",
+                        })
             yield "data: %s\n\n" % json.dumps({
                 "type": "connected",
                 "api_key_id": api_key_id,
                 "operators_online": online_ops,
+                "operators_online_info": online_ops_info,
                 "owner_label": key_record.label,
+                "chat_history": get_chat_history(key_record.id),
+                "scheduled_events": get_scheduled_events_for_masters([key_record.id]),
             })
+            # Push current slot layout to master (for F5)
+            try:
+                from src.routes.operator import _push_slot_update
+                await _push_slot_update(key_record.id)
+            except Exception as exc:
+                logger.error("sse_slot_push_error key=%s %s", key_record.id, exc)
             for oid in op_ids:
                 _push({
                     "type": "master_online",

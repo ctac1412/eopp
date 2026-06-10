@@ -150,6 +150,20 @@ chrome.runtime.onConnect.addListener((port) => {
         responded = true;
         port.disconnect();
         return;
+      } else if (msg.action === "scheduledEvent") {
+        res = await fetch(`${serverUrl}/scheduled-event`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            api_key: msg.payload.apiKeyId,
+            label: msg.payload.label,
+            scheduled_at: msg.payload.scheduledAt,
+            description: msg.payload.description,
+          }),
+        });
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;

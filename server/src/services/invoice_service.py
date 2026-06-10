@@ -152,11 +152,11 @@ def ensure_open_invoice(company: str) -> tuple[int, dict]:
 
 
 def issue_open_invoice(company: str, comment: str = "") -> tuple[int, dict]:
-    from src.repositories import company_repo
+    from src.repositories import company_billing_repo
 
     if not company:
         return 400, {"error": "company required"}
-    settings = company_repo.get_company_billing_settings(company)
+    settings = company_billing_repo.get_company_billing_settings(company)
     result = invoice_repo.issue_open_invoice(
         company, comment, reopen=bool(settings.auto_invoice_reopen)
     )

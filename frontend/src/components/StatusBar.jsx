@@ -54,7 +54,7 @@ function StatusBar() {
   const settingsRef = useRef(null);
   const connectedOperators = useCaptchaStore((s) => s.connectedOperators);
   const sseConnected = useCaptchaStore((s) => s.sseConnected);
-  const operatorCount = Array.isArray(connectedOperators) ? connectedOperators.length : 0;
+  const operatorCount = Array.isArray(connectedOperators) ? connectedOperators.filter(o => o.online).length : 0;
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
@@ -202,14 +202,6 @@ function StatusBar() {
               </button>
             )}
           </>
-        )}
-        {operatorCount > 0 && (
-          <span style={{
-            fontSize: "0.75rem", background: "#1a3320", color: "#3fb950",
-            padding: "2px 8px", borderRadius: 10, border: "1px solid #238636",
-          }}>
-            👥 {operatorCount}
-          </span>
         )}
         {localMode && <span className="local-tag">LOCAL</span>}
         {superKioskMode && isAdmin && <span className="super-kiosk-tag">СУПЕР</span>}

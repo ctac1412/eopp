@@ -5,6 +5,7 @@ import React from "react";
 import CaptchaCard from "./CaptchaCard";
 import IconClickCaptcha from "./IconClickCaptcha";
 import CountdownTimer from "./CountdownTimer";
+import Clock from "./Clock";
 import useCaptchaStore from "../store/useCaptchaStore";
 
 function CaptchaGrid() {
@@ -58,6 +59,7 @@ function CaptchaGrid() {
           )}
         </div>
         <div className="d-flex align-items-center gap-2">
+          <Clock />
           <CountdownTimer createdAt={active.createdAt} timeout={active.timeout} />
           <div className="d-flex gap-1">
             {top3.map((t, i) => (

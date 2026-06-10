@@ -49,9 +49,12 @@ def init_distribution_state(
     icons_cache: dict,
     captcha_data: dict,
     operator_id_map: dict[int, int] | None = None,
+    operator_display_modes: dict[int, str] | None = None,
 ) -> None:
     """operator_id_map: slot_index → real_operator_id (DB operator.id).
     Slot 0 (master) maps to 0. Slot 1 maps to the subscribed operator's real ID.
+
+    operator_display_modes: {real_operator_id: icon_display_mode} for own_only check.
     """
     assignments = DISTRIBUTION[num_operators]
     now = time.time()
@@ -76,12 +79,14 @@ def init_distribution_state(
         "icons_cache": icons_cache,
         "captcha_data": captcha_data,
         "operator_id_map": operator_id_map or {},
+        "operator_display_modes": operator_display_modes or {},
     }
     logger.info(
-        "distribution_state_init captcha=%s usage=%s ops=%s",
+        "distribution_state_init captcha=%s usage=%s ops=%s display_modes=%s",
         captcha_id,
         usage_log_id,
         num_operators,
+        operator_display_modes or {},
     )
 
 
@@ -91,11 +96,23 @@ def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
         return None
     all_answers = state["all_answers"]
     icon_order = build_icon_order(operator_id, state["num_operators"])
+    assigned = set(op.get("assigned", []))
+
+    # Check icon_display_mode for real operators
+    op_id_map = state.get("operator_id_map", {})
+    display_modes = state.get("operator_display_modes", {})
+    real_id = op_id_map.get(operator_id, operator_id)
+    mode = display_modes.get(real_id, "own_then_foreign")
+
+    own_exhausted = all(p in all_answers for p in assigned)
 
     while op["idx"] < len(icon_order):
         pos = icon_order[op["idx"]]
         op["idx"] += 1
         if pos not in all_answers:
+            # For own_only mode: skip positions not in own assigned set
+            if mode == "own_only" and pos not in assigned:
+                continue
             return pos
 
     return None

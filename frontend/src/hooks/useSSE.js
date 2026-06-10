@@ -17,7 +17,7 @@
  */
 import { useEffect } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
-import { playNewCaptchaSound } from "../utils/sounds";
+import { playNewCaptchaSound, playChatSound, playScheduledNew } from "../utils/sounds";
 
 const sounded = new Set();
 
@@ -94,23 +94,44 @@ function useSSE(enabled = true) {
         }
 
         if (msg.type === "connected" && msg.operators_online) {
-          useCaptchaStore.getState().setConnectedOperators(msg.operators_online);
+          const info = msg.operators_online_info || [];
+          const infoMap = {};
+          info.forEach((op) => { infoMap[op.id] = op.nickname; });
+          const ids = Array.isArray(msg.operators_online) ? msg.operators_online : [];
+          useCaptchaStore.getState().setConnectedOperators(
+            ids.map((id) => ({ id, nickname: infoMap[id] || `#${id}`, online: true }))
+          );
+          if (msg.chat_history && Array.isArray(msg.chat_history)) {
+            useCaptchaStore.getState().setChatMessages(msg.chat_history);
+          }
+          if (msg.scheduled_events && Array.isArray(msg.scheduled_events)) {
+            useCaptchaStore.getState().setScheduledEvents(msg.scheduled_events);
+          }
+        }
+
+        if (msg.type === "connected" && msg.api_key_id) {
+          useCaptchaStore.getState().setApiKeyInfo(
+            msg.api_key_id,
+            msg.owner_label || "",
+          );
         }
 
         if (msg.type === "operator_connected") {
-          const store = useCaptchaStore.getState();
-          const current = new Set(store.connectedOperators);
-          current.add(msg.operator_id);
-          store.setConnectedOperators([...current]);
+          useCaptchaStore.getState().upsertOperator(
+            msg.operator_id, msg.operator_nickname, true
+          );
           addLog(`Оператор «${msg.operator_nickname}» подключился`, "success");
         }
 
         if (msg.type === "operator_disconnected") {
-          const store = useCaptchaStore.getState();
-          const current = new Set(store.connectedOperators);
-          current.delete(msg.operator_id);
-          store.setConnectedOperators([...current]);
+          useCaptchaStore.getState().upsertOperator(
+            msg.operator_id, msg.operator_nickname, false
+          );
           addLog(`Оператор «${msg.operator_nickname}» отключился`, "error");
+        }
+
+        if (msg.type === "operator_slots") {
+          useCaptchaStore.getState().setOperatorSlots(msg.slots || []);
         }
 
         if (msg.type === "new_captcha") {
@@ -163,6 +184,21 @@ function useSSE(enabled = true) {
             msg.answered_positions || [],
             msg.all_coords || {},
           );
+        }
+
+        if (msg.type === "chat_message") {
+          useCaptchaStore.getState().addChatMessage({
+            sender_role: msg.sender_role || "unknown",
+            sender_label: msg.sender_label || "",
+            message: msg.message || "",
+            timestamp: msg.timestamp || new Date().toISOString(),
+          });
+          playChatSound();
+        }
+
+        if (msg.type === "scheduled_event") {
+          useCaptchaStore.getState().addScheduledEvent(msg);
+          playScheduledNew();
         }
       };
 

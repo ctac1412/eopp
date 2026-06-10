@@ -31,6 +31,7 @@ def _make_masked(record):
         "comment": record.comment,
         "is_admin": record.is_admin,
         "is_super_kiosk": record.is_super_kiosk,
+        "is_external": record.is_external,
     }
 
 
@@ -45,7 +46,10 @@ async def list_public_keys():
 
 @router.post("/api-keys")
 async def create_api_key(body: CreateApiKeyBody):
-    record = api_key_repo.create_key(body.label, body.max_uses)
+    record = api_key_repo.create_key(body.label, body.max_uses, company_id=body.company_id)
+    if body.is_external:
+        api_key_repo.update_key(record.id, is_external=True)
+        record = api_key_repo.get_key_by_id(record.id)
     return JSONResponse(content=_make_masked(record) | {"key": record.key})
 
 
@@ -67,6 +71,8 @@ async def list_api_keys():
             "active": k["active"],
             "comment": k.get("comment"),
             "debt": k.get("debt", {"unpaid_count": 0, "no_price_count": 0, "unpaid_total": 0}),
+            "company_id": k.get("company_id"),
+            "company_name": k.get("company_name"),
         }
         if k.get("tariff"):
             item["tariff"] = k["tariff"]
@@ -76,12 +82,16 @@ async def list_api_keys():
 
 @router.put("/api-keys/{key_id}")
 async def update_api_key(key_id: int, body: UpdateApiKeyBody):
-    record = api_key_repo.update_key(
-        key_id,
-        label=body.label,
-        max_uses=body.max_uses,
-        active=body.active,
-    )
+    kwargs = {
+        k: v for k, v in {
+            "label": body.label,
+            "max_uses": body.max_uses,
+            "active": body.active,
+            "is_external": body.is_external,
+            "company_id": body.company_id,
+        }.items() if v is not None
+    }
+    record = api_key_repo.update_key(key_id, **kwargs)
     if not record:
         return JSONResponse(status_code=404, content={"error": "Key not found"})
     return JSONResponse(content=_make_masked(record))

@@ -10,6 +10,7 @@ from src.entities.base import Base
 if TYPE_CHECKING:
     from src.entities.api_key import ApiKey
     from src.entities.captcha import CaptchaRecord
+    from src.entities.company import Company
     from src.entities.invoice import Invoice
 
 
@@ -34,6 +35,9 @@ class UsageLog(Base):
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     op_type: Mapped[str | None] = mapped_column(String, nullable=True)
     company: Mapped[str | None] = mapped_column(String, nullable=True)
+    company_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("companies.id"), nullable=True
+    )
     fio: Mapped[str | None] = mapped_column(String, nullable=True)
     vehicle_number: Mapped[str | None] = mapped_column(String, nullable=True)
     is_test: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
@@ -41,5 +45,6 @@ class UsageLog(Base):
     invoice_number: Mapped[str | None] = mapped_column(String, nullable=True)
 
     api_key: Mapped[ApiKey] = relationship(back_populates="usage_logs")
+    company_rel: Mapped[Company | None] = relationship(back_populates="usage_logs")
     invoice_rel: Mapped[Invoice | None] = relationship(back_populates="usage_logs")
     captcha_records: Mapped[list[CaptchaRecord]] = relationship(back_populates="usage_log")

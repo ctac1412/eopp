@@ -62,18 +62,24 @@ const useCaptchaStore = create((set) => ({
   helpFor: loadHelpFor(),
   sseError: null,
   sseConnected: false,
-  connectedOperators: 0,
+  connectedOperators: [],
   pendingForceReconnect: false,
   reconnectKey: 0,
+  chatMessages: [],
+  scheduledEvents: [],
+  apiKeyId: null,
+  apiKeyLabel: "",
 
   setApiKey: (key) => {
     localStorage.setItem(STORAGE_KEY, key);
     set({ apiKey: key });
   },
 
+  setApiKeyInfo: (id, label) => set({ apiKeyId: id, apiKeyLabel: label }),
+
   clearApiKey: () => {
     localStorage.removeItem(STORAGE_KEY);
-    set({ apiKey: "" });
+    set({ apiKey: "", apiKeyId: null, apiKeyLabel: "" });
   },
 
   setSuperKioskMode: (enabled) => {
@@ -95,8 +101,55 @@ const useCaptchaStore = create((set) => ({
 
   setSseConnected: (v) => set({ sseConnected: v }),
 
-  setConnectedOperators: (ids) =>
-    set({ connectedOperators: Array.isArray(ids) ? ids : [] }),
+  setConnectedOperators: (ops) =>
+    set({ connectedOperators: Array.isArray(ops) ? ops : [] }),
+
+  upsertOperator: (id, nickname, online, slotIndex) =>
+    set((state) => {
+      const ops = [...state.connectedOperators];
+      const idx = ops.findIndex((o) => o.id === id);
+      const entry = {
+        id,
+        nickname: nickname || ops[idx]?.nickname || `#${id}`,
+        online,
+        slot_index: slotIndex != null ? slotIndex : (ops[idx]?.slot_index ?? 0),
+      };
+      if (idx >= 0) ops[idx] = entry;
+      else ops.push(entry);
+      return { connectedOperators: ops };
+    }),
+
+  setOperatorSlots: (slots) =>
+    set((state) => {
+      const ops = [...state.connectedOperators];
+      for (const s of (slots || [])) {
+        const idx = ops.findIndex((o) => o.id === s.operator_id);
+        const entry = {
+          id: s.operator_id,
+          nickname: s.nickname || `#${s.operator_id}`,
+          online: idx >= 0 ? ops[idx].online : true,
+          slot_index: s.slot_index,
+          assigned_icons: s.assigned_icons || [],
+        };
+        if (idx >= 0) ops[idx] = entry;
+        else ops.push(entry);
+      }
+      return { connectedOperators: ops };
+    }),
+
+  addChatMessage: (msg) =>
+    set((state) => ({
+      chatMessages: [...state.chatMessages.slice(-49), msg],
+    })),
+
+  setChatMessages: (msgs) =>
+    set({ chatMessages: Array.isArray(msgs) ? msgs.slice(-50) : [] }),
+
+  setScheduledEvents: (events) =>
+    set({ scheduledEvents: Array.isArray(events) ? events : [] }),
+
+  addScheduledEvent: (ev) =>
+    set((state) => ({ scheduledEvents: [...state.scheduledEvents, ev] })),
 
   setPendingForceReconnect: (v) => set({ pendingForceReconnect: v }),
 

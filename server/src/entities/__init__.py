@@ -1,6 +1,7 @@
 from src.entities.api_key import ApiKey
 from src.entities.base import Base, get_engine, get_session, get_session_factory, set_db_path
 from src.entities.billing import CompanyAlias, CompanyBillingSetting
+from src.entities.company import Company
 from src.entities.captcha import CaptchaFile, CaptchaRecord
 from src.entities.course import Course, CourseCaptcha, TestRun, TestRunResult
 from src.entities.distribution_answer import DistributionAnswer
@@ -38,6 +39,7 @@ __all__ = [
     "PayoutExpense",
     "PrepaidPackage",
     "PrepaidDeduction",
+    "Company",
     "CompanyBillingSetting",
     "CompanyAlias",
     "DistributionAnswer",

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.entities.base import Base
 
 if TYPE_CHECKING:
+    from src.entities.company import Company
     from src.entities.tariff import Tariff
     from src.entities.usage_log import UsageLog
 
@@ -25,6 +26,11 @@ class ApiKey(Base):
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_super_kiosk: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    company_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("companies.id"), nullable=True
+    )
 
+    company: Mapped[Company | None] = relationship(back_populates="api_keys")
     tariff: Mapped[Tariff | None] = relationship(back_populates="api_key", uselist=False)
     usage_logs: Mapped[list[UsageLog]] = relationship(back_populates="api_key")

@@ -1,6 +1,6 @@
 import React from "react";
 
-export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onResetUsage, onDeleteKey }) {
+export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onResetUsage, onDeleteKey, companies = [] }) {
   if (!show) return null;
 
   const handleSubmit = (e) => {
@@ -54,6 +54,34 @@ export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onR
                   </div>
                 </>
               )}
+              <div className="mb-3 form-check">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  id="keyIsExternal"
+                  checked={form.isExternal || false}
+                  onChange={(e) => setForm((p) => ({ ...p, isExternal: e.target.checked }))}
+                />
+                <label className="form-check-label" htmlFor="keyIsExternal">
+                  Внешний клиент
+                </label>
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Компания</label>
+                <select
+                  className="form-select"
+                  value={form.companyId || ""}
+                  onChange={(e) => setForm((p) => ({ ...p, companyId: e.target.value }))}
+                  style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}
+                >
+                  <option value="">Без компании</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="mb-3">
                 <label className="form-label">Max Uses (пусто = без лимита)</label>
                 <input

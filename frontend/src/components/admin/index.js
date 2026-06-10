@@ -18,3 +18,4 @@ export { AITab } from "./AITab";
 export { OperatorsTab } from "./OperatorsTab";
 export { PrepaidPackagesTab } from "./PrepaidPackagesTab";
 export { TrainingAdminTab } from "./TrainingAdminTab";
+export { CompaniesTab } from "./CompaniesTab";

@@ -310,6 +310,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const [mockConfig, setMockConfig] = useState<Record<string, MockMode[]>>({});
   const [mockLoading, setMockLoading] = useState(false);
   const [mockSending, setMockSending] = useState(false);
+  const [mockCaptchaType, setMockCaptchaType] = useState("auto");
   const [useLocalServer, setUseLocalServer] = useState(isLocalServerEnabled());
 
   const isLocalhost =
@@ -411,10 +412,14 @@ const ConfigForm = React.memo(function ConfigForm() {
         endpoints[path] = { responses };
       }
     }
+    const body: Record<string, unknown> = { endpoints };
+    if (mockCaptchaType !== "auto") {
+      body["captcha_type"] = mockCaptchaType;
+    }
     fetch(`${serverUrl}/mock-config`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoints }),
+      body: JSON.stringify(body),
     })
       .then((r) => r.json())
       .then(() => {
@@ -919,6 +924,23 @@ const ConfigForm = React.memo(function ConfigForm() {
                             </div>
                           ))}
                         </div>
+                        {ep.path === "/reservations-api/v1/captcha" && (
+                          <div style={{ marginTop: 6 }}>
+                            <label style={{ fontSize: "11px", color: "#888", display: "block", marginBottom: 3 }}>
+                              Тип капчи
+                            </label>
+                            <select
+                              className="qn-form-input"
+                              value={mockCaptchaType}
+                              onChange={(e) => setMockCaptchaType(e.target.value)}
+                              style={{ minWidth: "140px" }}
+                            >
+                              <option value="auto">auto (как в тестовых данных)</option>
+                              <option value="legacy">legacy (пазл)</option>
+                              <option value="icon-click">icon-click (клик по иконкам)</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

@@ -230,7 +230,10 @@ async def handle_captcha(body: SolveCaptchaBody):
         icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
 
         from src.repositories import operator_repo
-        op_ids = operator_repo.get_subscribed_operators(api_key_id)
+        from src.routes.operator import get_operator_slot_order
+        op_ids = get_operator_slot_order(api_key_id)
+        if not op_ids:
+            op_ids = operator_repo.get_subscribed_operators(api_key_id)
         _log_solve_step(
             rid, captcha_id, "operator_lookup",
             step_start, ops=len(op_ids) if op_ids else 0, found=bool(op_ids),
@@ -253,6 +256,16 @@ async def handle_captcha(body: SolveCaptchaBody):
                 is_distributed = True
                 for idx, real_id in enumerate(op_ids):
                     operator_id_map[idx + 1] = real_id
+
+                # Build operator_display_modes map
+                operator_display_modes: dict[int, str] = {}
+                for real_id in op_ids:
+                    op_info = operator_repo.get_operator_by_id(real_id)
+                    if op_info:
+                        operator_display_modes[real_id] = op_info.get(
+                            "icon_display_mode", "own_then_foreign"
+                        )
+
                 init_distribution_state(
                     captcha_id=captcha_id,
                     event=event,
@@ -262,6 +275,7 @@ async def handle_captcha(body: SolveCaptchaBody):
                     icons_cache=icons_cache,
                     captcha_data=data,
                     operator_id_map=operator_id_map,
+                    operator_display_modes=operator_display_modes,
                 )
                 _log_solve_step(
                     rid, captcha_id, "distribution_init",

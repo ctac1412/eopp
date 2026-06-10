@@ -6,7 +6,8 @@ from sqlalchemy.orm import joinedload
 from src.db.usage_log import _calc_is_test, _extract_fields_from_config
 from src.db.usage_log import confirm_usage as db_confirm_usage
 from src.db.usage_log import fail_usage as db_fail_usage
-from src.entities import ApiKey, UsageLog, get_session
+from src.entities import ApiKey, Company, UsageLog, get_session
+from src.repositories import company_repo
 
 
 def create_usage(
@@ -27,6 +28,9 @@ def create_usage(
         extracted = _extract_fields_from_config(config_json)
         is_test = _calc_is_test(reservation_id, config_json)
 
+        # Resolve company from config
+        company_obj = company_repo.get_or_create_company(extracted["company"])
+
         log = UsageLog(
             api_key_id=key_record.id,
             reservation_id=reservation_id,
@@ -35,6 +39,7 @@ def create_usage(
             config_json=config_str,
             op_type=extracted["op_type"],
             company=extracted["company"],
+            company_id=company_obj.id if company_obj else None,
             fio=extracted["fio"],
             vehicle_number=extracted["vehicle_number"],
             is_test=is_test,
@@ -50,7 +55,7 @@ def get_usage(usage_log_id: int) -> UsageLog | None:
     with get_session() as session:
         return (
             session.query(UsageLog)
-            .options(joinedload(UsageLog.api_key))
+            .options(joinedload(UsageLog.api_key), joinedload(UsageLog.company_rel))
             .filter(UsageLog.id == usage_log_id)
             .first()
         )
@@ -58,7 +63,9 @@ def get_usage(usage_log_id: int) -> UsageLog | None:
 
 def list_usage(api_key_id: int | None = None, invoice_id: int | None = None) -> list[UsageLog]:
     with get_session() as session:
-        q = session.query(UsageLog).options(joinedload(UsageLog.api_key))
+        q = session.query(UsageLog).options(
+            joinedload(UsageLog.api_key), joinedload(UsageLog.company_rel)
+        )
         if api_key_id is not None:
             q = q.filter(UsageLog.api_key_id == api_key_id)
         if invoice_id is not None:
@@ -150,6 +157,8 @@ def _usage_log_to_dict(log: UsageLog) -> dict:
         "paid": bool(log.paid) if log.paid is not None else None,
         "op_type": log.op_type,
         "company": log.company,
+        "company_id": log.company_id,
+        "company_name": log.company_rel.name if log.company_rel else None,
         "fio": log.fio,
         "vehicle_number": log.vehicle_number,
         "is_test": bool(log.is_test) if log.is_test is not None else False,

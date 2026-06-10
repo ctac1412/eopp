@@ -42,6 +42,8 @@ class SolveCaptchaBody(BaseModel):
 class CreateApiKeyBody(BaseModel):
     label: str = ""
     max_uses: int | None = None
+    is_external: bool = False
+    company_id: int | None = None
 
 
 class UpdateApiKeyBody(BaseModel):
@@ -51,6 +53,8 @@ class UpdateApiKeyBody(BaseModel):
     comment: str | None = None
     is_admin: bool | None = None
     is_super_kiosk: bool | None = None
+    is_external: bool | None = None
+    company_id: int | None = None
 
 
 class UpdateUsageLogBody(BaseModel):
@@ -107,6 +111,7 @@ class RegisterUsageBody(BaseModel):
 
 class MockConfigBody(BaseModel):
     endpoints: dict[str, dict[str, Any]] = {}
+    captcha_type: str | None = None
 
 
 class TariffBody(BaseModel):
@@ -214,6 +219,18 @@ class CompanyAliasBody(BaseModel):
     company: str = ""
 
 
+class CompanyBody(BaseModel):
+    name: str
+    aliases: list[str] | None = None
+    notes: str | None = None
+
+
+class UpdateCompanyBody(BaseModel):
+    name: str | None = None
+    aliases: list[str] | None = None
+    notes: str | None = None
+
+
 class CreatePrepaidPackageBody(BaseModel):
     api_key_id: int
     balance_amount: int
@@ -258,3 +275,30 @@ class DistributionAnswerBody(BaseModel):
     icon_position: int
     x: int
     y: int
+
+
+class ChatMessageBody(BaseModel):
+    sender_role: str  # "master" | "operator"
+    sender_id: int
+    sender_label: str
+    message: str
+    master_key_id: int
+
+
+class ScheduledEventBody(BaseModel):
+    api_key_id: int = 0
+    api_key: str | None = None
+    label: str
+    scheduled_at: str  # ISO format
+    description: str = ""
+
+
+class UpdateOperatorBody(BaseModel):
+    nickname: str | None = None
+    icon_display_mode: str | None = None
+    allowed_master_keys: list[int] | None = None
+    company_id: int | None = None
+
+
+class AdminRelinkBody(BaseModel):
+    master_key_id: int

@@ -35,6 +35,7 @@ import {
   OperatorsTab,
   PrepaidPackagesTab,
   TrainingAdminTab,
+  CompaniesTab,
 } from "./components/admin";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
@@ -57,16 +58,18 @@ function AdminPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(null);
   const [newKey, setNewKey] = useState(null);
-  const [createForm, setCreateForm] = useState({ label: "", maxUses: "" });
+  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, companyId: "" });
   const [editForm, setEditForm] = useState({
     label: "",
     maxUses: "",
     active: true,
+    isExternal: false,
     comment: "",
     priceCreate: "",
     priceReschedule: "",
     priceCreatePeak: "",
     priceCustomSlots: "",
+    companyId: "",
   });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
@@ -100,6 +103,9 @@ function AdminPage() {
   const [users, setUsers] = useState([]);
   const [userForm, setUserForm] = useState({ id: null, name: "" });
   const [showUserModal, setShowUserModal] = useState(false);
+
+  // Companies
+  const [companies, setCompanies] = useState([]);
 
   // Streams
   const [streams, setStreams] = useState([]);
@@ -166,6 +172,24 @@ function AdminPage() {
         setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
         setUsers([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchCompanies = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/companies", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setCompanies(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setCompanies([]);
       }
     },
     [adminToken],
@@ -460,6 +484,12 @@ function AdminPage() {
       if (createForm.maxUses) {
         body.max_uses = parseInt(createForm.maxUses, 10);
       }
+      if (createForm.isExternal) {
+        body.is_external = true;
+      }
+      if (createForm.companyId) {
+        body.company_id = parseInt(createForm.companyId, 10);
+      }
       const res = await fetch("/api-keys", {
         method: "POST",
         headers: adminHeaders(adminToken),
@@ -468,7 +498,7 @@ function AdminPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setNewKey(data);
-      setCreateForm({ label: "", maxUses: "" });
+      setCreateForm({ label: "", maxUses: "", isExternal: false, companyId: "" });
       setShowCreate(false);
       fetchKeys(adminToken);
     } catch (err) {
@@ -480,7 +510,7 @@ function AdminPage() {
     e.preventDefault();
     if (!showEdit) return;
     try {
-      const body = { label: editForm.label, active: editForm.active };
+      const body = { label: editForm.label, active: editForm.active, is_external: editForm.isExternal };
       if (editForm.maxUses !== "") {
         body.max_uses = parseInt(editForm.maxUses, 10);
       } else {
@@ -488,6 +518,11 @@ function AdminPage() {
       }
       if (editForm.comment !== "") {
         body.comment = editForm.comment;
+      }
+      if (editForm.companyId) {
+        body.company_id = parseInt(editForm.companyId, 10);
+      } else {
+        body.company_id = null;
       }
       const res = await fetch(`/api-keys/${showEdit}`, {
         method: "PUT",
@@ -574,6 +609,7 @@ function AdminPage() {
       label: keyObj.label || "",
       maxUses: keyObj.max_uses ?? "",
       active: keyObj.active,
+      isExternal: keyObj.is_external || false,
       comment: keyObj.comment || "",
       priceCreate: tariff ? String(tariff.price_create) : "1000",
       priceReschedule: tariff ? String(tariff.price_reschedule) : "7000",
@@ -581,8 +617,10 @@ function AdminPage() {
         tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
       priceCustomSlots:
         tariff && tariff.price_custom_slots != null ? String(tariff.price_custom_slots) : "",
+      companyId: keyObj.company_id != null ? String(keyObj.company_id) : "",
     });
     setShowEdit(keyObj.id);
+    fetchCompanies(adminToken);
   };
 
   const fetchUsageHistory = async (keyId, hideTest = true) => {
@@ -1078,7 +1116,7 @@ function AdminPage() {
         <h4 className="mb-0 fw-bold" style={{ fontSize: "1.125rem" }}>Админ-панель</h4>
         <div className="d-flex gap-2 align-items-center">
           {activeTab === "keys" && (
-            <button className="btn btn-sm btn-primary" onClick={() => setShowCreate(true)}>
+            <button className="btn btn-sm btn-primary" onClick={() => { setShowCreate(true); fetchCompanies(adminToken); }}>
               + Новый ключ
             </button>
           )}
@@ -1161,6 +1199,10 @@ function AdminPage() {
 
       {activeTab === "ai" && (
         <AITab adminToken={adminToken} />
+      )}
+
+      {activeTab === "companies" && (
+        <CompaniesTab adminToken={adminToken} onError={setError} />
       )}
 
       {activeTab === "operators" && (
@@ -1279,6 +1321,7 @@ function AdminPage() {
         setForm={setCreateForm}
         onSubmit={handleCreate}
         onClose={() => setShowCreate(false)}
+        companies={companies}
       />
 
       <KeyFormModal
@@ -1290,6 +1333,7 @@ function AdminPage() {
         onClose={() => setShowEdit(null)}
         onResetUsage={() => { if (showEdit) handleResetUsage(showEdit); }}
         onDeleteKey={() => { if (showEdit) { setShowEdit(null); setConfirmDelete(showEdit); } }}
+        companies={companies}
       />
 
       <DeleteConfirmModal

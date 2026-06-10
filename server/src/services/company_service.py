@@ -1,7 +1,7 @@
 """Company billing settings and aliases service."""
 
 from src.entities.utils import entities_to_list, entity_to_dict
-from src.repositories import company_repo
+from src.repositories import company_billing_repo as company_repo
 
 
 def list_company_billing_settings() -> tuple[int, list[dict]]:

@@ -103,6 +103,7 @@ export function ApiKeysTab({
               <th style={{ width: "90px" }}>Использование</th>
               <th style={{ width: "80px" }}>Долг</th>
               <th style={{ width: "40px" }}>Актив</th>
+              <th style={{ width: "55px" }}>Внешний</th>
               <th style={{ width: "160px" }}>Действия</th>
             </tr>
           </thead>
@@ -172,6 +173,13 @@ export function ApiKeysTab({
                         {k.active ? "✓" : ""}
                       </button>
                     </td>
+                    <td className="text-center">
+                      {k.is_external ? (
+                        <span style={{ color: "#d29922", fontSize: "0.8rem" }} title="Внешний клиент">↗</span>
+                      ) : (
+                        <span style={{ color: "#484f58", fontSize: "0.8rem" }}>—</span>
+                      )}
+                    </td>
                     <td>
                       <div className="d-flex gap-1">
                         <button className="btn btn-sm btn-outline-primary" onClick={() => onEditKey(k)}>
@@ -189,7 +197,7 @@ export function ApiKeysTab({
 
                   {isExpanded && (
                     <tr>
-                      <td colSpan={12} className="p-0">
+                      <td colSpan={13} className="p-0">
                         <div className="p-3" style={{ background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
                         <UsageHistory
                           keyId={k.id}

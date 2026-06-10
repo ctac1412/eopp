@@ -73,18 +73,26 @@ def _mock_400(body: dict) -> JSONResponse:
     return JSONResponse(status_code=400, content=body)
 
 
-def _load_random_captcha() -> str | dict[str, str]:
+def _load_random_captcha(captcha_type: str | None = None) -> str | dict[str, str]:
     files = []
     if not os.path.isdir(captcha_file_service.all_dir()):
         return {"error": "No test captcha files found"}
+
+    want_icon_click = captcha_type == "icon-click"
     for name in os.listdir(captcha_file_service.all_dir()):
         if not name.endswith(".json"):
             continue
         path = os.path.join(captcha_file_service.all_dir(), name)
         data = captcha_file_service.read_json(path) or {}
-        if data.get("valid_index") is not None:
+        if want_icon_click:
+            puzzle = data.get("puzzle", data)
+            if puzzle.get("imageBase64") or data.get("type") == 1:
+                files.append(path)
+        elif data.get("valid_index") is not None:
             files.append(path)
     if not files:
+        if want_icon_click:
+            return {"error": "No icon-click test captcha files found"}
         return {"error": "No test captcha files found"}
     filepath = random.choice(files)
     with open(filepath) as f:
@@ -112,6 +120,9 @@ async def set_mock_config(body: MockConfigBody):
             if "mode" in cfg and "responses" not in cfg:
                 cfg["responses"] = [cfg["mode"]]
             mock_config[ep] = cfg
+        # Save captcha_type if provided
+        if body.captcha_type:
+            mock_config["_captcha_type"] = body.captcha_type
     return JSONResponse(content={"ok": True, "endpoints": dict(mock_config)})
 
 
@@ -154,12 +165,26 @@ async def mock_captcha(body: GenerateCaptchaBody):
         )
     if cfg and cfg.get("mode") == "custom":
         return JSONResponse(status_code=200, content=cfg.get("custom_body", {}))
-    data = _load_random_captcha()
+    with mock_config_lock:
+        captcha_type = mock_config.get("_captcha_type")
+    data = _load_random_captcha(captcha_type)
     if data:
         data = json.loads(data)
     if isinstance(data, dict) and "error" in data:
         return JSONResponse(status_code=500, content=data)
-    return JSONResponse(content=_as_eopp_captcha_v2(data))
+    if captcha_type == "icon-click":
+        puzzle = data.get("puzzle", data) if isinstance(data, dict) else {}
+        result = {
+            "token": data.get("token", "mock-captcha-token") if isinstance(data, dict) else "mock-captcha-token",
+            "front": {
+                "imageBase64": puzzle.get("imageBase64", ""),
+                "iconsBase64": puzzle.get("iconsBase64", ""),
+                "type": 1,
+            },
+        }
+    else:
+        result = _as_eopp_captcha_v2(data)
+    return JSONResponse(content=result)
 
 
 @router.post("/reservations-api/v1/captcha-validate")

@@ -3,7 +3,7 @@ import { useInjectorStore } from "@/store";
 import { parseTime, mskToUtcSeconds } from "@/hooks/useClock";
 import { useInjector } from "@/hooks/useInjector";
 import { useScheduler } from "@/hooks/useScheduler";
-import { checkStream, openServerUrl, getDefaultScheduleTime } from "@/api/background";
+import { checkStream, openServerUrl, getDefaultScheduleTime, sendScheduledEvent } from "@/api/background";
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
@@ -54,6 +54,22 @@ const Scheduler = React.memo(function Scheduler() {
       return;
     }
     const targetUtcSeconds = mskToUtcSeconds(mskSeconds);
+    // Notify operators of planned start
+    {
+      const mskH = Math.floor(mskSeconds / 3600);
+      const mskM = Math.floor((mskSeconds % 3600) / 60);
+      const mskS = Math.floor(mskSeconds % 60);
+      const timeStr = `${String(mskH).padStart(2,"0")}:${String(mskM).padStart(2,"0")}:${String(mskS).padStart(2,"0")}`;
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+      const scheduledAt = `${dateStr}T${timeStr}`;
+      sendScheduledEvent(
+        authKey,
+        `Бронь ${(config.reservationId || "").slice(0, 8)}`,
+        scheduledAt,
+        config.mode === "reschedule" ? "Перенос" : "Создание",
+      ).catch(() => {});
+    }
     startSchedule(targetUtcSeconds, config);
     setStatusMessage("");
     setStatusClass("");

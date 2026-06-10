@@ -199,3 +199,18 @@ export async function failSharedSlots(
   });
   return response as SharedSlotsClaimResponse;
 }
+
+export async function sendScheduledEvent(
+  apiKeyId: string,
+  label: string,
+  scheduledAt: string,
+  description: string,
+): Promise<{ ok: boolean; delivered_to_operators: number }> {
+  const response = await sendMessageToBackground("scheduledEvent", {
+    apiKeyId,
+    label,
+    scheduledAt,
+    description,
+  });
+  return response as { ok: boolean; delivered_to_operators: number };
+}

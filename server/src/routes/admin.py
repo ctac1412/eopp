@@ -23,6 +23,7 @@ from src.models import (
     CaptchaLabelSaveBody,
     CompanyAliasBody,
     CompanyBillingSettingBody,
+    CompanyBody,
     CreateExpenseBody,
     CreateInvoiceBody,
     CreatePayoutBody,
@@ -37,6 +38,7 @@ from src.models import (
     TelegramPreviewBody,
     TopUpPrepaidPackageBody,
     UpdateApiKeyBody,
+    UpdateCompanyBody,
     UpdateExpenseBody,
     UpdateInvoiceBody,
     UpdatePayoutBody,
@@ -45,7 +47,7 @@ from src.models import (
     UpdateUserBody,
 )
 from src.policies.access_policy import requires_admin
-from src.repositories import api_key_repo, usage_log_repo
+from src.repositories import api_key_repo, company_repo, usage_log_repo
 
 logger = logging.getLogger("eopp.admin")
 from src.services import billing_service, captcha_service, reporting_service
@@ -321,6 +323,52 @@ async def upsert_admin_company_alias(body: CompanyAliasBody):
 @router.delete("/company-aliases/{alias}")
 async def delete_admin_company_alias(alias: str):
     return _json_result(billing_service.delete_company_alias(alias))
+
+
+# ---------------------------------------------------------------------------
+# Companies CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/companies")
+async def list_admin_companies():
+    return JSONResponse(content=company_repo.list_companies())
+
+
+@router.post("/companies")
+async def create_admin_company(body: CompanyBody):
+    try:
+        c = company_repo.create_company(
+            name=body.name,
+            aliases=body.aliases,
+            notes=body.notes,
+        )
+        return JSONResponse(
+            status_code=201,
+            content={k: getattr(c, k) for k in ("id", "name", "aliases", "notes", "created_at")},
+        )
+    except Exception as exc:
+        logger.error("create_company_error name=%r %s", body.name, exc)
+        return JSONResponse(status_code=409, content={"error": str(exc)})
+
+
+@router.put("/companies/{company_id}")
+async def update_admin_company(company_id: int, body: UpdateCompanyBody):
+    kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
+    c = company_repo.update_company(company_id, **kwargs)
+    if not c:
+        return JSONResponse(status_code=404, content={"error": "Company not found"})
+    return JSONResponse(
+        content={k: getattr(c, k) for k in ("id", "name", "aliases", "notes", "created_at", "updated_at")}
+    )
+
+
+@router.delete("/companies/{company_id}")
+async def delete_admin_company(company_id: int):
+    ok = company_repo.delete_company(company_id)
+    if not ok:
+        return JSONResponse(status_code=404, content={"error": "Company not found"})
+    return JSONResponse(content={"ok": True})
 
 
 @router.get("/expenses")

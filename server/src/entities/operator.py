@@ -1,7 +1,14 @@
-from sqlalchemy import Boolean, Integer, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, ForeignKey, Integer, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.entities.base import Base
+
+if TYPE_CHECKING:
+    from src.entities.company import Company
 
 
 class Operator(Base):
@@ -11,6 +18,16 @@ class Operator(Base):
     uuid: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     nickname: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    icon_display_mode: Mapped[str] = mapped_column(
+        Text, nullable=False, default="own_then_foreign"
+    )
+    allowed_master_keys: Mapped[str | None] = mapped_column(Text, nullable=True)
+    online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    company_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("companies.id"), nullable=True
+    )
+
+    company: Mapped[Company | None] = relationship(back_populates="operators")
 
 
 class OperatorMasterLink(Base):

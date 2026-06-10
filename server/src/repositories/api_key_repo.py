@@ -5,7 +5,11 @@ from src.db.usage_log import calc_debt
 from src.entities import ApiKey, get_session
 
 
-def create_key(label: str, max_uses: int | None = None) -> ApiKey:
+def create_key(
+    label: str,
+    max_uses: int | None = None,
+    company_id: int | None = None,
+) -> ApiKey:
     with get_session() as session:
         key = ApiKey(
             key=secrets.token_hex(16),
@@ -13,6 +17,7 @@ def create_key(label: str, max_uses: int | None = None) -> ApiKey:
             created_at=datetime.now(UTC).isoformat(),
             max_uses=max_uses,
             active=True,
+            company_id=company_id,
         )
         session.add(key)
         session.flush()
@@ -27,7 +32,7 @@ def list_keys() -> list[dict]:
     with get_session() as session:
         keys = (
             session.query(ApiKey)
-            .options(joinedload(ApiKey.tariff))
+            .options(joinedload(ApiKey.tariff), joinedload(ApiKey.company))
             .order_by(ApiKey.created_at.desc())
             .all()
         )
@@ -44,6 +49,9 @@ def list_keys() -> list[dict]:
                 "comment": k.comment,
                 "is_admin": k.is_admin,
                 "is_super_kiosk": k.is_super_kiosk,
+                "is_external": k.is_external,
+                "company_id": k.company_id,
+                "company_name": k.company.name if k.company else None,
             }
             if k.tariff:
                 d["tariff"] = {
@@ -55,6 +63,33 @@ def list_keys() -> list[dict]:
             d["debt"] = calc_debt(k.id)
             result.append(d)
         return result
+
+
+def list_keys_for_operator(
+    allowed_master_keys: list[int] | None = None,
+) -> list[dict]:
+    """Return active keys for operator master selection.
+
+    If allowed_master_keys is provided, only those key IDs are returned.
+    External keys are included — they can also have operators assigned.
+    """
+    with get_session() as session:
+        query = (
+            session.query(ApiKey)
+            .filter(
+                ApiKey.active == True,
+            )
+            .order_by(ApiKey.created_at.desc())
+        )
+        if allowed_master_keys is not None:
+            if not allowed_master_keys:
+                return []
+            query = query.filter(ApiKey.id.in_(allowed_master_keys))
+        keys = query.all()
+        return [
+            {"id": k.id, "label": k.label, "active": k.active, "key": k.key, "company_id": k.company_id}
+            for k in keys
+        ]
 
 
 def get_key_by_id(key_id: int) -> ApiKey | None:
@@ -97,6 +132,8 @@ def update_api_key(api_key_id: int, body) -> ApiKey | None:
             key.is_admin = body.is_admin
         if body.is_super_kiosk is not None:
             key.is_super_kiosk = body.is_super_kiosk
+        if body.is_external is not None:
+            key.is_external = body.is_external
         session.commit()
         session.refresh(key)
         return key

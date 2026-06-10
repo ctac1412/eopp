@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import OperatorHeader from "../components/operator/OperatorHeader";
+import CaptchaArea from "../components/operator/CaptchaArea";
+import OperatorSidebar from "../components/operator/OperatorSidebar";
+import ReadinessPopup from "../components/operator/ReadinessPopup";
+import { playTickSound, playOperatorCaptchaSound, playReadinessStart, playScheduledNew } from "../utils/sounds";
+import useCaptchaStore from "../store/useCaptchaStore";
 
 const STORAGE_KEY = "operator_master";
 
@@ -55,6 +61,17 @@ export function OperatorPage() {
   const imgRef = useRef(null);
   const [naturalSize, setNaturalSize] = useState(null);
   const esRef = useRef(null);
+  const [scheduledEvents, setScheduledEvents] = useState([]);
+  const [iconDisplayMode, setIconDisplayMode] = useState(null);
+  const [showReassignNotify, setShowReassignNotify] = useState(false);
+  const [operatorNickname, setOperatorNickname] = useState("");
+  const [reassignMasterId, setReassignMasterId] = useState(null);
+  const [readinessCheck, setReadinessCheck] = useState(null);
+
+  const connectedOpsFromStore = useCaptchaStore((s) => s.connectedOperators);
+  const connectedOpsTags = (connectedOpsFromStore || []).filter(
+    (op) => op.assigned_icons != null && op.assigned_icons.length > 0
+  );
 
   /* refs point to the active entry (or null when idle) */
   const activeRef = useRef(null);
@@ -127,6 +144,11 @@ export function OperatorPage() {
     masterIdRef.current = masterId;
   }, [masterId]);
 
+  useEffect(() => {
+    const mode = iconDisplayMode === "own_only" ? "Только свои" : "Свои+чужие";
+    document.title = `${operatorNickname || "Оператор"} — ${mode}`;
+  }, [iconDisplayMode, operatorNickname]);
+
   const setActiveIndex = useCallback((idx) => {
     activeIndexRef.current = idx;
     setActiveIndexRaw(idx);
@@ -164,6 +186,20 @@ export function OperatorPage() {
         if (fellows.length > 0) {
           addLog(`Операторов в сделке: ${fellows.length + 1} (${fellows.map(f => f.nickname || `#${f.id}`).join(", ")})`, "info");
         }
+        // scheduled events
+        if (msg.scheduled_events && Array.isArray(msg.scheduled_events)) {
+          setScheduledEvents(msg.scheduled_events);
+        }
+        // icon display mode
+        if (msg.icon_display_mode) {
+          setIconDisplayMode(msg.icon_display_mode);
+        }
+        if (msg.nickname) {
+          setOperatorNickname(msg.nickname);
+        }
+        if (msg.chat_history && Array.isArray(msg.chat_history)) {
+          useCaptchaStore.getState().setChatMessages(msg.chat_history);
+        }
         return;
       }
       if (msg.type === "master_online") {
@@ -197,12 +233,45 @@ export function OperatorPage() {
         });
         return;
       }
+      if (msg.type === "operator_slots") {
+        useCaptchaStore.getState().setOperatorSlots(msg.slots || []);
+        return;
+      }
+      if (msg.type === "master_reassigned") {
+        setShowReassignNotify(true);
+        setReassignMasterId(msg.master_key_id || null);
+        addLog(`Мастер сменился на #${msg.master_key_id}`, "error");
+        return;
+      }
+      if (msg.type === "scheduled_event") {
+        setScheduledEvents((prev) => [...prev, msg]);
+        playScheduledNew();
+        addLog(`Новое событие: ${msg.label || msg.description || "—"}`, "info");
+        return;
+      }
+      if (msg.type === "chat_message") {
+        useCaptchaStore.getState().addChatMessage({
+          sender_role: msg.sender_role || "unknown",
+          sender_label: msg.sender_label || "",
+          message: msg.message || "",
+          timestamp: msg.timestamp || new Date().toISOString(),
+        });
+        return;
+      }
+      if (msg.type === "readiness_check") {
+        const sec = msg.countdown || 20;
+        setReadinessCheck({ countdown: sec, timer: sec });
+        playReadinessStart();
+        addLog(`Проверка готовности — ${sec} сек`, "info");
+        return;
+      }
       if (msg.type === "disconnected") {
         addLog("Переподключение...", "error");
         es.close();
         return;
       }
       if (msg.type === "new_captcha" && msg.distribution && msg.distribution.operator_id > 0) {
+        playOperatorCaptchaSound();
         const entry = makeQueueEntry(msg);
         setCaptchaQueue((prev) => {
           const next = [...prev, entry];
@@ -335,6 +404,27 @@ export function OperatorPage() {
     }
   }, [masterId, masters.length, connected, connecting, connectViaId]);
 
+  // Readiness check countdown
+  useEffect(() => {
+    if (!readinessCheck || readinessCheck.timer <= 0) return;
+    const timer = setInterval(() => {
+      setReadinessCheck((prev) => {
+        if (!prev || prev.timer <= 0) return null;
+        playTickSound();
+        const next = prev.timer - 1;
+        if (next <= 0) {
+          addLog("Время вышло — отключение", "error");
+          disconnect();
+          saveMaster(uuid, null, null);
+          setMasterId(null);
+          return null;
+        }
+        return { ...prev, timer: next };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [readinessCheck?.countdown]);
+
   const handleMasterChange = (idVal) => {
     const mid = idVal ? Number(idVal) : null;
     setMasterId(mid);
@@ -349,6 +439,24 @@ export function OperatorPage() {
     if (mid && connected) {
       connectViaId(mid);
     }
+  };
+
+  const handleReadyClick = () => {
+    if (masterId) {
+      fetch("/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender_role: "operator",
+          sender_id: 0,
+          sender_label: operatorNickname || "Оператор",
+          message: "Я на месте",
+          master_key_id: masterId,
+        }),
+      }).catch(() => {});
+    }
+    setReadinessCheck(null);
+    addLog("Готов!", "success");
   };
 
   const handleReconnect = () => {
@@ -438,7 +546,9 @@ export function OperatorPage() {
   const hasActive = active && !active.complete && !active.waiting;
 
   return (
-    <div className="container py-3" style={{ maxWidth: "700px" }}>
+    <div className="container-fluid py-3">
+      <ReadinessPopup readinessCheck={readinessCheck} handleReadyClick={handleReadyClick} />
+
       {!connected ? (
         <div className="card p-4" style={{ background: "#161b22", border: "1px solid #30363d" }}>
           <h5 style={{ color: "#f0f6fc", marginBottom: 16 }}>
@@ -458,179 +568,110 @@ export function OperatorPage() {
           </button>
         </div>
       ) : (
-        <div className="card" style={{ background: "#161b22", border: "1px solid #30363d" }}>
-          <div className="d-flex justify-content-between align-items-center p-3 border-bottom" style={{ borderColor: "#30363d" }}>
-            <div className="d-flex align-items-center gap-2">
-              <span
-                style={{
-                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                  background: masterOnline ? "#3fb950" : "#f85149",
-                  boxShadow: masterOnline ? "0 0 6px #3fb950" : "0 0 6px #f85149",
-                }}
-                title={masterOnline ? "Мастер онлайн" : "Мастер офлайн"}
-              />
-              <span className="fw-semibold" style={{ color: "#f0f6fc" }}>
-                {hasActive
-                  ? `Капча ${active.captchaId.slice(0, 8)}`
-                  : active?.complete ? "Решено" : active?.waiting ? "Пауза" : `Ожидание капчи (мастер ${masterOnline ? "онлайн" : "офлайн"})`}
-              </span>
-              {queueLen > 1 && (
-                <span className="badge" style={{ background: "#58a6ff", fontSize: "0.7rem" }}>
-                  +{queueLen - 1}
-                </span>
-              )}
-              {fellowOperators.length > 0 && (
-                <span className="badge" style={{ background: "#8b949e", fontSize: "0.7rem" }}
-                  title={fellowOperators.map(f => f.nickname || `#${f.id}`).join(", ")}>
-                  +{fellowOperators.length} оп.
-                </span>
-              )}
-              <a href={`/training?op=${encodeURIComponent(uuid)}`} style={{ fontSize: "0.75rem", color: "#58a6ff", textDecoration: "none" }}>🎓</a>
-            </div>
-            <div className="d-flex align-items-center gap-2">
-              <select
-                className="form-select form-select-sm"
-                value={masterId || ""}
-                onChange={(e) => handleMasterChange(e.target.value)}
-                style={{
-                  background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d",
-                  fontSize: "0.75rem", width: "auto", minWidth: "140px",
-                }}
-              >
-                <option value="">Выберите мастера</option>
-                {masters.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label || `Мастер #${m.id}`}</option>
-                ))}
-              </select>
-              <span className="badge" style={{ background: active?.complete ? "#198754" : active?.waiting ? "#f59e0b" : "#495057", fontSize: "0.8rem" }}>
-                {active?.complete ? "Решено" : active?.waiting ? "Пауза" : active ? `${active.solvedCount}/${active.assigned.length}` : "—"}
-              </span>
-              <button className="btn btn-sm btn-outline-secondary" onClick={handleReconnect}
-                style={{ fontSize: "0.7rem", padding: "2px 6px" }} title="Переподключиться">
-                ↻
-              </button>
-            </div>
-          </div>
-          <div className="p-3 text-center">
-            {active?.mainImage && !active.waiting && !active.complete ? (
-              <>
-                <div style={{ position: "relative", display: "inline-block" }}>
-                  <img
-                    ref={imgRef}
-                    src={"data:image/png;base64," + active.mainImage}
-                    alt="Капча"
-                    onLoad={(e) => setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
-                    onClick={handleClick}
-                    style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", cursor: "crosshair", borderRadius: 6, border: "1px solid #30363d" }}
-                    draggable={false}
-                  />
-                  {naturalSize && [...active.markers, ...active.foreignMarkers].map((m, i) => {
-                    const colors = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
-                    const label = m.label != null ? m.label : i + 1;
-                    const colorIdx = (m.label != null ? m.label - 1 : i) % colors.length;
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          position: "absolute",
-                          left: `${((m.x / naturalSize.w) * 100).toFixed(2)}%`,
-                          top: `${((m.y / naturalSize.h) * 100).toFixed(2)}%`,
-                          transform: "translate(-50%, -50%)",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        <div style={{
-                          width: "32px", height: "32px", borderRadius: "50%",
-                          background: colors[colorIdx],
-                          border: "3px solid #fff",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          color: "#fff", fontSize: "16px", fontWeight: "bold",
-                          boxShadow: "0 0 12px rgba(0,0,0,0.6)",
-                        }}>
-                          {label}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {active.allIcons.length > 0 && (
-                  <div style={{
-                    display: "flex", gap: 6, justifyContent: "center", alignItems: "center",
-                    marginTop: 10, padding: "8px 6px",
-                    background: "#0d1117", borderRadius: 8, border: "1px solid #21262d",
-                  }}>
-                    {active.allIcons.map((ic) => {
-                      const isCurrent = ic.position === active.currentPos;
-                      const isAnswered = active.answeredPositions.includes(ic.position);
-                      return (
-                        <div
-                          key={ic.position}
-                          style={{
-                            position: "relative",
-                            width: isCurrent ? 52 : 36,
-                            height: isCurrent ? 52 : 36,
-                            borderRadius: 6,
-                            border: isCurrent ? "2px solid #58a6ff" : "1px solid #30363d",
-                            opacity: isAnswered && !isCurrent ? 0.35 : isCurrent ? 1 : 0.55,
-                            background: isAnswered ? "#1a3320" : "transparent",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            flexShrink: 0,
-                            transition: "all 0.2s",
-                          }}
-                        >
-                          {ic.icon && (
-                            <img
-                              src={"data:image/png;base64," + ic.icon}
-                              alt={`#${ic.position + 1}`}
-                              style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }}
-                              draggable={false}
-                            />
-                          )}
-                          {isAnswered && (
-                            <div style={{
-                              position: "absolute", top: -6, right: -6,
-                              width: 16, height: 16, borderRadius: "50%",
-                              background: "#3fb950", display: "flex",
-                              alignItems: "center", justifyContent: "center",
-                              fontSize: 10, color: "#fff", fontWeight: "bold",
-                              border: "1.5px solid #0d1117",
-                            }}>✓</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 8 }}>
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <div key={i} style={{
-                      width: 10, height: 10, borderRadius: "50%",
-                      background: active.assigned.includes(i)
-                        ? (active.answeredPositions.includes(i) ? "#3fb950" : i === active.currentPos ? "#58a6ff" : "#6c757d")
-                        : active.answeredPositions.includes(i) ? "#2ea043" : "#30363d",
-                    }} />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div style={{ padding: "24px 0" }}>
-                <div className="idle-spinner" style={{ margin: "0 auto" }} />
-                <div style={{ color: "#8b949e", fontSize: "0.85rem", marginTop: 12 }}>
-                  {active?.complete ? "Капча решена, ожидание следующей..."
-                    : active?.waiting ? "Иконки пройдены, ожидание..."
-                    : queueLen > 0 ? `В очереди: ${queueLen}`
-                    : "Ожидание новой капчи..."}
-                </div>
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: "#8b949e", marginTop: 8, maxHeight: 100, overflowY: "auto", textAlign: "left" }}>
+        <div>
+          {/* Main container */}
+          <div style={{
+            display: "flex", flexDirection: "column", height: "calc(100vh - 120px)",
+            background: "#161b22", border: "1px solid #30363d", borderRadius: "0.375rem",
+            marginRight: connected ? 260 : 0, transition: "margin-right 0.2s",
+          }}>
+            <OperatorHeader
+              masterOnline={masterOnline}
+              masterId={masterId}
+              masters={masters}
+              connected={connected}
+              connecting={connecting}
+              operatorNickname={operatorNickname}
+              iconDisplayMode={iconDisplayMode}
+              fellowOperators={fellowOperators}
+              queueLen={queueLen}
+              active={active}
+              hasActive={hasActive}
+              uuid={uuid}
+              handleMasterChange={handleMasterChange}
+              handleReconnect={handleReconnect}
+              handleDisconnect={() => {
+                if (masterId) {
+                  fetch("/chat/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      sender_role: "system",
+                      sender_id: 0,
+                      sender_label: "Система",
+                      message: `${operatorNickname || "Оператор"} отключился`,
+                      master_key_id: masterId,
+                    }),
+                  }).catch(() => {});
+                }
+                disconnect();
+                saveMaster(uuid, null, null);
+                setMasterId(null);
+              }}
+            />
+
+            <CaptchaArea
+              active={active}
+              iconDisplayMode={iconDisplayMode}
+              naturalSize={naturalSize}
+              imgRef={imgRef}
+              handleClick={handleClick}
+              onImgLoad={(e) => setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
+              queueLen={queueLen}
+            />
+
+            {/* Log */}
+            <div style={{
+              flexShrink: 0, height: 36, overflowY: "auto",
+              borderTop: "1px solid #30363d", padding: "2px 12px",
+              fontSize: 9, color: "#8b949e", textAlign: "left",
+              background: "#0d1117",
+            }}>
               {log.map((l, i) => (
                 <div key={i} style={{ color: l.cls === "success" ? "#3fb950" : l.cls === "error" ? "#f85149" : "#8b949e" }}>
                   {l.time} {l.msg}
                 </div>
               ))}
             </div>
+
+            {/* Master Reassigned Notification */}
+            {showReassignNotify && (
+              <div style={{
+                padding: "8px 12px", borderTop: "1px solid #30363d",
+                background: "#2d1a1a", display: "flex", alignItems: "center", justifyContent: "space-between",
+                flexShrink: 0,
+              }}>
+                <span style={{ fontSize: "0.8rem", color: "#f85149" }}>
+                  Мастер перепривязал вас к ключу #{reassignMasterId}.{" "}
+                  <button
+                    className="btn btn-sm btn-outline-warning"
+                    style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                    onClick={() => {
+                      setShowReassignNotify(false);
+                      handleReconnect();
+                    }}
+                  >
+                    Переподключиться
+                  </button>
+                </span>
+                <button
+                  className="btn btn-sm"
+                  style={{ color: "#8b949e", fontSize: "0.7rem", background: "none", border: "none" }}
+                  onClick={() => setShowReassignNotify(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </div>
+
+          <OperatorSidebar
+            connected={connected}
+            connectedOpsTags={connectedOpsTags}
+            scheduledEvents={scheduledEvents}
+            operatorNickname={operatorNickname}
+            masterId={masterId}
+          />
         </div>
       )}
     </div>
