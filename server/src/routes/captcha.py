@@ -242,20 +242,26 @@ async def handle_captcha(body: SolveCaptchaBody):
                     prepare_distribution_icons, main_b64, icons_b64
                 )
                 if len(icons_cache) == 5:
-                    is_distributed = True
-                    init_distribution_state(
-                        captcha_id=captcha_id,
-                        event=event,
-                        usage_log_id=usage_log_id,
-                        api_key_id=api_key_id,
-                        num_operators=2,
-                        icons_cache=icons_cache,
-                        captcha_data=data,
-                    )
-                    _log_solve_step(
-                        rid, captcha_id, "distribution_init",
-                        step_start, ops=2, icons=len(icons_cache),
-                    )
+                    num_operators = 1 + len(op_ids)
+                    if num_operators in DISTRIBUTION:
+                        is_distributed = True
+                        operator_id_map = {0: 0}
+                        for idx, real_id in enumerate(op_ids):
+                            operator_id_map[idx + 1] = real_id
+                        init_distribution_state(
+                            captcha_id=captcha_id,
+                            event=event,
+                            usage_log_id=usage_log_id,
+                            api_key_id=api_key_id,
+                            num_operators=num_operators,
+                            icons_cache=icons_cache,
+                            captcha_data=data,
+                            operator_id_map=operator_id_map,
+                        )
+                        _log_solve_step(
+                            rid, captcha_id, "distribution_init",
+                            step_start, ops=num_operators, icons=len(icons_cache),
+                        )
             except Exception as exc:
                 _log_solve_step(
                     rid, captcha_id, "distribution_init_failed",
@@ -416,19 +422,23 @@ async def handle_captcha(body: SolveCaptchaBody):
 
     if entry["result"] is None:
         step_start = time.perf_counter()
-        push_sse(
-            {
-                "type": "captcha_timeout",
-                "captcha_id": captcha_id,
-                "owner_label": owner_label,
-                "owner_api_key_id": api_key_id,
-            },
-            api_key_id=api_key_id,
-        )
+        timeout_event = {
+            "type": "captcha_timeout",
+            "captcha_id": captcha_id,
+            "owner_label": owner_label,
+            "owner_api_key_id": api_key_id,
+        }
+        push_sse(timeout_event, api_key_id=api_key_id)
         if is_distributed:
-            from src.routes.distribution import distribution_states, _dist_lock
-            with _dist_lock:
-                distribution_states.pop(captcha_id, None)
+            from src.routes.distribution import distribution_states
+            state = distribution_states.get(captcha_id)
+            if state:
+                async with state["lock"]:
+                    distribution_states.pop(captcha_id, None)
+            from src.repositories import operator_repo
+            from src.sse.manager import operator_api_key_id
+            for op_real_id in operator_repo.get_subscribed_operators(api_key_id):
+                push_sse(timeout_event, api_key_id=operator_api_key_id(op_real_id))
         _log_solve_step(rid, captcha_id, "push_sse_timeout", step_start)
         if body.timeout_metadata:
             entry["result"] = {

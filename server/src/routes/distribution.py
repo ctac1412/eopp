@@ -4,6 +4,7 @@
 - In-memory state: distribution_states
 """
 
+import asyncio
 import logging
 import threading
 import time
@@ -14,14 +15,13 @@ from fastapi.responses import JSONResponse
 from src.constants import DISTRIBUTION
 from src.models import DistributionAnswerBody
 from src.repositories import distribution_repo
-from src.sse import lock as sse_lock, pending, push_sse
+from src.sse import push_sse
 
 logger = logging.getLogger("eopp.distribution")
 
 router = APIRouter(prefix="/distribution", tags=["distribution"])
 
 distribution_states: dict[str, dict] = {}
-_dist_lock = threading.Lock()
 
 
 def build_icon_order(operator_id: int, num_operators: int) -> list[int]:
@@ -57,7 +57,11 @@ def init_distribution_state(
     num_operators: int,
     icons_cache: dict,
     captcha_data: dict,
+    operator_id_map: dict[int, int] | None = None,
 ) -> None:
+    """operator_id_map: slot_index → real_operator_id (DB operator.id).
+    Slot 0 (master) maps to 0. Slot 1 maps to the subscribed operator's real ID.
+    """
     assignments = DISTRIBUTION[num_operators]
     now = time.time()
     icon_assigned_at: dict[int, float] = {}
@@ -65,22 +69,23 @@ def init_distribution_state(
         if positions:
             icon_assigned_at[positions[0]] = now
 
-    with _dist_lock:
-        distribution_states[captcha_id] = {
-            "event": event,
-            "usage_log_id": usage_log_id,
-            "api_key_id": api_key_id,
-            "total_icons": 5,
-            "num_operators": num_operators,
-            "operators": {
-                int(op_id): {"assigned": positions, "idx": 0}
-                for op_id, positions in assignments.items()
-            },
-            "all_answers": {},
-            "icon_assigned_at": icon_assigned_at,
-            "icons_cache": icons_cache,
-            "captcha_data": captcha_data,
-        }
+    distribution_states[captcha_id] = {
+        "lock": asyncio.Lock(),
+        "event": event,
+        "usage_log_id": usage_log_id,
+        "api_key_id": api_key_id,
+        "total_icons": 5,
+        "num_operators": num_operators,
+        "operators": {
+            int(op_id): {"assigned": positions, "idx": 0}
+            for op_id, positions in assignments.items()
+        },
+        "all_answers": {},
+        "icon_assigned_at": icon_assigned_at,
+        "icons_cache": icons_cache,
+        "captcha_data": captcha_data,
+        "operator_id_map": operator_id_map or {},
+    }
     logger.info(
         "distribution_state_init captcha=%s usage=%s ops=%s",
         captcha_id,
@@ -118,18 +123,24 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
     operator_id = body.operator_id
     icon_position = body.icon_position
 
-    with _dist_lock:
-        state = distribution_states.get(captcha_id)
-        if not state:
-            return JSONResponse(
-                status_code=404,
-                content={"error": "Distribution state not found for this captcha"},
-            )
+    state = distribution_states.get(captcha_id)
+    if not state:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Distribution state not found for this captcha"},
+        )
 
+    async with state["lock"]:
         if icon_position in state["all_answers"]:
+            next_pos = _find_next_unanswered(state, operator_id)
             return JSONResponse(
                 status_code=409,
-                content={"error": "Icon already answered"},
+                content={
+                    "error": "Icon already answered",
+                    "next_available": next_pos,
+                    "answered_positions": sorted(state["all_answers"].keys()),
+                    "all_coords": state["all_answers"],
+                },
             )
 
         op_info = state["operators"].setdefault(operator_id, {"assigned": [], "idx": 0})
@@ -156,6 +167,15 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
 
         is_complete = len(state["all_answers"]) == state["total_icons"]
 
+        if not is_complete:
+            next_pos = _find_next_unanswered(state, operator_id)
+            if next_pos is not None:
+                state.setdefault("icon_assigned_at", {})[next_pos] = time.time()
+        total_answered = len(state["all_answers"])
+        total_icons = state["total_icons"]
+        all_answers = dict(state["all_answers"])
+        answered_positions = sorted(all_answers.keys())
+
     push_sse(
         {
             "type": "distribution_progress",
@@ -164,17 +184,17 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
             "icon_position": icon_position,
             "x": body.x,
             "y": body.y,
-            "solved_count": len(state["all_answers"]),
-            "total_icons": state["total_icons"],
-            "answered_positions": sorted(state["all_answers"].keys()),
-            "all_coords": state["all_answers"],
+            "solved_count": total_answered,
+            "total_icons": total_icons,
+            "answered_positions": answered_positions,
+            "all_coords": all_answers,
         }
     )
 
     distribution_repo.save_distribution_answer(
         usage_log_id=state.get("usage_log_id"),
         captcha_id=captcha_id,
-        operator_id=operator_id,
+        operator_id=state.get("operator_id_map", {}).get(operator_id, operator_id),
         icon_position=icon_position,
         x=body.x,
         y=body.y,
@@ -182,11 +202,11 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
     )
 
     if is_complete:
-        coords = [state["all_answers"][i] for i in range(state["total_icons"])]
+        coords = [all_answers[i] for i in range(total_icons)]
         coordinates = [{"x": c["x"], "y": c["y"]} for c in coords]
 
-        with sse_lock:
-            entry = pending.get(captcha_id)
+        from src.sse import pending as sse_pending
+        entry = sse_pending.get(captcha_id)
         if entry:
             entry["result"] = {
                 "variantIndex": 0,
@@ -210,8 +230,7 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
         for op_real_id in operator_repo.get_subscribed_operators(owner_id):
             push_sse(solved_event, api_key_id=operator_api_key_id(op_real_id))
 
-        with _dist_lock:
-            distribution_states.pop(captcha_id, None)
+        distribution_states.pop(captcha_id, None)
 
         logger.info(
             "distribution_complete captcha=%s answers=%d",
@@ -223,18 +242,13 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
             content={
                 "complete": True,
                 "coordinates": coordinates,
-                "answered_positions": [int(p) for p in range(state["total_icons"])],
+                "answered_positions": [int(p) for p in range(total_icons)],
             }
         )
 
-    with _dist_lock:
-        next_pos = _find_next_unanswered(state, operator_id)
-        if next_pos is not None:
-            state.setdefault("icon_assigned_at", {})[next_pos] = time.time()
-
-    total_answered = len(state["all_answers"])
-    my_answered = sum(1 for p in op_info.get("assigned", []) if p in state["all_answers"])
-    answered_positions = sorted(state["all_answers"].keys())
+    my_answered = sum(1 for p in assigned if p in all_answers)
+    icons_cache = state["icons_cache"]
+    num_operators = state["num_operators"]
 
     if next_pos is None:
         return JSONResponse(
@@ -243,27 +257,27 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
                 "waiting": True,
                 "solved_count": my_answered,
                 "total_solved": total_answered,
-                "total_icons": state["total_icons"],
+                "total_icons": total_icons,
                 "answered_positions": answered_positions,
                 "all_icons": make_all_icons(
-                    state["icons_cache"],
-                    build_icon_order(operator_id, state["num_operators"]),
+                    icons_cache,
+                    build_icon_order(operator_id, num_operators),
                 ),
             }
         )
 
-    icon_data = state["icons_cache"].get(next_pos, {})
-    icon_order = build_icon_order(operator_id, state["num_operators"])
+    icon_data = icons_cache.get(next_pos, {})
+    icon_order = build_icon_order(operator_id, num_operators)
 
     return JSONResponse(
         content={
             "icon_position": next_pos,
             "image": icon_data.get("image", ""),
             "icon": icon_data.get("icon", ""),
-            "total_icons": state["total_icons"],
+            "total_icons": total_icons,
             "solved_count": my_answered,
             "total_solved": total_answered,
             "answered_positions": answered_positions,
-            "all_icons": make_all_icons(state["icons_cache"], icon_order),
+            "all_icons": make_all_icons(icons_cache, icon_order),
         }
     )

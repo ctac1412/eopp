@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import text
 
-from src.entities import DistributionAnswer, Operator, get_session
+from src.entities import ApiKey, DistributionAnswer, Operator, UsageLog, get_session
 
 
 def _ensure_columns(session):
@@ -62,8 +62,10 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
         page = max(1, min(page, pages))
 
         rows = (
-            session.query(DistributionAnswer, Operator)
+            session.query(DistributionAnswer, Operator, ApiKey)
             .outerjoin(Operator, Operator.id == DistributionAnswer.operator_id)
+            .outerjoin(UsageLog, UsageLog.id == DistributionAnswer.usage_log_id)
+            .outerjoin(ApiKey, ApiKey.id == UsageLog.api_key_id)
             .order_by(DistributionAnswer.created_at.desc())
             .offset((page - 1) * per_page)
             .limit(per_page)
@@ -74,13 +76,17 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
                 "id": a.id,
                 "captcha_id": a.captcha_id,
                 "operator_id": a.operator_id,
-                "operator_nickname": op.nickname if op else f"#{a.operator_id}",
+                "operator_nickname": (
+                    (apikey.label if apikey else "Мастер")
+                    if a.operator_id == 0
+                    else (op.nickname if op else f"#{a.operator_id}")
+                ),
                 "icon_position": a.icon_position,
                 "x": a.x,
                 "y": a.y,
                 "duration_ms": a.duration_ms,
                 "created_at": a.created_at,
             }
-            for a, op in rows
+            for a, op, apikey in rows
         ]
         return {"items": items, "total": total, "page": page, "pages": pages, "per_page": per_page}

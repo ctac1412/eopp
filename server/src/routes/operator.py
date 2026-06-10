@@ -17,6 +17,8 @@ router = APIRouter(tags=["operators"])
 
 @router.post("/operators/{uuid}/link")
 async def operator_link(uuid: str, request: Request):
+    from src.sse.manager import operator_api_key_id, push_sse
+
     op = operator_repo.get_operator_by_uuid(uuid)
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})
@@ -30,8 +32,19 @@ async def operator_link(uuid: str, request: Request):
         master = api_key_repo.get_key_record(master_key)
     if not master:
         return JSONResponse(status_code=403, content={"error": "Invalid master key"})
-    operator_repo.link_operator_to_master(op["id"], master.id)
-    logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
+    link_id, evicted_ids = operator_repo.link_operator_to_master(op["id"], master.id)
+    for evicted_op_id in evicted_ids:
+        push_sse(
+            {"type": "disconnected", "message": "Другой оператор забрал мастера"},
+            api_key_id=operator_api_key_id(evicted_op_id),
+        )
+    if evicted_ids:
+        logger.info(
+            "operator_link op_id=%s uuid=%s master_id=%s evicted=%s",
+            op["id"], uuid, master.id, evicted_ids,
+        )
+    else:
+        logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
     return JSONResponse(content={"ok": True, "operator_id": op["id"]})
 
 

@@ -7,8 +7,8 @@ const isDevBuild = process.env.DEV_BUILD === "true";
 const packageJsonPath = resolve(__dirname, "package.json");
 const packageVersion = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8")).version;
 
-// Load .env.server from project root
-const rootDir = resolve(__dirname, "../prod");
+// Load .env.server from server/deploy
+const rootDir = resolve(__dirname, "../server/deploy");
 const envServerPath = resolve(rootDir, ".env.server");
 let serverUrl = "http://localhost:8765";
 let serverHost = "localhost";

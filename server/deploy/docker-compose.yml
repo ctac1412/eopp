@@ -9,6 +9,7 @@ services:
       - ./plugins:/app/plugins
     environment:
       - EOPP_DB_PATH=/app/data/api_keys.db
+      - EOPP_DATA_DIR=/app/data
       - EOPP_PLUGINS_DIR=/app/plugins
     restart: unless-stopped
 

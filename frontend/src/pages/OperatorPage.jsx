@@ -170,6 +170,10 @@ export function OperatorPage() {
         setForeignMarkers([]);
         addLog("Капча решена!", "success");
       }
+      if (msg.type === "captcha_timeout" && msg.captcha_id === captchaIdRef.current) {
+        clearCaptcha();
+        addLog("Капча: таймаут", "error");
+      }
       if (msg.type === "distribution_progress" && msg.captcha_id === captchaIdRef.current) {
         if (msg.answered_positions) {
           setAnsweredPositions(msg.answered_positions);
@@ -261,6 +265,34 @@ export function OperatorPage() {
         body: JSON.stringify({ captcha_id: captchaId, operator_id: operatorId, icon_position: currentPos ?? assigned[0], x, y }),
       });
       const data = await r.json();
+
+      if (!r.ok) {
+        const nextPos = data.next_available ?? data.next_assigned;
+        if ((r.status === 409 || r.status === 403) && nextPos != null) {
+          setCurrentPos(nextPos);
+          if (data.answered_positions) setAnsweredPositions(data.answered_positions);
+          if (data.all_coords) {
+            const foreign = [];
+            Object.keys(data.all_coords).forEach((pos) => {
+              const c = data.all_coords[pos];
+              if (c.operator_id !== operatorIdRef.current) {
+                foreign.push({ x: c.x, y: c.y, label: parseInt(pos) + 1 });
+              }
+            });
+            setForeignMarkers(foreign);
+          }
+          addLog(`Пропуск: иконка #${(currentPos ?? 0) + 1} уже отвечена`, "info");
+        } else if ((r.status === 409 || r.status === 403) && nextPos == null) {
+          clearCaptcha();
+          addLog("Все иконки отвечены, ожидание...", "info");
+        } else if (r.status === 404) {
+          clearCaptcha();
+          addLog("Капча больше не активна", "error");
+        } else {
+          addLog(data.error || `Ошибка ${r.status}`, "error");
+        }
+        return;
+      }
 
       if (data.coordinates) {
         setComplete(true);

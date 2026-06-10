@@ -178,7 +178,7 @@ class TestDistributionWithSSE:
 
     def test_distribution_state_machine(self, client, master_key, admin_token):
         """Test distribution state init, answer submission, completion."""
-        from src.routes.distribution import init_distribution_state, distribution_states, _dist_lock
+        from src.routes.distribution import init_distribution_state, distribution_states
         import threading
 
         captcha = _make_icon_click_captcha()
@@ -200,14 +200,13 @@ class TestDistributionWithSSE:
             captcha_data=captcha,
         )
 
-        with _dist_lock:
-            assert cid in distribution_states
-            state = distribution_states[cid]
-            assert state["num_operators"] == 2
-            assert state["total_icons"] == 5
-            assert 0 in state["operators"]
-            assert 1 in state["operators"]
-            assert state["operators"][0]["assigned"] == [0, 1, 2]
+        assert cid in distribution_states
+        state = distribution_states[cid]
+        assert state["num_operators"] == 2
+        assert state["total_icons"] == 5
+        assert 0 in state["operators"]
+        assert 1 in state["operators"]
+        assert state["operators"][0]["assigned"] == [0, 1, 2]
 
         # Operator 0 answers icon 0
         r = client.post("/distribution/answer", json={
@@ -255,5 +254,4 @@ class TestDistributionWithSSE:
                 assert len(data["coordinates"]) == 5
 
         # State should be cleaned up
-        with _dist_lock:
-            assert cid not in distribution_states
+        assert cid not in distribution_states

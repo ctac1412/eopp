@@ -164,6 +164,17 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
       });
       const data = await res.json();
 
+      if (!res.ok) {
+        const nextPos = data.next_available ?? data.next_assigned;
+        if ((res.status === 409 || res.status === 403) && nextPos != null) {
+          setCurrentPosition(nextPos);
+          if (data.answered_positions) setAnsweredPositions(data.answered_positions);
+        } else if ((res.status === 409 || res.status === 403) && nextPos == null) {
+          setComplete(true);
+        }
+        return;
+      }
+
       if (data.complete) {
         setComplete(true);
         useCaptchaStore.getState().markSolved(entry.id);

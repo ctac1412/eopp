@@ -21,7 +21,7 @@ def push_sse(msg, api_key_id=None):
     event_type = msg.get("type") if isinstance(msg, dict) else None
     captcha_id = msg.get("captcha_id") if isinstance(msg, dict) else None
     data = f"data: {json.dumps(msg)}\n\n"
-    dead_queues = []
+
     with lock:
         if api_key_id is not None:
             queues = list(sse_queues.get(api_key_id, []))
@@ -35,22 +35,30 @@ def push_sse(msg, api_key_id=None):
             queues = []
             for v in sse_queues.values():
                 queues.extend(v)
-        for q in queues:
-            try:
-                q.put_nowait(data)
-            except Exception:
-                dead_queues.append(q)
-        for q in dead_queues:
-            for v in sse_queues.values():
-                if q in v:
-                    v.remove(q)
+        snapshot = list(queues)
+
+    dead = []
+    for q in snapshot:
+        try:
+            q.put_nowait(data)
+        except Exception:
+            dead.append(q)
+
+    if dead:
+        with lock:
+            for q in dead:
+                for v in sse_queues.values():
+                    if q in v:
+                        v.remove(q)
+
+    delivered = len(snapshot) - len(dead)
     logger.info(
         "sse_push event=%s captcha=%s target_api_key_id=%s delivered=%s dead=%s",
         event_type or "-",
         captcha_id or "-",
         api_key_id if api_key_id is not None else "broadcast",
-        len(queues) - len(dead_queues),
-        len(dead_queues),
+        delivered,
+        len(dead),
     )
 
 
@@ -124,20 +132,29 @@ def get_connected_streams() -> list[dict]:
     from src.repositories import api_key_repo
 
     with lock:
-        result = []
-        for c in sse_connections:
-            key_info = api_key_repo.get_key_by_id(c["api_key_id"]) if c["api_key_id"] else None
-            result.append(
-                {
-                    "api_key_id": c["api_key_id"],
-                    "api_key_label": key_info.label if key_info else None,
-                    "ip": c["ip"],
-                    "connected_at": c["connected_at"],
-                    "connected_at_iso": (
-                        datetime.fromtimestamp(c["connected_at"], tz=UTC).isoformat()
-                        if c["connected_at"]
-                        else None
-                    ),
-                }
-            )
+        snapshot = [
+            {
+                "api_key_id": c["api_key_id"],
+                "ip": c["ip"],
+                "connected_at": c["connected_at"],
+            }
+            for c in sse_connections
+        ]
+
+    result = []
+    for c in snapshot:
+        key_info = api_key_repo.get_key_by_id(c["api_key_id"]) if c["api_key_id"] else None
+        result.append(
+            {
+                "api_key_id": c["api_key_id"],
+                "api_key_label": key_info.label if key_info else None,
+                "ip": c["ip"],
+                "connected_at": c["connected_at"],
+                "connected_at_iso": (
+                    datetime.fromtimestamp(c["connected_at"], tz=UTC).isoformat()
+                    if c["connected_at"]
+                    else None
+                ),
+            }
+        )
     return result

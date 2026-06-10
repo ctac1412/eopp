@@ -9,7 +9,7 @@ RUN pip install uv
 WORKDIR /app
 
 COPY pyproject.toml .
-RUN uv sync --no-dev --no-install-project && uv cache clean
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --no-dev --no-install-project
 
 COPY . .
 
