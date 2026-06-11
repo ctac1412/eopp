@@ -55,8 +55,8 @@ from src.services.user_service import (
 )
 
 
-def update_api_key(api_key_id: int, body) -> tuple[int, dict]:
-    key = api_key_repo.update_api_key(api_key_id, body)
+def update_api_key(api_key_id: int, body, *, admin_id: int | None = None) -> tuple[int, dict]:
+    key = api_key_repo.update_api_key(api_key_id, body, admin_id=admin_id)
     if not key:
         return 404, {"error": "API key not found"}
     return 200, entity_to_dict(key)

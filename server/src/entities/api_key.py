@@ -27,6 +27,7 @@ class ApiKey(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_super_kiosk: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_external: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    admin_role: Mapped[str | None] = mapped_column(String, nullable=True)
     company_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("companies.id"), nullable=True
     )

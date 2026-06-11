@@ -1,5 +1,15 @@
 const CAPTCHA_SERVER = "http://localhost:8765";
 
+const FETCH_TIMEOUT = 15000;
+
+function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+    clearTimeout(timeoutId),
+  );
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   let responded = false;
 
@@ -9,7 +19,7 @@ chrome.runtime.onConnect.addListener((port) => {
       let res;
 
       if (msg.action === "solveCaptcha") {
-        res = await fetch(`${serverUrl}/solve-captcha`, {
+        res = await fetchWithTimeout(`${serverUrl}/solve-captcha`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -18,7 +28,7 @@ chrome.runtime.onConnect.addListener((port) => {
           body: JSON.stringify(msg.payload),
         });
       } else if (msg.action === "confirmUsage") {
-        res = await fetch(`${serverUrl}/confirm-usage`, {
+        res = await fetchWithTimeout(`${serverUrl}/confirm-usage`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -32,7 +42,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "failUsage") {
-        res = await fetch(`${serverUrl}/fail-usage`, {
+        res = await fetchWithTimeout(`${serverUrl}/fail-usage`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -48,7 +58,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "apiKeyStatus") {
-        res = await fetch(
+        res = await fetchWithTimeout(
           `${serverUrl}/api-key-status?key=${encodeURIComponent(msg.payload.apiKey)}`,
           {
             method: "GET",
@@ -58,7 +68,7 @@ chrome.runtime.onConnect.addListener((port) => {
           },
         );
       } else if (msg.action === "registerUsage") {
-        res = await fetch(`${serverUrl}/register-usage`, {
+        res = await fetchWithTimeout(`${serverUrl}/register-usage`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -71,7 +81,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "sharedSlotsClaim") {
-        res = await fetch(`${serverUrl}/slots-group/claim`, {
+        res = await fetchWithTimeout(`${serverUrl}/slots-group/claim`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -84,7 +94,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "sharedSlotsWait") {
-        res = await fetch(`${serverUrl}/slots-group/wait`, {
+        res = await fetchWithTimeout(`${serverUrl}/slots-group/wait`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -97,7 +107,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "sharedSlotsPublish") {
-        res = await fetch(`${serverUrl}/slots-group/publish`, {
+        res = await fetchWithTimeout(`${serverUrl}/slots-group/publish`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -110,7 +120,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "sharedSlotsFail") {
-        res = await fetch(`${serverUrl}/slots-group/fail`, {
+        res = await fetchWithTimeout(`${serverUrl}/slots-group/fail`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -123,7 +133,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "sharedSlotsHeartbeat") {
-        res = await fetch(`${serverUrl}/slots-group/heartbeat`, {
+        res = await fetchWithTimeout(`${serverUrl}/slots-group/heartbeat`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",
@@ -135,7 +145,7 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "checkStream") {
-        res = await fetch(
+        res = await fetchWithTimeout(
           `${serverUrl}/check-stream?api_key=${encodeURIComponent(msg.payload.apiKey)}`,
           {
             method: "GET",
@@ -151,7 +161,7 @@ chrome.runtime.onConnect.addListener((port) => {
         port.disconnect();
         return;
       } else if (msg.action === "scheduledEvent") {
-        res = await fetch(`${serverUrl}/scheduled-event`, {
+        res = await fetchWithTimeout(`${serverUrl}/scheduled-event`, {
           method: "POST",
           headers: {
             Accept: "application/json, text/plain, */*",

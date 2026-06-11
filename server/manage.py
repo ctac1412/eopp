@@ -10,7 +10,7 @@ EOPP Captcha Solver Server - CLI Entry Point.
     python server/manage.py --host 0.0.0.0 --no-ssl # HTTP режим
 
 Переменные окружения:
-    ADMIN_TOKEN - токен для админских операций (по умолчанию: 13243546)
+    ADMIN_TOKEN - токен для админских операций
 """
 
 import os
@@ -37,9 +37,6 @@ except ImportError:
     pass
 
 import typer
-
-# Импортируем только константы, не зависящие от EOPP_DATA_DIR
-from src.constants import CAPTCHA_TIMEOUT, PORT
 
 app = typer.Typer(help="Captcha Solver Server")
 
@@ -86,7 +83,7 @@ def ensure_self_signed_cert():
 @app.callback(invoke_without_command=True)
 def main(
     host: str = "127.0.0.1",
-    port: int = PORT,
+    port: int = 8765,
     no_ssl: bool = False,
     data_dir: str = None,
 ):
@@ -99,7 +96,7 @@ def main(
 
     import src.constants as constants
     from src.app import create_app
-    from src.constants import NO_VALID_DIR, TEST_DIR, VALID_DIR
+    from src.constants import CAPTCHA_TIMEOUT, NO_VALID_DIR, TEST_DIR, VALID_DIR
     from src.logging_config import configure_logging
 
     log_level = logging.getLevelName(configure_logging()).lower()
@@ -145,6 +142,14 @@ def main(
     typer.echo(
         f"  Frontend dist   : {'built' if os.path.isdir(frontend_dist) else 'NOT BUILT — run make build-frontend'}"
     )
+    rucaptcha_key = os.environ.get("RUCAPTCHA_API_KEY", "").strip()
+    rucaptcha_enabled = os.environ.get("EOPP_AUTO_SOLVER_ENABLED", "0") != "0"
+    if rucaptcha_enabled:
+        typer.echo(
+            f"  Rucaptcha       : {'configured' if rucaptcha_key else 'DISABLED — RUCAPTCHA_API_KEY not set'}"
+        )
+    else:
+        typer.echo("  Rucaptcha       : disabled (EOPP_AUTO_SOLVER_ENABLED=0)")
     typer.echo("=" * 56)
     typer.echo()
     typer.echo("Endpoints:")

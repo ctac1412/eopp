@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,7 +25,8 @@ def isolate_db(monkeypatch):
     from src.entities.base import set_db_path
 
     # comment
-    test_db = tempfile.mktemp(suffix=".db")
+    fd, test_db = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
 
     # comment
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
@@ -100,6 +102,20 @@ class TestAPIKeys:
         response = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
         assert isinstance(response.json(), list)
+
+    def test_public_key_list_does_not_expose_secret_keys(self, client, admin_token):
+        created = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "public_safe"},
+        ).json()
+
+        response = client.get("/api-keys/public")
+
+        assert response.status_code == 200
+        public_key = next(item for item in response.json() if item["label"] == "public_safe")
+        assert "key" not in public_key
+        assert created["key"] not in json.dumps(response.json())
 
     def test_validate_key_includes_peak_create_price(self, client, admin_token):
         """doc"""
@@ -221,6 +237,46 @@ class TestUsage:
         # comment
         response = client.post("/confirm-usage", json={"api_key": api_key, "usage_log_id": uid})
         assert response.status_code == 200
+
+    def test_confirm_usage_does_not_exceed_max_uses(self, client, admin_token):
+        from src.repositories import api_key_repo
+        from src.sse.manager import lock, sse_queues
+
+        created = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "limited_confirm", "max_uses": 1},
+        ).json()
+        key_record = api_key_repo.get_key_record(created["key"])
+        with lock:
+            sse_queues.setdefault(key_record.id, []).append(object())
+
+        try:
+            first = client.post(
+                "/register-usage",
+                json={"api_key": created["key"], "reservation_id": "limited-1"},
+            ).json()["usage_log_id"]
+            second = client.post(
+                "/register-usage",
+                json={"api_key": created["key"], "reservation_id": "limited-2"},
+            ).json()["usage_log_id"]
+
+            assert client.post(
+                "/confirm-usage", json={"api_key": created["key"], "usage_log_id": first}
+            ).status_code == 200
+            response = client.post(
+                "/confirm-usage", json={"api_key": created["key"], "usage_log_id": second}
+            )
+
+            assert response.status_code == 429
+            status = client.get(f"/api-key-status?key={created['key']}").json()
+            assert status["remaining"] == 0
+        finally:
+            with lock:
+                if key_record.id in sse_queues:
+                    sse_queues[key_record.id].pop()
+                    if not sse_queues[key_record.id]:
+                        del sse_queues[key_record.id]
 
     def test_confirm_create_usage_uses_peak_price_at_noon_msk(
         self, client, admin_token, monkeypatch
@@ -508,6 +564,52 @@ class TestAdmin:
         data = response.json()
         assert data["limit"] == 3
         assert data["lines"] == ["line 2", "line 3", "line 4"]
+
+    def test_admin_api_key_update_writes_audit_log(self, client, admin_token):
+        from src.db.audit_log import list_audit_log
+
+        created = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "audit_target"},
+        ).json()
+
+        response = client.patch(
+            f"/admin/api-keys/{created['id']}",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "audit_target_updated"},
+        )
+
+        assert response.status_code == 200
+        audit_rows = list_audit_log()
+        assert any(
+            row["action"] == "update_api_key" and row["target_id"] == created["id"]
+            for row in audit_rows
+        )
+
+    def test_rucaptcha_callback_rejects_invalid_hmac_signature(self, client, monkeypatch):
+        import src.routes.callback as callback_route
+
+        monkeypatch.setattr(callback_route, "_RUCAPTCHA_IPS", set())
+        monkeypatch.setattr(callback_route, "_RUCAPTCHA_SECRET", "secret")
+
+        response = client.post(
+            "/rucaptcha-callback",
+            content="id=task-1&code=1,2",
+            headers={"X-Signature": "bad-signature"},
+        )
+
+        assert response.status_code == 403
+
+    def test_rate_limit_respects_env_configuration(self, monkeypatch):
+        monkeypatch.setenv("EOPP_RATE_LIMIT_VALIDATE", "1")
+
+        from src.app import create_app
+
+        local_client = TestClient(create_app())
+
+        assert local_client.get("/validate-key?api_key=missing").status_code == 200
+        assert local_client.get("/validate-key?api_key=missing").status_code == 429
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
@@ -1639,9 +1741,44 @@ class TestIconClickCaptcha:
         assert body.get("status") == "timeout"
         assert body.get("captcha_id") is not None
 
+    def test_duplicate_solve_captcha_type1_timeout_returns_object(
+        self, client, api_key, monkeypatch
+    ):
+        import src.routes.captcha as captcha_route
+
+        monkeypatch.setattr(captcha_route, "captcha_timeout", 0.2)
+        payload = {
+            "api_key": api_key,
+            "auto_solve": False,
+            "timeout_metadata": True,
+            "type": 1,
+            "token": "zc_duplicate_token",
+            "puzzle": {
+                "imageBase64": self._TINY_PNG,
+                "iconsBase64": self._TINY_PNG,
+            },
+        }
+        results = []
+
+        def post_captcha():
+            results.append(client.post("/solve-captcha", json=payload))
+
+        threads = [threading.Thread(target=post_captcha) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=3)
+
+        assert len(results) == 2
+        assert all(response.status_code == 200 for response in results)
+        bodies = [response.json() for response in results]
+        assert all(isinstance(body, dict) for body in bodies)
+        assert all(body.get("status") == "timeout" for body in bodies)
+
     def test_solve_type1_with_coordinates(self, client, api_key):
         """POST /solve with coordinates marks type=1 captcha as solved."""
         import threading, time
+        from src.sse import lock, pending
 
         captcha_id = None
         result = {}
@@ -1669,14 +1806,13 @@ class TestIconClickCaptcha:
         t.start()
 
         # Wait for captcha to be pending, then solve
-        time.sleep(0.3)
-
-        # The captcha_id is in the response; but we need it from the pending state.
-        # For the test, we capture it from the captcha response after timeout.
-        t.join(timeout=5)
-
-        if result.get("status") == "timeout":
-            captcha_id = result["captcha_id"]
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with lock:
+                captcha_id = next(iter(pending.keys()), None)
+            if captcha_id:
+                break
+            time.sleep(0.05)
 
         if captcha_id is None:
             pytest.skip("Captcha not created in time")
@@ -1707,6 +1843,8 @@ class TestIconClickCaptcha:
             {"x": 23, "y": 17},
             {"x": 45, "y": 118},
         ]
+        t.join(timeout=5)
+        assert result["variantIndex"] == 0
         assert body.get("captcha_type") == 1
 
     def test_type1_answer_matches_eopp_format(self):

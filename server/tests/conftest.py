@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Admin token is now required at import time — set default for tests
+os.environ.setdefault("ADMIN_TOKEN", "test_admin_token_123")
+
 # Windows: system Temp dir may be locked by antivirus. Use project-local dir.
 if os.name == "nt" and "PYTEST_DEBUG_TEMPROOT" not in os.environ:
     _tmp_root = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".pytest-tmp")
@@ -20,7 +23,7 @@ def isolated_api_db(monkeypatch):
     import src.db.init as init_module
     from src.entities.base import set_db_path
 
-    test_db = tempfile.mktemp(suffix=".db")
+    test_db = tempfile.mkstemp(suffix=".db")[1]
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
     set_db_path(test_db)
     init_module.init_db()

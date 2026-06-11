@@ -216,12 +216,33 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-) -> bool:
+) -> bool | str:
     conn = get_connection()
+    conn.execute("BEGIN IMMEDIATE")
     row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
     if not row:
+        conn.execute("ROLLBACK")
         conn.close()
         return False
+
+    if row["status"] == "confirmed":
+        conn.commit()
+        conn.close()
+        return True
+
+    usage_update = conn.execute(
+        """UPDATE api_keys
+           SET usage_count = usage_count + 1
+           WHERE id = ?
+             AND active = 1
+             AND (max_uses IS NULL OR usage_count < max_uses)""",
+        (row["api_key_id"],),
+    )
+    if usage_update.rowcount != 1:
+        conn.execute("ROLLBACK")
+        conn.close()
+        return "limit_exceeded"
+
     now = datetime.now(UTC).isoformat()
     logs_json = json.dumps(logs) if logs else None
     conn.execute(
@@ -242,14 +263,12 @@ def confirm_usage(
             (price, usage_log_id),
         )
         deducted = deduct_prepaid_for_usage_tx(conn, row["api_key_id"], usage_log_id, price)
-        if company and not deducted:
-            conn.commit()
-            link_usage_to_open_invoice(usage_log_id, company)
-    conn.execute(
-        "UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?",
-        (row["api_key_id"],),
-    )
+    else:
+        company = None
+        deducted = False
     conn.commit()
+    if company and not deducted:
+        link_usage_to_open_invoice(usage_log_id, company)
 
     stored_logs = _read_usage_logs(conn, usage_log_id)
     if stored_logs and _should_index_captchas(config_json):

@@ -77,7 +77,7 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
-) -> bool:
+) -> bool | str:
     return db_confirm_usage(usage_log_id, slot_date, logs)
 
 

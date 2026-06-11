@@ -80,6 +80,8 @@ def confirm_usage(body) -> tuple[int, dict]:
         return 404, {"error": "Usage log entry not found"}
 
     ok = usage_log_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs)
+    if ok == "limit_exceeded":
+        return 429, {"error": "Maximum uses exceeded"}
     if not ok:
         return 404, {"error": "Usage log entry not found"}
     telegram_service.notify_confirmed_usage(usage_log_repo.get_usage_log(body.usage_log_id))

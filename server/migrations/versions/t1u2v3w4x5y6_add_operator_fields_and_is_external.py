@@ -23,18 +23,27 @@ def _column_exists(table_name: str, column_name: str) -> bool:
     return any(row[1] == column_name for row in rows)
 
 
+def _table_exists(table_name: str) -> bool:
+    conn = op.get_bind()
+    row = conn.exec_driver_sql(
+        f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+    ).fetchone()
+    return row is not None
+
+
 def upgrade() -> None:
-    if not _column_exists("operators", "icon_display_mode"):
-        op.execute(
-            "ALTER TABLE operators ADD COLUMN icon_display_mode TEXT "
-            "NOT NULL DEFAULT 'own_then_foreign'"
-        )
-    if not _column_exists("operators", "allowed_master_keys"):
-        op.execute("ALTER TABLE operators ADD COLUMN allowed_master_keys TEXT")
-    if not _column_exists("operators", "online"):
-        op.execute(
-            "ALTER TABLE operators ADD COLUMN online INTEGER NOT NULL DEFAULT 0"
-        )
+    if _table_exists("operators"):
+        if not _column_exists("operators", "icon_display_mode"):
+            op.execute(
+                "ALTER TABLE operators ADD COLUMN icon_display_mode TEXT "
+                "NOT NULL DEFAULT 'own_then_foreign'"
+            )
+        if not _column_exists("operators", "allowed_master_keys"):
+            op.execute("ALTER TABLE operators ADD COLUMN allowed_master_keys TEXT")
+        if not _column_exists("operators", "online"):
+            op.execute(
+                "ALTER TABLE operators ADD COLUMN online INTEGER NOT NULL DEFAULT 0"
+            )
     if not _column_exists("api_keys", "is_external"):
         op.execute(
             "ALTER TABLE api_keys ADD COLUMN is_external INTEGER NOT NULL DEFAULT 0"

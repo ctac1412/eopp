@@ -45,6 +45,9 @@ function AdminPage() {
   const [adminToken, setAdminToken] = useState(
     () => localStorage.getItem("admin_token") || null,
   );
+  const [adminRole, setAdminRole] = useState(
+    () => localStorage.getItem("admin_role") || null,
+  );
   const [authInput, setAuthInput] = useState("");
   const [authError, setAuthError] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -456,9 +459,13 @@ function AdminPage() {
         body: JSON.stringify({ token: authInput }),
       });
       if (!res.ok) throw new Error("Неверный токен");
+      const data = await res.json();
+      const role = data.role || "manager";
       const token = authInput;
       localStorage.setItem("admin_token", token);
+      localStorage.setItem("admin_role", role);
       setAdminToken(token);
+      setAdminRole(role);
       setAuthError(null);
       fetchKeys(token);
     } catch (err) {
@@ -470,7 +477,9 @@ function AdminPage() {
 
   const handleLogout = () => {
     localStorage.removeItem("admin_token");
+    localStorage.removeItem("admin_role");
     setAdminToken(null);
+    setAdminRole(null);
     setKeys([]);
     setExpandedHistory({});
     setExpandedLogs({});
@@ -1115,6 +1124,9 @@ function AdminPage() {
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4 className="mb-0 fw-bold" style={{ fontSize: "1.125rem" }}>Админ-панель</h4>
         <div className="d-flex gap-2 align-items-center">
+          <span className={`badge ${adminRole === "super_admin" ? "bg-danger" : "bg-secondary"}`} style={{ fontSize: "0.7rem" }}>
+            {adminRole === "super_admin" ? "Суперадмин" : "Менеджер"}
+          </span>
           {activeTab === "keys" && (
             <button className="btn btn-sm btn-primary" onClick={() => { setShowCreate(true); fetchCompanies(adminToken); }}>
               + Новый ключ

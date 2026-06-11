@@ -44,6 +44,8 @@ from src.db import (
 )
 
 from src.services import captcha_file_service, captcha_service
+from src.routes.health import counter_inc as _counter
+from src.routes.health import gauge_set as _gauge
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
 from src.test_runner import next_result_id
 
@@ -77,6 +79,7 @@ def _log_solve_step(
 @router.post("/solve-captcha")
 async def handle_captcha(body: SolveCaptchaBody):
     request_start = time.perf_counter()
+    _counter("captcha_solve_requests")
     rid = f"usage:{body.usage_log_id}" if body.usage_log_id else "usage:new"
     captcha_id = None
     auto_solve = body.auto_solve
@@ -379,9 +382,41 @@ async def handle_captcha(body: SolveCaptchaBody):
         }
 
     step_start = time.perf_counter()
+    is_duplicate = False
     with lock:
-        pending[captcha_id] = entry
-    _log_solve_step(rid, captcha_id, "pending_store", step_start)
+        existing = pending.get(captcha_id)
+        if existing:
+            is_duplicate = True
+            event = existing["event"]
+        else:
+            pending[captcha_id] = entry
+    _log_solve_step(rid, captcha_id, "pending_store", step_start, duplicate=is_duplicate)
+
+    if is_duplicate:
+        await asyncio.to_thread(event.wait, captcha_timeout)
+        existing = pending.get(captcha_id, {})
+        result = existing.get("result")
+        if result is None:
+            result = {
+                "status": "timeout",
+                "error": "captcha_timeout",
+                "usage_log_id": entry.get("usage_log_id"),
+                "captcha_id": captcha_id,
+            }
+        if result:
+            result["usage_log_id"] = entry.get("usage_log_id")
+            result["captcha_id"] = captcha_id
+        _log_solve_step(
+            rid,
+            captcha_id,
+            "finish",
+            request_start,
+            mode="manual",
+            status=result.get("status") if isinstance(result, dict) else "null",
+            has_result=result is not None,
+            duplicate=True,
+        )
+        return JSONResponse(content=result)
 
     step_start = time.perf_counter()
     owner_info = get_key_by_id(api_key_id)
@@ -451,9 +486,7 @@ async def handle_captcha(body: SolveCaptchaBody):
 
     step_start = time.perf_counter()
     effective_timeout = 3600 if body.test_no_timeout else captcha_timeout
-    await asyncio.get_event_loop().run_in_executor(
-        None, lambda: event.wait(timeout=effective_timeout)
-    )
+    await asyncio.to_thread(event.wait, effective_timeout)
     _log_solve_step(
         rid,
         captcha_id,

@@ -115,27 +115,52 @@ def update_key(key_id: int, **kwargs) -> ApiKey | None:
         return key
 
 
-def update_api_key(api_key_id: int, body) -> ApiKey | None:
+def update_api_key(api_key_id: int, body, *, admin_id: int | None = None) -> ApiKey | None:
+    import json
+
     with get_session() as session:
         key = session.get(ApiKey, api_key_id)
         if not key:
             return None
-        if body.label is not None:
+        changes = {}
+        if body.label is not None and body.label != key.label:
+            changes["label"] = (key.label, body.label)
             key.label = body.label
-        if body.max_uses is not None:
+        if body.max_uses is not None and body.max_uses != key.max_uses:
+            changes["max_uses"] = (str(key.max_uses), str(body.max_uses))
             key.max_uses = body.max_uses
-        if body.active is not None:
+        if body.active is not None and body.active != key.active:
+            changes["active"] = (str(key.active), str(body.active))
             key.active = body.active
-        if body.comment is not None:
+        if body.comment is not None and body.comment != key.comment:
+            changes["comment"] = (key.comment, body.comment)
             key.comment = body.comment
-        if body.is_admin is not None:
+        if body.is_admin is not None and body.is_admin != key.is_admin:
+            changes["is_admin"] = (str(key.is_admin), str(body.is_admin))
             key.is_admin = body.is_admin
-        if body.is_super_kiosk is not None:
+        if body.is_super_kiosk is not None and body.is_super_kiosk != key.is_super_kiosk:
+            changes["is_super_kiosk"] = (str(key.is_super_kiosk), str(body.is_super_kiosk))
             key.is_super_kiosk = body.is_super_kiosk
-        if body.is_external is not None:
+        if body.is_external is not None and body.is_external != key.is_external:
+            changes["is_external"] = (str(key.is_external), str(body.is_external))
             key.is_external = body.is_external
+        if body.admin_role is not None and body.admin_role != key.admin_role:
+            changes["admin_role"] = (key.admin_role, body.admin_role)
+            key.admin_role = body.admin_role
         session.commit()
         session.refresh(key)
+
+        if changes and admin_id is not None:
+            from src.db.audit_log import log_audit
+
+            log_audit(
+                admin_id=admin_id,
+                action="update_api_key",
+                target_type="api_key",
+                target_id=api_key_id,
+                old_value=json.dumps({k: v[0] for k, v in changes.items()}, ensure_ascii=False),
+                new_value=json.dumps({k: v[1] for k, v in changes.items()}, ensure_ascii=False),
+            )
         return key
 
 
@@ -168,7 +193,12 @@ def validate_api_key(api_key: str) -> dict:
     if not record.active:
         return {"valid": False, "reason": "Key is disabled"}
     if record.max_uses is not None and record.usage_count >= record.max_uses:
-        return {"valid": False, "reason": "Maximum uses exceeded"}
+        return {
+            "valid": False,
+            "reason": "Maximum uses exceeded",
+            "remaining": 0,
+            "max_uses": record.max_uses,
+        }
     remaining = None
     if record.max_uses is not None:
         remaining = record.max_uses - record.usage_count
@@ -193,6 +223,23 @@ def check_admin_token(token: str) -> bool:
             .first()
             is not None
         )
+
+
+def get_admin_role(token: str) -> str | None:
+    """Return admin_role ('super_admin'|'manager'|None) for a valid admin token."""
+    with get_session() as session:
+        key = (
+            session.query(ApiKey)
+            .filter(ApiKey.key == token, ApiKey.active.is_(True), ApiKey.is_admin.is_(True))
+            .first()
+        )
+        if key is None:
+            return None
+        return key.admin_role
+
+
+def is_super_admin_token(token: str) -> bool:
+    return get_admin_role(token) == "super_admin"
 
 
 def is_super_kiosk_key(key: str) -> bool:

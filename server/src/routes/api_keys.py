@@ -39,7 +39,7 @@ def _make_masked(record):
 async def list_public_keys():
     keys = api_key_repo.list_keys()
     return JSONResponse(content=[
-        {"key": k["key"], "label": k["label"], "active": k["active"]}
+        {"id": k["id"], "label": k["label"], "active": k["active"]}
         for k in keys
     ])
 

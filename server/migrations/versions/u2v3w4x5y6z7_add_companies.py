@@ -49,7 +49,7 @@ def upgrade() -> None:
         op.execute("ALTER TABLE api_keys ADD COLUMN company_id INTEGER")
 
     # Add company_id to operators
-    if not _column_exists("operators", "company_id"):
+    if _table_exists("operators") and not _column_exists("operators", "company_id"):
         op.execute("ALTER TABLE operators ADD COLUMN company_id INTEGER")
 
     # Add company_id to usage_log

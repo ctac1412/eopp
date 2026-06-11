@@ -152,7 +152,12 @@ def validate_key(key: str) -> dict:
         return {"valid": False, "reason": "Key is disabled"}
 
     if record["max_uses"] is not None and record["usage_count"] >= record["max_uses"]:
-        return {"valid": False, "reason": "Maximum uses exceeded"}
+        return {
+            "valid": False,
+            "reason": "Maximum uses exceeded",
+            "remaining": 0,
+            "max_uses": record["max_uses"],
+        }
 
     remaining = None
     if record["max_uses"] is not None:
@@ -168,11 +173,26 @@ def validate_key(key: str) -> dict:
 
 def increment_usage(key: str) -> bool:
     conn = get_connection()
-    row = conn.execute("SELECT * FROM api_keys WHERE key = ?", (key,)).fetchone()
+    conn.execute("BEGIN IMMEDIATE")
+    row = conn.execute(
+        "SELECT usage_count, max_uses FROM api_keys WHERE key = ? AND active = 1",
+        (key,),
+    ).fetchone()
     if not row:
+        conn.execute("ROLLBACK")
         conn.close()
         return False
-    conn.execute("UPDATE api_keys SET usage_count = usage_count + 1 WHERE key = ?", (key,))
+    usage = row["usage_count"]
+    max_uses = row["max_uses"]
+    if max_uses is not None and usage >= max_uses:
+        conn.execute("ROLLBACK")
+        conn.close()
+        return False
+    conn.execute(
+        "UPDATE api_keys SET usage_count = usage_count + 1 "
+        "WHERE key = ? AND (max_uses IS NULL OR usage_count < max_uses)",
+        (key,),
+    )
     conn.commit()
     conn.close()
     return True

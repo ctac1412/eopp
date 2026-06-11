@@ -1,9 +1,7 @@
-import os
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from src.constants import PROJECT_DIR
+from src.constants import DB_PATH as _constants_db_path
 
 _DB_PATH: str | None = None
 _engine = None
@@ -13,9 +11,7 @@ _session_factory: sessionmaker[Session] | None = None
 def _get_db_path() -> str:
     global _DB_PATH
     if _DB_PATH is None:
-        _DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(
-            PROJECT_DIR, "data", "api_keys.db"
-        )
+        _DB_PATH = _constants_db_path
     return _DB_PATH
 
 

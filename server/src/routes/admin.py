@@ -46,7 +46,7 @@ from src.models import (
     UpdateUsageLogBody,
     UpdateUserBody,
 )
-from src.policies.access_policy import requires_admin
+from src.policies.access_policy import requires_admin, requires_super_admin
 from src.repositories import api_key_repo, company_repo, usage_log_repo
 
 logger = logging.getLogger("eopp.admin")
@@ -65,6 +65,13 @@ def admin_auth_middleware_factory(app):
             token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
             if not token or not api_key_repo.check_admin_token(token):
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+            # API keys write operations (PUT/PATCH/DELETE /api-keys) require super_admin
+            if requires_super_admin(request.method, path):
+                if not api_key_repo.is_super_admin_token(token):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "Forbidden: super_admin role required"},
+                    )
         response = await call_next(request)
         return response
 
@@ -86,13 +93,40 @@ def _tail_lines(path: Path, limit: int) -> list[str]:
 @router.post("/auth")
 async def admin_auth(body: AdminAuthBody):
     if api_key_repo.check_admin_token(body.token):
-        return JSONResponse(content={"ok": True})
+        role = api_key_repo.get_admin_role(body.token) or "manager"
+        return JSONResponse(content={"ok": True, "role": role})
     return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
 
 @router.get("/streams")
 async def admin_streams():
     return JSONResponse(content=get_connected_streams())
+
+
+@router.get("/dashboard")
+async def admin_dashboard():
+    from src.routes.distribution import distribution_states
+    from src.sse import lock as sse_lock, pending as sse_pending, sse_queues
+    from src.repositories import operator_repo
+    from src.auto_operator import AUTO_SOLVER_ENABLED, _pending_callbacks as rucaptcha_pending
+
+    with sse_lock:
+        sse_total = sum(len(v) for v in sse_queues.values())
+        sse_keys = list(sse_queues.keys())
+
+    operators = operator_repo.list_operators()
+    online_ops = [o for o in operators if o.get("online")]
+
+    return JSONResponse(content={
+        "pending_captchas": len(sse_pending),
+        "distribution_states": len(distribution_states),
+        "sse_connections": sse_total,
+        "sse_api_key_ids": sse_keys,
+        "operators_total": len(operators),
+        "operators_online": len(online_ops),
+        "rucaptcha_enabled": AUTO_SOLVER_ENABLED,
+        "rucaptcha_pending_callbacks": len(rucaptcha_pending),
+    })
 
 
 @router.get("/test-stats")
@@ -251,8 +285,11 @@ async def delete_admin_tariff(api_key_id: int):
 
 
 @router.patch("/api-keys/{id}")
-async def update_api_key(id: int, body: UpdateApiKeyBody):
-    return _json_result(billing_service.update_api_key(id, body))
+async def update_api_key(id: int, body: UpdateApiKeyBody, request: Request):
+    admin_token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    admin_record = api_key_repo.get_key_record(admin_token) if admin_token else None
+    admin_id = admin_record.id if admin_record else None
+    return _json_result(billing_service.update_api_key(id, body, admin_id=admin_id))
 
 
 @router.patch("/usage-log/{id}")

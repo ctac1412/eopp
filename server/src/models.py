@@ -54,6 +54,7 @@ class UpdateApiKeyBody(BaseModel):
     is_admin: bool | None = None
     is_super_kiosk: bool | None = None
     is_external: bool | None = None
+    admin_role: str | None = None
     company_id: int | None = None
 
 

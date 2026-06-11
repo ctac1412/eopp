@@ -11,11 +11,21 @@ EOPP Captcha Solver - Constants and Configuration.
 Используется во всех модулях для доступа к конфигурации.
 """
 
+import logging
 import os
+
+logger = logging.getLogger("eopp.constants")
 
 PORT = 8765
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAPTCHA_TIMEOUT = 10
+
+# Единый путь к БД — все модули должны ссылаться сюда
+DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "data", "api_keys.db")
+
+# Разрешённые origins для CORS (через запятую в env, по умолчанию localhost)
+_CORS_ORIGINS_RAW = os.environ.get("EOPP_CORS_ORIGINS", "http://localhost:8765,http://localhost:8766,http://127.0.0.1:8765,http://127.0.0.1:8766")
+CORS_ORIGINS = [o.strip() for o in _CORS_ORIGINS_RAW.split(",") if o.strip()]
 
 DISTRIBUTION = {
     1: {"0": [0, 1, 2, 3, 4]},                                          # соло
@@ -71,14 +81,27 @@ AUTO_SOLVER_ORDER = {
 
 DISTRIBUTION_CROP_PAD = 60
 
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN") or 13243546
-if not ADMIN_TOKEN:
+def _load_admin_token() -> str:
+    """Load admin token from env or file. Raise StartupError if not set."""
+    token = os.environ.get("ADMIN_TOKEN")
+    if token:
+        return str(token)
+
     admin_token_path = os.path.join(PROJECT_DIR, "data", "admin_token")
     if os.path.exists(admin_token_path):
         with open(admin_token_path) as f:
-            ADMIN_TOKEN = f.readline().strip()
+            token = f.readline().strip()
+            if token:
+                return str(token)
 
-ADMIN_TOKEN = str(ADMIN_TOKEN)
+    from src.errors import StartupError
+    raise StartupError(
+        "ADMIN_TOKEN is not set. "
+        "Set ADMIN_TOKEN environment variable or create data/admin_token file."
+    )
+
+
+ADMIN_TOKEN = _load_admin_token()
 PROTECTED_PATHS = (
     "/api-keys",
     "/admin/streams",

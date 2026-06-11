@@ -7,9 +7,8 @@ SQLite подключение и инициализация базы данны�
 import os
 import sqlite3
 
-from src.constants import PROJECT_DIR
+from src.constants import DB_PATH, PROJECT_DIR
 
-DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "data", "api_keys.db")
 DB_DIR = os.path.dirname(DB_PATH) or os.path.join(PROJECT_DIR, "data")
 
 

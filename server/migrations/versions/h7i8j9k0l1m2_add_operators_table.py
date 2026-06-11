@@ -23,6 +23,10 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column('uuid', sa.Text(), nullable=False, unique=True),
         sa.Column('nickname', sa.Text(), nullable=False),
+        sa.Column('icon_display_mode', sa.Text(), nullable=False, server_default='own_then_foreign'),
+        sa.Column('allowed_master_keys', sa.Text(), nullable=True),
+        sa.Column('online', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('company_id', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.Text(), nullable=False),
     )
 

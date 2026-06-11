@@ -31,6 +31,7 @@ def register_all_routes(app):
     from src.routes.chat import router as chat_router
     from src.routes.distribution import router as distribution_router
     from src.routes.frontend import register_frontend_routes, register_test_pages
+    from src.routes.health import router as health_router
     from src.routes.mock import router as mock_router
     from src.routes.operator import router as operator_router
     from src.routes.plugin_files import router as plugin_router
@@ -42,6 +43,7 @@ def register_all_routes(app):
 
     admin_auth_middleware_factory(app)
 
+    app.include_router(health_router)
     app.include_router(sse_router)
     app.include_router(callback_router)
     app.include_router(callback_txt_router)

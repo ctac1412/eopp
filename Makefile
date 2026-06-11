@@ -137,3 +137,11 @@ migrate-downgrade:
 
 migrate-downgrade-all:
 	cd server && uv run python -m alembic downgrade base
+
+# === Tests ===
+
+test:
+	uv run pytest server/tests/ -v
+
+test-fast:
+	uv run pytest server/tests/ -v -x --tb=short

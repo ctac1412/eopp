@@ -20,24 +20,40 @@ from src.constants import PLUGINS_DIR
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
 
+_real_plugins_dir = os.path.realpath(PLUGINS_DIR)
+
+
+def _safe_plugin_path(filename: str) -> str | None:
+    resolved = os.path.realpath(os.path.join(_real_plugins_dir, filename))
+    common = os.path.commonpath([resolved, _real_plugins_dir])
+    if common != _real_plugins_dir:
+        return None
+    return resolved
+
 
 @router.get("/update.xml")
 async def serve_plugin_update():
-    file_path = os.path.join(PLUGINS_DIR, "update.xml")
-    if not os.path.isfile(file_path):
+    file_path = os.path.join(_real_plugins_dir, "update.xml")
+    resolved = os.path.realpath(file_path)
+    if os.path.commonpath([resolved, _real_plugins_dir]) != _real_plugins_dir:
         return JSONResponse(status_code=404, content={"error": "update.xml not found"})
-    return FileResponse(file_path, media_type="application/xml")
+    if not os.path.isfile(resolved):
+        return JSONResponse(status_code=404, content={"error": "update.xml not found"})
+    return FileResponse(resolved, media_type="application/xml")
 
 
 @router.get("/latest")
 async def serve_plugin_latest():
-    crx_files = [f for f in os.listdir(PLUGINS_DIR) if f.endswith(".crx")]
+    crx_files = [f for f in os.listdir(_real_plugins_dir) if f.endswith(".crx")]
     if not crx_files:
         return JSONResponse(status_code=404, content={"error": "No CRX files found"})
     crx_files.sort()
     latest = crx_files[-1]
+    resolved = os.path.realpath(os.path.join(_real_plugins_dir, latest))
+    if os.path.commonpath([resolved, _real_plugins_dir]) != _real_plugins_dir:
+        return JSONResponse(status_code=404, content={"error": "File not found"})
     return FileResponse(
-        os.path.join(PLUGINS_DIR, latest),
+        resolved,
         media_type="application/x-chrome-extension",
         filename=latest,
     )
@@ -45,8 +61,8 @@ async def serve_plugin_latest():
 
 @router.get("/{filename}")
 async def serve_plugin_file(filename: str):
-    file_path = os.path.join(PLUGINS_DIR, filename)
-    if not os.path.isfile(file_path):
+    file_path = _safe_plugin_path(filename)
+    if file_path is None or not os.path.isfile(file_path):
         return JSONResponse(status_code=404, content={"error": "File not found"})
 
     ext = os.path.splitext(filename)[1].lower()

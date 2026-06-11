@@ -167,6 +167,14 @@ def delete_prepaid_package(package_id: int) -> bool:
 def deduct_prepaid_for_usage_tx(conn, api_key_id: int, usage_log_id: int, amount: int) -> bool:
     if amount <= 0:
         return False
+
+    already = conn.execute(
+        "SELECT id FROM prepaid_deductions WHERE usage_log_id = ?",
+        (usage_log_id,),
+    ).fetchone()
+    if already:
+        return True
+
     package = conn.execute(
         """SELECT * FROM prepaid_packages
            WHERE api_key_id = ? AND active = 1
@@ -176,19 +184,14 @@ def deduct_prepaid_for_usage_tx(conn, api_key_id: int, usage_log_id: int, amount
     if not package or package["balance_amount"] < amount:
         return False
 
-    already = conn.execute(
-        "SELECT id FROM prepaid_deductions WHERE usage_log_id = ?",
-        (usage_log_id,),
-    ).fetchone()
-    if already:
-        return True
-
     now = datetime.now(UTC).isoformat()
     next_balance = package["balance_amount"] - amount
-    conn.execute(
-        "UPDATE prepaid_packages SET balance_amount = ?, updated_at = ? WHERE id = ?",
-        (next_balance, now, package["id"]),
+    updated = conn.execute(
+        "UPDATE prepaid_packages SET balance_amount = ?, updated_at = ? WHERE id = ? AND balance_amount >= ?",
+        (next_balance, now, package["id"], amount),
     )
+    if updated.rowcount != 1:
+        return False
     conn.execute(
         """INSERT INTO prepaid_deductions (package_id, usage_log_id, amount, created_at)
            VALUES (?, ?, ?, ?)""",

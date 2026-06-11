@@ -25,7 +25,8 @@ def isolate_db(monkeypatch):
     import src.db.init as init_module
     from src.entities.base import set_db_path
 
-    test_db = tempfile.mktemp(suffix=".db")
+    fd, test_db = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
     monkeypatch.setattr(conn_module, "DB_PATH", test_db)
     set_db_path(test_db)
     init_module.init_db()
@@ -501,6 +502,35 @@ class TestPrepaidPackages:
         pkg = next(item for item in packages if item["api_key_id"] == key["id"])
         assert log["paid"] is None
         assert pkg["balance_amount"] == 100
+
+    def test_prepaid_deduction_stops_when_balance_update_loses_race(self):
+        from src.db.prepaid import deduct_prepaid_for_usage_tx
+
+        class Cursor:
+            def __init__(self, rowcount=0):
+                self.rowcount = rowcount
+
+        class FakeConn:
+            def execute(self, query, params=()):
+                normalized = " ".join(query.split())
+                if normalized.startswith("SELECT id FROM prepaid_deductions"):
+                    return type("Result", (), {"fetchone": lambda self: None})()
+                if normalized.startswith("SELECT * FROM prepaid_packages"):
+                    return type(
+                        "Result",
+                        (),
+                        {
+                            "fetchone": lambda self: {
+                                "id": 1,
+                                "balance_amount": 100,
+                            }
+                        },
+                    )()
+                if normalized.startswith("UPDATE prepaid_packages"):
+                    return Cursor(rowcount=0)
+                raise AssertionError(f"unexpected query after failed balance update: {query}")
+
+        assert deduct_prepaid_for_usage_tx(FakeConn(), 1, 10, 100) is False
 
 
 if __name__ == "__main__":

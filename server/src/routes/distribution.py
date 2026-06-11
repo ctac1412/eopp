@@ -6,7 +6,6 @@
 
 import asyncio
 import logging
-import threading
 import time
 
 from fastapi import APIRouter
@@ -42,7 +41,7 @@ def make_all_icons(icons_cache: dict, icon_order: list[int]) -> list[dict]:
 
 def init_distribution_state(
     captcha_id: str,
-    event: threading.Event,
+    event: asyncio.Event,
     usage_log_id: int,
     api_key_id: int,
     num_operators: int,
