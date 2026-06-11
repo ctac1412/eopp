@@ -169,7 +169,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
     set((state) => {
       const newConfig = { ...state.config, [key]: value };
       if (newConfig.reservationId) {
-        const { mode: _, ...toSave } = newConfig;
+        const { mode: _, facilityId: _f, vehicleId: _v, reservationId: _r, reservationData: _d, ...toSave } = newConfig;
         try {
           localStorage.setItem(
             `_c_${newConfig.reservationId}`,
@@ -192,7 +192,7 @@ export const useInjectorStore = create<InjectorState>((set, get) => ({
         },
       };
       if (newConfig.reservationId) {
-        const { mode: _, ...toSave } = newConfig;
+        const { mode: _, facilityId: _f, vehicleId: _v, reservationId: _r, reservationData: _d, ...toSave } = newConfig;
         try {
           localStorage.setItem(
             `_c_${newConfig.reservationId}`,

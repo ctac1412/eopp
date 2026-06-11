@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Аудит системы EOPP</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --dim: #8b949e;
+    --crit: #ff7b72;
+    --high: #ffa657;
+    --mid: #d2a8ff;
+    --low: #7ee787;
+    --accent: #58a6ff;
+    --accent2: #1f6feb;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font:13px/1.6 'Segoe UI',system-ui,sans-serif; padding:32px; }
+  h1 { font-size:24px; margin-bottom:4px; color:#fff; }
+  h2 { font-size:18px; margin:32px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border); color:#e6edf3; }
+  h3 { font-size:14px; margin:16px 0 8px; color:var(--accent); }
+  .sub { color:var(--dim); margin-bottom:24px; font-size:12px; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; font-weight:600; }
+  .crit { background:#490202; color:var(--crit); }
+  .high { background:#3d2700; color:var(--high); }
+  .mid { background:#271b3d; color:var(--mid); }
+  .low { background:#033a16; color:var(--low); }
+  table { width:100%; border-collapse:collapse; margin:0 0 20px; font-size:12px; }
+  th { background:var(--bg2); text-align:left; padding:8px 10px; border-bottom:2px solid var(--border); color:var(--dim); font-weight:600; white-space:nowrap; }
+  td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:hover { background:rgba(88,166,255,0.04); }
+  td:nth-child(3) { min-width:80px; }
+  td:nth-child(4) { color:var(--dim); max-width:420px; }
+  code { background:var(--bg2); padding:1px 5px; border-radius:3px; font-size:11.5px; color:var(--low); }
+  .phase { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:12px 16px; margin-bottom:10px; }
+  .phase h4 { color:var(--accent); margin-bottom:6px; }
+  .phase ol { padding-left:20px; color:var(--dim); }
+  .toc { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+  .toc a { color:var(--accent); text-decoration:none; padding:4px 10px; border:1px solid var(--border); border-radius:4px; font-size:12px; }
+  .toc a:hover { background:var(--border); }
+  .num { color:var(--accent2); font-weight:700; min-width:28px; display:inline-block; }
+  @media print { body { background:#fff; color:#000; } }
+</style>
+</head>
+<body>
+
+<h1>Аудит системы EOPP</h1>
+<p class="sub">Дата: 11 июня 2026 &nbsp;|&nbsp; Scope: сервер, расширение, фронтенд, БД, инфраструктура &nbsp;|&nbsp; 66 находок, 3 фазы внедрения</p>
+
+<div class="toc">
+  <a href="#tech">Технические улучшения (23)</a>
+  <a href="#ux">Пользовательские улучшения (18)</a>
+  <a href="#business">Бизнес-решения (25)</a>
+  <a href="#plan">План внедрения</a>
+</div>
+
+<!-- ===================== SECTION 1 ===================== -->
+<h2 id="tech">1. Технические улучшения — Контроль, Устойчивость</h2>
+
+<h3>Контроль и мониторинг</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">1</span></td>
+  <td>Нет <code>/health</code> эндпоинта — оркестраторы не могут проверить живость</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td>Добавить <code>GET /health</code> + <code>GET /ready</code> с проверкой БД, SSE manager, rucaptcha</td>
+</tr>
+<tr>
+  <td><span class="num">2</span></td>
+  <td>Нет метрик Prometheus — latency, throughput, error rate не отслеживаются</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>prometheus_client</code>, <code>GET /metrics</code>: время ответа, активные SSE, pending captcha, hit-rate</td>
+</tr>
+<tr>
+  <td><span class="num">3</span></td>
+  <td>Логирование всех запросов на INFO (включая SSE keepalive) — забивает логи</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Статика → DEBUG, API → INFO, ошибки → ERROR. Переменная <code>EOPP_LOG_LEVEL_PER_MODULE</code></td>
+</tr>
+<tr>
+  <td><span class="num">4</span></td>
+  <td>Telegram daily-report thread не проверяется — если не стартовал, никто не узнает</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Startup health-check для telegram_service с алертом при отказе</td>
+</tr>
+<tr>
+  <td><span class="num">5</span></td>
+  <td><code>/admin/streams</code> показывает SSE клиентов, но без pending / distribution / operators</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Расширить до <code>/admin/dashboard</code> с агрегированными метриками в реальном времени</td>
+</tr>
+<tr>
+  <td><span class="num">6</span></td>
+  <td><code>auto_operator.py</code> молча фейлится если <code>RUCAPTCHA_API_KEY</code> не задан</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Валидация при старте: <code>if not key: raise StartupError</code>. Health-check внешнего сервиса раз в 60с</td>
+</tr>
+</table>
+
+<h3>Устойчивость (Race Conditions, Deadlocks, State Loss)</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">7</span></td>
+  <td><b>Race condition в <code>pending</code> dict</b> — два запроса с одинаковым hash перезаписывают <code>event</code>, первый клиент висит вечно (<code>captcha.py:382</code>)</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td><code>pending.setdefault()</code> + проверка: если entry уже существует — вернуть существующий event</td>
+</tr>
+<tr>
+  <td><span class="num">8</span></td>
+  <td><b>Thread-pool истощается</b> — <code>threading.Event.wait()</code> в asyncio через <code>run_in_executor()</code> (max 100). При 100+ параллельных капчах — deadlock</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td>Заменить на <code>asyncio.Event</code> + <code>asyncio.wait_for()</code>. Убрать <code>run_in_executor</code></td>
+</tr>
+<tr>
+  <td><span class="num">9</span></td>
+  <td><code>push_sse</code> держит глобальный <code>threading.Lock</code> на всё время итерации по всем очередям</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Шардировать очереди по <code>api_key_id % N</code> или перейти на <code>asyncio.Queue</code> + <code>asyncio.gather</code></td>
+</tr>
+<tr>
+  <td><span class="num">10</span></td>
+  <td>In-memory state теряется при рестарте: <code>pending</code>, <code>distribution_states</code>, <code>sse_queues</code>, <code>chat_history</code>, <code>scheduled_events</code>, <code>_slot_order</code></td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Критические состояния → Redis (TTL ключи). SSE очереди не сохранять</td>
+</tr>
+<tr>
+  <td><span class="num">11</span></td>
+  <td>No TTL cleanup для <code>distribution_states</code> — утечка памяти если timeout handler не отработал</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Фоновая задача <code>_cleanup_stale_distributions()</code> каждые 30с</td>
+</tr>
+<tr>
+  <td><span class="num">12</span></td>
+  <td>Смешивание <code>threading.Lock</code> и <code>asyncio.Lock</code> (<code>operator.py:20,40</code>) — потенциальный deadlock</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Унифицировать: весь async-код использует только <code>asyncio.Lock</code></td>
+</tr>
+<tr>
+  <td><span class="num">13</span></td>
+  <td><code>init_db()</code> глотает все ошибки миграций (<code>db/init.py:30</code>) — сервер стартует с битой схемой</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td><code>raise RuntimeError("Migration failed") from e</code> — fast-fail</td>
+</tr>
+<tr>
+  <td><span class="num">14</span></td>
+  <td><b>Два глобальных <code>DB_PATH</code></b> (<code>connection.py</code> и <code>entities/base.py</code>) — могут разойтись → запись в разные файлы</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td>Единый источник: <code>constants.py</code> → <code>DB_PATH</code>, обе точки ссылаются на него</td>
+</tr>
+<tr>
+  <td><span class="num">15</span></td>
+  <td>Usage-count race: <code>validate_key</code> проверяет <code>usage_count >= max_uses</code> без блокировки → два usage пройдут лимит</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>UPDATE ... WHERE id = ? AND usage_count < max_uses RETURNING *</code> в одной транзакции</td>
+</tr>
+<tr>
+  <td><span class="num">16</span></td>
+  <td>Нет circuit breaker для EOPP API (403 access challenge) и rucaptcha</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Счётчик ошибок с экспоненциальным backoff и автовосстановлением через 30с</td>
+</tr>
+<tr>
+  <td><span class="num">17</span></td>
+  <td>Расширение: нет <code>fetch</code> timeout в background.js — service worker висит до 30с</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>AbortSignal.timeout(15000)</code> для всех fetch в background</td>
+</tr>
+</table>
+
+<h3>Производительность</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">18</span></td>
+  <td><b>10+ отсутствующих индексов SQLite</b> — <code>list_usages</code>, <code>calc_debt</code>, <code>backfill</code> делают full table scan</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Добавить индексы: <code>usage_log(api_key_id, company, status)</code>, <code>captchas(usage_log_id)</code>, <code>payouts(status)</code>, <code>payout_shares(payout_id)</code></td>
+</tr>
+<tr>
+  <td><span class="num">19</span></td>
+  <td>No connection pooling для raw sqlite3 — каждый вызов открывает/закрывает соединение</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Перейти на единый SQLAlchemy. Raw sqlite3 заменить на <code>session.execute(text(...))</code></td>
+</tr>
+<tr>
+  <td><span class="num">20</span></td>
+  <td>Admin <code>ai_classify</code> обрабатывает ВСЕ капчи синхронно — таймаут при больших данных</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>BackgroundTasks</code> с прогрессом через SSE</td>
+</tr>
+<tr>
+  <td><span class="num">21</span></td>
+  <td>Расширение: <code>LiveLog</code> рендерит все сообщения без virtual scrolling</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>react-window</code> или обрезать до последних 200</td>
+</tr>
+<tr>
+  <td><span class="num">22</span></td>
+  <td>Фронтенд: <code>AdminPage</code> — 1390 строк, 60+ state переменных</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Разбить на подкомпоненты с <code>React.memo</code>; каждый таб в отдельный файл</td>
+</tr>
+<tr>
+  <td><span class="num">23</span></td>
+  <td>Расширение: <code>ConfigForm</code> — 977 строк в одном компоненте</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Разбить на <code>ModeSelector</code>, <code>RetryConfig</code>, <code>MockPanel</code>, <code>TimeOrderPanel</code></td>
+</tr>
+</table>
+
+<!-- ===================== SECTION 2 ===================== -->
+<h2 id="ux">2. Пользовательские улучшения — Роли, Доступы, Автоматизация, Аудит</h2>
+
+<h3>Роли и доступы</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">24</span></td>
+  <td><b>Плоская модель прав</b>: один булев флаг <code>is_admin</code> + хардкод-токен <code>13243546</code>. Нельзя разграничить: кто управляет тарифами, кто — ключами, кто — payout'ами</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>
+    <b>Ролевая модель на <code>api_keys.admin_role</code>:</b><br>
+    <br><b>Иерархия:</b><br>
+    <code>super_admin</code> → <code>manager</code><br>
+    <br><b>super_admin (высший):</b><br>
+    • назначать/снимать <code>admin_role</code> у любого ключа<br>
+    • видеть и удалять других super_admin<br>
+    • всё что может manager<br>
+    <br><b>manager:</b><br>
+    • CRUD ключей (кроме смены admin_role)<br>
+    • биллинг: тарифы, счета, payout'ы, prepaid<br>
+    • пользователи, операторы, капчи, бенчмарки<br>
+    • НЕ может повышать до super_admin<br>
+    <br><b>Детали реализации:</b><br>
+    • миграция: <code>ALTER TABLE api_keys ADD COLUMN admin_role TEXT</code><br>
+    • существующие <code>is_admin=1</code> → <code>admin_role='manager'</code><br>
+    • <code>check_admin_token</code> → <code>get_admin_role(token)</code><br>
+    • middleware: запрет <code>PATCH admin_role</code> для manager<br>
+    • фронтенд: скрыть/disable кнопку смены роли для manager<br>
+    • <code>/admin/auth</code> возвращает <code>{ok: true, role: "super_admin"|"manager"}</code>
+  </td>
+</tr>
+<tr>
+  <td><span class="num">25</span></td>
+  <td>Admin auth bypass во фронтенде — любой HTTP 200 считается валидным логином</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Проверять <code>res.json().valid === true</code>; не сохранять токен при неудаче</td>
+</tr>
+<tr>
+  <td><span class="num">26</span></td>
+  <td>Super-kiosk логика размазана между middleware и <code>sse.py</code></td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Единый <code>AccessPolicy</code> декоратор/зависимость FastAPI</td>
+</tr>
+<tr>
+  <td><span class="num">27</span></td>
+  <td>Расширение: API ключ в <code>localStorage</code> открытым текстом</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>chrome.storage.local</code> + session-only или минимально <code>btoa()</code></td>
+</tr>
+<tr>
+  <td><span class="num">28</span></td>
+  <td>Фронтенд: admin token в <code>localStorage</code> — XSS утечка</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>httpOnly</code> cookie с <code>Secure; SameSite=Strict</code></td>
+</tr>
+<tr>
+  <td><span class="num">29</span></td>
+  <td>Публичные ключи (<code>/api-keys/public</code>) отдают labels без аутентификации</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Флаг <code>is_public</code> на ключ; публичный эндпоинт отдаёт только <code>key</code> + <code>label</code></td>
+</tr>
+</table>
+
+<h3>Автоматизация</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">30</span></td>
+  <td>Расширение: pipeline падает при первой сетевой ошибке: нет retry на <code>status: 0</code></td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>3 попытки с exponential backoff 1s/2s/4s для network errors</td>
+</tr>
+<tr>
+  <td><span class="num">31</span></td>
+  <td><code>normalizeCaptchaResponse</code> поддерживает 4 формата — 5-й сломает pipeline без диагностики</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Добавить fallback: попытаться угадать структуру; логировать сырой ответ</td>
+</tr>
+<tr>
+  <td><span class="num">32</span></td>
+  <td>Scheduler делает fire-and-forget уведомление — сервер не знает о запланированном</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Подтверждение: <code>POST /scheduled-events</code> → <code>{event_id, confirmed: true}</code></td>
+</tr>
+<tr>
+  <td><span class="num">33</span></td>
+  <td>Нет failover на резервный сервер капчи в расширении</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Массив <code>CAPTCHA_SERVERS</code> с автоматическим переключением</td>
+</tr>
+<tr>
+  <td><span class="num">34</span></td>
+  <td>Нет REST API/webhook для внешних систем — только браузерное расширение</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>POST /api/v1/solve</code> (синхронный с таймаутом), <code>POST /api/v1/book</code></td>
+</tr>
+<tr>
+  <td><span class="num">35</span></td>
+  <td>Rucaptcha callback без аутентификации (<code>callback.py</code>)</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td>HMAC-подпись callback URL или валидация по IP rucaptcha</td>
+</tr>
+<tr>
+  <td><span class="num">36</span></td>
+  <td><code>AUTO_SOLVER_ENABLED</code>: <code>"false"</code> = включён (любое значение кроме <code>"0"</code>)</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>.lower() in ("1", "true", "yes")</code></td>
+</tr>
+</table>
+
+<h3>Аудит и логирование</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">37</span></td>
+  <td><b>Нет аудит-лога действий администратора</b> — кто удалил ключ? кто изменил тариф?</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Таблица <code>admin_audit_log(action, admin_id, target_type, target_id, old_value, new_value, ts)</code> — append-only</td>
+</tr>
+<tr>
+  <td><span class="num">38</span></td>
+  <td>Usage лог смешан с финансовыми данными — нет разделения operational / financial</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Разделить: <code>usage_log</code> (операционный) + <code>transaction_log</code> (финансовый, append-only)</td>
+</tr>
+<tr>
+  <td><span class="num">39</span></td>
+  <td>Расширение: нет structured logging — <code>safeStringify</code> на каждый лог</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>4 уровня: debug/info/warn/error. Фильтр в UI. Экспорт логов</td>
+</tr>
+<tr>
+  <td><span class="num">40</span></td>
+  <td>Фронтенд: <code>sounded</code> Set растёт бесконечно — дедупликация звуков без очистки</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>LRU cache с TTL: <code>Map&lt;string, number&gt;</code>, чистить записи старше 5 мин</td>
+</tr>
+<tr>
+  <td><span class="num">41</span></td>
+  <td>Нет retention policy — <code>captcha_files</code> + <code>usage_log</code> растут неограниченно</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Cron: удалять <code>captcha_files</code> старше 30д, <code>usage_log</code> → архив через 90д</td>
+</tr>
+</table>
+
+<!-- ===================== SECTION 3 ===================== -->
+<h2 id="business">3. Бизнес-решения</h2>
+
+<h3>Финансовый учёт</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">42</span></td>
+  <td><b><code>payout_expenses</code> без UNIQUE(payout_id, expense_id)</b> — возможен дубль списания, финансовые потери</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td>Добавить UNIQUE constraint + миграция с дедупликацией существующих дублей</td>
+</tr>
+<tr>
+  <td><span class="num">43</span></td>
+  <td>FIFO в <code>payouts.py</code> вычисляется с многократным открытием соединений — неконсистентные чтения</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Все вычисления в одной транзакции: <code>BEGIN IMMEDIATE → SELECT → UPDATE → COMMIT</code></td>
+</tr>
+<tr>
+  <td><span class="num">44</span></td>
+  <td><code>link_usage_to_open_invoice</code> открывает своё соединение — ломает атомарность транзакции</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Передавать connection/cursor параметром; не открывать новые соединения внутри транзакции</td>
+</tr>
+<tr>
+  <td><span class="num">45</span></td>
+  <td>Нет версионирования тарифов — изменение тарифа ретроактивно меняет старые usage</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>tariff_history(tariff_id, price, effective_from)</code>. <code>calc_debt</code> использует тариф на момент usage</td>
+</tr>
+<tr>
+  <td><span class="num">46</span></td>
+  <td>Prepaid: возможен double-spend при конкурентных deduction — нет пессимистичной блокировки</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>SELECT ... FOR UPDATE</code> (эмуляция через <code>BEGIN IMMEDIATE</code>)</td>
+</tr>
+<tr>
+  <td><span class="num">47</span></td>
+  <td>Нет reconciliation с банковскими выписками — нет импорта, нет сверки</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>POST /admin/reconciliation</code> — загрузка CSV/XML выписки → автосверка с invoice</td>
+</tr>
+</table>
+
+<h3>Масштабирование и отказоустойчивость</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">48</span></td>
+  <td><b>In-memory архитектура исключает горизонтальное масштабирование</b> — нельзя запустить 2 instance</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Redis для <code>pending</code>, <code>distribution_states</code>, SSE pub/sub. SQLite → PostgreSQL</td>
+</tr>
+<tr>
+  <td><span class="num">49</span></td>
+  <td>Нет Graceful Shutdown — при остановке pending капчи теряются, клиенты не уведомлены</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>lifespan.shutdown</code>: пройти по <code>pending</code>, отправить SSE <code>captcha_timeout</code>, дождаться <code>event.set()</code></td>
+</tr>
+<tr>
+  <td><span class="num">50</span></td>
+  <td>Один сервер капчи — single point of failure</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Кластер: несколько solver-нод с общей БД + nginx health-check upstream</td>
+</tr>
+<tr>
+  <td><span class="num">51</span></td>
+  <td>Расширение: hardcoded UUID АПП — изменение EOPP ломает всех клиентов</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Загружать список facilities с сервера при старте: <code>GET /api/v1/facilities</code></td>
+</tr>
+<tr>
+  <td><span class="num">52</span></td>
+  <td>Расширение: хрупкие CSS-селекторы (96 символов) для вставки кнопки — любой редизайн EOPP = сломан UI</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>MutationObserver</code> на несколько уровней; поиск по data-атрибутам; fallback позиция</td>
+</tr>
+</table>
+
+<h3>Безопасность</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">53</span></td>
+  <td><b>CORS <code>*</code> + <code>credentials=True</code></b> — нарушает CORS-спецификацию, браузеры отклоняют</td>
+  <td><span class="pill crit">Критично</span></td>
+  <td><code>allow_origins=["https://eopp.epd-portal.ru", "http://localhost:5173"]</code></td>
+</tr>
+<tr>
+  <td><span class="num">54</span></td>
+  <td>Hardcoded admin token <code>13243546</code> как fallback</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Убрать fallback. При отсутствии <code>ADMIN_TOKEN</code> в env: отказ в старте</td>
+</tr>
+<tr>
+  <td><span class="num">55</span></td>
+  <td><b>Path traversal в <code>/plugins/{filename}</code></b> — <code>../../../etc/passwd</code></td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>os.path.realpath(...)</code> + проверка, что путь начинается с <code>PLUGINS_DIR</code></td>
+</tr>
+<tr>
+  <td><span class="num">56</span></td>
+  <td>Rucaptcha JWT secret захардкожен в <code>callback.py</code></td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Вынести в <code>RUCAPTCHA_CALLBACK_SECRET</code> env var</td>
+</tr>
+<tr>
+  <td><span class="num">57</span></td>
+  <td>Расширение: <code>host_permissions</code> wildcard на сервер — при компрометации домена доступ ко всем страницам</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Ограничить точным URL сервера, не wildcard</td>
+</tr>
+<tr>
+  <td><span class="num">58</span></td>
+  <td>SQLite <code>check_same_thread=False</code> — потенциальная коррупция при передаче connection между тредами</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>SQLAlchemy <code>QueuePool(pool_size=1)</code> + <code>threading.local</code> для raw sqlite3</td>
+</tr>
+<tr>
+  <td><span class="num">59</span></td>
+  <td>Нет rate limiting на <code>/solve-captcha</code>, <code>/solve</code>, <code>/validate-key</code></td>
+  <td><span class="pill mid">Средне</span></td>
+  <td><code>slowapi</code> + Redis: 30 req/min <code>/solve-captcha</code>, 10 req/min <code>/validate-key</code></td>
+</tr>
+</table>
+
+<h3>Качество кода и инфраструктуры</h3>
+<table>
+<tr><th>#</th><th>Проблема</th><th>Серьёзность</th><th>Рекомендация</th></tr>
+<tr>
+  <td><span class="num">60</span></td>
+  <td><b>Нет CI/CD</b> — тесты, линтинг, сборка только вручную</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>GitHub Actions: <code>pytest</code>, <code>ruff</code>, <code>eslint</code>, <code>tsc --noEmit</code> на каждый PR</td>
+</tr>
+<tr>
+  <td><span class="num">61</span></td>
+  <td>Нет <code>.dockerignore</code> — Docker-образ включает <code>node_modules/</code>, <code>.venv/</code>, тестовые данные</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td><code>.dockerignore</code> + multi-stage build: build → production (только артефакты)</td>
+</tr>
+<tr>
+  <td><span class="num">62</span></td>
+  <td>Docker <code>sqlite-web</code> монтирует <code>./data</code> вместо <code>./server/data</code> — не видит реальную БД</td>
+  <td><span class="pill high">Высоко</span></td>
+  <td>Исправить volume: <code>"./server/data:/data"</code></td>
+</tr>
+<tr>
+  <td><span class="num">63</span></td>
+  <td>Дублирование DB-слоя: raw sqlite3 + SQLAlchemy ORM для одних и тех же таблиц</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Миграция на единый SQLAlchemy. Raw sqlite3 оставить только в миграциях</td>
+</tr>
+<tr>
+  <td><span class="num">64</span></td>
+  <td>Фронтенд: <code>minify: false</code> — SPA отдаёт неминифицированный JS в production</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Разделить конфиг: расширение без минификации, фронтенд с минификацией</td>
+</tr>
+<tr>
+  <td><span class="num">65</span></td>
+  <td><code>tempfile.mktemp()</code> deprecated во всех conftest</td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Заменить на <code>tempfile.mkstemp()</code></td>
+</tr>
+<tr>
+  <td><span class="num">66</span></td>
+  <td>Нет <code>make test</code> — разработчики должны знать команду <code>uv run pytest server/tests/ -v</code></td>
+  <td><span class="pill mid">Средне</span></td>
+  <td>Добавить <code>make test</code> в Makefile</td>
+</tr>
+</table>
+
+<!-- ===================== PLAN ===================== -->
+<h2 id="plan">Приоритизированный план внедрения</h2>
+
+<div class="phase">
+  <h4>Фаза 1 — Критическое (неделя 1–2)</h4>
+  <ol>
+    <li><code>init_db()</code> — не глотать ошибки миграций</li>
+    <li>Унифицировать <code>DB_PATH</code> — единый источник</li>
+    <li>CORS — убрать <code>*</code> + <code>credentials=True</code></li>
+    <li>Race condition в <code>pending</code> dict → <code>setdefault()</code></li>
+    <li><code>payout_expenses</code> UNIQUE constraint + дедупликация</li>
+    <li>Path traversal fix в <code>/plugins/{filename}</code></li>
+    <li><code>.dockerignore</code> + исправить docker-compose volume</li>
+    <li>Rucaptcha callback authentication (HMAC)</li>
+    <li>Убрать hardcoded admin token <code>13243546</code></li>
+  </ol>
+</div>
+
+<div class="phase">
+  <h4>Фаза 2 — Высокое (неделя 3–4)</h4>
+  <ol start="10">
+    <li><code>asyncio.Event</code> вместо <code>threading.Event</code> (убрать thread-pool блокировку)</li>
+    <li>Индексы SQLite (10+)</li>
+    <li>Usage-count race fix: atomic <code>UPDATE ... RETURNING</code></li>
+    <li>Circuit breaker для EOPP API и rucaptcha</li>
+    <li>Health-check эндпоинт: <code>GET /health</code> + <code>GET /ready</code></li>
+    <li>Redis/PostgreSQL для shared state (horizontal scaling prep)</li>
+    <li>Graceful shutdown в lifespan</li>
+    <li>GitHub Actions CI/CD (pytest + ruff + eslint)</li>
+    <li>Аудит-лог администратора (таблица <code>admin_audit_log</code>)</li>
+    <li>FIFO в одной транзакции</li>
+    <li>Ролевая модель <code>admin_role</code>: super_admin / manager (миграция, middleware, фронтенд)</li>
+  </ol>
+</div>
+
+<div class="phase">
+  <h4>Фаза 3 — Среднее (неделя 5–8)</h4>
+  <ol start="21">
+    <li>Prometheus-метрики (<code>GET /metrics</code>)</li>
+    <li>Retry на network errors в расширении (exponential backoff)</li>
+    <li><code>AdminPage</code> → рефакторинг на подкомпоненты</li>
+    <li>Tariff history / версионирование</li>
+    <li>Retention policy: удаление старых капч и usage log</li>
+    <li>Rate limiting: slowapi + Redis</li>
+    <li>Миграция на единый SQLAlchemy слой</li>
+    <li>External REST API: <code>/api/v1/solve</code>, <code>/api/v1/book</code></li>
+    <li>Cluster support: nginx upstream + health check</li>
+    <li>Загрузка facilities с сервера (вместо hardcoded UUID)</li>
+    <li>Улучшение CSS-селекторов расширения для устойчивости к редизайну EOPP</li>
+    <li>Reconciliation с банковскими выписками</li>
+  </ol>
+</div>
+
+<p style="color:var(--dim);margin-top:32px;font-size:11px;">
+  Всего находок: 66 &nbsp;|&nbsp; Критично: 9 &nbsp;|&nbsp; Высоко: 22 &nbsp;|&nbsp; Средне: 35 &nbsp;|&nbsp;
+  Scope: server/src/, extension/src/, frontend/src/, server/src/db/, server/tests/, Dockerfile, docker-compose.yml
+</p>
+
+</body>
+</html>

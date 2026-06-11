@@ -17,6 +17,8 @@ export const FACILITIES: Facility[] = [
   { id: "ab6edb80-5f8f-4bf9-bf9a-a925271d9df8", name: "АПП Чернышевское" },
 ];
 
+export const NULL_UUID = "00000000-0000-0000-0000-000000000000";
+export const DEFAULT_FACILITY_ID = "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42"; // АПП Забайкальск
 export const TZ_OFFSET = 3;
 export const CAPTCHA_SERVER =
   (typeof import.meta.env !== "undefined" && import.meta.env.VITE_SERVER_URL) ||
@@ -174,7 +176,12 @@ export function loadSavedConfig(
   try {
     const raw = localStorage.getItem(`_c_${reservationId}`);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    delete parsed.facilityId;
+    delete parsed.vehicleId;
+    delete parsed.reservationId;
+    delete parsed.reservationData;
+    return parsed;
   } catch {
     return null;
   }

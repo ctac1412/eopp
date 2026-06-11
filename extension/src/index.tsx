@@ -14,6 +14,8 @@ import {
   createDefaultConfig,
   loadSavedConfig,
   FACILITIES,
+  NULL_UUID,
+  DEFAULT_FACILITY_ID,
 } from "@/constants";
 import cssContent from "@/content.css?inline";
 
@@ -109,8 +111,14 @@ async function fetchReservationRaw(
   const cached = USE_PAGE_REQUEST_CACHE
     ? cachedReservationRawById.get(reservationId)
     : null;
-  if (cached) {
+  if (cached && cached.facilityId && cached.facilityId !== NULL_UUID) {
     return cached;
+  }
+  if (cached) {
+    console.warn("[EOPP Helper] cached reservation has null facilityId, re-fetching", {
+      reservationId,
+      cachedFacilityId: cached.facilityId,
+    });
   }
 
   const apiResponse = await eoppFetch(
@@ -119,7 +127,9 @@ async function fetchReservationRaw(
       method: "GET",
     },
   );
-  return (await apiResponse.json()) as EoppReservationRaw;
+  const fresh = (await apiResponse.json()) as EoppReservationRaw;
+  cachedReservationRawById.set(reservationId, fresh);
+  return fresh;
 }
 
 async function getFacilityRaw(
@@ -167,11 +177,20 @@ function injectButton(info: PageInfo): void {
     } else {
       const json = await fetchReservationRaw(actualInfo.reservationId);
       reservationRaw = json;
+      const rawFacilityId = json.facilityId || "";
+      const isNullFacility = !rawFacilityId || rawFacilityId === NULL_UUID;
       params = {
-        facilityId: json.facilityId || "",
+        facilityId: isNullFacility ? DEFAULT_FACILITY_ID : rawFacilityId,
         vehicleId: getPrimaryVehicleId(json, ""),
         transportType: EoppTransportType.Cargo,
       };
+      if (isNullFacility) {
+        console.warn("[EOPP Helper] facilityId is null/empty, using default", {
+          reservationId: actualInfo.reservationId,
+          rawFacilityId,
+          fallback: DEFAULT_FACILITY_ID,
+        });
+      }
       facilityRaw = await getFacilityRaw(params.facilityId);
     }
 
