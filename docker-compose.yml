@@ -22,6 +22,7 @@ services:
       - RUCAPTCHA_API_KEY=${RUCAPTCHA_API_KEY:-}
       - RUCAPTCHA_CALLBACK_URL=${RUCAPTCHA_CALLBACK_URL:-}
       - EOPP_AUTO_SOLVER_ENABLED=${EOPP_AUTO_SOLVER_ENABLED:-1}
+      - EOPP_AUTO_MIGRATE=${EOPP_AUTO_MIGRATE:-1}
     command: ["python", "scripts/run_with_log.py", "/app/data/backend.log", "python", "server/manage.py", "--host", "0.0.0.0"]
     restart: unless-stopped
 

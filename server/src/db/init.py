@@ -1,9 +1,10 @@
 """
 EOPP Captcha Solver - Database Initialization.
 
-Инициализация БД через alembic migrations.
+Initializes the SQLite database through Alembic migrations.
 """
 
+import os
 from pathlib import Path
 
 from alembic import command
@@ -13,13 +14,20 @@ import src.db.connection as conn_module
 
 
 def init_db():
-    """Запускает alembic upgrade head для применения всех миграций."""
+    """Run Alembic migrations unless production delivery disabled auto-migrate.
+
+    Phase 9 deploys run migrations explicitly before starting the candidate app.
+    EOPP_AUTO_MIGRATE=0 protects production startup from mutating the SQLite
+    schema during health checks or rollbacks. Local/dev keeps the legacy
+    auto-upgrade behavior by default.
+    """
+    if os.environ.get("EOPP_AUTO_MIGRATE", "1") == "0":
+        return
+
     db_path = conn_module.DB_PATH
 
-    # Убеждаемся, что директория БД существует
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # Alembic требует, чтобы cwd был в корне проекта
     project_root = Path(__file__).parent.parent.parent
     alembic_ini = project_root / "alembic.ini"
 

@@ -48,6 +48,10 @@ $script:HealthCheckInterval = [int]$script:HealthCheckIntervalRaw
 
 $script:SshTarget = "${script:SshUser}@${script:SshHost}"
 $script:ImageFull = "${script:ImageName}:${script:ImageTag}"
+$script:RemoteSharedDir = "$script:RemoteDir/shared"
+$script:RemoteReleasesDir = "$script:RemoteDir/releases"
+$script:RemoteCurrentLink = "$script:RemoteDir/current"
+$script:RemotePreviousLink = "$script:RemoteDir/previous"
 
 # --- Logging ---
 function Log-Info { param($msg) Write-Host "[INFO] $msg" -ForegroundColor Blue }
@@ -96,4 +100,37 @@ function Require-SSHHost {
         Log-Error "SSH_HOST is required (set in scripts/.env.deploy)"
         exit 1
     }
+}
+
+function Require-Success {
+    param(
+        [int]$ExitCode,
+        [string]$Message
+    )
+    if ($ExitCode -ne 0) {
+        Log-Error $Message
+        exit 1
+    }
+}
+
+function Confirm-ProductionAction {
+    param(
+        [string]$Prompt,
+        [switch]$Force
+    )
+    if ($Force) {
+        Log-Warn "Confirmation bypassed by -Force: $Prompt"
+        return
+    }
+    $answer = Read-Host "$Prompt Type YES to continue"
+    if ($answer -ne "YES") {
+        Log-Error "Operation cancelled"
+        exit 1
+    }
+}
+
+function Get-RemotePathExists {
+    param([string]$Path)
+    $result = Remote-Exec "test -e '$Path' && echo yes || echo no" 2>$null
+    return ($result -match "yes")
 }

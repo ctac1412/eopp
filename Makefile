@@ -106,11 +106,20 @@ deploy-push-data:
 deploy-push-plugins:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/push-plugins.ps1"
 
+deploy-verify:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/verify-release.ps1"
+
+deploy-migrate:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/migrate.ps1" -ReleaseId "$(RELEASE_ID)" -Image "$(IMAGE)"
+
+deploy-restore-backup:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/restore-backup.ps1" -BackupId "$(BACKUP_ID)"
+
 deploy-logs:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/logs.ps1"
 
 deploy-rollback:
-	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/rollback.ps1"
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/rollback.ps1" -ReleaseId "$(RELEASE_ID)"
 
 deploy-ssl-staging:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/setup-ssl-ip.ps1" -Staging

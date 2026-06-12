@@ -1,22 +1,23 @@
 services:
   eopp-prod:
-    image: eopp:latest
+    image: ${EOPP_IMAGE:-eopp:latest}
     ports:
       - "8765:8765"
     volumes:
-      - ./data:/app/data
-      - ./certs:/app/certs
-      - ./plugins:/app/plugins
+      - ./shared/data:/app/data
+      - ./shared/certs:/app/certs
+      - ./current/plugins:/app/plugins
     environment:
       - EOPP_DB_PATH=/app/data/api_keys.db
       - EOPP_DATA_DIR=/app/data
       - EOPP_PLUGINS_DIR=/app/plugins
+      - EOPP_AUTO_MIGRATE=${EOPP_AUTO_MIGRATE:-0}
     restart: unless-stopped
 
   sqlite-web:
     image: coleifer/sqlite-web
     volumes:
-      - ./data:/data
+      - ./shared/data:/data
     environment:
       - SQLITE_DATABASE=api_keys.db
       - SQLITE_WEB_PASSWORD=changeme
