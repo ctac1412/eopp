@@ -1,65 +1,51 @@
 """SSE global state and operations."""
 
 import asyncio
-import json
 import logging
-import threading
 import time
 from datetime import UTC, datetime
+
+from src.core.realtime import RealtimeFanout, RealtimeRegistry
 
 logger = logging.getLogger("eopp.sse")
 
 pending = {}
+registry = RealtimeRegistry()
+fanout = RealtimeFanout(registry)
+lock = registry.lock
 sse_queues: dict[int | None, list[asyncio.Queue]] = {}
 sse_connections: list[dict] = []
-super_kiosk_subscriptions: dict[int, set[int]] = {}
-lock = threading.Lock()
+super_kiosk_subscriptions: dict[int, set[int]] = registry.super_kiosk_subscriptions
 queue_subscriptions: dict[int, set[int]] = {}
 
 
+def _sync_legacy_state() -> None:
+    """Refresh legacy module globals from RealtimeRegistry.
+
+    Older routes still read sse_queues/sse_connections directly. New code
+    should use registry snapshots, but this compatibility view keeps adjacent
+    phases working while realtime is migrated.
+    """
+
+    sse_queues.clear()
+    sse_queues.update(registry.as_legacy_queues())
+    sse_connections[:] = registry.connection_infos()
+    queue_subscriptions.clear()
+    for conn in registry.snapshot():
+        if conn.api_key_id == -1:
+            queue_subscriptions[id(conn.queue)] = set(conn.help_for)
+
+
 def push_sse(msg, api_key_id=None):
-    event_type = msg.get("type") if isinstance(msg, dict) else None
-    captcha_id = msg.get("captcha_id") if isinstance(msg, dict) else None
-    data = f"data: {json.dumps(msg)}\n\n"
+    """Push one SSE message through the nonblocking realtime fanout."""
 
-    with lock:
-        if api_key_id is not None:
-            queues = list(sse_queues.get(api_key_id, []))
-            if api_key_id != -1:
-                for q in sse_queues.get(-1, []):
-                    qid = id(q)
-                    subs = queue_subscriptions.get(qid, set())
-                    if not subs or api_key_id in subs:
-                        queues.append(q)
-        else:
-            queues = []
-            for v in sse_queues.values():
-                queues.extend(v)
-        snapshot = list(queues)
+    return fanout.push(msg, api_key_id=api_key_id)
 
-    dead = []
-    for q in snapshot:
-        try:
-            q.put_nowait(data)
-        except Exception:
-            dead.append(q)
 
-    if dead:
-        with lock:
-            for q in dead:
-                for v in sse_queues.values():
-                    if q in v:
-                        v.remove(q)
+def push_sse_owner_and_operators(msg, owner_api_key_id: int):
+    """Push one SSE message to an owner and cached operator subscribers."""
 
-    delivered = len(snapshot) - len(dead)
-    logger.info(
-        "sse_push event=%s captcha=%s target_api_key_id=%s delivered=%s dead=%s",
-        event_type or "-",
-        captcha_id or "-",
-        api_key_id if api_key_id is not None else "broadcast",
-        delivered,
-        len(dead),
-    )
+    return fanout.push_to_owner_and_operators(msg, owner_api_key_id=owner_api_key_id)
 
 
 def operator_api_key_id(operator_id: int) -> int:
@@ -73,73 +59,56 @@ def register_sse_connection(
     real_api_key_id: int | None = None,
     help_for: set[int] | None = None,
 ) -> tuple[asyncio.Queue, bool]:
-    q: asyncio.Queue = asyncio.Queue()
-    displaced = False
-    with lock:
-        existing = sse_queues.get(api_key_id, [])
-        if existing and api_key_id != -1:
-            displaced = True
-        else:
-            sse_queues.setdefault(api_key_id, []).append(q)
-            conn_info = {
-                "queue": q,
-                "api_key_id": api_key_id,
-                "real_api_key_id": real_api_key_id,
-                "ip": ip,
-                "connected_at": time.time(),
-            }
-            sse_connections.append(conn_info)
-            if api_key_id == -1 and real_api_key_id is not None:
-                subs = set(help_for) if help_for is not None else set()
-                queue_subscriptions[id(q)] = subs
-                super_kiosk_subscriptions[real_api_key_id] = subs
+    displaced = api_key_id != -1 and registry.has_connection(api_key_id)
+    conn = registry.register_connection(
+        api_key_id,
+        ip,
+        real_api_key_id=real_api_key_id,
+        help_for=help_for,
+    )
+    _sync_legacy_state()
     logger.info(
         "sse_register api_key_id=%s real_api_key_id=%s ip=%s queue_id=%s displaced=%s help_for=%s",
         api_key_id,
         real_api_key_id,
         ip,
-        id(q),
+        id(conn.queue),
         displaced,
         ",".join(str(x) for x in sorted(help_for or [])) if help_for is not None else "-",
     )
-    return q, displaced
+    return conn.queue, displaced
+
+
+def replace_sse_connections(
+    api_key_id: int | None,
+    keep_queue: asyncio.Queue,
+    ip: str,
+    real_api_key_id: int | None = None,
+) -> list[asyncio.Queue]:
+    """Replace active connections for a target and return displaced queues."""
+
+    old = registry.replace_connections(api_key_id, keep_queue, ip, real_api_key_id)
+    _sync_legacy_state()
+    return old
 
 
 def unregister_sse_connection(q: asyncio.Queue, api_key_id: int | None):
-    conn_info = None
-    with lock:
-        queues_for_key = sse_queues.get(api_key_id, [])
-        if q in queues_for_key:
-            queues_for_key.remove(q)
-        conn_info = next((c for c in sse_connections if c["queue"] is q), None)
-        sse_connections[:] = [c for c in sse_connections if c["queue"] is not q]
-        qid = id(q)
-        if qid in queue_subscriptions:
-            del queue_subscriptions[qid]
-        if conn_info and conn_info.get("real_api_key_id") is not None:
-            super_kiosk_subscriptions.pop(conn_info["real_api_key_id"], None)
+    conn = registry.unregister_connection(q, api_key_id)
+    _sync_legacy_state()
     logger.info(
         "sse_unregister api_key_id=%s real_api_key_id=%s ip=%s queue_id=%s connected_for_ms=%.1f",
         api_key_id,
-        conn_info.get("real_api_key_id") if conn_info else None,
-        conn_info.get("ip") if conn_info else "-",
+        conn.real_api_key_id if conn else None,
+        conn.ip if conn else "-",
         id(q),
-        (time.time() - conn_info["connected_at"]) * 1000 if conn_info else 0.0,
+        (time.time() - conn.connected_at) * 1000 if conn else 0.0,
     )
 
 
 def get_connected_streams() -> list[dict]:
     from src.repositories import api_key_repo
 
-    with lock:
-        snapshot = [
-            {
-                "api_key_id": c["api_key_id"],
-                "ip": c["ip"],
-                "connected_at": c["connected_at"],
-            }
-            for c in sse_connections
-        ]
+    snapshot = registry.connection_infos()
 
     result = []
     for c in snapshot:
@@ -158,3 +127,45 @@ def get_connected_streams() -> list[dict]:
             }
         )
     return result
+
+
+def set_master_operators(master_key_id: int, operator_ids: list[int]) -> None:
+    """Update cached operators for a master outside captcha fanout."""
+
+    registry.set_master_operators(master_key_id, operator_ids)
+
+
+def set_operator_masters(operator_id: int, master_key_ids: list[int]) -> None:
+    """Update cached masters for an operator outside captcha fanout."""
+
+    registry.set_operator_masters(operator_id, master_key_ids)
+
+
+def unlink_operator_from_master(operator_id: int, master_key_id: int) -> None:
+    """Remove one cached operator/master relation."""
+
+    registry.unlink_operator(operator_id, master_key_id)
+
+
+def get_master_operators(master_key_id: int) -> list[int]:
+    """Return cached operators for captcha distribution setup."""
+
+    return registry.get_master_operators(master_key_id)
+
+
+def get_operator_masters(operator_id: int) -> list[int]:
+    """Return cached masters for an operator stream."""
+
+    return registry.get_operator_masters(operator_id)
+
+
+def set_operator_display_mode(operator_id: int, mode: str) -> None:
+    """Cache an operator display mode for distribution without hot-path DB reads."""
+
+    registry.set_operator_display_mode(operator_id, mode)
+
+
+def get_operator_display_modes(operator_ids: list[int]) -> dict[int, str]:
+    """Return cached operator display modes for captcha distribution."""
+
+    return registry.get_operator_display_modes(operator_ids)

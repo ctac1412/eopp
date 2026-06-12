@@ -223,12 +223,9 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
             "solver_label": f"distributed_{state['num_operators']}op",
             "owner_api_key_id": owner_id,
         }
-        push_sse(solved_event, api_key_id=owner_id)
+        from src.sse.manager import push_sse_owner_and_operators
 
-        from src.repositories import operator_repo
-        from src.sse.manager import operator_api_key_id
-        for op_real_id in operator_repo.get_subscribed_operators(owner_id):
-            push_sse(solved_event, api_key_id=operator_api_key_id(op_real_id))
+        push_sse_owner_and_operators(solved_event, owner_id)
 
         distribution_states.pop(captcha_id, None)
 

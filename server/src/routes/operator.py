@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.repositories import api_key_repo, operator_repo
-from src.sse.manager import operator_api_key_id
+from src.sse.manager import operator_api_key_id, registry as realtime_registry
 
 logger = logging.getLogger("eopp.operator")
 
@@ -30,17 +30,15 @@ async def _rebuild_slot_order(master_key_id: int) -> list[int]:
     Preserves existing order, removes offline, adds new online operators at the end.
     Returns the new order.
     """
-    from src.sse.manager import sse_queues as _sse_queues, operator_api_key_id as _op_key_id, lock as _sse_lock
-
     subscribed = operator_repo.get_subscribed_operators(master_key_id)
+    realtime_registry.set_master_operators(master_key_id, subscribed)
     old_order = list(_slot_order.get(master_key_id, []))
 
     # Determine which subscribed operators are currently online
     online_set: set[int] = set()
-    with _sse_lock:
-        for oid in subscribed:
-            if _sse_queues.get(_op_key_id(oid)):
-                online_set.add(oid)
+    for oid in subscribed:
+        if realtime_registry.has_connection(operator_api_key_id(oid)):
+            online_set.add(oid)
 
     # Keep old order for operators still online, append new ones
     new_order = [oid for oid in old_order if oid in online_set]
@@ -127,6 +125,7 @@ async def operator_link(uuid: str, request: Request):
         return JSONResponse(status_code=403, content={"error": err})
 
     link_id, _ = operator_repo.link_operator_to_master(op["id"], master.id)
+    realtime_registry.set_operator_masters(op["id"], operator_repo.get_operator_masters(op["id"]))
     logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
     return JSONResponse(content={"ok": True, "operator_id": op["id"]})
 
@@ -147,6 +146,7 @@ async def operator_unlink(uuid: str, request: Request):
     if not master:
         return JSONResponse(status_code=403, content={"error": "Invalid master key"})
     ok = operator_repo.unlink_operator(op["id"], master.id)
+    realtime_registry.unlink_operator(op["id"], master.id)
     logger.info("operator_unlink op_id=%s uuid=%s master_id=%s ok=%s", op["id"], uuid, master.id, ok)
     return JSONResponse(content={"ok": ok})
 
@@ -155,7 +155,7 @@ async def operator_unlink(uuid: str, request: Request):
 async def operator_sse(uuid: str, request: Request):
     from src.sse.manager import (
         operator_api_key_id, register_sse_connection, unregister_sse_connection,
-        lock as sse_lock, sse_queues, sse_connections,
+        replace_sse_connections,
     )
 
     op = operator_repo.get_operator_by_uuid(uuid)
@@ -167,14 +167,7 @@ async def operator_sse(uuid: str, request: Request):
     q, displaced = register_sse_connection(neg_id, client_ip)
 
     if displaced:
-        with sse_lock:
-            old_queues = sse_queues.get(neg_id, [])[:]
-            sse_queues[neg_id] = [q]
-            sse_connections[:] = [c for c in sse_connections if c.get("api_key_id") != neg_id]
-            sse_connections.append({
-                "queue": q, "api_key_id": neg_id, "real_api_key_id": None,
-                "ip": client_ip, "connected_at": time.time(),
-            })
+        old_queues = replace_sse_connections(neg_id, q, client_ip)
         for old_q in old_queues:
             try:
                 old_q.put_nowait(_json.dumps({"type": "disconnected", "message": "Новое подключение"}))
@@ -184,6 +177,10 @@ async def operator_sse(uuid: str, request: Request):
 
     # Mark operator online
     operator_repo.set_operator_online(op["id"], True)
+    realtime_registry.set_operator_display_mode(
+        op["id"], op.get("icon_display_mode", "own_then_foreign")
+    )
+    realtime_registry.set_operator_masters(op["id"], operator_repo.get_operator_masters(op["id"]))
 
     # Rebuild slot order for each master and push updates
     for mid in operator_repo.get_operator_masters(op["id"]):
@@ -226,29 +223,33 @@ async def operator_sse(uuid: str, request: Request):
 
     async def event_stream():
         from src.sse.manager import (
-            lock as _sse_lock, push_sse as sse_push, sse_queues as _sse_queues,
+            push_sse as sse_push,
             operator_api_key_id as _op_key_id,
         )
 
-        master_ids = operator_repo.get_operator_masters(op["id"])
+        master_ids = realtime_registry.get_operator_masters(op["id"]) or operator_repo.get_operator_masters(op["id"])
+        realtime_registry.set_operator_masters(op["id"], master_ids)
         online_masters = []
         fellow_ops: dict[int, dict] = {}  # {op_id: {id, nickname, master_id}}
-        with _sse_lock:
-            for mid in master_ids:
-                if _sse_queues.get(mid):
-                    online_masters.append(mid)
-                for fid in operator_repo.get_subscribed_operators(mid):
-                    if fid == op["id"]:
-                        continue
-                    neg_id2 = _op_key_id(fid)
-                    if _sse_queues.get(neg_id2):
-                        fop = operator_repo.get_operator_by_id(fid)
-                        if fop:
-                            fellow_ops[fid] = {
-                                "id": fid,
-                                "nickname": fop.get("nickname", ""),
-                                "master_id": mid,
-                            }
+        for mid in master_ids:
+            if realtime_registry.has_connection(mid):
+                online_masters.append(mid)
+            subscribed = realtime_registry.get_master_operators(mid)
+            if not subscribed:
+                subscribed = operator_repo.get_subscribed_operators(mid)
+                realtime_registry.set_master_operators(mid, subscribed)
+            for fid in subscribed:
+                if fid == op["id"]:
+                    continue
+                neg_id2 = _op_key_id(fid)
+                if realtime_registry.has_connection(neg_id2):
+                    fop = operator_repo.get_operator_by_id(fid)
+                    if fop:
+                        fellow_ops[fid] = {
+                            "id": fid,
+                            "nickname": fop.get("nickname", ""),
+                            "master_id": mid,
+                        }
 
         # Build scheduled events for connected handshake
         from src.routes.scheduled import get_scheduled_events_for_masters
@@ -387,6 +388,11 @@ async def admin_update_operator(operator_id: int, request: Request):
     op = operator_repo.update_operator(operator_id, **kwargs)
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})
+    if "icon_display_mode" in kwargs:
+        realtime_registry.set_operator_display_mode(
+            operator_id,
+            op.get("icon_display_mode", "own_then_foreign"),
+        )
     logger.info("admin_update_operator op_id=%s kwargs=%s", operator_id, kwargs)
     return JSONResponse(content=op)
 
@@ -417,6 +423,7 @@ async def admin_relink_operator(operator_id: int, request: Request):
         return JSONResponse(status_code=403, content={"error": err})
 
     link_id, _ = operator_repo.link_operator_to_master(operator_id, master_key_id)
+    realtime_registry.set_operator_masters(operator_id, operator_repo.get_operator_masters(operator_id))
 
     # Push SSE to operator
     push_sse(

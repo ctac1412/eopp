@@ -13,12 +13,87 @@ EOPP Captcha Solver - Constants and Configuration.
 
 import logging
 import os
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger("eopp.constants")
+MOSCOW_TZ = timezone(timedelta(hours=3), "Europe/Moscow")
 
 PORT = 8765
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAPTCHA_TIMEOUT = 10
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    """Read a boolean env flag by bare name or EOPP_ prefixed name."""
+    raw = os.environ.get(name)
+    if raw is None:
+        raw = os.environ.get(f"EOPP_{name}")
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_peak_fast_mode() -> bool:
+    """Return whether core endpoints should avoid synchronous side work now."""
+
+    return is_peak_fast_mode_active()
+
+
+def is_peak_fast_mode_active(now: datetime | None = None) -> bool:
+    """Return true during forced or scheduled Moscow peak-fast windows.
+
+    Operators normally need the fastest possible core captcha path around the
+    EOPP slot-release windows. Explicit ``PEAK_FAST_MODE``/``EOPP_PEAK_FAST_MODE``
+    still forces fast mode for tests and emergency operation; otherwise the
+    local schedule is 09:50-10:10 and 11:50-12:10 Europe/Moscow.
+    """
+
+    if env_flag("PEAK_FAST_MODE", False):
+        return True
+    moscow_now = now or datetime.now(_moscow_tz())
+    if moscow_now.tzinfo is None:
+        moscow_now = moscow_now.replace(tzinfo=_moscow_tz())
+    else:
+        moscow_now = moscow_now.astimezone(_moscow_tz())
+    current = moscow_now.time()
+    return (
+        time(9, 50) <= current <= time(10, 10)
+        or time(11, 50) <= current <= time(12, 10)
+    )
+
+
+def _moscow_tz():
+    """Return Europe/Moscow tzinfo, falling back to fixed UTC+03 on Windows."""
+
+    try:
+        return ZoneInfo("Europe/Moscow")
+    except ZoneInfoNotFoundError:
+        return MOSCOW_TZ
+
+
+def sync_side_work_enabled(name: str, default: bool = True) -> bool:
+    """Resolve a side-work flag, defaulting to disabled in peak fast mode."""
+    explicit = os.environ.get(name)
+    if explicit is None:
+        explicit = os.environ.get(f"EOPP_{name}")
+    if explicit is not None:
+        return env_flag(name, default)
+    if is_peak_fast_mode():
+        return False
+    return default
+
+
+PEAK_FAST_MODE = is_peak_fast_mode()
+CAPTCHA_SYNC_ARCHIVE_ENABLED = sync_side_work_enabled("CAPTCHA_SYNC_ARCHIVE_ENABLED")
+CAPTCHA_SYNC_SOLVER_METADATA_ENABLED = sync_side_work_enabled(
+    "CAPTCHA_SYNC_SOLVER_METADATA_ENABLED"
+)
+USAGE_SYNC_BILLING_ENABLED = sync_side_work_enabled("USAGE_SYNC_BILLING_ENABLED")
+USAGE_SYNC_CAPTCHA_RECORDS_ENABLED = sync_side_work_enabled("USAGE_SYNC_CAPTCHA_RECORDS_ENABLED")
+USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED = sync_side_work_enabled(
+    "USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED"
+)
 
 # Единый путь к БД — все модули должны ссылаться сюда
 DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "data", "api_keys.db")

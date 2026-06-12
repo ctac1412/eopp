@@ -1,0 +1,19 @@
+[importlinter]
+root_package = server.src
+
+[importlinter:contract:protected-core-no-side-modules]
+name = Protected core must not import side modules
+type = forbidden
+source_modules =
+    server.src.core
+forbidden_modules =
+    server.src.modules
+    server.src.routes.admin
+    server.src.repositories.company_repo
+    server.src.repositories.invoice_repo
+    server.src.repositories.prepaid_repo
+    server.src.services.invoice_service
+    server.src.services.prepaid_service
+    server.src.services.telegram_service
+    server.src.routes.training
+    server.src.routes.plugin_files

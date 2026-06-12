@@ -24,7 +24,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from src.repositories import api_key_repo
 from src.routes.chat import get_chat_history
 from src.routes.scheduled import get_scheduled_events_for_masters
-from src.sse import lock, register_sse_connection, sse_queues, unregister_sse_connection
+from src.sse import register_sse_connection, replace_sse_connections, unregister_sse_connection
+from src.sse.manager import registry as realtime_registry
 
 logger = logging.getLogger("eopp.sse")
 router = APIRouter(tags=["sse"])
@@ -58,16 +59,14 @@ async def check_stream(
         )
     api_key_id = key_record.id
     effective_id = -1 if (super_kiosk and api_key_repo.is_super_kiosk_key(api_key)) else api_key_id
-    with lock:
-        queues = sse_queues.get(effective_id, [])
-        has_active = len(queues) > 0
+    has_active = realtime_registry.has_connection(effective_id)
     logger.info(
         "sse_check_stream status=200 api_key_id=%s effective_id=%s super_kiosk=%s has_active=%s queues=%s duration_ms=%.1f",
         api_key_id,
         effective_id,
         bool(super_kiosk and api_key_repo.is_super_kiosk_key(api_key)),
         has_active,
-        len(queues),
+        len(realtime_registry.snapshot(effective_id)),
         (time.perf_counter() - start) * 1000,
     )
     return JSONResponse(
@@ -153,15 +152,7 @@ async def sse_stream(
                 },
             )
 
-        from src.sse.manager import sse_connections, sse_queues, lock as sse_lock
-        with sse_lock:
-            old_queues = sse_queues.get(api_key_id, [])[:]
-            sse_queues[api_key_id] = [q]
-            sse_connections[:] = [c for c in sse_connections if c.get("api_key_id") != api_key_id]
-            sse_connections.append({
-                "queue": q, "api_key_id": api_key_id, "real_api_key_id": real_api_key_id,
-                "ip": client_ip, "connected_at": time.time(),
-            })
+        old_queues = replace_sse_connections(api_key_id, q, client_ip, real_api_key_id)
         for old_q in old_queues:
             try:
                 old_q.put_nowait(json.dumps({"type": "disconnected", "message": "Подключение перехвачено"}))
@@ -179,19 +170,19 @@ async def sse_stream(
 
         if not is_super and real_api_key_id is None:
             from src.repositories import operator_repo
-            from src.sse.manager import operator_api_key_id as op_neg_id, sse_queues as _sse_queues, lock as _sse_lock, push_sse as _push
+            from src.sse.manager import operator_api_key_id as op_neg_id, push_sse as _push
             op_ids = operator_repo.get_subscribed_operators(key_record.id)
+            realtime_registry.set_master_operators(key_record.id, op_ids)
             online_ops = []
             online_ops_info = []
-            with _sse_lock:
-                for oid in op_ids:
-                    if _sse_queues.get(op_neg_id(oid)):
-                        online_ops.append(oid)
-                        op_info = operator_repo.get_operator_by_id(oid)
-                        online_ops_info.append({
-                            "id": oid,
-                            "nickname": op_info.get("nickname", f"#{oid}") if op_info else f"#{oid}",
-                        })
+            for oid in op_ids:
+                if realtime_registry.has_connection(op_neg_id(oid)):
+                    online_ops.append(oid)
+                    op_info = operator_repo.get_operator_by_id(oid)
+                    online_ops_info.append({
+                        "id": oid,
+                        "nickname": op_info.get("nickname", f"#{oid}") if op_info else f"#{oid}",
+                    })
             yield "data: %s\n\n" % json.dumps({
                 "type": "connected",
                 "api_key_id": api_key_id,
