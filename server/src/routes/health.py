@@ -7,30 +7,20 @@ GET /metrics — Prometheus text format metrics
 
 import logging
 import os
-import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from src.db.connection import get_connection
-from src.sse import lock as sse_lock, pending as sse_pending, sse_queues
+from src.platform.module_registry import module_health_payload
+from src.platform.observability.metrics import gauge_set, render_prometheus
+from src.sse import lock as sse_lock
+from src.sse import pending as sse_pending
+from src.sse import sse_queues
 
 logger = logging.getLogger("eopp.health")
 
 router = APIRouter(tags=["health"])
-
-_metrics: dict[str, float] = {}
-METRIC_PREFIX = "eopp"
-
-
-def counter_inc(name: str, value: float = 1.0):
-    key = f"{METRIC_PREFIX}_{name}_total"
-    _metrics[key] = _metrics.get(key, 0) + value
-
-
-def gauge_set(name: str, value: float):
-    _metrics[f"{METRIC_PREFIX}_{name}"] = value
-
 
 @router.get("/health")
 async def health():
@@ -48,6 +38,13 @@ async def health():
         status_code=status_code,
         content={"status": "ok" if db_ok else "degraded", "db": "ok" if db_ok else "error"},
     )
+
+
+@router.get("/health/modules")
+async def module_health(request: Request):
+    """Return optional module load status without probing side-module internals."""
+
+    return JSONResponse(content=module_health_payload(request.app))
 
 
 @router.get("/ready")
@@ -87,14 +84,9 @@ async def ready():
 
 @router.get("/metrics")
 async def metrics():
-    gauge_set("sse_connections_active", sum(len(v) for v in sse_queues.values()))
-    gauge_set("pending_captchas", len(sse_pending))
+    """Return process-local Phase 8 metrics in Prometheus text format."""
 
-    lines = []
-    for key, value in sorted(_metrics.items()):
-        if key.endswith("_total"):
-            lines.append(f"{key} {value}")
-        else:
-            lines.append(f"{key} {value}")
-    lines.append("")
-    return PlainTextResponse("\n".join(lines), media_type="text/plain; version=0.0.4")
+    gauge_set("sse_connections_active", sum(len(v) for v in sse_queues.values()))
+    gauge_set("captcha_pending_count", len(sse_pending))
+
+    return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")

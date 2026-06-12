@@ -3,11 +3,19 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import joinedload
 
-from src.db.usage_log import _calc_is_test, _extract_fields_from_config
 from src.db.usage_log import confirm_usage as db_confirm_usage
 from src.db.usage_log import fail_usage as db_fail_usage
-from src.entities import ApiKey, Company, UsageLog, get_session
-from src.repositories import company_repo
+from src.entities import ApiKey, UsageLog, get_session
+from src.platform.jobs.queue import enqueue_deferred_job
+
+
+def _defer_job(name: str, payload: dict) -> None:
+    """Best-effort enqueue used while keeping usage creation nonblocking."""
+
+    try:
+        enqueue_deferred_job(name, payload)
+    except Exception:
+        pass
 
 
 def create_usage(
@@ -15,7 +23,15 @@ def create_usage(
     reservation_id: str,
     captcha_id: str,
     config_json: dict | None = None,
+    sync_enrichment: bool = False,
 ) -> int:
+    """Create the minimal usage row and defer CRM enrichment.
+
+    ``sync_enrichment`` is accepted for adapter compatibility, but Phase 6 keeps
+    company/FIO/vehicle parsing outside the registration core regardless of the
+    flag value.
+    """
+
     with get_session() as session:
         key_record = (
             session.query(ApiKey).filter(ApiKey.key == api_key).first()
@@ -25,11 +41,15 @@ def create_usage(
 
         now = datetime.now(UTC).isoformat()
         config_str = json.dumps(config_json) if config_json else None
-        extracted = _extract_fields_from_config(config_json)
-        is_test = _calc_is_test(reservation_id, config_json)
-
-        # Resolve company from config
-        company_obj = company_repo.get_or_create_company(extracted["company"])
+        extracted = {
+            "op_type": None,
+            "company": None,
+            "fio": None,
+            "vehicle_number": None,
+            "has_custom_slots": False,
+        }
+        is_test = None
+        company_obj = None
 
         log = UsageLog(
             api_key_id=key_record.id,
@@ -43,10 +63,12 @@ def create_usage(
             fio=extracted["fio"],
             vehicle_number=extracted["vehicle_number"],
             is_test=is_test,
+            has_custom_slots=extracted["has_custom_slots"],
         )
         session.add(log)
         session.flush()
         log_id = log.id
+        _defer_job("crm.enrich_usage", {"usage_log_id": log_id, "captcha_id": captcha_id})
         session.commit()
         return log_id
 
@@ -77,8 +99,16 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
+    sync_billing: bool = True,
+    sync_captcha_records: bool = True,
 ) -> bool | str:
-    return db_confirm_usage(usage_log_id, slot_date, logs)
+    return db_confirm_usage(
+        usage_log_id,
+        slot_date,
+        logs,
+        sync_billing=sync_billing,
+        sync_captcha_records=sync_captcha_records,
+    )
 
 
 def fail_usage(

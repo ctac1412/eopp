@@ -46,7 +46,10 @@ from src.models import (
     UpdateUsageLogBody,
     UpdateUserBody,
 )
-from src.policies.access_policy import requires_admin, requires_super_admin
+from src.modules.access.permissions import Permission
+from src.modules.access.service import AccessService
+from src.modules.audit.service import AuditService
+from src.policies.access_policy import authorize_request, requires_admin
 from src.repositories import api_key_repo, company_repo, usage_log_repo
 
 logger = logging.getLogger("eopp.admin")
@@ -63,15 +66,15 @@ def admin_auth_middleware_factory(app):
         path = request.url.path
         if requires_admin(request.method, path):
             token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
-            if not token or not api_key_repo.check_admin_token(token):
+            decision = authorize_request(request.method, path, token)
+            request.state.access_decision = decision
+            if not decision.allowed and decision.reason == "unauthenticated":
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-            # API keys write operations (PUT/PATCH/DELETE /api-keys) require super_admin
-            if requires_super_admin(request.method, path):
-                if not api_key_repo.is_super_admin_token(token):
-                    return JSONResponse(
-                        status_code=403,
-                        content={"error": "Forbidden: super_admin role required"},
-                    )
+            if not decision.allowed:
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": f"Forbidden: permission {decision.permission} required"},
+                )
         response = await call_next(request)
         return response
 
@@ -83,6 +86,33 @@ def _json_result(result):
     return JSONResponse(status_code=status, content=content)
 
 
+def _access_decision_for_request(request: Request, permission: Permission):
+    """Return middleware decision or recompute it for route-level audit context."""
+    decision = getattr(request.state, "access_decision", None)
+    if decision is not None:
+        return decision
+    token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    return AccessService().authorize_token(token, permission)
+
+
+def _audit_business_action(
+    request: Request,
+    action: str,
+    permission: Permission,
+    target_type: str,
+    target_id: int | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """Enqueue one best-effort business audit event for a successful route."""
+    AuditService().enqueue_business_action(
+        action,
+        decision=_access_decision_for_request(request, permission),
+        target_type=target_type,
+        target_id=target_id,
+        metadata=metadata,
+    )
+
+
 def _tail_lines(path: Path, limit: int) -> list[str]:
     if limit <= 0:
         return []
@@ -92,15 +122,33 @@ def _tail_lines(path: Path, limit: int) -> list[str]:
 
 @router.post("/auth")
 async def admin_auth(body: AdminAuthBody):
-    if api_key_repo.check_admin_token(body.token):
-        role = api_key_repo.get_admin_role(body.token) or "manager"
+    access = AccessService()
+    audit = AuditService()
+    actor = access.authenticate_token(body.token)
+    if actor:
+        decision = access.authorize_token(body.token, Permission.BILLING_VIEW)
+        audit.record_security(
+            "admin.login.succeeded",
+            decision=decision,
+            metadata={"role": actor.role},
+        )
+        role = actor.role
         return JSONResponse(content={"ok": True, "role": role})
+    audit.record_security("admin.login.failed", metadata={"reason": "invalid_token"})
     return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
 
 @router.get("/streams")
 async def admin_streams():
     return JSONResponse(content=get_connected_streams())
+
+
+@router.get("/audit")
+async def admin_audit_log(limit: int = 200):
+    """Return recent security, admin, and business audit events."""
+    from src.modules.audit.repository import AuditRepository
+
+    return JSONResponse(content=AuditRepository().list_events(limit=max(1, min(limit, 1000))))
 
 
 @router.get("/dashboard")
@@ -275,21 +323,39 @@ async def get_admin_tariff(api_key_id: int):
 
 
 @router.put("/tariffs/{api_key_id}")
-async def create_update_tariff(api_key_id: int, body: TariffBody):
-    return _json_result(billing_service.upsert_tariff(api_key_id, body))
+async def create_update_tariff(api_key_id: int, body: TariffBody, request: Request):
+    result = billing_service.upsert_tariff(api_key_id, body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="tariff",
+            target_id=api_key_id,
+        )
+    return _json_result(result)
 
 
 @router.delete("/tariffs/{api_key_id}")
-async def delete_admin_tariff(api_key_id: int):
-    return _json_result(billing_service.delete_tariff(api_key_id))
+async def delete_admin_tariff(api_key_id: int, request: Request):
+    result = billing_service.delete_tariff(api_key_id)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="tariff",
+            target_id=api_key_id,
+            metadata={"deleted": True},
+        )
+    return _json_result(result)
 
 
 @router.patch("/api-keys/{id}")
 async def update_api_key(id: int, body: UpdateApiKeyBody, request: Request):
     admin_token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
-    admin_record = api_key_repo.get_key_record(admin_token) if admin_token else None
-    admin_id = admin_record.id if admin_record else None
-    return _json_result(billing_service.update_api_key(id, body, admin_id=admin_id))
+    decision = AccessService().authorize_token(admin_token, Permission.ADMIN_USERS_MANAGE)
+    return _json_result(billing_service.update_api_key(id, body, access_decision=decision))
 
 
 @router.patch("/usage-log/{id}")
@@ -298,8 +364,17 @@ async def update_admin_usage_log(id: int, body: UpdateUsageLogBody):
 
 
 @router.post("/generate-invoice")
-async def generate_invoice(body: GenerateInvoiceBody):
-    return _json_result(billing_service.generate_invoice(body))
+async def generate_invoice(body: GenerateInvoiceBody, request: Request):
+    result = billing_service.generate_invoice(body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "invoice.generated",
+            Permission.INVOICE_GENERATE,
+            "invoice",
+            result[1].get("invoice_id"),
+        )
+    return _json_result(result)
 
 
 @router.get("/invoices")
@@ -308,18 +383,40 @@ async def list_admin_invoices():
 
 
 @router.post("/invoices")
-async def create_admin_invoice(body: CreateInvoiceBody):
-    return _json_result(billing_service.create_invoice(body))
+async def create_admin_invoice(body: CreateInvoiceBody, request: Request):
+    result = billing_service.create_invoice(body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "invoice.generated",
+            Permission.BILLING_EDIT,
+            "invoice",
+            result[1].get("id"),
+        )
+    return _json_result(result)
 
 
 @router.patch("/invoices/{id}")
-async def update_admin_invoice(id: int, body: UpdateInvoiceBody):
-    return _json_result(billing_service.update_invoice(id, body))
+async def update_admin_invoice(id: int, body: UpdateInvoiceBody, request: Request):
+    result = billing_service.update_invoice(id, body)
+    if result[0] < 400:
+        _audit_business_action(request, "invoice.changed", Permission.BILLING_EDIT, "invoice", id)
+    return _json_result(result)
 
 
 @router.delete("/invoices/{id}")
-async def delete_admin_invoice(id: int):
-    return _json_result(billing_service.delete_invoice(id))
+async def delete_admin_invoice(id: int, request: Request):
+    result = billing_service.delete_invoice(id)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "invoice.changed",
+            Permission.BILLING_EDIT,
+            "invoice",
+            id,
+            {"deleted": True},
+        )
+    return _json_result(result)
 
 
 @router.post("/open-invoices/ensure")
@@ -444,28 +541,70 @@ async def get_available_resources():
 
 
 @router.post("/payouts")
-async def create_admin_payout(body: CreatePayoutBody):
-    return _json_result(billing_service.create_payout(body))
+async def create_admin_payout(body: CreatePayoutBody, request: Request):
+    result = billing_service.create_payout(body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "payout.changed",
+            Permission.BILLING_EDIT,
+            "payout",
+            result[1].get("id"),
+        )
+    return _json_result(result)
 
 
 @router.put("/payouts/{id}")
-async def update_admin_payout(id: int, body: UpdatePayoutBody):
-    return _json_result(billing_service.update_payout(id, body))
+async def update_admin_payout(id: int, body: UpdatePayoutBody, request: Request):
+    result = billing_service.update_payout(id, body)
+    if result[0] < 400:
+        _audit_business_action(request, "payout.changed", Permission.BILLING_EDIT, "payout", id)
+    return _json_result(result)
 
 
 @router.patch("/payouts/{id}")
-async def set_admin_payout_status(id: int, body: SetPayoutStatusBody):
-    return _json_result(billing_service.set_payout_status(id, body))
+async def set_admin_payout_status(id: int, body: SetPayoutStatusBody, request: Request):
+    result = billing_service.set_payout_status(id, body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "payout.changed",
+            Permission.BILLING_EDIT,
+            "payout",
+            id,
+            {"status": body.status},
+        )
+    return _json_result(result)
 
 
 @router.delete("/payouts/{id}")
-async def delete_admin_payout(id: int):
-    return _json_result(billing_service.delete_payout(id))
+async def delete_admin_payout(id: int, request: Request):
+    result = billing_service.delete_payout(id)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "payout.changed",
+            Permission.BILLING_EDIT,
+            "payout",
+            id,
+            {"deleted": True},
+        )
+    return _json_result(result)
 
 
 @router.post("/payouts/{id}/recalculate")
-async def recalculate_admin_payout(id: int, body: CreatePayoutBody):
-    return _json_result(billing_service.recalculate_payout(id, body))
+async def recalculate_admin_payout(id: int, body: CreatePayoutBody, request: Request):
+    result = billing_service.recalculate_payout(id, body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "payout.changed",
+            Permission.BILLING_EDIT,
+            "payout",
+            id,
+            {"recalculated": True},
+        )
+    return _json_result(result)
 
 
 @router.get("/users")

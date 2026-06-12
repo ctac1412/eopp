@@ -11,15 +11,28 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 
+from captcha_solver import solve_captcha
+
 import src.constants as constants
 from src.captcha_assembly import get_valid_variant_index, is_icon_click_type
 from src.entities.utils import entities_to_list
+from src.platform.jobs.queue import enqueue_deferred_job
 from src.repositories import captcha_file_repo
-from captcha_solver import solve_captcha
+
+
+def _defer_job(name: str, payload: dict) -> None:
+    """Best-effort enqueue for archive/metadata work outside the hot path."""
+
+    try:
+        enqueue_deferred_job(name, payload)
+    except Exception:
+        pass
 
 
 @dataclass(frozen=True)
 class SaveCaptchaPayloadResult:
+    """Result of captcha archive persistence without forcing hot-path sync work."""
+
     path: str
     data: dict
     reused_existing: bool
@@ -213,6 +226,15 @@ def copy_existing_metadata(existing: dict, data: dict, include_labels: bool = Fa
 
 
 def save_captcha_payload_detailed(captcha_id: str, data: dict) -> SaveCaptchaPayloadResult:
+    sync_archive = constants.sync_side_work_enabled("CAPTCHA_SYNC_ARCHIVE_ENABLED")
+    sync_metadata = constants.sync_side_work_enabled("CAPTCHA_SYNC_SOLVER_METADATA_ENABLED")
+    if not sync_archive:
+        _defer_job(
+            "captcha_archive",
+            {"captcha_id": captcha_id, "data": data, "include_solver_metadata": sync_metadata},
+        )
+        return SaveCaptchaPayloadResult("", data, False, False)
+
     os.makedirs(all_dir(), exist_ok=True)
     path = captcha_file_path(captcha_id)
     if os.path.exists(path):
@@ -220,13 +242,15 @@ def save_captcha_payload_detailed(captcha_id: str, data: dict) -> SaveCaptchaPay
         existing_valid = get_valid_variant_index(existing)
         incoming_valid = get_valid_variant_index(data)
         if incoming_valid is None:
-            analysis_changed = ensure_analysis_metadata(existing)
+            analysis_changed = ensure_analysis_metadata(existing) if sync_metadata else False
             if analysis_changed:
                 write_captcha_json(path, existing)
             copy_existing_metadata(existing, data, include_labels=existing_valid is not None)
             if existing.get("solver_results"):
                 return SaveCaptchaPayloadResult(path, data, True, analysis_changed)
-    analysis_changed = ensure_analysis_metadata(data)
+    analysis_changed = ensure_analysis_metadata(data) if sync_metadata else False
+    if not sync_metadata:
+        _defer_job("captcha_metadata", {"captcha_id": captcha_id, "data": data})
     write_captcha_json(path, data)
     return SaveCaptchaPayloadResult(path, data, False, analysis_changed)
 
@@ -324,13 +348,12 @@ def backfill_captcha_dates() -> dict:
     """Проставляет file_mtime в captcha_files и файловой системе согласно usage_log.created_at.
 
     Для капч без привязки к usage_log ставится минимальная дата (2000-01-01)."""
-    EPOCH_TS = 946684800.0  # 2000-01-01 UTC
     EPOCH_ISO = "2000-01-01T00:00:00+00:00"
 
     links = captcha_file_repo.list_usage_log_links()
     all_ids = captcha_file_repo.list_all_captcha_ids()
-    linked_ids = {l["captcha_id"] for l in links}
-    log_dates = {l["captcha_id"]: l["usage_log_created_at"] for l in links}
+    linked_ids = {link["captcha_id"] for link in links}
+    log_dates = {link["captcha_id"]: link["usage_log_created_at"] for link in links}
 
     updated = 0
 
@@ -431,7 +454,7 @@ def sync_captcha_files_full() -> dict:
                     captcha_file_repo.update_action_date(captcha_id, action_date)
                     action_date_set += 1
                 if usage_log_id and need_usage_log:
-                    from src.entities import get_session, CaptchaFile
+                    from src.entities import CaptchaFile, get_session
                     with get_session() as session:
                         session.query(CaptchaFile).filter(
                             CaptchaFile.captcha_id == captcha_id,
@@ -460,8 +483,8 @@ def sync_captcha_files_full() -> dict:
 
 def _backfill_icon_coordinates() -> int:
     """Scan JSON files without icon_coordinates, extract from linked usage_log."""
-    from src.db.connection import get_connection
     from src.db.captchas import extract_icon_coordinates_from_logs
+    from src.db.connection import get_connection
 
     count = 0
     os.makedirs(all_dir(), exist_ok=True)

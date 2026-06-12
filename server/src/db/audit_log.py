@@ -1,4 +1,4 @@
-"""Admin audit log persistence."""
+"""Backward-compatible admin audit log persistence helpers."""
 
 from datetime import UTC, datetime
 
@@ -13,6 +13,20 @@ def log_audit(
     old_value: str | None = None,
     new_value: str | None = None,
 ) -> None:
+    """Write a legacy admin audit event using the Phase 5 audit repository."""
+    from src.modules.audit.repository import AuditRepository
+
+    AuditRepository().append_event(
+        actor_id=admin_id,
+        action=action,
+        category="admin",
+        target_type=target_type,
+        target_id=target_id,
+        old_value=old_value,
+        new_value=new_value,
+    )
+    return
+
     conn = get_connection()
     now = datetime.now(UTC).isoformat()
     conn.execute(
@@ -26,6 +40,11 @@ def log_audit(
 
 
 def list_audit_log(limit: int = 200, admin_id: int | None = None) -> list[dict]:
+    """Return audit rows through the legacy function name."""
+    from src.modules.audit.repository import AuditRepository
+
+    return AuditRepository().list_events(limit=limit, actor_id=admin_id)
+
     conn = get_connection()
     query = """SELECT a.*, k.label as admin_label
                FROM admin_audit_log a

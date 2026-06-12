@@ -1,17 +1,16 @@
-"""Declarative HTTP access policy.
+"""Declarative HTTP access policy backed by Phase 5 RBAC permissions.
 
-Routes still own domain-specific self-access checks. This module only answers
-whether a request must present an admin token before it reaches the route.
-
-Role model:
-  - super_admin: full access, can change admin_role of other keys
-  - manager: read-only admin access, cannot modify admin_role
+Routes should not contain scattered role checks. This module maps HTTP
+method/path pairs to one permission, then delegates the decision to
+``AccessService`` while keeping the legacy helper names used by older services.
 """
 
 from dataclasses import dataclass
 from typing import Literal
 
-from src.repositories import api_key_repo
+from src.core.contracts.permissions import AccessDecision
+from src.modules.access.permissions import Permission
+from src.modules.access.service import AccessService
 
 MatchKind = Literal["exact", "prefix"]
 
@@ -20,7 +19,7 @@ MatchKind = Literal["exact", "prefix"]
 class AccessRule:
     method: str
     path: str
-    role: str
+    permission: Permission | None
     match: MatchKind = "exact"
 
     def matches(self, method: str, path: str) -> bool:
@@ -33,42 +32,89 @@ class AccessRule:
 
 
 PUBLIC_RULES = (
-    AccessRule("POST", "/admin/auth", "public"),
-    AccessRule("GET", "/api-keys/public", "public"),
+    AccessRule("POST", "/admin/auth", None),
+    AccessRule("GET", "/api-keys/public", None),
 )
 
-ADMIN_RULES = (
-    AccessRule("*", "/api-keys", "admin", match="prefix"),
-    AccessRule("*", "/admin/", "admin", match="prefix"),
+PERMISSION_RULES = (
+    AccessRule("GET", "/api-keys", Permission.BILLING_VIEW),
+    AccessRule("POST", "/api-keys", Permission.ADMIN_USERS_MANAGE),
+    AccessRule("PUT", "/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
+    AccessRule("DELETE", "/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
+    AccessRule("POST", "/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
+    AccessRule("GET", "/admin/audit", Permission.AUDIT_VIEW, match="prefix"),
+    AccessRule("*", "/admin/operators", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/operator-links", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/distribution-answers", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("GET", "/admin/tariffs", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("PUT", "/admin/tariffs", Permission.TARIFF_EDIT, match="prefix"),
+    AccessRule("DELETE", "/admin/tariffs", Permission.TARIFF_EDIT, match="prefix"),
+    AccessRule("POST", "/admin/generate-invoice", Permission.INVOICE_GENERATE),
+    AccessRule("GET", "/admin/invoices", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/invoices", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/open-invoices", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/open-invoices", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("*", "/admin/auto-invoices", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/company", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/company", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/expenses", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/expenses", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/payouts", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/payouts", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("*", "/admin/users", Permission.ADMIN_USERS_MANAGE, match="prefix"),
+    AccessRule("GET", "/admin/prepaid", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/prepaid", Permission.BILLING_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/", Permission.BILLING_EDIT, match="prefix"),
 )
 
-SUPER_ADMIN_RULES = (
-    AccessRule("*", "/api-keys", "super_admin", match="prefix"),
-)
+_access_service = AccessService()
+
+
+def required_permission(method: str, path: str) -> Permission | None:
+    """Return the permission required by a request, or ``None`` for public."""
+    if any(rule.matches(method, path) for rule in PUBLIC_RULES):
+        return None
+    for rule in PERMISSION_RULES:
+        if rule.matches(method, path):
+            return rule.permission
+    return None
+
+
+def authorize_request(method: str, path: str, token: str | None) -> AccessDecision:
+    """Authorize one HTTP request against the centralized RBAC matrix."""
+    permission = required_permission(method, path)
+    if permission is None:
+        return AccessDecision(allowed=True, permission="public")
+    return _access_service.authorize_token(token, permission)
 
 
 def is_admin_token(token: str | None) -> bool:
-    return bool(token and api_key_repo.check_admin_token(token))
+    return _access_service.authenticate_token(token) is not None
 
 
 def is_super_admin_token(token: str | None) -> bool:
-    return bool(token and api_key_repo.is_super_admin_token(token))
+    actor = _access_service.authenticate_token(token)
+    return bool(actor and actor.role == "super_admin")
 
 
 def get_token_role(token: str | None) -> str | None:
-    if not token:
-        return None
-    return api_key_repo.get_admin_role(token)
+    actor = _access_service.authenticate_token(token)
+    return actor.role if actor else None
 
 
 def requires_admin(method: str, path: str) -> bool:
-    if any(rule.matches(method, path) for rule in PUBLIC_RULES):
-        return False
-    return any(rule.matches(method, path) for rule in ADMIN_RULES)
+    return required_permission(method, path) is not None
 
 
 def requires_super_admin(method: str, path: str) -> bool:
-    """Check if the path requires super_admin (e.g. changing admin_role)."""
-    if not requires_admin(method, path):
-        return False
-    return any(rule.matches(method, path) for rule in SUPER_ADMIN_RULES)
+    """Return whether the route requires the all-powerful legacy role."""
+    permission = required_permission(method, path)
+    return permission in {
+        Permission.ADMIN_USERS_MANAGE,
+        Permission.TARIFF_EDIT,
+        Permission.BILLING_EDIT,
+        Permission.INVOICE_GENERATE,
+        Permission.OPERATOR_MANAGE,
+    }

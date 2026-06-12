@@ -115,7 +115,8 @@ def update_key(key_id: int, **kwargs) -> ApiKey | None:
         return key
 
 
-def update_api_key(api_key_id: int, body, *, admin_id: int | None = None) -> ApiKey | None:
+def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access_decision=None) -> ApiKey | None:
+    """Update mutable API key fields and write a synchronous audit record."""
     import json
 
     with get_session() as session:
@@ -150,17 +151,55 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None) -> Api
         session.commit()
         session.refresh(key)
 
-        if changes and admin_id is not None:
-            from src.db.audit_log import log_audit
+        if changes:
+            old_value = json.dumps({k: v[0] for k, v in changes.items()}, ensure_ascii=False)
+            new_value = json.dumps({k: v[1] for k, v in changes.items()}, ensure_ascii=False)
+            if access_decision is not None:
+                from src.modules.audit.service import AuditService
 
-            log_audit(
-                admin_id=admin_id,
-                action="update_api_key",
-                target_type="api_key",
-                target_id=api_key_id,
-                old_value=json.dumps({k: v[0] for k, v in changes.items()}, ensure_ascii=False),
-                new_value=json.dumps({k: v[1] for k, v in changes.items()}, ensure_ascii=False),
-            )
+                AuditService().record_admin_action(
+                    "api_key.changed",
+                    decision=access_decision,
+                    target_type="api_key",
+                    target_id=api_key_id,
+                    old_value=old_value,
+                    new_value=new_value,
+                    metadata={"changed_fields": sorted(changes)},
+                )
+                if {"is_admin", "admin_role"} & set(changes):
+                    AuditService().record_admin_action(
+                        "role.changed",
+                        decision=access_decision,
+                        target_type="api_key",
+                        target_id=api_key_id,
+                        old_value=old_value,
+                        new_value=new_value,
+                        metadata={
+                            "changed_fields": sorted(
+                                {"is_admin", "admin_role"} & set(changes)
+                            )
+                        },
+                    )
+                AuditService().record_admin_action(
+                    "update_api_key",
+                    decision=access_decision,
+                    target_type="api_key",
+                    target_id=api_key_id,
+                    old_value=old_value,
+                    new_value=new_value,
+                    metadata={"legacy_action": True, "changed_fields": sorted(changes)},
+                )
+            elif admin_id is not None:
+                from src.db.audit_log import log_audit
+
+                log_audit(
+                    admin_id=admin_id,
+                    action="update_api_key",
+                    target_type="api_key",
+                    target_id=api_key_id,
+                    old_value=old_value,
+                    new_value=new_value,
+                )
         return key
 
 

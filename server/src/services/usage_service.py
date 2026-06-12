@@ -1,10 +1,22 @@
 import json
 
+from src.constants import sync_side_work_enabled
 from src.entities import UsageLog
+from src.platform.jobs.queue import enqueue_deferred_job
+from src.platform.observability.metrics import latency_timer
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
 from src.services import telegram_service
 from src.sse import lock, sse_queues
+
+
+def _defer_job(name: str, payload: dict) -> None:
+    """Best-effort enqueue for notifications and other non-core side work."""
+
+    try:
+        enqueue_deferred_job(name, payload)
+    except Exception:
+        pass
 
 
 def _parse_config_json(usage_log: UsageLog) -> dict | None:
@@ -62,12 +74,15 @@ def register_usage(body) -> tuple[int, dict]:
             "message": "Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение.",
         }
 
-    usage_log_id = usage_log_repo.create_usage(
-        api_key=body.api_key,
-        reservation_id=body.reservation_id,
-        captcha_id=body.captcha_id or "unknown",
-        config_json=body.config_json,
-    )
+    sync_enrichment = sync_side_work_enabled("USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED")
+    with latency_timer("usage.register"):
+        usage_log_id = usage_log_repo.create_usage(
+            api_key=body.api_key,
+            reservation_id=body.reservation_id,
+            captcha_id=body.captcha_id or "unknown",
+            config_json=body.config_json,
+            sync_enrichment=sync_enrichment,
+        )
     return 200, {"usage_log_id": usage_log_id}
 
 def confirm_usage(body) -> tuple[int, dict]:
@@ -79,12 +94,30 @@ def confirm_usage(body) -> tuple[int, dict]:
     if not log_entry or log_entry.api_key_id != key_record.id:
         return 404, {"error": "Usage log entry not found"}
 
-    ok = usage_log_repo.confirm_usage(body.usage_log_id, body.slot_date, body.logs)
+    sync_billing = sync_side_work_enabled("USAGE_SYNC_BILLING_ENABLED")
+    sync_captcha_records = sync_side_work_enabled("USAGE_SYNC_CAPTCHA_RECORDS_ENABLED")
+    with latency_timer("usage_confirm_core"):
+        ok = usage_log_repo.confirm_usage(
+            body.usage_log_id,
+            body.slot_date,
+            body.logs,
+            sync_billing=sync_billing,
+            sync_captcha_records=sync_captcha_records,
+        )
     if ok == "limit_exceeded":
         return 429, {"error": "Maximum uses exceeded"}
     if not ok:
         return 404, {"error": "Usage log entry not found"}
-    telegram_service.notify_confirmed_usage(usage_log_repo.get_usage_log(body.usage_log_id))
+    if sync_billing:
+        try:
+            telegram_service.notify_confirmed_usage(usage_log_repo.get_usage_log(body.usage_log_id))
+        except Exception as exc:
+            _defer_job(
+                "telegram_confirmed_usage",
+                {"usage_log_id": body.usage_log_id, "error": str(exc)},
+            )
+    else:
+        _defer_job("telegram_confirmed_usage", {"usage_log_id": body.usage_log_id})
     return 200, {"ok": True}
 
 

@@ -1,0 +1,2 @@
+"""Captcha archive side module."""
+

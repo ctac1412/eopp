@@ -21,7 +21,25 @@ import os
 from src.constants import PLUGINS_DIR
 
 
+DEFAULT_MODULE_MANIFESTS = (
+    "src.modules.billing.manifest",
+    "src.modules.training.manifest",
+)
+"""Default optional server modules loaded after protected core routers."""
+
+
+def _configured_module_manifests() -> tuple[str, ...]:
+    """Return enabled module manifest paths without mutating core registration."""
+
+    configured = os.environ.get("EOPP_MODULE_MANIFESTS")
+    if configured is None:
+        return DEFAULT_MODULE_MANIFESTS
+    return tuple(path.strip() for path in configured.split(",") if path.strip())
+
+
 def register_all_routes(app):
+    """Register protected core routers first, then optional module manifests."""
+
     from src.routes.admin import admin_auth_middleware_factory
     from src.routes.admin import router as admin_router
     from src.routes.api_keys import router as api_keys_router
@@ -38,8 +56,8 @@ def register_all_routes(app):
     from src.routes.scheduled import router as scheduled_router
     from src.routes.slots import router as slots_router
     from src.routes.sse import router as sse_router
-    from src.routes.training import router as training_router
     from src.routes.usage import router as usage_router
+    from src.platform.module_registry import register_modules
 
     admin_auth_middleware_factory(app)
 
@@ -56,12 +74,13 @@ def register_all_routes(app):
     app.include_router(operator_router)
     app.include_router(chat_router)
     app.include_router(scheduled_router)
-    app.include_router(training_router)
     app.include_router(mock_router)
     app.include_router(admin_router)
 
     if os.path.isdir(PLUGINS_DIR):
         app.include_router(plugin_router)
+
+    register_modules(app, _configured_module_manifests())
 
     register_test_pages(app)
     register_frontend_routes(app)

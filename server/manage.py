@@ -45,6 +45,55 @@ CERT_FILE = CERT_DIR / "cert.pem"
 KEY_FILE = CERT_DIR / "key.pem"
 
 
+@app.command("reconcile-finance")
+def reconcile_finance(
+    usage_id: int | None = typer.Option(None, "--usage-id", help="Single usage_log id to requeue."),
+    date_from: str | None = typer.Option(None, "--date-from", help="Inclusive created_at lower bound."),
+    date_to: str | None = typer.Option(None, "--date-to", help="Inclusive created_at upper bound."),
+    max_rows: int = typer.Option(500, "--max-rows", help="Maximum rows to enqueue from a range."),
+):
+    """Requeue billing jobs for confirmed usage rows.
+
+    This is a reconciliation command for Phase 6 finance isolation. It does not
+    perform tariff, prepaid, or invoice work inline; it only schedules the first
+    billing job so the worker can retry finance side effects safely.
+    """
+
+    from src.db.connection import get_connection
+    from src.platform.jobs.queue import enqueue_deferred_job
+
+    if usage_id is None and not (date_from or date_to):
+        raise typer.BadParameter("Provide --usage-id or at least one date bound.")
+
+    conn = get_connection()
+    try:
+        if usage_id is not None:
+            rows = conn.execute(
+                "SELECT id FROM usage_log WHERE id = ? AND status = 'confirmed'",
+                (usage_id,),
+            ).fetchall()
+        else:
+            conditions = ["status = 'confirmed'"]
+            params: list[object] = []
+            if date_from:
+                conditions.append("created_at >= ?")
+                params.append(date_from)
+            if date_to:
+                conditions.append("created_at <= ?")
+                params.append(date_to)
+            params.append(max_rows)
+            rows = conn.execute(
+                f"SELECT id FROM usage_log WHERE {' AND '.join(conditions)} ORDER BY id LIMIT ?",
+                params,
+            ).fetchall()
+    finally:
+        conn.close()
+
+    for row in rows:
+        enqueue_deferred_job("billing.calculate_usage_price", {"usage_log_id": int(row["id"])})
+    typer.echo(f"Queued {len(rows)} finance reconciliation job(s).")
+
+
 def ensure_self_signed_cert():
     """Generate self-signed certificate if it doesn't exist."""
     if CERT_FILE.exists() and KEY_FILE.exists():
@@ -82,12 +131,16 @@ def ensure_self_signed_cert():
 
 @app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     host: str = "127.0.0.1",
     port: int = 8765,
     no_ssl: bool = False,
     data_dir: str = None,
 ):
     """Start the captcha solver server."""
+    if ctx.invoked_subcommand is not None:
+        return
+
     import uvicorn
 
     if data_dir:

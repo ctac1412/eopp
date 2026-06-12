@@ -13,9 +13,7 @@ from zoneinfo._common import ZoneInfoNotFoundError
 from src.captcha_assembly import get_by_path
 from src.db.company_aliases import normalize_company
 from src.db.connection import get_connection
-from src.db.invoices import link_usage_to_open_invoice
-from src.db.prepaid import deduct_prepaid_for_usage_tx
-from src.db.tariffs import get_tariff
+from src.platform.jobs.queue import enqueue_deferred_job
 
 # UUID v0 pattern for zero UUID (used as placeholder)
 _UUID_V0_PATTERN = re.compile(r"^0{8}-0{4}-0{4}-0{4}-0{12}$")
@@ -23,6 +21,15 @@ try:
     _MSK_TZ = ZoneInfo("Europe/Moscow")
 except ZoneInfoNotFoundError:
     _MSK_TZ = timezone(timedelta(hours=3), "Europe/Moscow")
+
+
+def _defer_job(name: str, payload: dict) -> None:
+    """Best-effort enqueue for usage DB side effects after core state changes."""
+
+    try:
+        enqueue_deferred_job(name, payload)
+    except Exception:
+        pass
 
 
 def _extract_fields_from_config(config_json: dict | None) -> dict:
@@ -96,6 +103,34 @@ def _should_index_captchas(config_json: dict | None) -> bool:
     """Index captchas only for EOPP source; never index local source."""
     source = _get_captcha_source(config_json)
     return source != "local"
+
+
+def get_tariff(api_key_id: int) -> dict | None:
+    """Legacy tariff lookup wrapper kept outside the confirm hot path.
+
+    Phase 6 moved billing into deferred jobs, but older tests and maintenance
+    scripts still patch this symbol to prove confirm does not call it.
+    """
+
+    from src.db.tariffs import get_tariff as _get_tariff
+
+    return _get_tariff(api_key_id)
+
+
+def deduct_prepaid_for_usage_tx(conn, api_key_id: int, usage_log_id: int, amount: int) -> bool:
+    """Legacy prepaid wrapper kept patchable while billing is job-driven."""
+
+    from src.db.prepaid import deduct_prepaid_for_usage_tx as _deduct_prepaid_for_usage_tx
+
+    return _deduct_prepaid_for_usage_tx(conn, api_key_id, usage_log_id, amount)
+
+
+def link_usage_to_open_invoice(usage_log_id: int, company: str) -> dict | None:
+    """Legacy invoice-link wrapper kept patchable while billing is job-driven."""
+
+    from src.db.invoices import link_usage_to_open_invoice as _link_usage_to_open_invoice
+
+    return _link_usage_to_open_invoice(usage_log_id, company)
 
 
 def _read_usage_logs(conn, usage_log_id: int) -> list[str] | None:
@@ -216,7 +251,17 @@ def confirm_usage(
     usage_log_id: int,
     slot_date: str | None = None,
     logs: list[str] | None = None,
+    sync_billing: bool = True,
+    sync_captcha_records: bool = True,
 ) -> bool | str:
+    """Atomically confirm usage and defer all finance/captcha side work.
+
+    The ``sync_*`` flags remain in the signature for older adapters, but Phase 6
+    keeps tariff calculation, prepaid deduction, invoice linking, and captcha
+    record parsing behind durable jobs so side-module failures cannot break the
+    confirmation core.
+    """
+
     conn = get_connection()
     conn.execute("BEGIN IMMEDIATE")
     row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
@@ -250,31 +295,12 @@ def confirm_usage(
         (now, slot_date, logs_json, usage_log_id),
     )
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
-    is_test = bool(row["is_test"]) if row["is_test"] else False
-    if not is_test:
-        mode = config_json.get("mode", "create") if config_json else "create"
-        tariff = get_tariff(row["api_key_id"])
-        price = 0
-        company = row["company"]
-        if tariff:
-            price = _calculate_usage_price(mode, tariff, now, bool(row["has_custom_slots"]))
-        conn.execute(
-            "UPDATE usage_log SET price = ? WHERE id = ?",
-            (price, usage_log_id),
-        )
-        deducted = deduct_prepaid_for_usage_tx(conn, row["api_key_id"], usage_log_id, price)
-    else:
-        company = None
-        deducted = False
     conn.commit()
-    if company and not deducted:
-        link_usage_to_open_invoice(usage_log_id, company)
+    _defer_job("billing.calculate_usage_price", {"usage_log_id": usage_log_id})
 
     stored_logs = _read_usage_logs(conn, usage_log_id)
     if stored_logs and _should_index_captchas(config_json):
-        from src.db.captchas import create_captcha_records
-
-        create_captcha_records(usage_log_id, "unknown", stored_logs, "confirmed")
+        _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"})
 
     conn.close()
     return True
