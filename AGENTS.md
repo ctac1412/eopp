@@ -360,3 +360,336 @@ docker run --rm -v eopp_eopp_prod_data:/data -v $(pwd):/backup alpine tar czf /b
 - **SSL**: Сертификат генерируется автоматически при старте контейнера
 - **Volume**: Данные сохраняются между перезапусками контейнера
 - **Фронтенд**: При сборке Docker автоматически включает `frontend/dist/`
+
+---
+
+## Durable Outbox And Background Jobs
+
+Phase 3 introduced a durable SQLite-backed side-work layer:
+
+| Area | Files |
+|------|-------|
+| Durable queue | `server/src/platform/jobs/queue.py` |
+| Worker / retry / dead-letter | `server/src/platform/jobs/worker.py` |
+| Outbox publisher | `server/src/platform/outbox/publisher.py` |
+| Captcha archive jobs | `server/src/modules/captcha_archive/jobs.py` |
+| Usage jobs | `server/src/modules/usage/jobs.py` |
+| DB migration | `server/migrations/versions/z0a1b2c3d4e5_add_outbox_background_jobs.py` |
+
+Tables:
+- `background_jobs`: source of truth for deferred jobs.
+- `outbox_events`: durable event log for job lifecycle events such as `job.enqueued`, `job.retry`, `job.done`, and `job.dead`.
+
+Idempotency keys:
+- `captcha_archive:{captcha_id}`
+- `captcha_metadata:{captcha_id}`
+- `usage_enrich:{usage_log_id}`
+- `billing_confirm:{usage_log_id}`
+- `captcha_records:{usage_log_id}`
+- `telegram_confirmed_usage:{usage_log_id}`
+
+Important rules:
+- Core endpoints (`/solve-captcha`, `/solve`, `/register-usage`, `/confirm-usage`, `/fail-usage`) must not wait for side jobs.
+- Enqueue from hot paths is best-effort. Catch enqueue failures and keep the core response intact.
+- Job handlers must be idempotent. Re-running a handler after retry must not corrupt billing, captcha files, or usage rows.
+- Worker failures update `attempts`, `next_retry_at`, `last_error`, and eventually `status='dead'`; they must not escape into HTTP request handling.
+- Add new side-work through `enqueue_deferred_job()` plus a handler registered in `default_registry()`. Do not import side modules into `server/src/core/*`.
+
+---
+
+## Protected Core Runtime Notes
+
+Phase 2 moved the captcha hot path out of `server/src/routes/captcha.py` into
+`server/src/core/captcha_runtime/`.
+
+Important rules for future work:
+
+- `server/src/core/` is protected core. Do not import billing, CRM, training,
+  plugins, admin routes, telegram, invoice, or prepaid code from it.
+- Keep FastAPI, DB repositories, SSE, operator distribution, and background job
+  wiring in adapters such as `server/src/routes/captcha.py`.
+- If core needs side behavior, add it to `CaptchaRuntimeDependencies` or a
+  contract/event in `server/src/core/contracts/`.
+- `CaptchaSession` intentionally keeps a small dict-like API because legacy
+  admin, health, and distribution code still reads `src.sse.pending` entries.
+- `CaptchaPresenter` may assemble puzzle captcha images in core, but icon-click
+  distribution preparation must stay injected until realtime/operator code is
+  moved behind protected-core contracts.
+- Run these checks after touching this area:
+  - `uv run pytest tests/test_core_captcha_runtime.py tests/test_core_smoke.py`
+  - `uv run lint-imports`
+
+## Phase 0-1 Core Safety Flags
+
+The core captcha flow can run with side work disabled. Preserve these flags and
+their semantics:
+
+- `EOPP_PEAK_FAST_MODE=1` disables non-essential synchronous side work unless a
+  more specific flag explicitly enables it.
+- `EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED=0` defers captcha JSON/archive work from
+  `/solve-captcha`.
+- `EOPP_CAPTCHA_SYNC_SOLVER_METADATA_ENABLED=0` prevents synchronous solver
+  metadata, top3, and classifier hint work in `/solve-captcha`.
+- `EOPP_USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED=0` keeps `/register-usage` to a
+  minimal pending row and defers company/FIO/vehicle/custom-slot enrichment.
+- `EOPP_USAGE_SYNC_BILLING_ENABLED=0` keeps `/confirm-usage` to atomic confirm
+  state and usage_count updates, deferring tariff/prepaid/invoice/telegram.
+- `EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED=0` defers captcha-record parsing from
+  confirmed usage logs.
+
+Documentation expectations for this area:
+
+- New protected-core contracts, runtime classes, durable job DTOs, and public
+  helpers must have docstrings that state the boundary or invariant they
+  protect.
+- Test wrappers under `tests/` exist so plan commands like
+  `uv run pytest tests/test_core_smoke.py` keep working while the main server
+  tests remain under `server/tests/`.
+- When adding a new side job, document its idempotency key and handler location
+  here before wiring it into hot paths.
+
+## Phase 4 Realtime Rules
+
+Realtime fanout is part of the protected core path. Keep these rules when
+touching SSE, operators, captcha display, captcha timeout, or distribution
+completion:
+
+- `server/src/core/realtime/registry.py` is the in-memory source of truth for
+  live SSE queues, `master_key_id -> operator_ids`, `operator_id -> master_ids`,
+  and operator display modes.
+- Update `RealtimeRegistry` when topology changes: operator connect,
+  disconnect, link, unlink, relink, admin display-mode update, or master stream
+  handshake.
+- Do not do DB/repository lookups during captcha fanout. Captcha display,
+  timeout, and distributed-solve completion must use registry snapshots.
+- Every client queue must be bounded. A full queue means the connection is
+  marked lagging and the message is dropped for that connection only.
+- `push_sse` and owner/operator fanout must stay nonblocking. Never await a
+  client queue, never hold the registry lock while writing to queues, and never
+  remove a connection only because its queue is full.
+- A slow operator must not delay or block a master, another operator, or a super
+  kiosk. Preserve `tests/test_realtime_fanout.py` coverage when changing this
+  area.
+- Legacy globals in `server/src/sse/manager.py` (`sse_queues`,
+  `sse_connections`, `queue_subscriptions`) are compatibility views. Prefer
+  registry methods for new code.
+- Run this focused check after touching realtime fanout:
+  - `uv run pytest tests/test_realtime_fanout.py`
+
+## Phase 5 RBAC And Audit Rules
+
+Phase 5 centralizes admin/security authorization and audit while preserving
+legacy `X-Admin-Token` and admin API-key compatibility.
+
+Important files:
+- Core contract: `server/src/core/contracts/permissions.py`
+- RBAC permissions and grants: `server/src/modules/access/permissions.py`
+- Access decisions: `server/src/modules/access/service.py`
+- HTTP permission matrix: `server/src/policies/access_policy.py`
+- Audit writer/reader: `server/src/modules/audit/service.py` and
+  `server/src/modules/audit/repository.py`
+- Audit schema extension:
+  `server/migrations/versions/a2b3c4d5e6f7_extend_admin_audit_log.py`
+
+Important rules:
+- Protected core may depend only on `AccessDecision` / `AccessChecker` from
+  `server/src/core/contracts/permissions.py`. Do not import repositories,
+  FastAPI, `server/src/modules/access`, or `server/src/modules/audit` from core.
+- Do not scatter role checks through route functions. Add or change HTTP
+  permissions in `src.policies.access_policy`; route code may only reuse the
+  middleware `AccessDecision` for audit context.
+- Keep existing admin keys working. Active API keys with `is_admin=1` are valid
+  admin tokens; a missing `admin_role` is treated as `super_admin` because older
+  releases allowed all admin keys to mutate admin resources.
+- Security/admin audit is synchronous for access-sensitive changes:
+  `admin.login.succeeded`, `admin.login.failed`, `api_key.changed`, and
+  `role.changed`.
+- Business audit is best-effort through the durable outbox event
+  `audit.business`; current important actions are `tariff.changed`,
+  `invoice.generated`, `invoice.changed`, and `payout.changed`.
+- `admin_audit_log.admin_id` is legacy `NOT NULL`; unauthenticated security
+  events use actor id `0`.
+- Run this focused check after touching RBAC or audit:
+  - `uv run pytest tests/test_rbac_audit.py`
+  - `uv run lint-imports`
+
+## Phase 6 Finance And CRM Isolation Rules
+
+Phase 6 moves finance and CRM side effects out of captcha and usage core paths.
+
+Important files:
+- Billing jobs and event DTOs: `server/src/modules/billing/jobs.py` and
+  `server/src/modules/billing/events.py`
+- CRM enrichment jobs: `server/src/modules/crm/jobs.py`
+- Durable job registry: `server/src/platform/jobs/worker.py`
+- Core usage persistence boundary: `server/src/repositories/usage_log_repo.py`
+  and `server/src/db/usage_log.py`
+
+Important rules:
+- `/solve-captcha`, `/solve`, `/register-usage`, and `/confirm-usage` must not
+  import or synchronously call tariffs, prepaid, invoice linking, company alias
+  parsing, or company creation.
+- Usage registration writes only the minimal pending row and best-effort
+  enqueues `crm.enrich_usage`.
+- Usage confirmation only atomically updates status, confirmed_at, slot_date,
+  logs, and API-key usage_count. It best-effort enqueues
+  `billing.calculate_usage_price`; that job chains to
+  `billing.deduct_prepaid`, then `billing.link_open_invoice` if unpaid company
+  debt remains.
+- Billing and CRM handlers must be idempotent. Re-running
+  `billing.deduct_prepaid` must not double-deduct because
+  `deduct_prepaid_for_usage_tx()` checks existing deductions.
+- Legacy jobs `usage_enrich` and `billing_confirm` remain registered as aliases
+  for already queued rows, but new hot paths should enqueue `crm.enrich_usage`
+  and `billing.calculate_usage_price`.
+- Broken tariff lookup, prepaid deduction, invoice linking, company alias
+  parsing, or company creation must retry/dead-letter in the worker and must
+  not change core HTTP responses.
+- Finance reconciliation is available through:
+  - `uv run python server/manage.py reconcile-finance --usage-id <id>`
+  - `uv run python server/manage.py reconcile-finance --date-from <iso> --date-to <iso>`
+- Run this focused check after touching finance or CRM isolation:
+  - `uv run pytest tests/test_billing_isolation.py tests/test_outbox_jobs.py`
+  - `uv run lint-imports`
+
+## Phase 7 Module Registry And Flat Extension Rules
+
+Phase 7 adds defensive optional module loading while keeping protected core
+route registration explicit and unconditional.
+
+Important files:
+- Platform registry: `server/src/platform/module_registry.py`
+- Core route shell and module list: `server/src/routes/__init__.py`
+- Module health: `server/src/routes/health.py` (`GET /health/modules`)
+- Pilot manifests:
+  - `server/src/modules/billing/manifest.py`
+  - `server/src/modules/training/manifest.py`
+
+Important rules:
+- `ModuleManifest` is the flat contract for side modules: `name`, `routers`,
+  `event_handlers`, `job_handlers`, `permissions`, `startup`, and `shutdown`.
+- Core routers must be registered first and directly in `register_all_routes()`.
+  They must not depend on optional module imports succeeding.
+- Optional modules are loaded through `register_modules()` only. A failed module
+  import, malformed manifest, failed startup hook, or router include error must
+  create a disabled `ModuleStatus` and must not prevent app startup.
+- `GET /health/modules` reports enabled/disabled module status from
+  `app.state.module_statuses`; it must not import side modules while serving the
+  health request.
+- Add new server capabilities under `server/src/modules/<name>/manifest.py`.
+  Do not add direct imports for side-module routers in `server/src/routes/__init__.py`.
+- `EOPP_MODULE_MANIFESTS` may override the comma-separated manifest list for
+  diagnostics, staged rollouts, or testing a broken module.
+- Public registry classes, manifests, lifecycle hooks, and health helpers must
+  have docstrings that state the boundary they protect.
+- Run this focused check after touching module loading:
+  - `uv run pytest tests/test_module_registry.py`
+  - `uv run lint-imports`
+
+## Phase 8 Observability And Peak Mode Rules
+
+Phase 8 adds local, dependency-free visibility for peak captcha operation and
+load regressions.
+
+Important files:
+- Metrics collector: `server/src/platform/observability/metrics.py`
+- Metrics endpoint: `server/src/routes/health.py` (`GET /metrics`)
+- Peak schedule: `server/src/constants.py`
+- Realtime metrics hooks: `server/src/core/realtime/fanout.py`
+- Job failure/lag metrics: `server/src/platform/jobs/worker.py`
+- Local load check: `server/tests/load/test_peak_solve_flow.py`
+
+Important rules:
+- Keep observability dependency-free and process-local unless a later phase
+  explicitly adds Prometheus/OpenTelemetry clients. Protected core may import
+  `src.platform.observability.metrics`, but must not import FastAPI route
+  modules just to update counters.
+- `/metrics` renders Prometheus text from the platform collector and refreshes
+  compatibility gauges such as `captcha_pending_count`.
+- Preserve these Phase 8 metric names:
+  `captcha_solve_duration_ms`, `captcha_display_latency_ms`,
+  `captcha_pending_count`, `realtime_queue_depth`,
+  `realtime_dropped_messages_total`, `background_job_lag_seconds`,
+  `background_job_failures_total`, and `usage_confirm_core_duration_ms`.
+- Peak fast mode is active when `PEAK_FAST_MODE=1` or
+  `EOPP_PEAK_FAST_MODE=1`, and otherwise during Moscow windows
+  `09:50-10:10` and `11:50-12:10`. Keep the Windows-safe UTC+03 fallback so
+  local tests do not require the `tzdata` package.
+- Display latency measures dispatch before human/operator wait. Do not include
+  manual captcha wait time in the display SLO.
+- Realtime fanout metrics must remain nonblocking: never await queues, never
+  hold the registry lock while writing queues, and count slow-client drops
+  without disconnecting that client.
+- Worker failures must increment job failure metrics and update retry/dead
+  state inside the worker only. They must not escape into HTTP hot paths.
+- Run these focused checks after touching observability, peak mode, realtime
+  fanout, jobs, or confirm timing:
+  - `uv run pytest tests/test_observability_peak_mode.py server/tests/load/test_peak_solve_flow.py`
+  - `uv run pytest tests/test_realtime_fanout.py tests/test_outbox_jobs.py tests/test_billing_isolation.py`
+  - `uv run lint-imports`
+
+## Phase 9 Production Delivery Rules
+
+Phase 9 makes production promotion match the local working style: code, DB,
+JSON content, config, and plugins can be edited locally, but they move to
+production only as an explicit release state with a manifest and backup.
+
+Important files:
+- Release helpers: `scripts/deploy/release.ps1`
+- Full deploy: `scripts/deploy/deploy.ps1`
+- Mandatory/inspection backup: `scripts/deploy/backup.ps1`
+- Explicit migration: `scripts/deploy/migrate.ps1`
+- Release verification: `scripts/deploy/verify-release.ps1`
+- Release rollback: `scripts/deploy/rollback.ps1`
+- Explicit DB restore: `scripts/deploy/restore-backup.ps1`
+- Compose template: `server/deploy/docker-compose.yml`
+- Operator runbook: `docs/deploy-runbook.md`
+
+Important rules:
+- Every deploy or promotion must have a `release_id` in
+  `YYYYMMDD_HHMMSS-<short_git_sha>` format and a `release.json`.
+- Treat code, DB, JSON content, and plugins as one promotable production state
+  for normal deploys. Emergency plugin-only and data-only commands still create
+  release manifests and mandatory backups.
+- Print a diff summary before push: git status/stat, DB table-count diff,
+  data checksum, and plugins checksum.
+- Production backup is mandatory before deploy, data promotion, or plugin-only
+  promotion. Backups live under `/opt/eopp/shared/backups/<backup_id>`.
+- Compose runs from `/opt/eopp`, mounts `./shared/data`, `./shared/certs`, and
+  `./current/plugins`, and starts the app with `EOPP_AUTO_MIGRATE=0`.
+- Migrations are explicit through `scripts/deploy/migrate.ps1`; production app
+  startup must not mutate schema during health checks or rollback.
+- Rollback targets a selected `release.json` or `/opt/eopp/previous`. Never pick
+  a Docker image with `docker images | head -1`, `grep -v`, or similar
+  heuristics.
+- DB restore is explicit and operator-confirmed through
+  `scripts/deploy/restore-backup.ps1 -BackupId <backup_id>`. Release rollback
+  must not silently restore DB unless explicitly requested.
+- For SQLite destructive or irreversible migrations, assume rollback means DB
+  restore from backup unless a downgrade has been tested on production-copy
+  data.
+- Run this focused check after touching delivery scripts or runbook:
+  - `uv run pytest server/tests/test_deploy_scripts.py`
+
+## Final Architecture Review Notes
+
+The 2026-06-11 protected-core review must be treated as a release gate, not as
+documentation only. Before merge or production promotion, re-run the focused
+checks for the touched layers and resolve any red core smoke tests.
+
+Current review invariants:
+- `server/src/core/` must stay free of side-module imports. Static checks should
+  cover the actual import namespace used by the app (`src.*`), not only
+  `server.src.*`.
+- Manual `/solve-captcha` smoke coverage must prove that the pending session is
+  visible through the legacy `src.sse.pending` compatibility map before the
+  caller waits for `/solve`. A timeout-only pass is not acceptable.
+- Data-only/full-state promotion must become a selectable release state:
+  `current/release.json` should reflect the promoted data release, and rollback
+  must be able to target that manifest rather than the previous code release.
+- `push-data.ps1`, `push-plugins.ps1`, and `deploy.ps1` all need mandatory
+  backup, visible diff summary, release manifest, verification, and an explicit
+  restore path through `restore-backup.ps1`.
+- Public protected-core contracts, module manifests, durable job DTOs, registry
+  helpers, deploy release helpers, and new public methods need docstrings or
+  comment-based PowerShell help that state the boundary/invariant they protect.
