@@ -84,6 +84,17 @@ def _get_linked_expenses(payout_id: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def _director_user_ids(conn, user_ids: list[int]) -> set[int]:
+    if not user_ids:
+        return set()
+    placeholders = ",".join("?" * len(user_ids))
+    rows = conn.execute(
+        f"SELECT id FROM users WHERE id IN ({placeholders}) AND COALESCE(is_director, 0) = 1",
+        user_ids,
+    ).fetchall()
+    return {int(row["id"]) for row in rows}
+
+
 def calculate_payout(
     invoice_ids: list[int],
     expense_ids: list[int],
@@ -163,14 +174,19 @@ def calculate_payout(
     total_compensated = sum(compensated.values())
     net = invoices_total - total_compensated
 
-    # 4. Делим net пропорционально split_pct
+    # 4. Делим net пропорционально split_pct только между директорами.
+    split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
+    director_ids = _director_user_ids(conn, split_user_ids)
+    director_splits = [us for us in user_splits if int(us["user_id"]) in director_ids]
     profit_shares: dict[int, float] = {}  # user_id → profit_share
-    total_split_pct = sum(us["split_pct"] for us in user_splits) or 100.0
+    normalized_split_pct: dict[int, float] = {}
+    total_split_pct = sum(us["split_pct"] for us in director_splits) or 0.0
 
-    for us in user_splits:
-        user_id = us["user_id"]
+    for us in director_splits:
+        user_id = int(us["user_id"])
         pct = us["split_pct"]
-        profit_shares[user_id] = round(net * pct / total_split_pct, 2) if net > 0 else 0.0
+        normalized_split_pct[user_id] = round(pct * 100 / total_split_pct, 2) if total_split_pct else 0.0
+        profit_shares[user_id] = round(net * pct / total_split_pct, 2) if net > 0 and total_split_pct else 0.0
 
     # 5. Итоговые суммы для payout_shares
     # Собираем компенсации по user_id
@@ -184,7 +200,7 @@ def calculate_payout(
 
     payout_shares = []
     for us in user_splits:
-        uid = us["user_id"]
+        uid = int(us["user_id"])
         comm = user_commission.get(uid, 0.0)
         tx = user_tax.get(uid, 0.0)
         exp_comp = user_expenses_comp.get(uid, 0.0)
@@ -193,7 +209,7 @@ def calculate_payout(
         payout_shares.append(
             {
                 "user_id": uid,
-                "split_pct": us["split_pct"],
+                "split_pct": normalized_split_pct.get(uid, 0.0),
                 "commission_amount": comm,
                 "tax_amount": tx,
                 "expenses_compensation": exp_comp,

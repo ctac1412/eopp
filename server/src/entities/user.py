@@ -33,6 +33,7 @@ class User(Base):
     role: Mapped[str] = mapped_column(String, nullable=False, default="manager")
     system_role: Mapped[str | None] = mapped_column(String, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_director: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     company_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("companies.id"), nullable=True
     )

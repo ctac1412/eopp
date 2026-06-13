@@ -163,6 +163,7 @@ function AdminPage() {
     role: "manager",
     systemRole: "",
     active: true,
+    isDirector: false,
     companyId: "",
     financeAccess: emptyAccess(),
     operatorAccess: emptyAccess(),
@@ -1033,6 +1034,7 @@ function AdminPage() {
         role: userForm.role || "manager",
         system_role: userForm.systemRole || null,
         active: userForm.active !== false,
+        is_director: userForm.isDirector === true,
         company_id: companyId,
         finance_access: accessPayloadFromForm(userForm.financeAccess),
         operator_access: accessPayloadFromForm(userForm.operatorAccess),
@@ -1047,7 +1049,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, isDirector: false, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
       fetchFinanceParticipants(adminToken);
@@ -1067,6 +1069,7 @@ function AdminPage() {
         role: userForm.role || "manager",
         system_role: userForm.systemRole || null,
         active: userForm.active !== false,
+        is_director: userForm.isDirector === true,
         company_id: companyId,
         finance_access: accessPayloadFromForm(userForm.financeAccess),
         operator_access: accessPayloadFromForm(userForm.operatorAccess),
@@ -1084,7 +1087,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, isDirector: false, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
       fetchFinanceParticipants(adminToken);
@@ -1133,6 +1136,7 @@ function AdminPage() {
       role: u.role || "manager",
       systemRole: u.system_role || "",
       active: u.active !== false,
+      isDirector: u.is_director === true,
       companyId: u.company_id ? String(u.company_id) : "",
       financeAccess: normalizeAccess(u.finance_access),
       operatorAccess: normalizeAccess(u.operator_access),
@@ -1485,7 +1489,7 @@ function AdminPage() {
         <UsersTab
           users={users}
           onCreate={() => {
-            setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
+            setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, isDirector: false, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
             fetchCompanies(adminToken);
             setShowUserModal(true);
           }}

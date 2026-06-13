@@ -170,6 +170,7 @@ class CreateUserBody(BaseModel):
     role: str = "manager"
     system_role: str | None = None
     active: bool = True
+    is_director: bool = False
     company_id: int | None = None
     company_memberships: list[dict] | None = None
     operator_profile: dict | None = None
@@ -186,6 +187,7 @@ class UpdateUserBody(BaseModel):
     role: str | None = None
     system_role: str | None = None
     active: bool | None = None
+    is_director: bool | None = None
     company_id: int | None = None
     company_memberships: list[dict] | None = None
     operator_profile: dict | None = None

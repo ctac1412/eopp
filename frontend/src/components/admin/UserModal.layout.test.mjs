@@ -14,6 +14,8 @@ test("user modal uses a three-quarter page layout", async () => {
   assert.match(userModal, /className="users-modal-form__fields"/);
   assert.match(userModal, /className="users-modal-form__access"/);
   assert.match(userModal, /import \{ Modal, Switch \} from "antd";/);
+  assert.match(userModal, /Director/);
+  assert.match(userModal, /isDirector/);
   assert.doesNotMatch(userModal, /users-modal-nav/);
   assert.doesNotMatch(userModal, /modalRender/);
   assert.match(styles, /\.users-modal-form__fields,[\s\S]*?\.users-modal-form__access\s*{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);

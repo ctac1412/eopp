@@ -100,6 +100,7 @@ def user_to_dict(user: User) -> dict:
         "role": user.role,
         "system_role": user.system_role,
         "active": user.active,
+        "is_director": bool(getattr(user, "is_director", False)),
         "company_id": user.company_id,
         "company_name": user.company.name if user.company else None,
         "created_at": user.created_at,
@@ -305,6 +306,7 @@ def create_user(
     role: str = "manager",
     system_role=UNSET,
     active: bool = True,
+    is_director: bool = False,
     company_id: int | None = None,
     company_memberships: list[dict] | None = None,
     operator_profile: dict | None = None,
@@ -326,6 +328,7 @@ def create_user(
             role=role,
             system_role=(system_role if system_role is not UNSET else None),
             active=active,
+            is_director=is_director,
             company_id=company_id,
             created_at=now,
         )
@@ -364,6 +367,7 @@ def update_user(
     role: str | None = None,
     system_role=UNSET,
     active: bool | None = None,
+    is_director: bool | None = None,
     company_id=UNSET,
     company_memberships: list[dict] | None = None,
     operator_profile: dict | None = None,
@@ -392,6 +396,8 @@ def update_user(
             user.system_role = system_role
         if active is not None:
             user.active = active
+        if is_director is not None:
+            user.is_director = is_director
         if company_id is not UNSET:
             user.company_id = company_id
         session.flush()

@@ -276,6 +276,14 @@ export function UserModal({
               onChange={(checked) => setForm((prev) => ({ ...prev, active: checked }))}
             />
           </div>
+          <div className="users-modal-form__active">
+            <span className="users-modal-active-toggle__label">Director</span>
+            <Switch
+              className="users-modal-active-toggle"
+              checked={form.isDirector === true}
+              onChange={(checked) => setForm((prev) => ({ ...prev, isDirector: checked }))}
+            />
+          </div>
         </div>
         <div className="users-modal-form__access">
           {ACCESS_BLOCKS.map(([field, title]) => (
