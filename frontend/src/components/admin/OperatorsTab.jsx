@@ -90,6 +90,7 @@ export function OperatorsTab({ adminToken, onError }) {
   const [editForm, setEditForm] = useState({
     nickname: "",
     icon_display_mode: "own_then_foreign",
+    icon_rate: 0,
     masterAccessMode: "all",
     allowed_master_keys: [],
   });
@@ -219,6 +220,7 @@ export function OperatorsTab({ adminToken, onError }) {
         Array.isArray(op.company_names) ? op.company_names.join(" ") : "",
         op.operator_all_companies ? "все компании" : "",
         op.icon_display_mode,
+        op.icon_rate,
       ]
         .filter(Boolean)
         .join(" ")
@@ -267,6 +269,7 @@ export function OperatorsTab({ adminToken, onError }) {
     setEditForm({
       nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
     });
@@ -305,6 +308,7 @@ export function OperatorsTab({ adminToken, onError }) {
       const body = {
         nickname: editForm.nickname,
         icon_display_mode: editForm.icon_display_mode,
+        icon_rate: Math.max(0, Number(editForm.icon_rate) || 0),
         allowed_master_keys: serializeAllowedMasters(
           editForm.masterAccessMode,
           editForm.allowed_master_keys,
@@ -330,6 +334,7 @@ export function OperatorsTab({ adminToken, onError }) {
     setEditForm({
       nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
     });
@@ -466,6 +471,7 @@ export function OperatorsTab({ adminToken, onError }) {
     { title: "Компании", dataIndex: "company_names", width: 180, render: renderCompanyScope },
     { title: "Мастера", dataIndex: "allowed_master_keys", width: 170, render: renderAllowedMasters },
     { title: "Иконки", dataIndex: "icon_display_mode", width: 128, render: getIconModeLabel },
+    { title: "Тариф", dataIndex: "icon_rate", width: 90, align: "right", render: (value) => `${Number(value || 0).toLocaleString("ru-RU")} ₽` },
     {
       title: "Ссылка",
       dataIndex: "uuid",
@@ -749,6 +755,16 @@ export function OperatorsTab({ adminToken, onError }) {
                       onChange={(value) => setEditForm((prev) => ({ ...prev, icon_display_mode: value || "own_then_foreign" }))}
                       options={ICON_DISPLAY_MODES}
                       allowClear={false}
+                    />
+                  </label>
+                  <label className="form-label small mb-0">
+                    Тариф за иконку
+                    <TextInput
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={editForm.icon_rate}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, icon_rate: event.target.value }))}
                     />
                   </label>
                   <label className="form-label small mb-0">

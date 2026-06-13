@@ -19,4 +19,6 @@ test("journal details and operator logs can open captcha review", () => {
   assert.match(operatorsSource, /const groupedAnswers = useMemo/);
   assert.match(operatorsSource, /data=\{groupedAnswers\}/);
   assert.match(operatorsSource, /setReviewCaptcha\(reviewFromAnswer\(row\)\)/);
+  assert.match(operatorsSource, /icon_rate/);
+  assert.match(operatorsSource, /Тариф за иконку/);
 });

@@ -22,6 +22,7 @@ class Operator(Base):
     icon_display_mode: Mapped[str] = mapped_column(
         Text, nullable=False, default="own_then_foreign"
     )
+    icon_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     allowed_master_keys: Mapped[str | None] = mapped_column(Text, nullable=True)
     online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     company_id: Mapped[int | None] = mapped_column(

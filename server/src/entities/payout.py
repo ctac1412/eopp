@@ -39,6 +39,8 @@ class PayoutShare(Base):
     total: Mapped[float | None] = mapped_column(Float, nullable=True, default=0)
     commission_amount: Mapped[float | None] = mapped_column(Float, nullable=True, default=0)
     tax_amount: Mapped[float | None] = mapped_column(Float, nullable=True, default=0)
+    operator_icons: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    operator_amount: Mapped[float | None] = mapped_column(Float, nullable=True, default=0)
 
     payout: Mapped[Payout] = relationship(back_populates="shares")
     user: Mapped[User | None] = relationship(back_populates="payout_shares")

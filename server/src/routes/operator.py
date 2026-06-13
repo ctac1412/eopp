@@ -443,6 +443,8 @@ async def admin_update_operator(operator_id: int, request: Request):
         kwargs["nickname"] = body["nickname"]
     if "icon_display_mode" in body:
         kwargs["icon_display_mode"] = body["icon_display_mode"]
+    if "icon_rate" in body:
+        kwargs["icon_rate"] = max(0, int(body.get("icon_rate") or 0))
     if "allowed_master_keys" in body:
         val = body["allowed_master_keys"]
         kwargs["allowed_master_keys"] = _json.dumps(val) if val is not None else None
