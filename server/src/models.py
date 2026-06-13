@@ -329,6 +329,11 @@ class ChatMessageBody(BaseModel):
     master_key_id: int
 
 
+class AdminChatBroadcastBody(BaseModel):
+    message: str
+    sender_label: str = "Администратор"
+
+
 class ScheduledEventBody(BaseModel):
     api_key_id: int = 0
     api_key: str | None = None

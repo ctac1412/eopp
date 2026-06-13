@@ -596,6 +596,10 @@
   color: #3fb950;
 }
 
+.chatbox__sender.is-admin {
+  color: #f2cc60;
+}
+
 .chatbox__sender.is-system {
   color: #8b949e;
 }

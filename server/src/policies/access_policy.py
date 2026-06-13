@@ -56,6 +56,7 @@ PERMISSION_RULES = (
     AccessRule("*", "/admin/operator-links", Permission.OPERATOR_MANAGE, match="prefix"),
     AccessRule("*", "/admin/distribution-answers", Permission.OPERATOR_MANAGE, match="prefix"),
     AccessRule("GET", "/admin/scheduled-events", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/chat", Permission.OPERATOR_MANAGE, match="prefix"),
     AccessRule("*", "/admin/plugin-channel", Permission.BILLING_VIEW, match="prefix"),
     AccessRule("GET", "/admin/tariffs", Permission.BILLING_VIEW, match="prefix"),
     AccessRule("PUT", "/admin/tariffs", Permission.TARIFF_EDIT, match="prefix"),

@@ -3,6 +3,7 @@ import { Card, Space } from "antd";
 import {
   Button,
   CheckboxField,
+  TextInput,
   Toolbar,
 } from "../../ui";
 import {
@@ -111,6 +112,9 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const dragScrollAnimationRef = useRef(null);
   const dragScrollVelocityRef = useRef(0);
   const [selectionBox, setSelectionBox] = useState(null);
+  const [adminBroadcastMessage, setAdminBroadcastMessage] = useState("");
+  const [adminBroadcastSending, setAdminBroadcastSending] = useState(false);
+  const [adminBroadcastStatus, setAdminBroadcastStatus] = useState("");
 
   const loadAll = useCallback(async () => {
     try {
@@ -467,6 +471,36 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     }
   };
 
+  const sendAdminBroadcast = async () => {
+    const text = adminBroadcastMessage.trim();
+    if (!text) return;
+    setAdminBroadcastSending(true);
+    setAdminBroadcastStatus("");
+    try {
+      const response = await fetch("/admin/chat/broadcast", {
+        method: "POST",
+        headers: adminHeadersJson(adminToken),
+        body: JSON.stringify({
+          message: text,
+          sender_label: "Администратор",
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.detail || `HTTP ${response.status}`);
+      }
+      setAdminBroadcastMessage("");
+      setAdminBroadcastStatus(
+        `Отправлено: мастеров ${data.active_masters || 0}, операторов ${data.delivered_to_operators || 0}`,
+      );
+      await loadAll();
+    } catch (error) {
+      onError?.(error.message || "Ошибка отправки общего сообщения");
+    } finally {
+      setAdminBroadcastSending(false);
+    }
+  };
+
   const handleMasterDrop = (event, masterId) => {
     event.preventDefault();
     stopDragAutoScroll();
@@ -582,6 +616,36 @@ export function OperationsDashboardTab({ adminToken, onError }) {
             ))
           )}
         </div>
+      </div>
+
+      <div data-eopp-component="OpsAdminBroadcast" className="ops-admin-broadcast">
+        <div className="ops-admin-broadcast__label">
+          <strong>Общий чат</strong>
+          <span>Сообщение уйдет во все активные чаты мастеров и их операторов</span>
+        </div>
+        <TextInput
+          value={adminBroadcastMessage}
+          onChange={(event) => setAdminBroadcastMessage(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              sendAdminBroadcast();
+            }
+          }}
+          placeholder="Сообщение администратора..."
+          className="ops-admin-broadcast__input"
+        />
+        <Button
+          size="small"
+          variant="primary"
+          onClick={sendAdminBroadcast}
+          disabled={adminBroadcastSending || !adminBroadcastMessage.trim()}
+        >
+          {adminBroadcastSending ? "Отправляем..." : "Отправить всем"}
+        </Button>
+        {adminBroadcastStatus && (
+          <span className="ops-admin-broadcast__status">{adminBroadcastStatus}</span>
+        )}
       </div>
 
       <div className="ops-selection-surface mt-3">

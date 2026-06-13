@@ -3139,6 +3139,48 @@
   font-size: 0.74rem;
 }
 
+.ops-admin-broadcast {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.36fr) minmax(220px, 1fr) auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 90%, #000 10%);
+}
+
+.ops-admin-broadcast__label {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.ops-admin-broadcast__label strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.ops-admin-broadcast__label span,
+.ops-admin-broadcast__status {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.ops-admin-broadcast__input {
+  width: 100%;
+  min-width: 0;
+}
+
+.ops-admin-broadcast__status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ops-selection-surface {
   border: 1px solid rgba(88, 166, 255, 0.34);
   border-radius: 0.45rem;
@@ -3467,6 +3509,14 @@
 @media (max-width: 1100px) {
   .ops-scheduled-summary {
     grid-template-columns: 1fr;
+  }
+
+  .ops-admin-broadcast {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-admin-broadcast__status {
+    white-space: normal;
   }
 
   .ops-dashboard-grid {

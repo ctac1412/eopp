@@ -55,6 +55,7 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
     if (message.sender_role === "operator") {
       return operatorColors?.[message.sender_label] ? "" : "is-operator";
     }
+    if (message.sender_role === "admin") return "is-admin";
     if (message.sender_role === "system") return "is-system";
     return "is-unknown";
   };
