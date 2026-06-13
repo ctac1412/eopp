@@ -9,6 +9,7 @@ import {
   formatScheduledCountdown,
   getFutureScheduledEvents,
 } from "../scheduledEventsState";
+import { buildOperationsScheduledSummary } from "./operationsScheduledSummary";
 import { adminHeaders, adminHeadersJson } from "../../features/admin/shared/adminClient";
 import { isAllAccessibleMasters, normalizeAllowedMasters } from "./operatorAssignments";
 
@@ -216,6 +217,10 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const masterGroups = useMemo(
     () => groupByLabel(sortedMasters, masterCompanyLabel),
     [sortedMasters],
+  );
+  const scheduledSummary = useMemo(
+    () => buildOperationsScheduledSummary(scheduledEvents, masters, now),
+    [masters, now, scheduledEvents],
   );
 
   const unassignedOnlineGroups = useMemo(
@@ -533,6 +538,51 @@ export function OperationsDashboardTab({ adminToken, onError }) {
         }
         right={<Button size="small" onClick={loadAll}>Обновить</Button>}
       />
+
+      <div data-eopp-component="OpsScheduledSummary" className="ops-scheduled-summary">
+        <div className="ops-scheduled-summary__stats">
+          <div className="ops-scheduled-summary__stat">
+            <span>Запланировано</span>
+            <strong>{scheduledSummary.total}</strong>
+          </div>
+          <div className="ops-scheduled-summary__stat">
+            <span>До 5 мин</span>
+            <strong>{scheduledSummary.soon}</strong>
+          </div>
+          <div className="ops-scheduled-summary__stat ops-scheduled-summary__stat--urgent">
+            <span>До 1 мин</span>
+            <strong>{scheduledSummary.urgent}</strong>
+          </div>
+        </div>
+        <div className="ops-scheduled-summary__masters">
+          {scheduledSummary.byMaster.length === 0 ? (
+            <div className="ops-scheduled-summary__empty">Нет запланированных стартов</div>
+          ) : (
+            scheduledSummary.byMaster.slice(0, 8).map((group) => (
+              <div key={group.masterId} className="ops-scheduled-summary__master">
+                <div className="ops-scheduled-summary__master-head">
+                  <strong>{group.masterLabel}</strong>
+                  <span>{group.nextCountdown}</span>
+                </div>
+                <div className="ops-scheduled-summary__events">
+                  {group.events.slice(0, 3).map((event) => (
+                    <span
+                      key={`${group.masterId}-${event.label}-${event.scheduled_at}`}
+                      className={`ops-scheduled-summary__event ${event.urgent ? "is-urgent" : event.soon ? "is-soon" : ""}`}
+                      title={event.scheduled_at || ""}
+                    >
+                      {event.label || event.description || "Старт"} · {event.countdown}
+                    </span>
+                  ))}
+                  {group.events.length > 3 && (
+                    <span className="ops-scheduled-summary__more">+{group.events.length - 3}</span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
 
       <div className="ops-selection-surface mt-3">
         <div className="ops-selection-surface__head">

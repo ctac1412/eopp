@@ -86,7 +86,7 @@ function AdminPage() {
     }
   });
   const [activeTab, setActiveTab] = useState(
-    () => searchParams.get("tab") || "reports"
+    () => searchParams.get("tab") || "operations"
   );
   const visibleTabs = useMemo(() => {
     const sections =
@@ -130,8 +130,8 @@ function AdminPage() {
   const intervalRef = useRef(null);
 
   useEffect(() => {
-    const tabFromUrl = searchParams.get("tab") || "reports";
-    const fallbackTab = visibleTabs[0]?.id || "reports";
+    const tabFromUrl = searchParams.get("tab") || "operations";
+    const fallbackTab = visibleTabs[0]?.id || "operations";
     const nextTab = visibleTabs.some((tab) => tab.id === tabFromUrl) ? tabFromUrl : fallbackTab;
     setActiveTab((current) => (current === nextTab ? current : nextTab));
   }, [searchParams, visibleTabs]);
