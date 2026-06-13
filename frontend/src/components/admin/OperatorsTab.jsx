@@ -13,6 +13,7 @@ import {
   Toolbar,
 } from "../../ui";
 import { adminHeaders, adminHeadersJson } from "../../features/admin/shared/adminClient";
+import { CaptchaReviewModal } from "./CaptchaReviewModal";
 import {
   isAllAccessibleMasters,
   normalizeAllowedMasters,
@@ -85,6 +86,7 @@ export function OperatorsTab({ adminToken, onError }) {
   const [allKeys, setAllKeys] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState(null);
+  const [reviewCaptcha, setReviewCaptcha] = useState(null);
   const [editForm, setEditForm] = useState({
     nickname: "",
     icon_display_mode: "own_then_foreign",
@@ -236,6 +238,28 @@ export function OperatorsTab({ adminToken, onError }) {
       { key: "answers", label: "Действия", value: answersTotal, tone: answersTotal > 0 ? "info" : "neutral" },
     ];
   }, [answersTotal, links, operators]);
+  const groupedAnswers = useMemo(() => {
+    const groups = new Map();
+    answers.forEach((answer) => {
+      const key = answer.captcha_id || `answer-${answer.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          ...answer,
+          id: key,
+          operator_answers: [],
+          operator_names: [],
+          answered_icons_count: 0,
+        });
+      }
+      const group = groups.get(key);
+      group.operator_answers.push(answer);
+      group.answered_icons_count = group.operator_answers.length;
+      if (answer.operator_nickname && !group.operator_names.includes(answer.operator_nickname)) {
+        group.operator_names.push(answer.operator_nickname);
+      }
+    });
+    return Array.from(groups.values());
+  }, [answers]);
 
   useEffect(() => {
     if (!selectedOperator) return;
@@ -411,6 +435,11 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const getIconModeLabel = (mode) => ICON_DISPLAY_MODES.find((item) => item.value === mode)?.label || mode || "—";
 
+  const reviewFromAnswer = (answer) => ({
+    captcha_id: answer.captcha_id,
+    operator_answers: answer.operator_answers || [answer],
+  });
+
   const operatorColumns = [
     { title: "ID", dataIndex: "id", width: 54, render: (value) => <span className="text-muted">#{value}</span> },
     {
@@ -502,6 +531,16 @@ export function OperatorsTab({ adminToken, onError }) {
       align: "right",
       render: (value) => (value != null ? `${value} ms` : "—"),
     },
+    {
+      title: "",
+      width: 92,
+      align: "center",
+      render: (_, row) => (
+        <Button size="small" onClick={() => setReviewCaptcha(reviewFromAnswer(row))}>
+          Отсмотр
+        </Button>
+      ),
+    },
   ];
 
   const operatorDashboardRows = operators.map((op) => {
@@ -591,7 +630,7 @@ export function OperatorsTab({ adminToken, onError }) {
         <DataTable
           className="operator-answers-table"
           rowKey="id"
-          data={answers}
+          data={groupedAnswers}
           columns={answerColumns}
           emptyText="Нет действий"
           pagination={{
@@ -810,10 +849,28 @@ export function OperatorsTab({ adminToken, onError }) {
             </div>
           </div>
         }
-        right={<Button size="small" onClick={refreshAll}>Обновить</Button>}
+        right={
+          <Space size={6}>
+            <SegmentedControl
+              size="small"
+              value={activeTab}
+              onChange={setActiveTab}
+              options={[
+                { label: "Обзор", value: "dashboard" },
+                { label: "Настройки", value: "settings" },
+              ]}
+            />
+            <Button size="small" onClick={refreshAll}>Обновить</Button>
+          </Space>
+        }
       />
 
-      {renderSettings()}
+      {activeTab === "dashboard" ? renderDashboard() : renderSettings()}
+      <CaptchaReviewModal
+        captcha={reviewCaptcha}
+        open={!!reviewCaptcha}
+        onClose={() => setReviewCaptcha(null)}
+      />
     </div>
   );
 }

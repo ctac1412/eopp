@@ -92,3 +92,44 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
             for a, op, apikey in rows
         ]
         return {"items": items, "total": total, "page": page, "pages": pages, "per_page": per_page}
+
+
+def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]:
+    """Return operator click answers grouped by captcha id."""
+    if not captcha_ids:
+        return {}
+    unique_ids = list(dict.fromkeys(captcha_ids))
+    with get_session() as session:
+        _ensure_columns(session)
+        _ensure_duration_column(session)
+        rows = (
+            session.query(DistributionAnswer, Operator, ApiKey)
+            .outerjoin(Operator, Operator.id == DistributionAnswer.operator_id)
+            .outerjoin(UsageLog, UsageLog.id == DistributionAnswer.usage_log_id)
+            .outerjoin(ApiKey, ApiKey.id == UsageLog.api_key_id)
+            .filter(DistributionAnswer.captcha_id.in_(unique_ids))
+            .order_by(DistributionAnswer.created_at.asc(), DistributionAnswer.id.asc())
+            .all()
+        )
+    grouped: dict[str, list[dict]] = {captcha_id: [] for captcha_id in unique_ids}
+    for answer, operator, api_key in rows:
+        grouped.setdefault(answer.captcha_id, []).append(
+            {
+                "id": answer.id,
+                "captcha_id": answer.captcha_id,
+                "operator_id": answer.operator_id,
+                "operator_nickname": (
+                    (api_key.label if api_key else "Мастер")
+                    if answer.operator_id == 0
+                    else (operator.nickname if operator else f"#{answer.operator_id}")
+                ),
+                "master_key_id": api_key.id if api_key else None,
+                "master_label": api_key.label if api_key else None,
+                "icon_position": answer.icon_position,
+                "x": answer.x,
+                "y": answer.y,
+                "duration_ms": answer.duration_ms,
+                "created_at": answer.created_at,
+            }
+        )
+    return grouped

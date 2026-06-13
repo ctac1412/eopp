@@ -1,6 +1,7 @@
 import React from "react";
 import { formatMoney } from "../../../utils/format";
-import { DataTable, StatusTag } from "../../../ui";
+import { Button, DataTable, StatusTag } from "../../../ui";
+import { CaptchaReviewModal } from "../../../components/admin/CaptchaReviewModal";
 import {
   getCompanyFull,
   getErrorInfo,
@@ -25,6 +26,11 @@ function Field({ label, value, mono = false }) {
     <div className="operation-details__field">
       <span>{label}</span>
       <strong className={mono ? "font-monospace" : ""}>{value || "—"}</strong>
+      <CaptchaReviewModal
+        captcha={reviewCaptcha}
+        open={!!reviewCaptcha}
+        onClose={() => setReviewCaptcha(null)}
+      />
     </div>
   );
 }
@@ -40,6 +46,7 @@ export function OperationDetails({
   captchaLoading,
   captchaError,
 }) {
+  const [reviewCaptcha, setReviewCaptcha] = React.useState(null);
   const logs = Array.isArray(record.logs) ? record.logs : [];
   const errorInfo = getErrorInfo(record);
 
@@ -77,6 +84,22 @@ export function OperationDetails({
       dataIndex: "fail_reason",
       ellipsis: true,
       render: (value) => <span title={value || "—"}>{value || "—"}</span>,
+    },
+    {
+      title: "Операторы",
+      dataIndex: "operator_names",
+      width: 150,
+      render: (value) => Array.isArray(value) && value.length ? value.join(", ") : "—",
+    },
+    {
+      title: "",
+      width: 92,
+      align: "center",
+      render: (_, row) => (
+        <Button size="small" onClick={() => setReviewCaptcha(row)}>
+          Отсмотр
+        </Button>
+      ),
     },
   ];
 
