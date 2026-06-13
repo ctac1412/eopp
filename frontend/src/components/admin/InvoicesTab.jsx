@@ -337,6 +337,8 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
       { key: "debt", label: "Долг", value: formatMoney(sum("debt_amount")), tone: "success" },
       { key: "commission", label: "Комиссия", value: formatMoney(sum("percent_amount")), tone: "neutral" },
       { key: "tax", label: "Налог", value: formatMoney(sum("tax_amount")), tone: "warning" },
+      { key: "side", label: "Опер./исп.", value: formatMoney(sum("side_payout_amount")), tone: "info" },
+      { key: "profit", label: "Прибыль", value: formatMoney(sum("profit_amount")), tone: "success" },
       { key: "unpaid", label: "Не оплачено", value: `${unpaid.length} / ${formatMoney(unpaid.reduce((acc, invoice) => acc + (invoice.total_amount || 0), 0))}`, tone: unpaid.length ? "danger" : "success" },
       { key: "paid", label: "Оплачено", value: paid.length, tone: paid.length ? "success" : "neutral" },
     ];
@@ -392,6 +394,17 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
         <div className="invoice-stack-cell">
           <span><span className="text-muted">Ком.</span> <MoneyCell value={invoice.percent_amount} /></span>
           <span><span className="text-muted">Нал.</span> <MoneyCell value={invoice.tax_amount} /></span>
+        </div>
+      ),
+    },
+    {
+      title: "Прибыль",
+      width: 150,
+      align: "right",
+      render: (_, invoice) => (
+        <div className="invoice-stack-cell">
+          <span><span className="text-muted">О/И</span> <MoneyCell value={invoice.side_payout_amount} /></span>
+          <span><span className="text-muted">Проф.</span> <MoneyCell value={invoice.profit_amount} tone="text-success fw-semibold" /></span>
         </div>
       ),
     },

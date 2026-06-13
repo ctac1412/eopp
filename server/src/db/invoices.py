@@ -21,6 +21,85 @@ from src.db.connection import get_connection
 from src.db.connection import row_to_dict as _row_to_dict
 
 
+def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
+    if not invoice_ids:
+        return {}
+    placeholders = ",".join("?" * len(invoice_ids))
+    operator_rows = conn.execute(
+        f"""
+        SELECT
+            ul.invoice_id AS invoice_id,
+            COUNT(*) AS operator_icons,
+            SUM(COALESCE(o.icon_rate, 0)) AS operator_amount
+        FROM distribution_answers da
+        JOIN usage_log ul ON ul.id = da.usage_log_id
+        JOIN operators o ON o.id = da.operator_id
+        WHERE ul.invoice_id IN ({placeholders})
+          AND COALESCE(o.icon_rate, 0) > 0
+        GROUP BY ul.invoice_id
+        """,
+        invoice_ids,
+    ).fetchall()
+    result: dict[int, dict] = {}
+    for row in operator_rows:
+        invoice_id = int(row["invoice_id"])
+        result.setdefault(invoice_id, {})
+        result[invoice_id]["operator_icons"] = int(row["operator_icons"] or 0)
+        result[invoice_id]["operator_amount"] = float(row["operator_amount"] or 0)
+
+    executor_rows = conn.execute(
+        f"""
+        WITH log_executor AS (
+            SELECT
+                ul.id AS usage_log_id,
+                ul.invoice_id AS invoice_id,
+                MIN(uec.user_id) AS user_id,
+                COALESCE(ct.executor_amount, 0) AS executor_amount
+            FROM usage_log ul
+            JOIN company_tariffs ct ON ct.company_id = ul.company_id
+            JOIN user_executor_companies uec
+              ON uec.active = 1
+             AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
+            WHERE ul.invoice_id IN ({placeholders})
+              AND ul.company_id IS NOT NULL
+              AND COALESCE(ct.executor_amount, 0) > 0
+            GROUP BY ul.id, ul.invoice_id, ct.executor_amount
+        )
+        SELECT invoice_id, COUNT(*) AS executor_count, SUM(executor_amount) AS executor_amount
+        FROM log_executor
+        WHERE user_id IS NOT NULL
+        GROUP BY invoice_id
+        """,
+        invoice_ids,
+    ).fetchall()
+    for row in executor_rows:
+        invoice_id = int(row["invoice_id"])
+        result.setdefault(invoice_id, {})
+        result[invoice_id]["executor_count"] = int(row["executor_count"] or 0)
+        result[invoice_id]["executor_amount"] = float(row["executor_amount"] or 0)
+    return result
+
+
+def _apply_profit_calculations(invoices: list[dict]) -> list[dict]:
+    if not invoices:
+        return invoices
+    conn = get_connection()
+    side_map = _side_payment_map(conn, [int(inv["id"]) for inv in invoices])
+    conn.close()
+    for inv in invoices:
+        side = side_map.get(int(inv["id"]), {})
+        operator_amount = float(side.get("operator_amount", 0.0))
+        executor_amount = float(side.get("executor_amount", 0.0))
+        side_total = operator_amount + executor_amount
+        inv["operator_icons"] = int(side.get("operator_icons", 0))
+        inv["operator_amount"] = operator_amount
+        inv["executor_count"] = int(side.get("executor_count", 0))
+        inv["executor_amount"] = executor_amount
+        inv["side_payout_amount"] = side_total
+        inv["profit_amount"] = float(inv.get("debt_amount") or 0) - side_total
+    return invoices
+
+
 def insert_invoice(
     invoice_number: str,
     company: str | None = None,
@@ -143,7 +222,7 @@ def get_invoice(invoice_id: int) -> dict | None:
     result = _row_to_dict(row)
     result["paid"] = bool(result["paid"]) if result["paid"] is not None else False
     result["is_open"] = bool(result["is_open"]) if result.get("is_open") is not None else False
-    return result
+    return _apply_profit_calculations([result])[0]
 
 
 def _open_invoice_number(company: str) -> str:
@@ -262,6 +341,7 @@ def list_invoices(limit: int = 100, company: str | None = None) -> list[dict]:
         d["paid"] = bool(d["paid"]) if d["paid"] is not None else False
         d["is_open"] = bool(d["is_open"]) if d.get("is_open") is not None else False
         result.append(d)
+    _apply_profit_calculations(result)
 
     # Batch allocation status
     if result:
