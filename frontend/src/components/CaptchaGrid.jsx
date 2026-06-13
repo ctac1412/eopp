@@ -1,33 +1,82 @@
 /**
  * EOPP Captcha Solver - CaptchaGrid
  */
-import React from "react";
+import React, { useEffect, useState } from "react";
 import CaptchaCard from "./CaptchaCard";
 import IconClickCaptcha from "./IconClickCaptcha";
-import CountdownTimer from "./CountdownTimer";
-import Clock from "./Clock";
+import { CaptchaPanelHeader } from "./CaptchaPanelHeader";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { getCaptchaGridStatus, getIdleCaptchaSkeletonMode } from "./captchaGridState";
+import { formatScheduledCountdown, getNextScheduledEvent } from "./scheduledEventsState";
+
+function IconClickIdleSkeleton() {
+  return (
+    <div className="captcha-idle-click-skeleton" aria-hidden="true">
+      <div className="captcha-idle-click-skeleton__image">
+        <div className="captcha-idle-click-skeleton__target target-1" />
+        <div className="captcha-idle-click-skeleton__target target-2" />
+        <div className="captcha-idle-click-skeleton__target target-3" />
+      </div>
+      <div className="captcha-idle-click-skeleton__icons">
+        {Array.from({ length: 5 }, (_, index) => (
+          <span className="captcha-idle-click-skeleton__icon" key={index} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IdleScheduledCountdown() {
+  const scheduledEvents = useCaptchaStore((s) => s.scheduledEvents);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const next = getNextScheduledEvent(scheduledEvents, now);
+  if (!next) return null;
+
+  const diff = Math.max(0, next.scheduledAt - now);
+  const label = next.label || next.description || "Старт";
+
+  return (
+    <div className="captcha-idle-schedule">
+      <span className="captcha-idle-schedule__label">{label}</span>
+      <span className="captcha-idle-schedule__time">{formatScheduledCountdown(diff)}</span>
+    </div>
+  );
+}
+
+function IdleBody() {
+  const mode = getIdleCaptchaSkeletonMode();
+  return (
+    <div className="captcha-panel__body captcha-panel__body--column">
+      {mode === "icon-click" && <IconClickIdleSkeleton />}
+      <IdleScheduledCountdown />
+      <div className="captcha-panel__idle-loader" aria-hidden="true">
+        <div className="idle-spinner" />
+      </div>
+    </div>
+  );
+}
 
 function CaptchaGrid() {
   const queue = useCaptchaStore((s) => s.queue);
-  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const unsolved = queue.filter((q) => !q.solved);
-  const solved = queue.filter((q) => q.solved);
   const active = unsolved[0] || null;
+  const meta = getCaptchaGridStatus({ active, unsolvedCount: unsolved.length });
 
   if (!active) {
     return (
-      <div className="idle-state d-flex flex-column align-items-center justify-content-center text-center" style={{ minHeight: "400px" }}>
-        <div className="idle-spinner mb-3" />
-        <h6 className="mb-1 fw-semibold" style={{ color: "#8b949e" }}>Ожидание запросов</h6>
-        <p className="mb-0" style={{ fontSize: "0.75rem", color: "#484f58" }}>
-          Подключено к серверу, новые капчи появятся автоматически
-        </p>
-        {solved.length > 0 && (
-          <div className="mt-3" style={{ fontSize: "0.75rem", color: "#484f58" }}>
-            Решено: {solved.length}
-          </div>
-        )}
+      <div className="captcha-panel">
+        <CaptchaPanelHeader
+          title={meta.title}
+          subtitle={meta.subtitle}
+          statusLabel="Нет активной"
+        />
+        <IdleBody />
       </div>
     );
   }
@@ -48,30 +97,17 @@ function CaptchaGrid() {
   });
 
   return (
-    <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%" }}>
-      <div className="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div className="d-flex align-items-center gap-2">
-          <span className="fw-semibold" style={{ fontSize: "0.8125rem" }}>Капча {active.id}</span>
-          {superKioskMode && active.ownerLabel && (
-            <span className="badge bg-info" style={{ fontSize: "0.7rem" }}>
-              для: {active.ownerLabel}
-            </span>
-          )}
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Clock />
-          <CountdownTimer createdAt={active.createdAt} timeout={active.timeout} />
-          <div className="d-flex gap-1">
-            {top3.map((t, i) => (
-              <span className={`rank-badge rank-badge--${i + 1}`} key={i}>
-                #{i + 1} = {t}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div className="card-body p-3 d-flex align-items-center justify-content-center flex-grow-1" style={{ minHeight: 0 }}>
-        <div className="row row-cols-5 g-2 w-100 justify-content-center">
+    <div className="captcha-panel">
+        <CaptchaPanelHeader
+          title={meta.title}
+          typeLabel={meta.subtitle}
+          statusLabel="Активна"
+        createdAt={active.createdAt}
+        timeout={active.timeout}
+        top3={top3}
+      />
+      <div className="captcha-panel__body captcha-panel__body--variants">
+        <div className="captcha-variants-grid">
           {ordered.map((key) => (
             <div key={active.id + "-" + key}>
               <CaptchaCard entry={active} index={key} />

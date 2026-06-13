@@ -71,6 +71,51 @@ def test_manual_captcha_flow_solves_pending_session(client, api_key, monkeypatch
     assert isinstance(body["usage_log_id"], int)
 
 
+def test_cancel_captcha_by_usage_log_wakes_pending_request(client, api_key, monkeypatch):
+    from src import captcha_assembly
+    from src.routes import captcha as captcha_route
+    from src.services import captcha_file_service
+    from src.sse import lock, pending
+
+    pushed = []
+    monkeypatch.setattr(
+        captcha_route,
+        "assemble_captchas",
+        lambda tiles, variants, valid_index: [
+            {"index": index, "image": f"image-{index}"} for index, _ in enumerate(variants)
+        ],
+    )
+    monkeypatch.setattr(captcha_file_service, "ensure_analysis_metadata", lambda data: False)
+    monkeypatch.setattr(captcha_route, "push_sse", lambda msg, api_key_id=None: pushed.append((msg, api_key_id)))
+
+    payload = _puzzle_payload(api_key, usage_log_id=404, reservation_id="reservation-cancel")
+    captcha_id = captcha_assembly.captcha_hash({"puzzle": payload["puzzle"]})
+    result_holder = {}
+
+    worker = threading.Thread(
+        target=lambda: result_holder.update(response=client.post("/solve-captcha", json=payload))
+    )
+    worker.start()
+    _wait_for_pending(captcha_id)
+
+    cancelled = client.post(
+        "/cancel-captcha",
+        json={"api_key": api_key, "usage_log_id": 404},
+    )
+    worker.join(timeout=2)
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert result_holder["response"].status_code == 200
+    assert result_holder["response"].json()["status"] == "cancelled"
+    with lock:
+        assert captcha_id not in pending
+    assert any(
+        msg["type"] == "captcha_timeout" and msg.get("reason") == "cancelled"
+        for msg, _ in pushed
+    )
+
+
 def test_solve_captcha_core_mode_survives_archive_and_metadata_failures(
     client, api_key, monkeypatch
 ):
@@ -161,6 +206,50 @@ def test_register_usage_core_mode_skips_config_enrichment(
     assert usage.company_id is None
     assert usage.fio is None
     assert usage.vehicle_number is None
+
+
+def test_register_usage_enqueues_after_usage_row_is_committed(
+    client, admin_token, monkeypatch
+):
+    from src.repositories import usage_log_repo
+    from src.sse.manager import lock, sse_queues
+
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "Usage Owner", "login": "usage.owner", "password": "strong-password"},
+    )
+    assert user.status_code == 200
+    key = client.post(
+        "/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json={"label": "usage-owner-key", "user_id": user.json()["id"]},
+    )
+    assert key.status_code == 200
+    api_key = key.json()["key"]
+    api_key_id = key.json()["id"]
+
+    observed = []
+
+    def record_enqueue(name, payload):
+        observed.append((name, usage_log_repo.get_usage(payload["usage_log_id"]) is not None))
+
+    monkeypatch.setattr(usage_log_repo, "enqueue_deferred_job", record_enqueue)
+    with lock:
+        sse_queues.setdefault(api_key_id, []).append(object())
+
+    response = client.post(
+        "/register-usage",
+        json={
+            "api_key": api_key,
+            "reservation_id": "reservation-enqueue-after-commit",
+            "captcha_id": "captcha-enqueue-after-commit",
+            "config_json": {"mode": "create"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert observed == [("crm.enrich_usage", True)]
 
 
 def test_confirm_usage_core_mode_survives_billing_captcha_records_and_telegram_failures(

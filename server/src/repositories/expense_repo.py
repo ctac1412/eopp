@@ -9,12 +9,12 @@ from src.db.expenses import (
 from src.entities import Expense, get_session
 
 
-def list_expenses() -> list[dict]:
-    return db_list_expenses()
+def list_expenses(company_id: int | None = None) -> list[dict]:
+    return db_list_expenses(company_id=company_id)
 
 
-def get_total_expenses() -> int:
-    return db_get_total_expenses()
+def get_total_expenses(company_id: int | None = None) -> int:
+    return db_get_total_expenses(company_id=company_id)
 
 
 def create_expense(amount: int, reason: str, user_id: int | None, comment: str = "") -> Expense:

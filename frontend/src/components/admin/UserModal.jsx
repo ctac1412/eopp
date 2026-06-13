@@ -1,53 +1,295 @@
 import React from "react";
+import { Modal, Switch } from "antd";
+import { SelectInput, TextInput } from "../../ui";
+import {
+  emptyAccess,
+  isAccessCompanySelected,
+  normalizeAccess,
+  removeAccessCompany,
+  toggleAccessCompany,
+  toggleAccessAll,
+  upsertAccessCompany,
+} from "./userCompanyAccess";
 
-export function UserModal({ show, form, setForm, onSubmit, onClose }) {
-  if (!show) return null;
+const ROLE_OPTIONS = [
+  { value: "super_admin", label: "Super admin" },
+  { value: "administrator", label: "Administrator" },
+  { value: "manager", label: "Manager" },
+  { value: "operator", label: "Operator" },
+];
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(e);
+const SYSTEM_ROLE_OPTIONS = [
+  { value: "", label: "No system role" },
+  { value: "super_admin", label: "Super admin" },
+  { value: "administrator", label: "Platform admin" },
+  { value: "manager", label: "Platform manager" },
+  { value: "operator", label: "Platform operator" },
+];
+
+const ACCESS_BLOCKS = [
+  ["financeAccess", "Финансы"],
+  ["operatorAccess", "Оператор"],
+  ["executorAccess", "Исполнитель"],
+];
+
+function AccessBlock({ title, value, onChange, companies, canUseGlobalAccess }) {
+  const access = normalizeAccess(value);
+  const onDrop = (event) => {
+    event.preventDefault();
+    onChange(upsertAccessCompany(access, event.dataTransfer.getData("text/plain")));
+  };
+  const onCompanyClick = (companyId) => {
+    onChange(toggleAccessCompany(access, companyId));
   };
 
   return (
-    <div
-      className="modal fade show d-block"
-      tabIndex="-1"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <div className="user-access-block">
+      <div className="user-access-block__head">
+        <span className="fw-semibold">{title}</span>
+        {canUseGlobalAccess && (
+          <button
+            type="button"
+            className={`operator-master-tag access-tag ${
+              access.allCompanies ? "access-tag--selected" : "access-tag--available"
+            }`}
+            onClick={() => onChange(toggleAccessAll(access, !access.allCompanies))}
+          >
+            <span className="access-tag__text">Все</span>
+          </button>
+        )}
+      </div>
       <div
-        className="modal-dialog modal-dialog-centered modal-sm"
-        onClick={(e) => e.stopPropagation()}
+        className="operator-master-tags user-access-block__source"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={onDrop}
       >
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">{form.id ? "Редактировать пользователя" : "Новый пользователь"}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body">
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3">
-                <label className="form-label">Имя</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                  className="form-control"
-                  required
-                />
-              </div>
-            </form>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
-              Отмена
+        {companies.map((company) => {
+          const selected = isAccessCompanySelected(access, company.id);
+          return (
+            <button
+              type="button"
+              key={company.id}
+              className={`operator-master-tag access-tag ${
+                selected ? "access-tag--selected" : "access-tag--available"
+              }`}
+              onClick={() => onCompanyClick(company.id)}
+            >
+              <span
+                className="access-tag__drag-icon"
+                draggable
+                onClick={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", String(company.id))}
+                title="Перетащить"
+              />
+              <span className="access-tag__text">{company.name}</span>
             </button>
-            <button type="submit" className="btn btn-sm btn-primary" onClick={handleSubmit}>
-              Сохранить
-            </button>
-          </div>
-        </div>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+function AccessBlockV2({ title, value, onChange, companies, canUseGlobalAccess }) {
+  const access = normalizeAccess(value);
+  const selectedCompanies = companies.filter((company) => isAccessCompanySelected(access, company.id));
+  const availableCompanies = companies.filter((company) => !isAccessCompanySelected(access, company.id));
+  const onDrop = (event) => {
+    event.preventDefault();
+    onChange(upsertAccessCompany(access, event.dataTransfer.getData("text/plain")));
+  };
+
+  return (
+    <div className="user-access-block">
+      <div className="user-access-block__head">
+        <span className="fw-semibold">{title}</span>
+        {canUseGlobalAccess && (
+          <button
+            type="button"
+            className={`operator-master-tag access-tag ${
+              access.allCompanies ? "access-tag--selected" : "access-tag--available"
+            }`}
+            onClick={() => onChange(toggleAccessAll(access, !access.allCompanies))}
+          >
+            <span className="access-tag__text">Все</span>
+          </button>
+        )}
+      </div>
+      <div className="user-access-block__label">Доступные</div>
+      <div className="operator-master-tags user-access-block__source">
+        {availableCompanies.map((company) => (
+          <button
+            type="button"
+            key={company.id}
+            className="operator-master-tag access-tag access-tag--available"
+            onClick={() => onChange(upsertAccessCompany(access, company.id))}
+          >
+            <span
+              className="access-tag__drag-icon"
+              draggable
+              onClick={(event) => event.stopPropagation()}
+              onDragStart={(event) => event.dataTransfer.setData("text/plain", String(company.id))}
+              title="Перетащить"
+            />
+            <span className="access-tag__text">{company.name}</span>
+          </button>
+        ))}
+        {availableCompanies.length === 0 && <span className="text-muted">Все компании добавлены</span>}
+      </div>
+      <div className="user-access-block__label">Добавленные</div>
+      <div
+        className="user-access-block__drop"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={onDrop}
+      >
+        {access.allCompanies && (
+          <button
+            type="button"
+            className="operator-master-tag access-tag access-tag--selected"
+            onClick={() => onChange(toggleAccessAll(access, false))}
+          >
+            <span className="access-tag__text">Все</span>
+          </button>
+        )}
+        {!access.allCompanies && selectedCompanies.map((company) => (
+          <button
+            type="button"
+            key={company.id}
+            className="operator-master-tag access-tag access-tag--selected"
+            onClick={() => onChange(removeAccessCompany(access, company.id))}
+          >
+            <span className="access-tag__text">{company.name}</span>
+          </button>
+        ))}
+        {!access.allCompanies && selectedCompanies.length === 0 && (
+          <span className="text-muted">Перетащите сюда или кликните красный тег</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function UserModal({
+  show,
+  form,
+  setForm,
+  onSubmit,
+  onClose,
+  companies = [],
+  canUseGlobalAccess = false,
+}) {
+  const handleOk = (event) => {
+    event?.preventDefault?.();
+    onSubmit(event || { preventDefault() {} });
+  };
+  const companyOptions = companies.map((company) => ({
+    value: String(company.id),
+    label: company.name,
+  }));
+  const setPrimaryCompany = (value) => {
+    setForm((prev) => {
+      const companyId = value || "";
+      return {
+        ...prev,
+        companyId,
+      };
+    });
+  };
+
+  return (
+    <Modal
+      data-eopp-component="UserModal"
+      className="users-modal users-modal--three-quarter"
+      title={form.id ? "Edit user" : "New user"}
+      width="75vw"
+      open={!!show}
+      onOk={handleOk}
+      onCancel={onClose}
+      okText="Save"
+      cancelText="Cancel"
+      destroyOnHidden
+    >
+      <form
+        data-eopp-component="UserModalForm"
+        className="users-modal-form"
+        onSubmit={handleOk}
+      >
+        <div className="users-modal-form__fields">
+          <label className="form-label small mb-0">
+            Name
+            <TextInput
+              value={form.name}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="User name"
+              required
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Login
+            <TextInput
+              value={form.login || ""}
+              onChange={(event) => setForm((prev) => ({ ...prev, login: event.target.value }))}
+              placeholder="login"
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Password
+            <TextInput
+              type="password"
+              value={form.password || ""}
+              onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+              placeholder={form.id ? "Leave blank to keep current password" : "Password"}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Company role
+            <SelectInput
+              value={form.role || "manager"}
+              onChange={(value) => setForm((prev) => ({ ...prev, role: value || "manager" }))}
+              options={ROLE_OPTIONS}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            System role
+            <SelectInput
+              value={form.systemRole || ""}
+              onChange={(value) => setForm((prev) => ({ ...prev, systemRole: value || "" }))}
+              options={SYSTEM_ROLE_OPTIONS}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Company
+            <SelectInput
+              value={form.companyId || ""}
+              onChange={setPrimaryCompany}
+              options={[
+                { value: "", label: "No company" },
+                ...companyOptions,
+              ]}
+            />
+          </label>
+          <div className="users-modal-form__active">
+            <span className="users-modal-active-toggle__label">Active</span>
+            <Switch
+              className="users-modal-active-toggle"
+              checked={form.active !== false}
+              onChange={(checked) => setForm((prev) => ({ ...prev, active: checked }))}
+            />
+          </div>
+        </div>
+        <div className="users-modal-form__access">
+          {ACCESS_BLOCKS.map(([field, title]) => (
+            <AccessBlockV2
+              key={field}
+              title={title}
+              value={form[field] || emptyAccess()}
+              companies={companies}
+              canUseGlobalAccess={canUseGlobalAccess}
+              onChange={(next) => setForm((prev) => ({ ...prev, [field]: next }))}
+            />
+          ))}
+        </div>
+      </form>
+    </Modal>
   );
 }

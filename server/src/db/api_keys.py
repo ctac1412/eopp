@@ -212,16 +212,6 @@ def get_key_by_label(label: str) -> dict | None:
     return _row_to_dict(row) if row else None
 
 
-def check_admin_token(token: str) -> bool:
-    """Проверяет, является ли ключ админским (is_admin=1)."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT is_admin FROM api_keys WHERE key = ? AND active = 1", (token,)
-    ).fetchone()
-    conn.close()
-    return bool(row and row["is_admin"])
-
-
 def is_super_kiosk_key(key: str) -> bool:
     """Проверяет, является ли ключ супер-киоском (is_super_kiosk=1)."""
     conn = get_connection()

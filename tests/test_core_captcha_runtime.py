@@ -142,6 +142,78 @@ def test_runtime_handles_manual_captcha_flow():
     ]
 
 
+async def _run_runtime_cancel_flow():
+    from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies
+    from src.core.captcha_runtime.sessions import CaptchaSessionStore
+
+    published = []
+
+    class KeyRecord:
+        id = 22
+
+    deps = CaptchaRuntimeDependencies(
+        validate_api_key=lambda api_key: KeyRecord(),
+        get_or_create_usage_log=lambda usage_log_id, api_key, reservation_id, captcha_id: 88,
+        save_captcha_payload=lambda captcha_id, data: data,
+        captcha_hash=lambda data: "captcha-cancel",
+        assemble_captchas=lambda tiles, variants, valid_index: [
+            {"index": index, "image": f"image-{index}"} for index, _ in enumerate(variants)
+        ],
+        push_sse=lambda message, api_key_id=None: published.append((message, api_key_id)),
+        get_owner_label=lambda api_key_id: "owner",
+        next_result_id=lambda: 123,
+        publish_event=lambda event: None,
+        captcha_timeout=30,
+    )
+    runtime = CaptchaRuntime(deps, CaptchaSessionStore())
+    payload = {
+        "api_key": "secret",
+        "auto_solve": False,
+        "timeout_metadata": True,
+        "reservation_id": "reservation-1",
+        "usage_log_id": 88,
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["a"]],
+        },
+    }
+
+    pending_task = asyncio.create_task(runtime.handle_captcha(payload))
+    for _ in range(100):
+        if runtime.sessions.get("captcha-cancel") is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    cancel_status, cancel_body = await runtime.cancel_captcha({"usage_log_id": 88, "api_key": "secret"})
+    handle_status, handle_body = await pending_task
+    return cancel_status, cancel_body, handle_status, handle_body, published, runtime.sessions.count()
+
+
+def test_runtime_cancel_by_usage_log_notifies_frontend_and_clears_pending():
+    cancel_status, cancel_body, handle_status, handle_body, published, pending_count = asyncio.run(
+        _run_runtime_cancel_flow()
+    )
+
+    assert cancel_status == 200
+    assert cancel_body == {"ok": True, "captcha_id": "captcha-cancel", "status": "cancelled"}
+    assert handle_status == 200
+    assert handle_body["status"] == "cancelled"
+    assert handle_body["error"] == "captcha_cancelled"
+    assert pending_count == 0
+    timeout_events = [item for item in published if item[0]["type"] == "captcha_timeout"]
+    assert timeout_events[-1] == (
+        {
+            "type": "captcha_timeout",
+            "captcha_id": "captcha-cancel",
+            "owner_label": "owner",
+            "owner_api_key_id": 22,
+            "reason": "cancelled",
+            "owner_notified": True,
+        },
+        22,
+    )
+
+
 def test_core_captcha_runtime_imports_no_forbidden_side_modules():
     forbidden = (
         "billing",

@@ -6,18 +6,6 @@
   max-width: 1400px;
 }
 
-.card {
-  border-radius: 0.75rem;
-}
-
-.card-header {
-  border-radius: 0.75rem 0.75rem 0 0 !important;
-}
-
-.card-footer {
-  border-radius: 0 0 0.75rem 0.75rem !important;
-}
-
 /* ── Script code block ── */
 .script-code {
   background: var(--bs-dark);

@@ -2,9 +2,13 @@ import { log } from "@/logger";
 import { useCallback, useEffect } from "react";
 import { useInjectorStore } from "@/store";
 import { main } from "@/api/pipeline";
-import { failUsage } from "@/api/background";
+import { cancelCaptcha, failUsage } from "@/api/background";
 
 let isReporting = false;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function reportFailure(reason: string, stage: string): Promise<boolean> {
   if (isReporting) return false;
@@ -30,6 +34,23 @@ async function reportFailure(reason: string, stage: string): Promise<boolean> {
   } finally {
     isReporting = false;
   }
+}
+
+async function cancelPendingCaptcha(): Promise<boolean> {
+  const state = useInjectorStore.getState();
+  if (!state.config.apiKey) return false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = useInjectorStore.getState();
+    try {
+      if (await cancelCaptcha(current.config.apiKey, current.usageLogId, current.captchaId)) {
+        return true;
+      }
+    } catch {
+      // The solve request may not have created the pending session yet.
+    }
+    await delay(200);
+  }
+  return false;
 }
 
 export function useInjector() {
@@ -69,6 +90,7 @@ export function useInjector() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         log("=== Остановлено пользователем ===");
+        await cancelPendingCaptcha();
         const reported = await reportFailure("Pipeline stopped by user", "stopped");
         setError(reported ? "Операция остановлена, лог отправлен" : "Операция остановлена, лог не отправлен");
         setStatus("error");

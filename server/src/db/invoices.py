@@ -244,11 +244,17 @@ def issue_open_invoice(company: str, comment: str = "", reopen: bool = False) ->
     return {"closed_invoice": closed_invoice, "new_open_invoice": new_open}
 
 
-def list_invoices(limit: int = 100) -> list[dict]:
+def list_invoices(limit: int = 100, company: str | None = None) -> list[dict]:
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM invoices ORDER BY created_at DESC LIMIT ?", (limit,)
-    ).fetchall()
+    if company is None:
+        rows = conn.execute(
+            "SELECT * FROM invoices ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM invoices WHERE company = ? ORDER BY created_at DESC LIMIT ?",
+            (company, limit),
+        ).fetchall()
     conn.close()
     result = []
     for row in rows:
@@ -289,9 +295,9 @@ def list_invoices(limit: int = 100) -> list[dict]:
     return result
 
 
-def list_invoices_with_items(limit: int = 100) -> list[dict]:
+def list_invoices_with_items(limit: int = 100, company: str | None = None) -> list[dict]:
     """List invoices with their line items and allocation status."""
-    result = list_invoices(limit)
+    result = list_invoices(limit, company=company)
 
     from src.db.invoice_items import get_items_for_invoice
 

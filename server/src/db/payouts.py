@@ -55,7 +55,7 @@ def _unlink_expenses(payout_id: int) -> None:
 def _get_linked_invoices(payout_id: int) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        """SELECT pi.*, i.invoice_number, i.debt_amount, i.percent_amount, i.tax_amount, i.total_amount, i.comment, i.paid, i.created_at as invoice_created_at
+        """SELECT pi.*, i.invoice_number, i.company, i.debt_amount, i.percent_amount, i.tax_amount, i.total_amount, i.comment, i.paid, i.created_at as invoice_created_at
            FROM payout_invoices pi
            LEFT JOIN invoices i ON pi.invoice_id = i.id
            WHERE pi.payout_id = ?""",
@@ -68,7 +68,11 @@ def _get_linked_invoices(payout_id: int) -> list[dict]:
 def _get_linked_expenses(payout_id: int) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT * FROM payout_expenses WHERE payout_id = ?",
+        """SELECT pe.*, e.user_id, u.company_id
+           FROM payout_expenses pe
+           LEFT JOIN expenses e ON pe.expense_id = e.id
+           LEFT JOIN users u ON e.user_id = u.id
+           WHERE pe.payout_id = ?""",
         (payout_id,),
     ).fetchall()
     conn.close()
@@ -434,7 +438,24 @@ def _build_payout_response(payout: dict) -> dict:
     }
 
 
-def list_payouts() -> list[dict]:
+def _payout_matches_company(payout: dict, company_id: int | None, company: str | None) -> bool:
+    if company_id is None and company is None:
+        return True
+    if company is not None and any(invoice.get("company") == company for invoice in payout["invoices"]):
+        return True
+    if company_id is not None and any(expense.get("company_id") == company_id for expense in payout["expenses"]):
+        return True
+    return False
+
+
+def list_payouts(company_id: int | None = None) -> list[dict]:
+    company = None
+    if company_id is not None:
+        conn_company = get_connection()
+        row = conn_company.execute("SELECT name FROM companies WHERE id = ?", (company_id,)).fetchone()
+        conn_company.close()
+        company = row["name"] if row else None
+
     conn = get_connection()
     rows = conn.execute("SELECT * FROM payouts ORDER BY created_at DESC").fetchall()
     conn.close()
@@ -444,6 +465,8 @@ def list_payouts() -> list[dict]:
         payout["invoices"] = _get_linked_invoices(payout["id"])
         payout["expenses"] = _get_linked_expenses(payout["id"])
         payout["shares"] = _get_shares(payout["id"])
+        if not _payout_matches_company(payout, company_id, company):
+            continue
         result.append(_build_payout_response(payout))
     return result
 

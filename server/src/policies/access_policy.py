@@ -2,7 +2,7 @@
 
 Routes should not contain scattered role checks. This module maps HTTP
 method/path pairs to one permission, then delegates the decision to
-``AccessService`` while keeping the legacy helper names used by older services.
+``AccessService`` while keeping compatibility helper names used by older services.
 """
 
 from dataclasses import dataclass
@@ -32,7 +32,11 @@ class AccessRule:
 
 
 PUBLIC_RULES = (
+    AccessRule("POST", "/auth/login", None),
+    AccessRule("GET", "/auth/me", None),
+    AccessRule("POST", "/auth/logout", None),
     AccessRule("POST", "/admin/auth", None),
+    AccessRule("POST", "/admin/logout", None),
     AccessRule("GET", "/api-keys/public", None),
 )
 
@@ -44,12 +48,21 @@ PERMISSION_RULES = (
     AccessRule("POST", "/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
     AccessRule("*", "/admin/api-keys", Permission.ADMIN_USERS_MANAGE, match="prefix"),
     AccessRule("GET", "/admin/audit", Permission.AUDIT_VIEW, match="prefix"),
+    AccessRule("GET", "/admin/jobs", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("*", "/admin/jobs", Permission.BILLING_EDIT, match="prefix"),
     AccessRule("*", "/admin/operators", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/operator-assignments", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/operator-distribution", Permission.OPERATOR_MANAGE, match="prefix"),
     AccessRule("*", "/admin/operator-links", Permission.OPERATOR_MANAGE, match="prefix"),
     AccessRule("*", "/admin/distribution-answers", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("GET", "/admin/scheduled-events", Permission.OPERATOR_MANAGE, match="prefix"),
+    AccessRule("*", "/admin/plugin-channel", Permission.BILLING_VIEW, match="prefix"),
     AccessRule("GET", "/admin/tariffs", Permission.BILLING_VIEW, match="prefix"),
     AccessRule("PUT", "/admin/tariffs", Permission.TARIFF_EDIT, match="prefix"),
     AccessRule("DELETE", "/admin/tariffs", Permission.TARIFF_EDIT, match="prefix"),
+    AccessRule("GET", "/admin/company-tariffs", Permission.BILLING_VIEW, match="prefix"),
+    AccessRule("PUT", "/admin/company-tariffs", Permission.TARIFF_EDIT, match="prefix"),
+    AccessRule("DELETE", "/admin/company-tariffs", Permission.TARIFF_EDIT, match="prefix"),
     AccessRule("POST", "/admin/generate-invoice", Permission.INVOICE_GENERATE),
     AccessRule("GET", "/admin/invoices", Permission.BILLING_VIEW, match="prefix"),
     AccessRule("*", "/admin/invoices", Permission.BILLING_EDIT, match="prefix"),
@@ -70,6 +83,12 @@ PERMISSION_RULES = (
 )
 
 _access_service = AccessService()
+ADMIN_SESSION_COOKIE = "eopp_admin_session"
+
+
+def token_from_request(request) -> str | None:
+    """Read the admin session token from the auth cookie."""
+    return request.cookies.get(ADMIN_SESSION_COOKIE)
 
 
 def required_permission(method: str, path: str) -> Permission | None:
@@ -91,10 +110,12 @@ def authorize_request(method: str, path: str, token: str | None) -> AccessDecisi
 
 
 def is_admin_token(token: str | None) -> bool:
+    """Return whether a site session token belongs to an active user."""
     return _access_service.authenticate_token(token) is not None
 
 
 def is_super_admin_token(token: str | None) -> bool:
+    """Return whether a site session token belongs to a super admin."""
     actor = _access_service.authenticate_token(token)
     return bool(actor and actor.role == "super_admin")
 
@@ -109,7 +130,7 @@ def requires_admin(method: str, path: str) -> bool:
 
 
 def requires_super_admin(method: str, path: str) -> bool:
-    """Return whether the route requires the all-powerful legacy role."""
+    """Return whether the route requires the highest web role."""
     permission = required_permission(method, path)
     return permission in {
         Permission.ADMIN_USERS_MANAGE,

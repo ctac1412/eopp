@@ -18,16 +18,28 @@ def _row_to_dict(row):
     }
 
 
-def list_expenses() -> list[dict]:
+def list_expenses(company_id: int | None = None) -> list[dict]:
     conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT e.*, u.name as user_name
-        FROM expenses e
-        LEFT JOIN users u ON e.user_id = u.id
-        ORDER BY e.created_at DESC
-        """
-    ).fetchall()
+    if company_id is None:
+        rows = conn.execute(
+            """
+            SELECT e.*, u.name as user_name
+            FROM expenses e
+            LEFT JOIN users u ON e.user_id = u.id
+            ORDER BY e.created_at DESC
+            """
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT e.*, u.name as user_name
+            FROM expenses e
+            LEFT JOIN users u ON e.user_id = u.id
+            WHERE u.company_id = ?
+            ORDER BY e.created_at DESC
+            """,
+            (company_id,),
+        ).fetchall()
     conn.close()
     result = []
     for row in rows:
@@ -67,8 +79,19 @@ def list_expenses() -> list[dict]:
     return result
 
 
-def get_total_expenses() -> int:
+def get_total_expenses(company_id: int | None = None) -> int:
     conn = get_connection()
-    row = conn.execute("SELECT COALESCE(SUM(amount), 0) as total FROM expenses").fetchone()
+    if company_id is None:
+        row = conn.execute("SELECT COALESCE(SUM(amount), 0) as total FROM expenses").fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(e.amount), 0) as total
+            FROM expenses e
+            LEFT JOIN users u ON e.user_id = u.id
+            WHERE u.company_id = ?
+            """,
+            (company_id,),
+        ).fetchone()
     conn.close()
     return row["total"] if row else 0

@@ -5,8 +5,6 @@ EOPP Captcha Solver - Constants and Configuration.
 - PORT - порт сервера (по умолчанию: 8765)
 - TEST_DIR, VALID_DIR, NO_VALID_DIR - пути к тестовым данным
 - CAPTCHA_TIMEOUT - таймаут ожидания решения капчи (10 сек)
-- ADMIN_TOKEN - токен для админских операций
-- PROTECTED_PATHS - пути требующие авторизации
 
 Используется во всех модулях для доступа к конфигурации.
 """
@@ -155,34 +153,6 @@ AUTO_SOLVER_ORDER = {
 }
 
 DISTRIBUTION_CROP_PAD = 60
-
-def _load_admin_token() -> str:
-    """Load admin token from env or file. Raise StartupError if not set."""
-    token = os.environ.get("ADMIN_TOKEN")
-    if token:
-        return str(token)
-
-    admin_token_path = os.path.join(PROJECT_DIR, "data", "admin_token")
-    if os.path.exists(admin_token_path):
-        with open(admin_token_path) as f:
-            token = f.readline().strip()
-            if token:
-                return str(token)
-
-    from src.errors import StartupError
-    raise StartupError(
-        "ADMIN_TOKEN is not set. "
-        "Set ADMIN_TOKEN environment variable or create data/admin_token file."
-    )
-
-
-ADMIN_TOKEN = _load_admin_token()
-PROTECTED_PATHS = (
-    "/api-keys",
-    "/admin/streams",
-    "/admin/test-stats",
-    "/admin/benchmark",
-)
 
 use_ssl = True
 

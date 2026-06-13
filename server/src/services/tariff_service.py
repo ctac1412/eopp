@@ -20,6 +20,30 @@ def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
     )
 
 
+def get_company_tariff(company_id: int) -> tuple[int, dict]:
+    tariff = tariff_repo.get_company_tariff(company_id)
+    if not tariff:
+        return 404, {"error": "Company tariff not found"}
+    return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
+
+
+def upsert_company_tariff(company_id: int, body) -> tuple[int, dict]:
+    tariff = tariff_repo.upsert_company_tariff(
+        company_id,
+        body.price_create,
+        body.price_reschedule,
+        body.price_create_peak,
+        body.price_custom_slots,
+    )
+    return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
+
+
+def delete_company_tariff(company_id: int) -> tuple[int, dict]:
+    if not tariff_repo.delete_company_tariff(company_id):
+        return 404, {"error": "Company tariff not found"}
+    return 200, {"ok": True}
+
+
 def delete_tariff(api_key_id: int) -> tuple[int, dict]:
     if not tariff_repo.delete_tariff(api_key_id):
         return 404, {"error": "Tariff not found"}

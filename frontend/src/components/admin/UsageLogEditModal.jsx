@@ -1,57 +1,57 @@
 import React from "react";
+import { InputNumber, Modal } from "antd";
+import { Button, SelectInput } from "../../ui";
 
 export function UsageLogEditModal({ show, entry, form, setForm, onSubmit, onClose }) {
-  if (!show || !entry) return null;
+  if (!entry) return null;
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(e);
+  const handleSubmit = () => {
+    onSubmit({ preventDefault: () => {} });
   };
 
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">Редактировать запись #{entry.id}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body">
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3">
-                <label className="form-label">Цена (₽)</label>
-                <input
-                  type="number"
-                  value={form.price}
-                  onChange={(e) => setForm((p) => ({ ...p, price: e.target.value }))}
-                  className="form-control"
-                  min="0"
-                />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Оплата</label>
-                <select
-                  value={form.paid}
-                  onChange={(e) => setForm((p) => ({ ...p, paid: e.target.value }))}
-                  className="form-select"
-                >
-                  <option value="">Не задано</option>
-                  <option value="true">Оплачено</option>
-                  <option value="false">Не оплачено</option>
-                </select>
-              </div>
-            </form>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
-              Отмена
-            </button>
-            <button type="submit" className="btn btn-sm btn-primary" onClick={handleSubmit}>
-              Сохранить
-            </button>
-          </div>
-        </div>
+    <Modal
+      data-eopp-component="UsageLogEditModal"
+      title={`Редактировать запись #${entry.id}`}
+      open={show}
+      onCancel={onClose}
+      width={420}
+      destroyOnClose
+      footer={[
+        <Button key="cancel" size="small" onClick={onClose}>
+          Отмена
+        </Button>,
+        <Button key="submit" size="small" variant="primary" onClick={handleSubmit}>
+          Сохранить
+        </Button>,
+      ]}
+    >
+      <div className="usage-log-edit-modal">
+        <label className="form-label small mb-0">
+          Цена, ₽
+          <InputNumber
+            data-eopp-component="UsageLogEditPriceInput"
+            min={0}
+            value={form.price === "" ? null : Number(form.price)}
+            onChange={(value) => setForm((prev) => ({ ...prev, price: value == null ? "" : String(value) }))}
+            className="usage-log-edit-modal__control"
+          />
+        </label>
+        <label className="form-label small mb-0">
+          Оплата
+          <SelectInput
+            value={form.paid}
+            onChange={(value) => setForm((prev) => ({ ...prev, paid: value ?? "" }))}
+            options={[
+              { value: "", label: "Не задано" },
+              { value: "true", label: "Оплачено" },
+              { value: "false", label: "Не оплачено" },
+            ]}
+            allowClear={false}
+            className="usage-log-edit-modal__control"
+          />
+        </label>
       </div>
-    </div>
+    </Modal>
   );
 }

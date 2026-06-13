@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Alert, Card, Spin } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
+import { Button, StatusTag, Toolbar } from "../ui";
 
 const API = "";
 
@@ -74,11 +76,29 @@ export default function TrainingReviewPage() {
     }
   }, [imgLoading, captchaData, measureContainer]);
 
-  if (loading) return <div className="container py-3 text-center text-muted">Загрузка...</div>;
-  if (!data) return <div className="container py-3 text-center text-muted">Нет данных</div>;
+  if (loading) {
+    return (
+      <div data-eopp-component="TrainingReviewPage" className="training-review-page training-review-page--center">
+        <Spin />
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div data-eopp-component="TrainingReviewPage" className="training-review-page">
+        <Alert type="info" showIcon message="Нет данных" />
+      </div>
+    );
+  }
 
   const results = data.results || [];
-  if (results.length === 0) return <div className="container py-3 text-center text-muted">Нет результатов</div>;
+  if (results.length === 0) {
+    return (
+      <div data-eopp-component="TrainingReviewPage" className="training-review-page">
+        <Alert type="info" showIcon message="Нет результатов" />
+      </div>
+    );
+  }
 
   const current = results[idx];
   const total = results.length;
@@ -308,9 +328,9 @@ export default function TrainingReviewPage() {
                 background: "var(--surface-raised)", borderTop: "1px solid var(--border)",
               }}>
                 #{vi}
-                {isChosen && isCorrect && <span className="badge bg-success ms-1" style={{ fontSize: "0.6rem" }}>✓ Выбрано</span>}
-                {isChosen && !isCorrect && <span className="badge bg-danger ms-1" style={{ fontSize: "0.6rem" }}>✗ Выбрано</span>}
-                {isCorrect && !isChosen && <span className="badge bg-success ms-1" style={{ fontSize: "0.6rem", opacity: 0.7 }}>Верно</span>}
+                {isChosen && isCorrect && <StatusTag status="confirmed" label="Выбрано" />}
+                {isChosen && !isCorrect && <StatusTag status="failed" label="Выбрано" />}
+                {isCorrect && !isChosen && <StatusTag status="confirmed" label="Верно" />}
               </div>
             </div>
           );
@@ -324,73 +344,69 @@ export default function TrainingReviewPage() {
   const isIcon = captchaData?.captcha_type === 1;
 
   return (
-    <div className="container py-3" style={{ maxWidth: 850 }}>
-      <button className="btn btn-sm btn-outline-secondary mb-2" onClick={() => navigate(`/training/run/${runId}/results`)}>
-        ← К результатам
-      </button>
+    <div data-eopp-component="TrainingReviewPage" className="training-review-page">
+      <Toolbar
+        className="training-review__toolbar"
+        left={
+          <Button size="small" onClick={() => navigate(`/training/run/${runId}/results`)}>
+            К результатам
+          </Button>
+        }
+        right={
+          <>
+            <Button size="small" onClick={goPrev} disabled={idx === 0}>
+              Пред.
+            </Button>
+            <Button size="small" onClick={goNext} disabled={idx >= total - 1}>
+              След.
+            </Button>
+          </>
+        }
+      />
 
-      {/* Navigation bar */}
-      <div className="card mb-3" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-        <div className="card-body p-2">
-          <div className="d-flex justify-content-between align-items-center">
-            <button className="btn btn-sm btn-outline-primary" onClick={goPrev} disabled={idx === 0}>
-              ← Пред.
-            </button>
-            <div style={{ textAlign: "center" }}>
-              <strong>Капча {idx + 1} из {total}</strong>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                {current.captcha_id?.slice(0, 16)}...
-              </div>
-            </div>
-            <button className="btn btn-sm btn-outline-primary" onClick={goNext} disabled={idx >= total - 1}>
-              След. →
-            </button>
+      <Card data-eopp-component="TrainingReviewNavCard" size="small">
+        <div className="training-review__nav">
+          <div className="training-review__title">
+            <strong>Капча {idx + 1} из {total}</strong>
+            <span>{current.captcha_id?.slice(0, 16)}...</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 6 }}>
+          <div className="training-review__dots">
             {results.map((r, i) => (
-              <div
+              <Button
                 key={i}
+                htmlType="button"
+                className={`training-review__dot ${i === idx ? "is-active" : ""} is-${r.status || "neutral"}`}
                 onClick={() => setIdx(i)}
-                style={{
-                  width: 10, height: 10, borderRadius: "50%",
-                  background: i === idx ? "#0d6efd"
-                    : r.status === "correct" ? "#28a745"
-                    : r.status === "incorrect" ? "#dc3545"
-                    : "#6c757d",
-                  cursor: "pointer",
-                  opacity: i === idx ? 1 : 0.5,
-                }}
                 title={`#${i + 1}: ${r.status}`}
               />
             ))}
           </div>
         </div>
-      </div>
+      </Card>
 
       {imgLoading ? (
-        <div className="text-center py-4 text-muted">Загрузка изображения...</div>
+        <Card data-eopp-component="TrainingReviewImageCard" size="small">
+          <div className="training-review-page--center"><Spin /></div>
+        </Card>
       ) : captchaData ? (
-        <div className="card" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-          <div className="card-body p-3">
-            <div className="d-flex justify-content-between align-items-center mb-3">
-              <span className="badge bg-secondary" style={{ fontSize: "0.7rem" }}>
-                {isIcon ? "Клик-капча" : "Пазл"}
-              </span>
-              <div className="d-flex align-items-center gap-2">
-                <span className={`badge ${current.status === "correct" ? "bg-success" : current.status === "incorrect" ? "bg-danger" : "bg-warning"}`}>
-                  {current.status === "correct" ? "✓ Правильно" : current.status === "incorrect" ? "✗ Ошибка" : current.status}
-                </span>
-                <span className="text-muted" style={{ fontSize: "0.85rem" }}>
-                  {formatMs(current.duration_ms)}
-                </span>
-              </div>
+        <Card
+          data-eopp-component="TrainingReviewImageCard"
+          size="small"
+          title={isIcon ? "Клик-капча" : "Пазл"}
+          extra={
+            <div className="training-review__status">
+              <StatusTag
+                status={current.status === "correct" ? "confirmed" : current.status === "incorrect" ? "failed" : "warning"}
+                label={current.status === "correct" ? "Правильно" : current.status === "incorrect" ? "Ошибка" : current.status}
+              />
+              <span>{formatMs(current.duration_ms)}</span>
             </div>
-
-            {isIcon ? renderIconReview() : renderPuzzleReview()}
-          </div>
-        </div>
+          }
+        >
+          {isIcon ? renderIconReview() : renderPuzzleReview()}
+        </Card>
       ) : (
-        <div className="text-center py-4 text-danger">Не удалось загрузить капчу</div>
+        <Alert type="error" showIcon message="Не удалось загрузить капчу" />
       )}
     </div>
   );

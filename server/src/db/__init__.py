@@ -11,7 +11,6 @@ EOPP Captcha Solver - Database Layer.
 """
 
 from src.db.api_keys import (
-    check_admin_token,
     create_key,
     delete_key,
     get_key_by_id,
@@ -57,7 +56,6 @@ __all__ = [
     "increment_usage",
     "get_key_record",
     "get_key_by_label",
-    "check_admin_token",
     "is_super_kiosk_key",
     "get_usage_log_entry",
     "delete_usage_log",

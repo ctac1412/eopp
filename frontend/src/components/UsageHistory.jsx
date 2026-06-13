@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Alert, Pagination, Spin } from "antd";
 import { HistoryTable } from "./history/HistoryTable";
+import { Toolbar } from "../ui";
 
 function UsageHistory({ apiKey }) {
   const [records, setRecords] = useState([]);
@@ -8,6 +10,8 @@ function UsageHistory({ apiKey }) {
   const [expandedLogs, setExpandedLogs] = useState({});
   const [expandedConfig, setExpandedConfig] = useState({});
   const [expandedErrors, setExpandedErrors] = useState({});
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   const toggleLogs = (id) => setExpandedLogs((p) => ({ ...p, [id]: !p[id] }));
   const toggleConfig = (id) => setExpandedConfig((p) => ({ ...p, [id]: !p[id] }));
@@ -27,6 +31,7 @@ function UsageHistory({ apiKey }) {
       }
       const data = await resp.json();
       setRecords(data);
+      setPage(1);
       setError("");
     } catch {
       setError("Ошибка сети");
@@ -37,28 +42,72 @@ function UsageHistory({ apiKey }) {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
+  useEffect(() => {
+    const lastPage = Math.max(1, Math.ceil(records.length / pageSize));
+    setPage((current) => Math.min(current, lastPage));
+  }, [records.length, pageSize]);
+
+  const pagedRecords = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return records.slice(start, start + pageSize);
+  }, [page, pageSize, records]);
+
   if (loading) {
     return (
-      <div className="d-flex align-items-center gap-2 py-3" style={{ fontSize: "0.8125rem", color: "#6e7681" }}>
-        <div className="idle-spinner" style={{ width: "16px", height: "16px" }} />
+      <div data-eopp-component="UsageHistoryLoading" className="usage-history-state">
+        <Spin size="small" />
         Загрузка...
       </div>
     );
   }
   if (error) {
-    return <div className="alert alert-danger py-2" style={{ fontSize: "0.8125rem" }}>{error}</div>;
+    return (
+      <Alert
+        data-eopp-component="UsageHistoryError"
+        type="error"
+        showIcon
+        message={error}
+      />
+    );
   }
 
   return (
-    <HistoryTable
-      records={records}
-      expandedLogs={expandedLogs}
-      expandedConfig={expandedConfig}
-      expandedErrors={expandedErrors}
-      onToggleLogs={toggleLogs}
-      onToggleConfig={toggleConfig}
-      onToggleError={toggleError}
-    />
+    <div data-eopp-component="UsageHistory" className="usage-history">
+      <Toolbar
+        className="usage-history__toolbar"
+        left={
+          <span className="usage-history__summary">
+            Показано: {records.length === 0 ? 0 : (page - 1) * pageSize + 1}
+            -{Math.min(page * pageSize, records.length)} из {records.length}
+          </span>
+        }
+        right={
+          <Pagination
+            data-eopp-component="UsageHistoryPagination"
+            current={page}
+            pageSize={pageSize}
+            total={records.length}
+            showSizeChanger
+            pageSizeOptions={[10, 15, 25, 50]}
+            locale={{ items_per_page: "" }}
+            onChange={(nextPage, nextPageSize) => {
+              setPage(nextPage);
+              setPageSize(nextPageSize);
+            }}
+            size="small"
+          />
+        }
+      />
+      <HistoryTable
+        records={pagedRecords}
+        expandedLogs={expandedLogs}
+        expandedConfig={expandedConfig}
+        expandedErrors={expandedErrors}
+        onToggleLogs={toggleLogs}
+        onToggleConfig={toggleConfig}
+        onToggleError={toggleError}
+      />
+    </div>
   );
 }
 

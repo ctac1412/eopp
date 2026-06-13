@@ -86,6 +86,21 @@ export async function failUsage(
   return response as boolean;
 }
 
+export async function cancelCaptcha(
+  apiKey: string,
+  usageLogId?: number | null,
+  captchaId?: string | null,
+): Promise<boolean> {
+  if (!usageLogId && !captchaId) return false;
+  const response = await sendMessageToBackground("cancelCaptcha", {
+    apiKey,
+    usageLogId,
+    captchaId,
+  });
+  const data = response as { ok?: boolean };
+  return data.ok === true;
+}
+
 export async function getApiKeyStatus(
   apiKey: string,
 ): Promise<ApiKeyStatusResponse> {

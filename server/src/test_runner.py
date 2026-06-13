@@ -11,7 +11,6 @@ import time
 
 from src.captcha_assembly import captcha_hash
 from src.captcha_assembly import get_valid_variant_index
-from src.constants import ADMIN_TOKEN
 from src.services import captcha_file_service
 from src.utils import counter_lock, result_counter, source_files
 
@@ -59,7 +58,7 @@ def send_test_cases():
         with open(filepath) as f:
             body = f.read()
         print(f"Sending test: {os.path.basename(filepath)}")
-        t = threading.Thread(target=_send_captcha, args=(body, ADMIN_TOKEN), daemon=True)
+        t = threading.Thread(target=_send_captcha, args=(body,), daemon=True)
         t.start()
         time.sleep(1)
 
@@ -81,14 +80,14 @@ def send_write_cases():
         print(f"Sending for labeling: {os.path.basename(filepath)} [{cid}]")
         t = threading.Thread(
             target=_send_captcha_with_id,
-            args=(cid, body, ADMIN_TOKEN),
+            args=(cid, body),
             daemon=True,
         )
         t.start()
         time.sleep(1)
 
 
-def _send_captcha(body, admin_token, api_key=None):
+def _send_captcha(body, api_key=None):
     try:
         if api_key is None:
             from src.constants import get_test_api_key
@@ -101,13 +100,12 @@ def _send_captcha(body, admin_token, api_key=None):
         _http_post(
             path="/solve-captcha",
             body=wrapped_body,
-            extra_headers={"X-Admin-Token": admin_token},
         )
     except Exception as e:
         print(f"Error sending test captcha: {e}")
 
 
-def _send_captcha_with_id(captcha_id, body, admin_token, api_key=None):
+def _send_captcha_with_id(captcha_id, body, api_key=None):
     try:
         if api_key is None:
             from src.constants import get_test_api_key
@@ -122,7 +120,6 @@ def _send_captcha_with_id(captcha_id, body, admin_token, api_key=None):
         _http_post(
             "/solve-captcha",
             json.dumps(wrapper),
-            extra_headers={"X-Admin-Token": admin_token},
         )
     except Exception as e:
         print(f"Error sending test captcha: {e}")
@@ -140,7 +137,7 @@ def send_test_cases_with_key(api_key=None):
         with open(filepath) as f:
             body = f.read()
         print(f"Sending test: {os.path.basename(filepath)}")
-        t = threading.Thread(target=_send_captcha, args=(body, ADMIN_TOKEN, api_key), daemon=True)
+        t = threading.Thread(target=_send_captcha, args=(body, api_key), daemon=True)
         t.start()
         time.sleep(1)
 
@@ -162,10 +159,10 @@ def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, te
     with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")
-    _send_captcha_with_reservation(body, ADMIN_TOKEN, api_key, reservation_id, test_no_timeout, auto_solve_rucaptcha)
+    _send_captcha_with_reservation(body, api_key, reservation_id, test_no_timeout, auto_solve_rucaptcha)
 
 
-def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
+def _send_captcha_with_reservation(body, api_key=None, reservation_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
     try:
         if api_key is None:
             from src.constants import get_test_api_key
@@ -184,7 +181,6 @@ def _send_captcha_with_reservation(body, admin_token, api_key=None, reservation_
         _http_post(
             path="/solve-captcha",
             body=wrapped_body,
-            extra_headers={"X-Admin-Token": admin_token},
             http_timeout=http_timeout,
         )
     except Exception as e:

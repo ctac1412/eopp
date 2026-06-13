@@ -2,19 +2,19 @@
  * EOPP Captcha Solver - Admin Page (Панель администрирования)
  *
  * Основные функции:
- * - Авторизация админа через ADMIN_TOKEN
+ * - Авторизация пользователя через логин/пароль и cookie-сессию
  * - Управление API ключами (CRUD)
  * - Просмотр активных SSE соединений (/admin/streams)
  * - Статистика по тестовым кейсам (/admin/test-stats)
  * - Запуск бенчмарка (/admin/benchmark)
  *
  * Роут: /admin
- * Защита: требует X-Admin-Token в заголовках
+ * Защита: требует сессию eopp_admin_session
  */
-import React, { useState, useCallback, useEffect, useRef } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { Alert, Tag } from "antd";
 import {
-  AdminAuth,
   ApiKeysTab,
   BackendLogsTab,
   StreamsTab,
@@ -30,30 +30,74 @@ import {
   PayoutModal,
   UsersTab,
   UserModal,
+  UserStatsModal,
   CaptchasTab,
   AITab,
+  OperationsDashboardTab,
   OperatorsTab,
+  PluginChannelTab,
   PrepaidPackagesTab,
   TrainingAdminTab,
   CompaniesTab,
 } from "./components/admin";
+import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./components/admin/userCompanyAccess";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
+import { Button } from "./ui";
+
+const ROLE_LABELS = {
+  super_admin: "Супер админ",
+  administrator: "Администратор",
+  manager: "Менеджер",
+  operator: "Оператор",
+};
+
+const DEFAULT_ROLE_SECTIONS = {
+  super_admin: ADMIN_TABS.map((tab) => tab.id),
+  administrator: ADMIN_TABS.filter((tab) => tab.id !== "users").map((tab) => tab.id),
+  manager: ["reports", "companies", "channels", "captchas", "invoices", "prepaid", "expenses", "payouts"],
+  operator: ["operations", "operators", "streams"],
+};
 
 function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [adminToken, setAdminToken] = useState(
-    () => localStorage.getItem("admin_token") || null,
+    () => "session",
   );
+  const [authChecked, setAuthChecked] = useState(false);
   const [adminRole, setAdminRole] = useState(
     () => localStorage.getItem("admin_role") || null,
   );
-  const [authInput, setAuthInput] = useState("");
-  const [authError, setAuthError] = useState(null);
-  const [authLoading, setAuthLoading] = useState(false);
+  const [adminSystemRole, setAdminSystemRole] = useState(
+    () => localStorage.getItem("admin_system_role") || "",
+  );
+  const [adminSections, setAdminSections] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("admin_sections") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [adminPermissions, setAdminPermissions] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("admin_permissions") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [activeTab, setActiveTab] = useState(
     () => searchParams.get("tab") || "reports"
   );
+  const visibleTabs = useMemo(() => {
+    const sections =
+      adminSections.length > 0
+        ? adminSections
+        : DEFAULT_ROLE_SECTIONS[adminRole] || ADMIN_TABS.map((tab) => tab.id);
+    const allowed = new Set(sections);
+    return ADMIN_TABS.filter((tab) => allowed.has(tab.id));
+  }, [adminRole, adminSections]);
+  const canUseGlobalUserCompanyAccess =
+    !!adminSystemRole || adminRole === "super_admin" || adminRole === "system_admin";
   const [captchaSubtab, setCaptchaSubtab] = useState("operations");
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,7 +105,7 @@ function AdminPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(null);
   const [newKey, setNewKey] = useState(null);
-  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, companyId: "" });
+  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, userId: "" });
   const [editForm, setEditForm] = useState({
     label: "",
     maxUses: "",
@@ -72,7 +116,7 @@ function AdminPage() {
     priceReschedule: "",
     priceCreatePeak: "",
     priceCustomSlots: "",
-    companyId: "",
+    userId: "",
   });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState({});
@@ -84,6 +128,13 @@ function AdminPage() {
   const [usageLogEditForm, setUsageLogEditForm] = useState({ price: "", paid: "" });
   const [editingPriceId, setEditingPriceId] = useState(null);
   const intervalRef = useRef(null);
+
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab") || "reports";
+    const fallbackTab = visibleTabs[0]?.id || "reports";
+    const nextTab = visibleTabs.some((tab) => tab.id === tabFromUrl) ? tabFromUrl : fallbackTab;
+    setActiveTab((current) => (current === nextTab ? current : nextTab));
+  }, [searchParams, visibleTabs]);
 
   // Expenses
   const [expenses, setExpenses] = useState([]);
@@ -104,11 +155,27 @@ function AdminPage() {
 
   // Users
   const [users, setUsers] = useState([]);
-  const [userForm, setUserForm] = useState({ id: null, name: "" });
+  const [userForm, setUserForm] = useState({
+    id: null,
+    name: "",
+    login: "",
+    password: "",
+    role: "manager",
+    systemRole: "",
+    active: true,
+    companyId: "",
+    financeAccess: emptyAccess(),
+    operatorAccess: emptyAccess(),
+    executorAccess: emptyAccess(),
+  });
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showUserStats, setShowUserStats] = useState(false);
+  const [userStats, setUserStats] = useState(null);
+  const [userStatsLoading, setUserStatsLoading] = useState(false);
 
   // Companies
   const [companies, setCompanies] = useState([]);
+  const [financeParticipants, setFinanceParticipants] = useState([]);
 
   // Streams
   const [streams, setStreams] = useState([]);
@@ -175,6 +242,24 @@ function AdminPage() {
         setUsers(Array.isArray(data) ? data : []);
       } catch (err) {
         setUsers([]);
+      }
+    },
+    [adminToken],
+  );
+
+  const fetchFinanceParticipants = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return;
+      try {
+        const res = await fetch("/admin/finance-participants", {
+          headers: adminHeadersJson(t),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setFinanceParticipants(Array.isArray(data) ? data : []);
+      } catch (err) {
+        setFinanceParticipants([]);
       }
     },
     [adminToken],
@@ -387,17 +472,43 @@ function AdminPage() {
   );
 
   useEffect(() => {
-    if (adminToken) {
-      fetchKeys(adminToken);
-    }
+    fetch("/auth/me")
+      .then((res) => {
+        if (!res.ok) throw new Error("Unauthorized");
+        return res.json();
+      })
+      .then((data) => {
+        const role = data.role || "manager";
+        const systemRole = data.user?.system_role || "";
+        const sections = Array.isArray(data.sections) ? data.sections : DEFAULT_ROLE_SECTIONS[role] || [];
+        const permissions = Array.isArray(data.permissions) ? data.permissions : [];
+        localStorage.setItem("admin_session_active", "1");
+        localStorage.setItem("admin_role", role);
+        localStorage.setItem("admin_system_role", systemRole);
+        localStorage.setItem("admin_sections", JSON.stringify(sections));
+        localStorage.setItem("admin_permissions", JSON.stringify(permissions));
+        setAdminToken("session");
+        setAdminRole(role);
+        setAdminSystemRole(systemRole);
+        setAdminSections(sections);
+        setAdminPermissions(permissions);
+        fetchKeys("session");
+      })
+      .catch(() => {
+        localStorage.removeItem("admin_session_active");
+        localStorage.removeItem("admin_role");
+        localStorage.removeItem("admin_system_role");
+        localStorage.removeItem("admin_sections");
+        localStorage.removeItem("admin_permissions");
+        setAdminToken(null);
+        setAdminRole(null);
+        setAdminSystemRole("");
+        setAdminSections([]);
+        setAdminPermissions([]);
+        setLoading(false);
+      })
+      .finally(() => setAuthChecked(true));
   }, []);
-
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab && tab !== activeTab) {
-      setActiveTab(tab);
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     if (adminToken && activeTab === "streams") {
@@ -440,8 +551,9 @@ function AdminPage() {
   useEffect(() => {
     if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices")) {
       fetchUsers(adminToken);
+      fetchFinanceParticipants(adminToken);
     }
-  }, [adminToken, activeTab]);
+  }, [adminToken, activeTab, fetchFinanceParticipants, fetchUsers]);
 
   useEffect(() => {
     if (adminToken && activeTab === "payouts") {
@@ -449,37 +561,18 @@ function AdminPage() {
     }
   }, [adminToken, activeTab, fetchAvailableResources]);
 
-  const doAuth = async () => {
-    setAuthError(null);
-    setAuthLoading(true);
-    try {
-      const res = await fetch("/admin/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: authInput }),
-      });
-      if (!res.ok) throw new Error("Неверный токен");
-      const data = await res.json();
-      const role = data.role || "manager";
-      const token = authInput;
-      localStorage.setItem("admin_token", token);
-      localStorage.setItem("admin_role", role);
-      setAdminToken(token);
-      setAdminRole(role);
-      setAuthError(null);
-      fetchKeys(token);
-    } catch (err) {
-      setAuthError(err.message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
   const handleLogout = () => {
-    localStorage.removeItem("admin_token");
+    fetch("/auth/logout", { method: "POST" }).catch(() => {});
+    localStorage.removeItem("admin_session_active");
     localStorage.removeItem("admin_role");
+    localStorage.removeItem("admin_system_role");
+    localStorage.removeItem("admin_sections");
+    localStorage.removeItem("admin_permissions");
     setAdminToken(null);
     setAdminRole(null);
+    setAdminSystemRole("");
+    setAdminSections([]);
+    setAdminPermissions([]);
     setKeys([]);
     setExpandedHistory({});
     setExpandedLogs({});
@@ -489,6 +582,9 @@ function AdminPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
+      if (!createForm.userId) {
+        throw new Error("Выберите пользователя-владельца ключа");
+      }
       const body = { label: createForm.label };
       if (createForm.maxUses) {
         body.max_uses = parseInt(createForm.maxUses, 10);
@@ -496,9 +592,7 @@ function AdminPage() {
       if (createForm.isExternal) {
         body.is_external = true;
       }
-      if (createForm.companyId) {
-        body.company_id = parseInt(createForm.companyId, 10);
-      }
+      body.user_id = parseInt(createForm.userId, 10);
       const res = await fetch("/api-keys", {
         method: "POST",
         headers: adminHeaders(adminToken),
@@ -507,7 +601,7 @@ function AdminPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setNewKey(data);
-      setCreateForm({ label: "", maxUses: "", isExternal: false, companyId: "" });
+      setCreateForm({ label: "", maxUses: "", isExternal: false, userId: "" });
       setShowCreate(false);
       fetchKeys(adminToken);
     } catch (err) {
@@ -528,10 +622,8 @@ function AdminPage() {
       if (editForm.comment !== "") {
         body.comment = editForm.comment;
       }
-      if (editForm.companyId) {
-        body.company_id = parseInt(editForm.companyId, 10);
-      } else {
-        body.company_id = null;
+      if (editForm.userId) {
+        body.user_id = parseInt(editForm.userId, 10);
       }
       const res = await fetch(`/api-keys/${showEdit}`, {
         method: "PUT",
@@ -626,10 +718,11 @@ function AdminPage() {
         tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
       priceCustomSlots:
         tariff && tariff.price_custom_slots != null ? String(tariff.price_custom_slots) : "",
-      companyId: keyObj.company_id != null ? String(keyObj.company_id) : "",
+      userId: keyObj.user_id != null ? String(keyObj.user_id) : "",
     });
     setShowEdit(keyObj.id);
     fetchCompanies(adminToken);
+    fetchUsers(adminToken);
   };
 
   const fetchUsageHistory = async (keyId, hideTest = true) => {
@@ -932,16 +1025,32 @@ function AdminPage() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
-      const body = { name: userForm.name };
+      const companyId = userForm.companyId ? Number(userForm.companyId) : null;
+      const body = {
+        name: userForm.name,
+        login: userForm.login || null,
+        password: userForm.password || null,
+        role: userForm.role || "manager",
+        system_role: userForm.systemRole || null,
+        active: userForm.active !== false,
+        company_id: companyId,
+        finance_access: accessPayloadFromForm(userForm.financeAccess),
+        operator_access: accessPayloadFromForm(userForm.operatorAccess),
+        executor_access: accessPayloadFromForm(userForm.executorAccess),
+      };
+      if (companyId) {
+        body.company_memberships = [{ company_id: companyId, role: userForm.role || "manager", active: true }];
+      }
       const res = await fetch("/admin/users", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "" });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
+      fetchFinanceParticipants(adminToken);
     } catch (err) {
       setError(err.message);
     }
@@ -951,16 +1060,34 @@ function AdminPage() {
     e.preventDefault();
     if (!userForm.id) return;
     try {
-      const body = { name: userForm.name };
+      const companyId = userForm.companyId ? Number(userForm.companyId) : null;
+      const body = {
+        name: userForm.name,
+        login: userForm.login || null,
+        role: userForm.role || "manager",
+        system_role: userForm.systemRole || null,
+        active: userForm.active !== false,
+        company_id: companyId,
+        finance_access: accessPayloadFromForm(userForm.financeAccess),
+        operator_access: accessPayloadFromForm(userForm.operatorAccess),
+        executor_access: accessPayloadFromForm(userForm.executorAccess),
+      };
+      if (companyId) {
+        body.company_memberships = [{ company_id: companyId, role: userForm.role || "manager", active: true }];
+      }
+      if (userForm.password) {
+        body.password = userForm.password;
+      }
       const res = await fetch(`/admin/users/${userForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "" });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
+      fetchFinanceParticipants(adminToken);
     } catch (err) {
       setError(err.message);
     }
@@ -978,6 +1105,42 @@ function AdminPage() {
       setError(err.message);
     }
   };
+
+  const handleOpenUserStats = async (user) => {
+    setShowUserStats(true);
+    setUserStats(null);
+    setUserStatsLoading(true);
+    try {
+      const res = await fetch(`/admin/users/${user.id}/stats`, {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUserStats(await res.json());
+    } catch (err) {
+      setError(err.message);
+      setShowUserStats(false);
+    } finally {
+      setUserStatsLoading(false);
+    }
+  };
+
+  const openEditUser = useCallback((u) => {
+    setUserForm({
+      id: u.id,
+      name: u.name || "",
+      login: u.login || "",
+      password: "",
+      role: u.role || "manager",
+      systemRole: u.system_role || "",
+      active: u.active !== false,
+      companyId: u.company_id ? String(u.company_id) : "",
+      financeAccess: normalizeAccess(u.finance_access),
+      operatorAccess: normalizeAccess(u.operator_access),
+      executorAccess: normalizeAccess(u.executor_access),
+    });
+    fetchCompanies(adminToken);
+    setShowUserModal(true);
+  }, [adminToken, fetchCompanies]);
 
   const handleDeleteExpense = async (id) => {
     try {
@@ -1107,62 +1270,80 @@ function AdminPage() {
     }
   };
 
+  if (!authChecked) {
+    return null;
+  }
+
   if (!adminToken) {
-    return (
-      <AdminAuth
-        authInput={authInput}
-        setAuthInput={setAuthInput}
-        authError={authError}
-        authLoading={authLoading}
-        onAuth={doAuth}
-      />
-    );
+    return <Navigate to="/" replace />;
   }
 
   return (
-    <div className="container-fluid px-3 py-3" style={{ maxWidth: "1400px" }}>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="mb-0 fw-bold" style={{ fontSize: "1.125rem" }}>Админ-панель</h4>
-        <div className="d-flex gap-2 align-items-center">
-          <span className={`badge ${adminRole === "super_admin" ? "bg-danger" : "bg-secondary"}`} style={{ fontSize: "0.7rem" }}>
-            {adminRole === "super_admin" ? "Суперадмин" : "Менеджер"}
-          </span>
-          {activeTab === "keys" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setShowCreate(true); fetchCompanies(adminToken); }}>
-              + Новый ключ
-            </button>
+    <div data-eopp-component="AdminPageShell" className="admin-page">
+      <div data-eopp-component="AdminPageHeader" className="admin-page__header">
+        <h1>Админ-панель</h1>
+        <div className="admin-page__actions">
+          <Tag color={adminRole === "super_admin" ? "red" : adminRole === "administrator" ? "blue" : "default"}>
+            {ROLE_LABELS[adminRole] || adminRole || "Роль"}
+          </Tag>
+          {activeTab === "keys" && adminPermissions.includes("admin.users.manage") && (
+            <Button size="small" variant="primary" onClick={() => { setShowCreate(true); fetchCompanies(adminToken); fetchUsers(adminToken); }}>
+              Новый ключ
+            </Button>
           )}
-                    {activeTab === "users" && (
-            <button className="btn btn-sm btn-primary" onClick={() => { setUserForm({ id: null, name: "" }); setShowUserModal(true); }}>
-              + Новый пользователь
-            </button>
-          )}
-          <button className="btn btn-sm btn-outline-secondary" onClick={handleLogout}>
+          <Button size="small" onClick={handleLogout}>
             Выйти
-          </button>
-          <Link to="/" className="btn btn-sm btn-outline-secondary">← Назад</Link>
+          </Button>
+          <Link data-eopp-component="AdminPageBackLink" to="/" className="admin-page__back-link">Назад</Link>
         </div>
       </div>
 
       {error && (
-        <div className="alert alert-danger alert-dismissible fade show mb-3" role="alert" style={{ borderRadius: 0, fontSize: "0.625rem", fontFamily: "var(--bs-font-monospace)" }}>
-          {error}
-          <button type="button" className="btn-close" onClick={() => setError(null)}></button>
-        </div>
+        <Alert
+          data-eopp-component="AdminPageError"
+          className="mb-3"
+          type="error"
+          showIcon
+          closable
+          message={error}
+          onClose={() => setError(null)}
+        />
       )}
 
-      <ul className="nav nav-cyber mb-3">
-        {ADMIN_TABS.map((tab) => (
-          <li className="nav-item" key={tab.id}>
-            <button
-              className={`nav-link ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => { setActiveTab(tab.id); setSearchParams({ tab: tab.id }); }}
+      <div
+        data-eopp-component="AdminTabsNav"
+        className="admin-tabs-nav mb-3"
+        role="tablist"
+      >
+        {visibleTabs.map((tab) => (
+          <div
+            data-eopp-component="AdminTabsNavItem"
+            data-eopp-tab={tab.id}
+            className="admin-tabs-nav__item"
+            key={tab.id}
+          >
+            <Button
+              data-eopp-component="AdminTabsNavButton"
+              data-eopp-tab={tab.id}
+              className={`admin-tabs-nav__button ${activeTab === tab.id ? "is-active" : ""}`}
+              title={tab.label}
+              htmlType="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setSearchParams((currentParams) => {
+                  const nextParams = new URLSearchParams(currentParams);
+                  nextParams.set("tab", tab.id);
+                  return nextParams;
+                });
+              }}
             >
-              {tab.label}
-            </button>
-          </li>
+              {tab.shortLabel || tab.label}
+            </Button>
+          </div>
         ))}
-      </ul>
+      </div>
 
       {activeTab === "reports" && (
         <ReportsTab
@@ -1217,15 +1398,23 @@ function AdminPage() {
         <CompaniesTab adminToken={adminToken} onError={setError} />
       )}
 
+      {activeTab === "operations" && (
+        <OperationsDashboardTab adminToken={adminToken} onError={setError} />
+      )}
+
       {activeTab === "operators" && (
         <OperatorsTab adminToken={adminToken} onError={setError} />
+      )}
+
+      {activeTab === "channels" && (
+        <PluginChannelTab adminToken={adminToken} onError={setError} />
       )}
 
       {activeTab === "invoices" && (
         <InvoicesTab
           adminToken={adminToken}
           onError={(msg) => setError(msg)}
-          users={users}
+          users={financeParticipants}
           focusInvoiceId={searchParams.get("invoice_id")}
         />
       )}
@@ -1263,10 +1452,11 @@ function AdminPage() {
           payouts={payouts}
           onRefresh={() => fetchPayouts(adminToken)}
           onCreate={() => {
-            const n = users.length || 1;
+            const payoutUsers = financeParticipants;
+            const n = payoutUsers.length || 1;
             const base = Math.floor(100 / n);
             const remainder = 100 - base * n;
-            const autoSplits = users.map((u, i) => ({
+            const autoSplits = payoutUsers.map((u, i) => ({
               user_id: u.id,
               split_pct: base + (i < remainder ? 1 : 0),
             }));
@@ -1294,8 +1484,14 @@ function AdminPage() {
       {activeTab === "users" && (
         <UsersTab
           users={users}
-          onEdit={(u) => { setUserForm({ id: u.id, name: u.name }); setShowUserModal(true); }}
+          onCreate={() => {
+            setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
+            fetchCompanies(adminToken);
+            setShowUserModal(true);
+          }}
+          onEdit={openEditUser}
           onDelete={handleDeleteUser}
+          onStats={handleOpenUserStats}
         />
       )}
 
@@ -1333,7 +1529,7 @@ function AdminPage() {
         setForm={setCreateForm}
         onSubmit={handleCreate}
         onClose={() => setShowCreate(false)}
-        companies={companies}
+        users={users}
       />
 
       <KeyFormModal
@@ -1345,7 +1541,7 @@ function AdminPage() {
         onClose={() => setShowEdit(null)}
         onResetUsage={() => { if (showEdit) handleResetUsage(showEdit); }}
         onDeleteKey={() => { if (showEdit) { setShowEdit(null); setConfirmDelete(showEdit); } }}
-        companies={companies}
+        users={users}
       />
 
       <DeleteConfirmModal
@@ -1369,7 +1565,7 @@ function AdminPage() {
         setForm={setExpenseForm}
         onSubmit={expenseForm.id ? handleUpdateExpense : handleCreateExpense}
         onClose={() => setShowExpenseModal(false)}
-        users={users}
+        users={financeParticipants}
       />
 
       <PayoutModal
@@ -1379,7 +1575,7 @@ function AdminPage() {
         onSubmit={payoutForm.id ? handleUpdatePayout : handleCreatePayout}
         onClose={() => setShowPayoutModal(false)}
         preview={payoutPreview}
-        users={users}
+        users={financeParticipants}
         availableInvoices={availableInvoices}
         availableExpenses={availableExpenses}
         onPreview={fetchPayoutPreview}
@@ -1392,6 +1588,15 @@ function AdminPage() {
         setForm={setUserForm}
         onSubmit={userForm.id ? handleUpdateUser : handleCreateUser}
         onClose={() => setShowUserModal(false)}
+        companies={companies}
+        canUseGlobalAccess={canUseGlobalUserCompanyAccess}
+      />
+
+      <UserStatsModal
+        show={showUserStats}
+        stats={userStats}
+        loading={userStatsLoading}
+        onClose={() => setShowUserStats(false)}
       />
     </div>
   );

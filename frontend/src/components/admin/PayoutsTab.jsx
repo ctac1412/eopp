@@ -1,118 +1,40 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { Card, Modal, Space } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
-const STATUS_LABELS = {
-  pending: { label: "Ожидает", className: "bg-warning text-dark" },
-  completed: { label: "Завершена", className: "bg-success text-white" },
-  cancelled: { label: "Отменена", className: "bg-secondary text-white" },
+const STATUS_OPTIONS = [
+  { value: "all", label: "Все" },
+  { value: "pending", label: "Ожидает" },
+  { value: "completed", label: "Завершена" },
+  { value: "cancelled", label: "Отменена" },
+];
+
+const STATUS_META = {
+  pending: { status: "pending", label: "Ожидает" },
+  completed: { status: "confirmed", label: "Завершена" },
+  cancelled: { status: "offline", label: "Отменена" },
 };
 
-function StatusBadge({ status }) {
-  const cfg = STATUS_LABELS[status] || { label: status || "—", className: "bg-light text-dark" };
-  return <span className={`badge ${cfg.className}`}>{cfg.label}</span>;
-}
-
-function formatMoney(n) {
-  return `${Math.round(Number(n || 0)).toLocaleString("ru-RU")} ₽`;
+function formatMoney(value) {
+  return `${Math.round(Number(value || 0)).toLocaleString("ru-RU")} ₽`;
 }
 
 function formatDate(iso, withTime = false) {
   if (!iso) return "—";
-  const options = withTime
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("ru-RU", withTime
     ? { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }
-    : { day: "2-digit", month: "2-digit", year: "numeric" };
-  return new Date(iso).toLocaleDateString("ru-RU", options);
-}
-
-function SummaryCard({ label, value, tone = "secondary" }) {
-  return (
-    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
-      <div className="text-secondary-emphasis small">{label}</div>
-      <div className="fw-semibold text-light">{value}</div>
-    </div>
-  );
-}
-
-function InvoiceDetails({ invoices }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!invoices || invoices.length === 0) return <span className="text-muted">—</span>;
-
-  return (
-    <div className="small">
-      <button
-        className="btn btn-sm btn-link p-0 text-decoration-none"
-        onClick={() => setExpanded(!expanded)}
-        style={{ fontSize: "inherit" }}
-      >
-        {invoices.length} {invoices.length === 1 ? "счет" : invoices.length < 5 ? "счета" : "счетов"}
-        {expanded ? " в–І" : " в–ј"}
-      </button>
-      {expanded && (
-        <table className="table table-sm table-bordered mt-1 mb-0" style={{ fontSize: "0.75rem" }}>
-          <thead className="table-light">
-            <tr>
-              <th>Номер</th>
-              <th className="text-end">Доход</th>
-              <th className="text-end">Комиссия</th>
-              <th className="text-end">Налог</th>
-              <th className="text-end">Итого</th>
-              <th>Оплата</th>
-              <th>Дата</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.map((invoice) => (
-              <tr key={invoice.invoice_id || invoice.id}>
-                <td><code>{invoice.invoice_number || invoice.invoice_id}</code></td>
-                <td className="text-end font-monospace text-success">+{formatMoney(invoice.debt_amount)}</td>
-                <td className="text-end font-monospace text-info">{formatMoney(invoice.percent_amount || 0)}</td>
-                <td className="text-end font-monospace text-warning">{formatMoney(invoice.tax_amount || 0)}</td>
-                <td className="text-end font-monospace fw-bold">{formatMoney(invoice.total_amount || invoice.amount)}</td>
-                <td>{invoice.paid ? <span className="badge bg-success">опл.</span> : <span className="badge bg-secondary">нет</span>}</td>
-                <td className="text-muted">{formatDate(invoice.invoice_created_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-function ExpenseDetails({ expenses }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!expenses || expenses.length === 0) return <span className="text-muted">—</span>;
-
-  const compensated = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-  return (
-    <div className="small">
-      <button
-        className="btn btn-sm btn-link p-0 text-decoration-none"
-        onClick={() => setExpanded(!expanded)}
-        style={{ fontSize: "inherit" }}
-      >
-        {expenses.length} расхода, {formatMoney(compensated)}
-        {expanded ? " в–І" : " в–ј"}
-      </button>
-      {expanded && (
-        <table className="table table-sm table-bordered mt-1 mb-0" style={{ fontSize: "0.75rem" }}>
-          <thead className="table-light">
-            <tr>
-              <th>ID</th>
-              <th className="text-end">Компенсация</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((expense) => (
-              <tr key={expense.expense_id || expense.id}>
-                <td><code>{expense.expense_id || expense.id}</code></td>
-                <td className="text-end font-monospace text-danger">−{formatMoney(expense.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
+    : { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function payoutSearchText(payout) {
@@ -126,6 +48,61 @@ function payoutSearchText(payout) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function statusTag(status) {
+  const meta = STATUS_META[status] || { status: "neutral", label: status || "—" };
+  return <StatusTag status={meta.status} label={meta.label} />;
+}
+
+function MoneyCell({ value, tone = "" }) {
+  return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value)}</span>;
+}
+
+function PayoutDetails({ payout }) {
+  const invoices = payout.invoices || [];
+  const expenses = payout.expenses || [];
+  const shares = payout.shares || [];
+
+  const invoiceColumns = [
+    { title: "Счёт", dataIndex: "invoice_number", render: (value, row) => <span className="font-monospace">{value || row.invoice_id || row.id}</span> },
+    { title: "Доход", dataIndex: "debt_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
+    { title: "Комиссия", dataIndex: "percent_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Налог", dataIndex: "tax_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
+    { title: "Итого", dataIndex: "total_amount", align: "right", render: (value, row) => <MoneyCell value={value || row.amount} /> },
+    { title: "Оплата", dataIndex: "paid", align: "center", render: (value) => <StatusTag status={value ? "paid" : "unpaid"} label={value ? "Опл." : "Нет"} /> },
+  ];
+
+  const expenseColumns = [
+    { title: "ID", dataIndex: "expense_id", width: 80, render: (value, row) => <span className="text-muted">#{value || row.id}</span> },
+    { title: "Компенсация", dataIndex: "amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-danger" /> },
+  ];
+
+  const shareColumns = [
+    { title: "Участник", dataIndex: "user_name", ellipsis: true },
+    { title: "%", dataIndex: "split_pct", width: 70, align: "center", render: (value) => `${value || 0}%` },
+    { title: "Комиссия", dataIndex: "commission_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Налог", dataIndex: "tax_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
+    { title: "Расходы", dataIndex: "expenses_compensation", align: "right", render: (value) => <MoneyCell value={value} tone="text-danger" /> },
+    { title: "Прибыль", dataIndex: "profit_share", align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
+    { title: "Итого", dataIndex: "total", align: "right", render: (value) => <MoneyCell value={value} /> },
+  ];
+
+  return (
+    <div data-eopp-component="PayoutDetails" className="payout-details">
+      <div className="payout-details-grid">
+        <Card size="small" title={`Счета (${invoices.length})`}>
+          <DataTable rowKey={(row) => row.invoice_id || row.id} data={invoices} columns={invoiceColumns} pagination={false} emptyText="Нет счетов" scroll={false} />
+        </Card>
+        <Card size="small" title={`Расходы (${expenses.length})`}>
+          <DataTable rowKey={(row) => row.expense_id || row.id} data={expenses} columns={expenseColumns} pagination={false} emptyText="Нет расходов" scroll={false} />
+        </Card>
+      </div>
+      <Card className="mt-2" size="small" title={`Доли участников (${shares.length})`}>
+        <DataTable rowKey={(row) => `${row.user_id}-${row.user_name}`} data={shares} columns={shareColumns} pagination={false} emptyText="Нет долей" />
+      </Card>
+    </div>
+  );
 }
 
 export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange, onCreate, onRefresh }) {
@@ -159,10 +136,9 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
       if (to && createdAt && createdAt > to) return false;
       return true;
     });
-  }, [payouts, search, statusFilter, userFilter, dateFrom, dateTo]);
+  }, [dateFrom, dateTo, payouts, search, statusFilter, userFilter]);
 
-  const metrics = useMemo(() => ({
-    count: filteredPayouts.length,
+  const stats = useMemo(() => ({
     pending: filteredPayouts.filter((payout) => payout.status === "pending").length,
     completed: filteredPayouts.filter((payout) => payout.status === "completed").length,
     net: filteredPayouts.reduce((sum, payout) => sum + (payout.net_amount || 0), 0),
@@ -175,177 +151,185 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
   const userTotals = useMemo(() => {
     const totals = {};
     allUserNames.forEach((name) => {
-      totals[name] = { commission: 0, tax: 0, expenses: 0, profit: 0, total: 0 };
+      totals[name] = { total: 0, commission: 0, tax: 0, expenses: 0, profit: 0 };
     });
     filteredPayouts.forEach((payout) => {
       (payout.shares || []).forEach((share) => {
         if (!share.user_name || !totals[share.user_name]) return;
+        totals[share.user_name].total += share.total || 0;
         totals[share.user_name].commission += share.commission_amount || 0;
         totals[share.user_name].tax += share.tax_amount || 0;
         totals[share.user_name].expenses += share.expenses_compensation || 0;
         totals[share.user_name].profit += share.profit_share || 0;
-        totals[share.user_name].total += share.total || 0;
       });
     });
     return totals;
-  }, [filteredPayouts, allUserNames]);
+  }, [allUserNames, filteredPayouts]);
 
   const visibleUserNames = allUserNames.filter((name) => userFilter === "all" || name === userFilter);
 
+  const metrics = [
+    { key: "count", label: "Выплаты", value: `${filteredPayouts.length} / ${payouts.length}`, tone: filteredPayouts.length === payouts.length ? "neutral" : "warning" },
+    { key: "pending", label: "Ожидают", value: stats.pending, tone: stats.pending > 0 ? "warning" : "success" },
+    { key: "completed", label: "Завершены", value: stats.completed, tone: stats.completed > 0 ? "success" : "neutral" },
+    { key: "income", label: "Доход", value: formatMoney(stats.income), tone: "success" },
+    { key: "expenses", label: "Расходы", value: formatMoney(stats.expenses), tone: stats.expenses > 0 ? "danger" : "neutral" },
+    { key: "net", label: "Net", value: formatMoney(stats.net), tone: stats.net > 0 ? "info" : "neutral" },
+  ];
+
+  const confirmDelete = (payout) => {
+    Modal.confirm({
+      title: "Удалить выплату?",
+      content: `Выплата #${payout.id} будет удалена.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: () => onDelete(payout.id),
+    });
+  };
+
+  const columns = [
+    {
+      title: "Выплата",
+      dataIndex: "name",
+      width: 230,
+      ellipsis: true,
+      render: (value, payout) => (
+        <div title={value || `#${payout.id}`} className="payout-title-cell">
+          <span className="fw-semibold">{value || `#${payout.id}`}</span>
+          <span className="text-muted">#{payout.id} · {formatDate(payout.completed_at || payout.created_at)}</span>
+        </div>
+      ),
+    },
+    { title: "Статус", dataIndex: "status", width: 100, align: "center", render: statusTag },
+    {
+      title: "Сч/Р",
+      width: 72,
+      align: "center",
+      render: (_, payout) => `${payout.invoices?.length || 0}/${payout.expenses?.length || 0}`,
+    },
+    { title: "Доход", dataIndex: "total_income", width: 104, align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
+    { title: "Комис.", dataIndex: "total_commission", width: 96, align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Налог", dataIndex: "total_tax", width: 92, align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
+    { title: "Net", dataIndex: "net_amount", width: 104, align: "right", render: (value) => <MoneyCell value={value} /> },
+    {
+      title: "",
+      width: 160,
+      align: "right",
+      render: (_, payout) => (
+        <Space size={4} wrap>
+          {payout.status === "pending" && (
+            <>
+              <Button size="small" onClick={() => onEdit(payout)}>Изм.</Button>
+              <Button size="small" onClick={() => onRecalculate(payout.id)}>↻</Button>
+              <Button size="small" variant="primary" onClick={() => onStatusChange(payout.id, "completed")}>✓</Button>
+              <Button size="small" onClick={() => onStatusChange(payout.id, "cancelled")}>×</Button>
+            </>
+          )}
+          <Button size="small" variant="danger" onClick={() => confirmDelete(payout)}>Удал.</Button>
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="d-flex gap-2 align-items-center">
-          <button className="btn btn-outline-secondary btn-sm" onClick={onRefresh}>
-            Обновить
-          </button>
-          <span className="text-muted small">Показано: {filteredPayouts.length} из {payouts.length}</span>
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={onCreate}>
-          + Новая выплата
-        </button>
-      </div>
+    <div data-eopp-component="PayoutsTab" className="payouts-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Выплаты</h2>
+            <div className="small text-muted">
+              Распределение доходов, налогов, комиссий и компенсаций расходов по участникам
+            </div>
+          </div>
+        }
+        right={
+          <Space wrap>
+            <Button size="small" onClick={onRefresh}>Обновить</Button>
+            <Button size="small" variant="primary" onClick={onCreate}>Новая выплата</Button>
+          </Space>
+        }
+      />
 
-      <div className="row g-2 mb-3">
-        <div className="col-6 col-xl-2"><SummaryCard label="Выплат" value={`${metrics.count} из ${payouts.length}`} tone="primary" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Ожидают" value={metrics.pending} tone="warning" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Завершены" value={metrics.completed} tone="success" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Доход" value={formatMoney(metrics.income)} tone="success" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Расходы" value={formatMoney(metrics.expenses)} tone="danger" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Net" value={formatMoney(metrics.net)} tone="dark" /></div>
-      </div>
-
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-xl-4">
-          <label className="form-label small mb-1">Поиск</label>
-          <input className="form-control form-control-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Название, счет, участник, ID" />
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Статус</label>
-          <select className="form-select form-select-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">Все</option>
-            <option value="pending">Ожидает</option>
-            <option value="completed">Завершена</option>
-            <option value="cancelled">Отменена</option>
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Участник</label>
-          <select className="form-select form-select-sm" value={userFilter} onChange={(e) => setUserFilter(e.target.value)}>
-            <option value="all">Все</option>
-            {allUserNames.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">С даты</label>
-          <input className="form-control form-control-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">По дату</label>
-          <input className="form-control form-control-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-      </div>
+      <MetricsStrip items={metrics} />
 
       {visibleUserNames.length > 0 && (
-        <div className="row g-2 mb-3">
+        <div data-eopp-component="PayoutUsersSummary" className="payout-users-strip">
           {visibleUserNames.map((name) => {
             const total = userTotals[name] || {};
             return (
-              <div className="col-12 col-md-6 col-xl-3" key={name}>
-                <div className="border rounded p-2 bg-dark-subtle h-100">
-                  <div className="fw-semibold mb-1 text-light">{name}</div>
-                  <div className="d-flex justify-content-between small"><span>Комиссия</span><span className="text-info">{formatMoney(total.commission)}</span></div>
-                  <div className="d-flex justify-content-between small"><span>Налог</span><span className="text-warning">{formatMoney(total.tax)}</span></div>
-                  <div className="d-flex justify-content-between small"><span>Расходы</span><span className="text-danger">−{formatMoney(total.expenses)}</span></div>
-                  <div className="d-flex justify-content-between small"><span>Прибыль</span><span className="text-success">{formatMoney(total.profit)}</span></div>
-                  <div className="d-flex justify-content-between border-top mt-1 pt-1 fw-semibold"><span className="text-secondary-emphasis">Итого</span><span className="text-light">{formatMoney(total.total)}</span></div>
+              <Card key={name} size="small" title={name}>
+                <div className="payout-user-lines">
+                  <div><span>Комиссия</span><strong className="text-info">{formatMoney(total.commission)}</strong></div>
+                  <div><span>Налог</span><strong className="text-warning">{formatMoney(total.tax)}</strong></div>
+                  <div><span>Расходы</span><strong className="text-danger">-{formatMoney(total.expenses)}</strong></div>
+                  <div><span>Прибыль</span><strong className="text-success">{formatMoney(total.profit)}</strong></div>
+                  <div className="payout-user-total"><span>Итого</span><strong>{formatMoney(total.total)}</strong></div>
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
       )}
 
-      {payouts.length === 0 && <div className="table__empty">Нет выплат</div>}
+      <Card data-eopp-component="PayoutsListCard" className="mt-3" size="small" title="Список выплат">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 payouts-search">
+            Поиск
+            <TextInput size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="название, счёт, участник, ID" />
+          </label>
+          <label className="form-label small mb-0">
+            Статус
+            <SelectInput size="small" value={statusFilter} onChange={(value) => setStatusFilter(value || "all")} options={STATUS_OPTIONS} allowClear={false} style={{ minWidth: 150 }} />
+          </label>
+          <label className="form-label small mb-0">
+            Участник
+            <SelectInput
+              size="small"
+              value={userFilter}
+              onChange={(value) => setUserFilter(value || "all")}
+              options={[{ value: "all", label: "Все" }, ...allUserNames.map((name) => ({ value: name, label: name }))]}
+              allowClear={false}
+              style={{ minWidth: 170 }}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            С даты
+            <TextInput
+              data-eopp-component="PayoutsDateFrom"
+              size="small"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            По дату
+            <TextInput
+              data-eopp-component="PayoutsDateTo"
+              size="small"
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </label>
+        </FilterBar>
 
-      <div className="table-responsive">
-        <table className="table table-sm table-hover table-bordered align-middle">
-          <thead className="table-light">
-            <tr>
-              <th className="text-center">ID</th>
-              <th>Выплата</th>
-              <th className="text-center">Статус</th>
-              <th>Счета</th>
-              <th>Расходы</th>
-              <th className="text-end">Доход</th>
-              <th className="text-end">Комиссия</th>
-              <th className="text-end">Налог</th>
-              <th className="text-end">Net</th>
-              {visibleUserNames.map((name) => (
-                <th key={name} className="text-center" style={{ minWidth: "150px" }}>{name}</th>
-              ))}
-              <th className="text-center">Создана</th>
-              <th className="text-center">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPayouts.length === 0 ? (
-              <tr><td colSpan={11 + visibleUserNames.length} className="text-center text-muted py-4">Нет выплат по выбранным фильтрам</td></tr>
-            ) : filteredPayouts.map((payout) => {
-              const shares = payout.shares || [];
-              return (
-                <tr key={payout.id}>
-                  <td className="text-center fw-bold">{payout.id}</td>
-                  <td>
-                    <div className="fw-semibold">{payout.name || "—"}</div>
-                    {payout.completed_at && <div className="text-muted small">Закрыта: {formatDate(payout.completed_at, true)}</div>}
-                  </td>
-                  <td className="text-center"><StatusBadge status={payout.status} /></td>
-                  <td><InvoiceDetails invoices={payout.invoices || []} /></td>
-                  <td><ExpenseDetails expenses={payout.expenses || []} /></td>
-                  <td className="text-end font-monospace small text-success">+{formatMoney(payout.total_income)}</td>
-                  <td className="text-end font-monospace small text-info">{formatMoney(payout.total_commission || 0)}</td>
-                  <td className="text-end font-monospace small text-warning">{formatMoney(payout.total_tax || 0)}</td>
-                  <td className="text-end font-monospace small fw-bold">{formatMoney(payout.net_amount)}</td>
-
-                  {visibleUserNames.map((name) => {
-                    const share = shares.find((item) => item.user_name === name);
-                    if (!share) return <td key={name} className="text-center text-muted">—</td>;
-                    return (
-                      <td key={name} className="small">
-                        <div className="d-flex justify-content-between"><span>{share.split_pct}%</span><strong>{formatMoney(share.total)}</strong></div>
-                        {(share.commission_amount || 0) > 0 && <div className="d-flex justify-content-between text-info"><span>ком.</span><span>{formatMoney(share.commission_amount)}</span></div>}
-                        {(share.tax_amount || 0) > 0 && <div className="d-flex justify-content-between text-warning"><span>налог</span><span>{formatMoney(share.tax_amount)}</span></div>}
-                        {(share.expenses_compensation || 0) > 0 && <div className="d-flex justify-content-between text-danger"><span>расх.</span><span>−{formatMoney(share.expenses_compensation)}</span></div>}
-                        {(share.profit_share || 0) > 0 && <div className="d-flex justify-content-between text-success"><span>приб.</span><span>{formatMoney(share.profit_share)}</span></div>}
-                      </td>
-                    );
-                  })}
-
-                  <td className="text-center text-muted small">{formatDate(payout.created_at)}</td>
-                  <td className="text-center" style={{ whiteSpace: "nowrap" }}>
-                    {payout.status === "pending" && (
-                      <>
-                        <button className="btn btn-sm btn-outline-primary me-1" onClick={() => onEdit(payout)} title="Редактировать">&#9998;</button>
-                        <button className="btn btn-sm btn-outline-secondary me-1" onClick={() => onRecalculate(payout.id)} title="Пересчитать">↻</button>
-                        <button className="btn btn-sm btn-success me-1" onClick={() => onStatusChange(payout.id, "completed")} title="Завершить">✓</button>
-                        <button className="btn btn-sm btn-outline-secondary me-1" onClick={() => onStatusChange(payout.id, "cancelled")} title="Отменить">×</button>
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(payout.id)} title="Удалить">&#128465;</button>
-                      </>
-                    )}
-                    {payout.status !== "pending" && (
-                      <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(payout.id)} title="Удалить">&#128465;</button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
+        <DataTable
+          className="payouts-table"
+          rowKey="id"
+          data={filteredPayouts}
+          columns={columns}
+          emptyText="Нет выплат"
+          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 30, 50] }}
+          scroll={false}
+          expandable={{
+            expandedRowRender: (payout) => <PayoutDetails payout={payout} />,
+            rowExpandable: (payout) => Boolean((payout.invoices?.length || 0) || (payout.expenses?.length || 0) || (payout.shares?.length || 0)),
+          }}
+        />
+      </Card>
+    </div>
   );
 }
-
-
-

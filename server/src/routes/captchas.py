@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from src.models import SendSelectedCaptchasBody
+from src.policies.access_policy import token_from_request
 from src.services import captcha_records_service
 from src.services import captcha_service
 
@@ -29,6 +30,8 @@ async def send_public_selected_captchas(body: SendSelectedCaptchasBody):
     sent = captcha_service.replay_captchas(captcha_ids)
     if sent is None:
         return JSONResponse(status_code=400, content={"error": "No active SSE connections"})
+    if sent == 0:
+        return JSONResponse(status_code=400, content={"error": "No replayable captcha payloads"})
     return JSONResponse(content={"sent": sent})
 
 
@@ -38,7 +41,7 @@ async def get_captchas(
     usage_log_id: int | None = Query(None),
 ):
     status, content = captcha_records_service.list_records(
-        request.headers.get("X-Admin-Token"),
+        token_from_request(request),
         usage_log_id,
     )
     return JSONResponse(status_code=status, content=content)
@@ -47,7 +50,7 @@ async def get_captchas(
 @router.get("/captchas/{captcha_id}")
 async def get_captcha(captcha_id: int, request: Request):
     status, content = captcha_records_service.get_record(
-        request.headers.get("X-Admin-Token"),
+        token_from_request(request),
         captcha_id,
     )
     return JSONResponse(status_code=status, content=content)
@@ -56,7 +59,7 @@ async def get_captcha(captcha_id: int, request: Request):
 @router.delete("/captchas/{captcha_id}")
 async def delete_captcha_record(captcha_id: int, request: Request):
     status, content = captcha_records_service.delete_record(
-        request.headers.get("X-Admin-Token"),
+        token_from_request(request),
         captcha_id,
     )
     return JSONResponse(status_code=status, content=content)

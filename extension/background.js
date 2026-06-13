@@ -27,6 +27,19 @@ chrome.runtime.onConnect.addListener((port) => {
           },
           body: JSON.stringify(msg.payload),
         });
+      } else if (msg.action === "cancelCaptcha") {
+        res = await fetchWithTimeout(`${serverUrl}/cancel-captcha`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            api_key: msg.payload.apiKey,
+            usage_log_id: msg.payload.usageLogId,
+            captcha_id: msg.payload.captchaId,
+          }),
+        });
       } else if (msg.action === "confirmUsage") {
         res = await fetchWithTimeout(`${serverUrl}/confirm-usage`, {
           method: "POST",

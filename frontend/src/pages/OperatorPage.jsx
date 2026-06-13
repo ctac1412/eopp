@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
 import OperatorHeader from "../components/operator/OperatorHeader";
 import CaptchaArea from "../components/operator/CaptchaArea";
@@ -6,6 +7,13 @@ import OperatorSidebar from "../components/operator/OperatorSidebar";
 import ReadinessPopup from "../components/operator/ReadinessPopup";
 import { playTickSound, playOperatorCaptchaSound, playReadinessStart, playScheduledNew } from "../utils/sounds";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, WorkbenchPage } from "../ui";
+import {
+  applyOperatorAnswerResult,
+  applyOperatorProgress,
+  createOperatorQueueEntry,
+  removeOperatorCaptcha,
+} from "./operatorQueue";
 
 const STORAGE_KEY = "operator_master";
 
@@ -26,29 +34,11 @@ function saveMaster(uuid, id, label) {
   } catch { /* noop */ }
 }
 
-/** Create a fresh captcha entry for the queue. */
-function makeQueueEntry(msg) {
-  return {
-    captchaId: msg.captcha_id,
-    operatorId: msg.distribution.operator_id,
-    assigned: msg.distribution.assigned,
-    mainImage: msg.images?.["0"] || "",
-    iconImage: msg.icons_image || "",
-    allIcons: msg.all_icons || [],
-    currentPos: msg.distribution.assigned[0],
-    solvedCount: 0,
-    answeredPositions: [],
-    markers: [],
-    foreignMarkers: [],
-    complete: false,
-    waiting: false,
-  };
-}
-
 export function OperatorPage() {
   const { uuid } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [masters, setMasters] = useState([]);
+  const [mastersLoaded, setMastersLoaded] = useState(false);
   const [masterId, setMasterId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -58,8 +48,6 @@ export function OperatorPage() {
   const [activeIndex, setActiveIndexRaw] = useState(-1);
   const [answering, setAnswering] = useState(false);
   const [log, setLog] = useState([]);
-  const imgRef = useRef(null);
-  const [naturalSize, setNaturalSize] = useState(null);
   const esRef = useRef(null);
   const [scheduledEvents, setScheduledEvents] = useState([]);
   const [iconDisplayMode, setIconDisplayMode] = useState(null);
@@ -104,7 +92,6 @@ export function OperatorPage() {
     setCaptchaQueue([]);
     setActiveIndex(-1);
     updateActiveRef([], -1);
-    setNaturalSize(null);
   }, [updateActiveRef]);
 
   /** Update a field on the entry at the given index. */
@@ -146,7 +133,7 @@ export function OperatorPage() {
 
   useEffect(() => {
     const mode = iconDisplayMode === "own_only" ? "Только свои" : "Свои+чужие";
-    document.title = `${operatorNickname || "Оператор"} — ${mode}`;
+    document.title = `${operatorNickname || "Оператор"} - ${mode}`;
   }, [iconDisplayMode, operatorNickname]);
 
   const setActiveIndex = useCallback((idx) => {
@@ -154,23 +141,10 @@ export function OperatorPage() {
     setActiveIndexRaw(idx);
   }, []);
 
-  const connectViaId = useCallback(async (mid) => {
-    if (!mid) return;
+  const connectViaId = useCallback(async () => {
     disconnect();
     setConnecting(true);
     addLog("Подключение к SSE...", "info");
-    try {
-      await fetch(`/operators/${uuid}/link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ master_id: mid }),
-      });
-    } catch (e) {
-      addLog("Ошибка связи с сервером", "error");
-      setConnecting(false);
-      return;
-    }
-
     const es = new EventSource(`/operators/${uuid}/stream`);
     esRef.current = es;
     es.onmessage = (e) => {
@@ -184,7 +158,7 @@ export function OperatorPage() {
         const fellows = msg.fellow_operators || [];
         setFellowOperators(fellows);
         if (fellows.length > 0) {
-          addLog(`Операторов в сделке: ${fellows.length + 1} (${fellows.map(f => f.nickname || `#${f.id}`).join(", ")})`, "info");
+          addLog(`Операторов в связке: ${fellows.length + 1} (${fellows.map(f => f.nickname || `#${f.id}`).join(", ")})`, "info");
         }
         // scheduled events
         if (msg.scheduled_events && Array.isArray(msg.scheduled_events)) {
@@ -238,15 +212,36 @@ export function OperatorPage() {
         return;
       }
       if (msg.type === "master_reassigned") {
+        const nextMasterId = msg.master_key_id || null;
+        setMasterId(nextMasterId);
+        setMasters((prev) => prev.map((master) => ({
+          ...master,
+          assigned: Number(master.id) === Number(nextMasterId),
+        })));
+        setMasterOnline(Boolean(msg.master_online));
+        if (nextMasterId) {
+          const nextLabel = msg.master_label || "";
+          setMasters((prev) => (
+            prev.some((master) => Number(master.id) === Number(nextMasterId))
+              ? prev.map((master) => (
+                Number(master.id) === Number(nextMasterId)
+                  ? { ...master, label: nextLabel || master.label, assigned: true }
+                  : { ...master, assigned: false }
+              ))
+              : [...prev, { id: nextMasterId, label: nextLabel, active: true, assigned: true }]
+          ));
+          saveMaster(uuid, nextMasterId, nextLabel);
+          setSearchParams({});
+        }
         setShowReassignNotify(true);
-        setReassignMasterId(msg.master_key_id || null);
+        setReassignMasterId(nextMasterId);
         addLog(`Мастер сменился на #${msg.master_key_id}`, "error");
         return;
       }
       if (msg.type === "scheduled_event") {
         setScheduledEvents((prev) => [...prev, msg]);
         playScheduledNew();
-        addLog(`Новое событие: ${msg.label || msg.description || "—"}`, "info");
+        addLog(`Новое событие: ${msg.label || msg.description || "-"}`, "info");
         return;
       }
       if (msg.type === "chat_message") {
@@ -262,7 +257,7 @@ export function OperatorPage() {
         const sec = msg.countdown || 20;
         setReadinessCheck({ countdown: sec, timer: sec });
         playReadinessStart();
-        addLog(`Проверка готовности — ${sec} сек`, "info");
+        addLog(`Проверка готовности - ${sec} сек`, "info");
         return;
       }
       if (msg.type === "disconnected") {
@@ -270,9 +265,10 @@ export function OperatorPage() {
         es.close();
         return;
       }
-      if (msg.type === "new_captcha" && msg.distribution && msg.distribution.operator_id > 0) {
+      if (msg.type === "new_captcha") {
+        const entry = createOperatorQueueEntry(msg);
+        if (!entry) return;
         playOperatorCaptchaSound();
-        const entry = makeQueueEntry(msg);
         setCaptchaQueue((prev) => {
           const next = [...prev, entry];
           const wasIdle = prev.length === 0;
@@ -292,17 +288,9 @@ export function OperatorPage() {
       if (msg.type === "captcha_solved") {
         setCaptchaQueue((prev) => {
           const cur = activeIndexRef.current;
-          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
+          const { queue: next, activeIndex: newIdx, removedIndex: idx } =
+            removeOperatorCaptcha(prev, cur, msg.captcha_id);
           if (idx < 0) return prev;
-          const next = prev.filter((_, i) => i !== idx);
-          let newIdx;
-          if (idx === cur) {
-            newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-          } else if (idx < cur) {
-            newIdx = cur - 1;
-          } else {
-            newIdx = cur;
-          }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
           addLog(idx === cur
@@ -320,22 +308,15 @@ export function OperatorPage() {
       if (msg.type === "captcha_timeout") {
         setCaptchaQueue((prev) => {
           const cur = activeIndexRef.current;
-          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
+          const { queue: next, activeIndex: newIdx, removedIndex: idx } =
+            removeOperatorCaptcha(prev, cur, msg.captcha_id);
           if (idx < 0) return prev;
-          const next = prev.filter((_, i) => i !== idx);
-          let newIdx;
-          if (idx === cur) {
-            newIdx = next.length > 0 ? Math.min(idx, next.length - 1) : -1;
-          } else if (idx < cur) {
-            newIdx = cur - 1;
-          } else {
-            newIdx = cur;
-          }
           setActiveIndex(newIdx);
           updateActiveRef(next, newIdx);
+          const reason = msg.reason === "cancelled" ? "отменена пользователем" : "таймаут";
           addLog(idx === cur
-            ? "Капча: таймаут"
-            : `Капча ${msg.captcha_id.slice(0, 8)} — таймаут (вне очереди)`, "error");
+            ? `Капча: ${reason}`
+            : `Капча ${msg.captcha_id.slice(0, 8)} - ${reason} (вне очереди)`, "error");
           if (idx === cur) {
             addLog(newIdx >= 0
               ? `Следующая: ${next[newIdx].captchaId.slice(0, 8)}`
@@ -346,23 +327,7 @@ export function OperatorPage() {
         return;
       }
       if (msg.type === "distribution_progress") {
-        setCaptchaQueue((prev) => {
-          const idx = prev.findIndex((e) => e.captchaId === msg.captcha_id);
-          if (idx < 0) return prev;
-          const next = [...prev];
-          const entry = { ...next[idx] };
-          if (msg.answered_positions) {
-            entry.answeredPositions = msg.answered_positions;
-            entry.solvedCount = msg.answered_positions.filter((p) => entry.assigned.includes(p)).length;
-          }
-          if (msg.all_coords) {
-            entry.foreignMarkers = Object.keys(msg.all_coords)
-              .filter((pos) => msg.all_coords[pos].operator_id !== entry.operatorId)
-              .map((pos) => ({ x: msg.all_coords[pos].x, y: msg.all_coords[pos].y, label: parseInt(pos) + 1 }));
-          }
-          next[idx] = entry;
-          return next;
-        });
+        setCaptchaQueue((prev) => applyOperatorProgress(prev, msg.captcha_id, msg));
         return;
       }
     };
@@ -378,31 +343,28 @@ export function OperatorPage() {
       .then((list) => {
         const active = list.filter((k) => k.active);
         setMasters(active);
+        setMastersLoaded(true);
 
-        const labelFromUrl = searchParams.get("master") || "";
-        const saved = loadSavedMaster(uuid);
-        let found = null;
-        if (labelFromUrl) {
-          found = active.find((m) => m.label === labelFromUrl);
-        }
-        if (!found && saved) {
-          found = active.find((m) => m.id === saved.id);
-        }
+        const found = active.find((m) => m.assigned);
         if (found) {
           setMasterId(found.id);
           saveMaster(uuid, found.id, found.label);
           if (found.label) {
             setSearchParams({ master: found.label }, { replace: true });
           }
+        } else {
+          setMasterId(null);
+          saveMaster(uuid, null, null);
+          setSearchParams({}, { replace: true });
         }
       });
   }, [uuid]);
 
   useEffect(() => {
-    if (masterId && masters.length > 0 && !connected && !connecting) {
-      connectViaId(masterId);
+    if (mastersLoaded && !connected && !connecting) {
+      connectViaId();
     }
-  }, [masterId, masters.length, connected, connecting, connectViaId]);
+  }, [mastersLoaded, connected, connecting, connectViaId]);
 
   // Readiness check countdown
   useEffect(() => {
@@ -413,10 +375,8 @@ export function OperatorPage() {
         playTickSound();
         const next = prev.timer - 1;
         if (next <= 0) {
-          addLog("Время вышло — отключение", "error");
+          addLog("Время вышло - отключение", "error");
           disconnect();
-          saveMaster(uuid, null, null);
-          setMasterId(null);
           return null;
         }
         return { ...prev, timer: next };
@@ -424,22 +384,6 @@ export function OperatorPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, [readinessCheck?.countdown]);
-
-  const handleMasterChange = (idVal) => {
-    const mid = idVal ? Number(idVal) : null;
-    setMasterId(mid);
-    const found = masters.find((m) => m.id === mid);
-    const label = found ? found.label : "";
-    saveMaster(uuid, mid, label);
-    if (label) {
-      setSearchParams({ master: label });
-    } else {
-      setSearchParams({});
-    }
-    if (mid && connected) {
-      connectViaId(mid);
-    }
-  };
 
   const handleReadyClick = () => {
     if (masterId) {
@@ -461,18 +405,14 @@ export function OperatorPage() {
 
   const handleReconnect = () => {
     disconnect();
-    if (masterId) connectViaId(masterId);
+    connectViaId();
   };
 
   /* ---- derived from active queue entry ---- */
   const active = activeIndex >= 0 ? captchaQueue[activeIndex] : null;
 
-  const handleClick = async (e) => {
-    if (!active || active.complete || active.waiting || answering || !naturalSize) return;
-    const rect = imgRef.current.getBoundingClientRect();
-    const x = Math.round((e.clientX - rect.left) * naturalSize.w / rect.width);
-    const y = Math.round((e.clientY - rect.top) * naturalSize.h / rect.height);
-
+  const handleClick = async ({ x, y }) => {
+    if (!active || active.complete || active.waiting || answering) return;
     setAnswering(true);
     try {
       const r = await fetch("/distribution/answer", {
@@ -491,13 +431,7 @@ export function OperatorPage() {
         const nextPos = data.next_available ?? data.next_assigned;
         if ((r.status === 409 || r.status === 403) && nextPos != null) {
           updateEntry(activeIndex, { currentPos: nextPos });
-          if (data.answered_positions) updateEntry(activeIndex, { answeredPositions: data.answered_positions });
-          if (data.all_coords) {
-            const f = Object.keys(data.all_coords)
-              .filter((pos) => data.all_coords[pos].operator_id !== active.operatorId)
-              .map((pos) => ({ x: data.all_coords[pos].x, y: data.all_coords[pos].y, label: parseInt(pos) + 1 }));
-            updateEntry(activeIndex, { foreignMarkers: f });
-          }
+          setCaptchaQueue((prev) => applyOperatorProgress(prev, active.captchaId, data));
           addLog(`Пропуск: иконка #${(active.currentPos ?? 0) + 1} уже отвечена`, "info");
         } else if ((r.status === 409 || r.status === 403) && nextPos == null) {
           clearCaptcha();
@@ -515,66 +449,73 @@ export function OperatorPage() {
         addLog("Капча решена!", "success");
         return;
       }
+      const clickedMarker = { x, y, label: (active.currentPos ?? 0) + 1 };
+      updateEntry(activeIndex, applyOperatorAnswerResult(active, data, clickedMarker));
       if (data.waiting) {
-        setCaptchaQueue((prev) => {
-          const idx = prev.findIndex((e) => e.captchaId === active.captchaId);
-          if (idx < 0) return prev;
-          const next = [...prev];
-          next[idx] = { ...next[idx], waiting: true, mainImage: "", iconImage: "", markers: [], foreignMarkers: [], allIcons: [] };
-          return next;
-        });
         addLog("Ваши иконки пройдены, ожидание...", "info");
         return;
       }
-      updateEntry(activeIndex, {
-        mainImage: data.image || active.mainImage,
-        iconImage: data.icon || active.iconImage,
-        currentPos: data.icon_position,
-        solvedCount: data.solved_count,
-        answeredPositions: data.answered_positions || active.answeredPositions,
-        allIcons: data.all_icons || active.allIcons,
-        markers: [...active.markers, { x, y, label: (active.currentPos ?? 0) + 1 }],
-      });
       addLog(`Иконка #${(data.icon_position ?? 0) + 1} (${data.solved_count}/${active.assigned.length})`);
     } finally {
       setAnswering(false);
     }
   };
 
-  const selectedMaster = masters.find((m) => m.id === masterId);
+  const selectedMaster = masters.find((m) => Number(m.id) === Number(masterId));
+  const selectedMasterLabel = selectedMaster?.label || (masterId ? `Мастер #${masterId}` : "");
   const queueLen = captchaQueue.length;
   const hasActive = active && !active.complete && !active.waiting;
 
   return (
-    <div className="container-fluid py-3">
+    <div className={connected ? "operator-page-root" : "container-fluid py-3"}>
       <ReadinessPopup readinessCheck={readinessCheck} handleReadyClick={handleReadyClick} />
 
       {!connected ? (
-        <div className="card p-4" style={{ background: "#161b22", border: "1px solid #30363d" }}>
-          <h5 style={{ color: "#f0f6fc", marginBottom: 16 }}>
-            Оператор распределённого решения
-            <a href={`/training?op=${encodeURIComponent(uuid)}`} className="ms-2" style={{ fontSize: "0.8rem", color: "#58a6ff" }}>🎓 Тренировка</a>
-          </h5>
-          <label style={{ fontSize: 13, color: "#8b949e", marginBottom: 4 }}>Помогать мастеру</label>
-          <select className="form-select mb-3" value={masterId || ""} onChange={(e) => handleMasterChange(e.target.value)}
-            style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}>
-            <option value="">Выберите мастера</option>
-            {masters.map((m) => (
-              <option key={m.id} value={m.id}>{m.label || `Мастер #${m.id}`}</option>
-            ))}
-          </select>
-          <button className="btn btn-success w-100" onClick={() => connectViaId(masterId)} disabled={!masterId || connecting}>
-            {connecting ? "Подключение..." : "Подключиться"}
-          </button>
-        </div>
+        <Card
+          data-eopp-component="OperatorConnectCard"
+          className="operator-connect-card"
+          size="small"
+        >
+          <div className="operator-connect-card__header">
+            <div>
+              <h1 className="operator-connect-card__title">Оператор распределённого решения</h1>
+              <div className="operator-connect-card__subtitle">
+                {masterId
+                  ? "Мастер назначен администратором. Подключитесь к очереди капч."
+                  : "Подключитесь к операторскому каналу и ожидайте назначения мастера."}
+              </div>
+            </div>
+            <a
+              href={`/training?op=${encodeURIComponent(uuid)}`}
+              className="operator-connect-card__training-link"
+            >
+              Тренировка
+            </a>
+          </div>
+          <div className="operator-connect-card__field">
+            <span>Назначенный мастер</span>
+            <div
+              data-eopp-component="OperatorAssignedMaster"
+              className="operator-connect-card__assigned-master"
+              title={selectedMasterLabel || "Мастер не назначен"}
+            >
+              {selectedMasterLabel || "Мастер не назначен"}
+            </div>
+          </div>
+          <Button
+            data-eopp-component="OperatorConnectButton"
+            className="operator-connect-card__button"
+            variant="primary"
+            onClick={() => connectViaId()}
+            disabled={connecting}
+          >
+            {connecting ? "Подключение..." : masterId ? "Подключиться" : "Войти в ожидание"}
+          </Button>
+        </Card>
       ) : (
-        <div>
-          {/* Main container */}
-          <div style={{
-            display: "flex", flexDirection: "column", height: "calc(100vh - 120px)",
-            background: "#161b22", border: "1px solid #30363d", borderRadius: "0.375rem",
-            marginRight: connected ? 260 : 0, transition: "margin-right 0.2s",
-          }}>
+        <WorkbenchPage
+          main={
+          <div className="operator-workbench-panel">
             <OperatorHeader
               masterOnline={masterOnline}
               masterId={masterId}
@@ -588,7 +529,6 @@ export function OperatorPage() {
               active={active}
               hasActive={hasActive}
               uuid={uuid}
-              handleMasterChange={handleMasterChange}
               handleReconnect={handleReconnect}
               handleDisconnect={() => {
                 if (masterId) {
@@ -605,30 +545,19 @@ export function OperatorPage() {
                   }).catch(() => {});
                 }
                 disconnect();
-                saveMaster(uuid, null, null);
-                setMasterId(null);
               }}
             />
 
             <CaptchaArea
               active={active}
               iconDisplayMode={iconDisplayMode}
-              naturalSize={naturalSize}
-              imgRef={imgRef}
               handleClick={handleClick}
-              onImgLoad={(e) => setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight })}
               queueLen={queueLen}
             />
 
-            {/* Log */}
-            <div style={{
-              flexShrink: 0, height: 36, overflowY: "auto",
-              borderTop: "1px solid #30363d", padding: "2px 12px",
-              fontSize: 9, color: "#8b949e", textAlign: "left",
-              background: "#0d1117",
-            }}>
+            <div className="operator-workbench-log">
               {log.map((l, i) => (
-                <div key={i} style={{ color: l.cls === "success" ? "#3fb950" : l.cls === "error" ? "#f85149" : "#8b949e" }}>
+                <div key={i} className={`operator-workbench-log__row is-${l.cls || "info"}`}>
                   {l.time} {l.msg}
                 </div>
               ))}
@@ -636,43 +565,47 @@ export function OperatorPage() {
 
             {/* Master Reassigned Notification */}
             {showReassignNotify && (
-              <div style={{
-                padding: "8px 12px", borderTop: "1px solid #30363d",
-                background: "#2d1a1a", display: "flex", alignItems: "center", justifyContent: "space-between",
-                flexShrink: 0,
-              }}>
-                <span style={{ fontSize: "0.8rem", color: "#f85149" }}>
-                  Мастер перепривязал вас к ключу #{reassignMasterId}.{" "}
-                  <button
-                    className="btn btn-sm btn-outline-warning"
-                    style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+              <div className="operator-reassign-notice">
+                <span className="operator-reassign-notice__text">
+                  Мастер перепривязал вас к ключу #{reassignMasterId}.
+                </span>
+                <div className="operator-reassign-notice__actions">
+                  <Button
+                    data-eopp-component="OperatorReconnectButton"
+                    size="small"
+                    variant="secondary"
                     onClick={() => {
                       setShowReassignNotify(false);
                       handleReconnect();
                     }}
                   >
                     Переподключиться
-                  </button>
-                </span>
-                <button
-                  className="btn btn-sm"
-                  style={{ color: "#8b949e", fontSize: "0.7rem", background: "none", border: "none" }}
-                  onClick={() => setShowReassignNotify(false)}
-                >
-                  ✕
-                </button>
+                  </Button>
+                  <Button
+                    data-eopp-component="OperatorDismissReconnectButton"
+                    size="small"
+                    variant="secondary"
+                    onClick={() => setShowReassignNotify(false)}
+                    title="Скрыть уведомление"
+                  >
+                    ×
+                  </Button>
+                </div>
               </div>
             )}
           </div>
-
-          <OperatorSidebar
+          }
+          side={
+            <OperatorSidebar
             connected={connected}
             connectedOpsTags={connectedOpsTags}
             scheduledEvents={scheduledEvents}
             operatorNickname={operatorNickname}
             masterId={masterId}
+            embedded
           />
-        </div>
+          }
+        />
       )}
     </div>
   );

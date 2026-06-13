@@ -68,9 +68,9 @@ def create_usage(
         session.add(log)
         session.flush()
         log_id = log.id
-        _defer_job("crm.enrich_usage", {"usage_log_id": log_id, "captcha_id": captcha_id})
         session.commit()
-        return log_id
+    _defer_job("crm.enrich_usage", {"usage_log_id": log_id, "captcha_id": captcha_id})
+    return log_id
 
 
 def get_usage(usage_log_id: int) -> UsageLog | None:

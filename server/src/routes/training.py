@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from src.repositories import course_repo, test_run_repo
 from src.repositories import api_key_repo, operator_repo
+from src.policies.access_policy import token_from_request
 from src.services.captcha_service import load_captcha_file
 
 logger = logging.getLogger("eopp.training")
@@ -23,7 +24,7 @@ router = APIRouter(tags=["training"])
 @router.post("/admin/courses")
 async def admin_create_course(request: Request):
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     raw = await request.body()
@@ -46,7 +47,7 @@ async def admin_create_course(request: Request):
 @router.get("/admin/courses")
 async def admin_list_courses(request: Request):
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return JSONResponse(content=course_repo.list_courses())
 
@@ -54,7 +55,7 @@ async def admin_list_courses(request: Request):
 @router.get("/admin/courses/{course_id}")
 async def admin_get_course(course_id: int, request: Request):
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     course = course_repo.get_course(course_id)
     if not course:
@@ -65,7 +66,7 @@ async def admin_get_course(course_id: int, request: Request):
 @router.delete("/admin/courses/{course_id}")
 async def admin_delete_course(course_id: int, request: Request):
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     ok = course_repo.delete_course(course_id)
     if not ok:
@@ -77,7 +78,7 @@ async def admin_delete_course(course_id: int, request: Request):
 async def admin_training_runs(request: Request):
     """Admin: list all test runs across all participants."""
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     runs = test_run_repo.list_test_runs(limit=200)
     enriched = []

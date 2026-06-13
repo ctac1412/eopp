@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
 import { formatMoney } from "../utils/format";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, CheckboxField, SelectInput, TextInput } from "../ui";
 
 function maskKey(key) {
   if (!key || key.length === 0) return "••••••";
@@ -54,7 +54,7 @@ function StatusBar() {
   const settingsRef = useRef(null);
   const connectedOperators = useCaptchaStore((s) => s.connectedOperators);
   const sseConnected = useCaptchaStore((s) => s.sseConnected);
-  const operatorCount = Array.isArray(connectedOperators) ? connectedOperators.filter(o => o.online).length : 0;
+  const operatorCount = Array.isArray(connectedOperators) ? connectedOperators.filter((operator) => operator.online).length : 0;
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
@@ -72,9 +72,7 @@ function StatusBar() {
       setIsAdmin(false);
       return;
     }
-    const adminToken = localStorage.getItem("admin_token");
-    const hasAdmin = adminToken && apiKey === adminToken;
-    setIsAdmin(hasAdmin);
+    setIsAdmin(localStorage.getItem("admin_session_active") === "1");
     fetch(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -155,6 +153,11 @@ function StatusBar() {
   };
 
   const handleClearKey = () => {
+    fetch("/auth/logout", { method: "POST" }).catch(() => {});
+    localStorage.removeItem("admin_session_active");
+    localStorage.removeItem("admin_role");
+    localStorage.removeItem("admin_sections");
+    localStorage.removeItem("admin_permissions");
     clearApiKey();
     setShowChange(false);
   };
@@ -167,31 +170,39 @@ function StatusBar() {
   };
 
   const truncatedId = testCaptchaId.length > 16
-    ? testCaptchaId.slice(0, 16) + "…"
+    ? `${testCaptchaId.slice(0, 16)}…`
     : testCaptchaId;
+  const courseOptions = [
+    { value: "", label: "Сценарий (курс)" },
+    ...courses.map((course) => ({
+      value: String(course.id),
+      label: `${course.name} (${course.captcha_count})`,
+    })),
+  ];
 
   return (
-    <div className="status-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div className="d-flex align-items-center gap-2">
+    <div data-eopp-component="StatusBar" className="status-bar status-bar--design">
+      <div className="status-bar__state">
         <span className={`status-dot ${sseError ? "status-dot--error" : isActive || sseConnected ? "status-dot--active" : "status-dot--idle"}`} />
         {isActive && (
-          <span style={{ fontSize: "0.8125rem" }}>
-            <span style={{ color: "#6e7681" }}>Активная:</span>{" "}
-            <strong style={{ fontFamily: "var(--bs-font-monospace)", fontSize: "0.75rem", color: "var(--accent-light)" }}>{activeId}</strong>
+          <span className="status-bar__active">
+            <span>Активная:</span>
+            <strong>{activeId}</strong>
           </span>
         )}
         {!isActive && !sseError && (
-          <span style={{ fontSize: "0.8125rem", color: sseConnected ? "#3fb950" : "#484f58" }}>
+          <span className={`status-bar__connection ${sseConnected ? "is-connected" : ""}`}>
             {sseConnected ? "Подключено" : "Ожидание..."}
           </span>
         )}
         {sseError && (
           <>
-            <span style={{ fontSize: "0.75rem", color: "var(--bs-danger)" }}>{sseError}</span>
+            <span className="status-bar__error">{sseError}</span>
             {sseError.includes("Другое подключение") && (
-              <button
-                className="btn btn-sm btn-warning"
-                style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+              <Button
+                data-eopp-component="StatusBarForceReconnectButton"
+                size="small"
+                variant="primary"
                 onClick={() => {
                   const store = useCaptchaStore.getState();
                   store.setPendingForceReconnect(true);
@@ -199,14 +210,16 @@ function StatusBar() {
                 }}
               >
                 Перехватить
-              </button>
+              </Button>
             )}
           </>
         )}
         {localMode && <span className="local-tag">LOCAL</span>}
         {superKioskMode && isAdmin && <span className="super-kiosk-tag">СУПЕР</span>}
+        {operatorCount > 0 && <span className="api-key-limit">Операторы: {operatorCount}</span>}
       </div>
-      <div className="d-flex align-items-center gap-2 flex-wrap">
+
+      <div className="status-bar__actions">
         {apiPriceCreate != null && (
           <span className="tariff-badge tariff-badge--create">{formatMoney(apiPriceCreate)}</span>
         )}
@@ -214,7 +227,7 @@ function StatusBar() {
           <span className="tariff-badge tariff-badge--reschedule">{formatMoney(apiPriceReschedule)}</span>
         )}
         {apiKey && (
-          <div className="d-flex align-items-center gap-2" style={{ fontSize: "0.8125rem" }}>
+          <div className="status-bar__key">
             <span className="api-key">{apiLabel || maskKey(apiKey)}</span>
             {apiRemaining != null ? (
               <span className="api-key-limit">
@@ -224,128 +237,105 @@ function StatusBar() {
               <span className="api-key-limit api-key-limit--unlimited">Безлимит</span>
             )}
             {showChange ? (
-              <div className="btn-group btn-group-sm">
-                <button className="btn btn-sm btn-success" onClick={handleClearKey}>ОК</button>
-                <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowChange(false)}>Отмена</button>
+              <div className="status-bar__confirm">
+                <Button size="small" variant="primary" onClick={handleClearKey}>ОК</Button>
+                <Button size="small" onClick={() => setShowChange(false)}>Отмена</Button>
               </div>
             ) : (
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowChange(true)}>Сменить</button>
+              <Button size="small" onClick={() => setShowChange(true)}>Выйти</Button>
             )}
           </div>
         )}
         {localMode && (
-          <div className="btn-group btn-group-sm">
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => openTestPage("/test-injector/edit")}>Создание</button>
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => openTestPage("/test-injector/reschedule")}>Перенос</button>
+          <div className="status-bar__test-pages">
+            <Button size="small" onClick={() => openTestPage("/test-injector/edit")}>Создание</Button>
+            <Button size="small" onClick={() => openTestPage("/test-injector/reschedule")}>Перенос</Button>
           </div>
         )}
-        <div className="d-flex align-items-center gap-0" ref={settingsRef} style={{ position: "relative" }}>
+        <div className="status-bar__settings" ref={settingsRef}>
           {testCaptchaId && (
-            <span
-              className="api-key-limit"
-              style={{ borderRight: "none", borderRadius: "0.25rem 0 0 0.25rem", cursor: "default" }}
-              title={testCaptchaId}
-            >
+            <span className="api-key-limit status-bar__test-id" title={testCaptchaId}>
               {truncatedId}
             </span>
           )}
-          <button
-            className={`btn btn-sm ${showSettings ? "btn-outline-primary" : "btn-outline-secondary"}`}
+          <Button
+            data-eopp-component="StatusBarSettingsButton"
+            size="small"
+            variant={showSettings ? "primary" : "secondary"}
             onClick={() => setShowSettings(!showSettings)}
             title="Настройки тестового запуска"
-            style={{ borderRadius: testCaptchaId ? "0 0.5rem 0.5rem 0" : "0.5rem", fontSize: "0.75rem" }}
           >
-            ⚙
-          </button>
+            Настр.
+          </Button>
           {showSettings && (
-            <div style={{
-              position: "absolute", top: "100%", right: 0, marginTop: 6, minWidth: 260,
-              background: "var(--surface)", border: "1px solid var(--border)",
-              borderRadius: "0.5rem", padding: "0.625rem", zIndex: 1050,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
-            }}>
-              <div style={{ fontSize: "0.6875rem", color: "#8b949e", fontWeight: 600, marginBottom: 8 }}>
-                ⚙ Настройки тестового запуска
-              </div>
-              <input
-                type="text"
-                className="form-control form-control-sm"
-                style={{ fontSize: "0.75rem", fontFamily: "var(--bs-font-monospace)", marginBottom: 6 }}
+            <div data-eopp-component="StatusBarSettingsPanel" className="status-bar__settings-panel">
+              <div className="status-bar__settings-title">Настройки тестового запуска</div>
+              <TextInput
+                data-eopp-component="StatusBarCaptchaIdInput"
+                className="status-bar__settings-input"
                 placeholder="ID капчи (пусто = случайная)"
                 value={testCaptchaId}
-                onChange={(e) => handleCaptchaIdChange(e.target.value)}
+                onChange={(event) => handleCaptchaIdChange(event.target.value)}
               />
-              <select
-                className="form-select form-select-sm"
-                style={{ fontSize: "0.72rem", marginBottom: 8 }}
+              <SelectInput
+                data-eopp-component="StatusBarCourseSelect"
+                className="status-bar__settings-select"
                 value={testCourseId || ""}
-                onChange={(e) => {
-                  setTestCourseId(e.target.value);
-                  savePersisted("test_course_id", e.target.value);
+                onChange={(value) => {
+                  const nextValue = value || "";
+                  setTestCourseId(nextValue);
+                  savePersisted("test_course_id", nextValue);
                 }}
-              >
-                <option value="">Сценарий (курс)</option>
-                {courses.map((c) => (
-                  <option key={c.id} value={String(c.id)}>
-                    {c.name} ({c.captcha_count})
-                  </option>
-                ))}
-              </select>
-              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  className="form-check-input"
-                  style={{ margin: 0 }}
+                options={courseOptions}
+                allowClear={false}
+              />
+              <div className="status-bar__settings-checks">
+                <CheckboxField
                   checked={testNoTimeout}
-                  onChange={(e) => handleNoTimeoutChange(e.target.checked)}
-                />
-                Без таймаута
-              </label>
-              <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />
-              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  className="form-check-input"
-                  style={{ margin: 0 }}
+                  onChange={(event) => handleNoTimeoutChange(event.target.checked)}
+                >
+                  Без таймаута
+                </CheckboxField>
+                <CheckboxField
                   checked={sequentialIcons}
-                  onChange={(e) => handleSequentialIconsChange(e.target.checked)}
-                />
-                Иконки по очереди
-              </label>
-              <div style={{ borderTop: "1px solid var(--border)", margin: "6px 0" }} />
-              <label style={{ fontSize: "0.75rem", color: "#8b949e", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                <input
-                  type="checkbox"
-                  className="form-check-input"
-                  style={{ margin: 0 }}
+                  onChange={(event) => handleSequentialIconsChange(event.target.checked)}
+                >
+                  Иконки по очереди
+                </CheckboxField>
+                <CheckboxField
                   checked={autoSolveRucaptcha}
-                  onChange={(e) => handleAutoSolveRucaptchaChange(e.target.checked)}
-                />
-                RuCaptcha авто-солв
-              </label>
+                  onChange={(event) => handleAutoSolveRucaptchaChange(event.target.checked)}
+                >
+                  RuCaptcha авто-солв
+                </CheckboxField>
+              </div>
             </div>
           )}
         </div>
-        <button
-          className="btn btn-sm btn-primary"
+        <Button
+          data-eopp-component="StatusBarRunTestButton"
+          size="small"
+          variant="primary"
           onClick={() => handleTestRun(testCourseId ? 0 : 1)}
           disabled={loading}
+          loading={loading}
           title={testCourseId ? "Запустить все капчи курса" : "1 случайная капча"}
         >
-          {loading ? "Запуск..." : testCourseId ? "Сценарий" : "Тест"}
-        </button>
-        <Link to="/admin" className="btn btn-sm btn-outline-secondary">
+          {testCourseId ? "Сценарий" : "Тест"}
+        </Button>
+        <Button data-eopp-component="StatusBarAdminButton" size="small" href="/admin">
           Админ
-        </Link>
+        </Button>
         {isAdmin && (
-          <button
-            className={`btn btn-sm ${superKioskMode ? "btn-warning" : "btn-outline-secondary"}`}
+          <Button
+            data-eopp-component="StatusBarSuperKioskButton"
+            size="small"
+            variant={superKioskMode ? "primary" : "secondary"}
             onClick={() => setSuperKioskMode(!superKioskMode)}
             title={superKioskMode ? "Отключить Супер Киоск" : "Включить Супер Киоск"}
-            style={{ fontSize: "0.75rem" }}
           >
             {superKioskMode ? "Супер Киоск ✓" : "Супер Киоск"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

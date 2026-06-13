@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.models import ScheduledEventBody
@@ -44,6 +44,25 @@ def get_scheduled_events_for_masters(master_ids: list[int]) -> list[dict]:
                 result.append(e)
     result.sort(key=lambda e: e.get("scheduled_at_ts", 0))
     return result
+
+
+@router.get("/admin/scheduled-events")
+async def admin_scheduled_events(request: Request):
+    """Return active scheduled events for the admin operations dashboard."""
+    raw_master_ids = request.query_params.get("master_ids", "")
+    if raw_master_ids.strip():
+        try:
+            master_ids = [
+                int(part.strip())
+                for part in raw_master_ids.split(",")
+                if part.strip()
+            ]
+        except ValueError:
+            return JSONResponse(status_code=400, content={"error": "Invalid master_ids"})
+    else:
+        master_ids = list(_scheduled_events.keys())
+
+    return JSONResponse(content=get_scheduled_events_for_masters(master_ids))
 
 
 async def _auto_remove_after(event: dict, api_key_id: int, delay_seconds: float) -> None:

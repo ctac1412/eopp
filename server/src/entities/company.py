@@ -8,9 +8,19 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.entities.base import Base
 
 if TYPE_CHECKING:
+    from src.entities.access_profile import (
+        CompanyMembership,
+        FinanceParticipantProfile,
+        OperatorProfile,
+        UserExecutorCompany,
+        UserFinanceCompany,
+        UserOperatorCompany,
+    )
     from src.entities.api_key import ApiKey
     from src.entities.operator import Operator
     from src.entities.usage_log import UsageLog
+    from src.entities.user import User
+    from src.entities.tariff import CompanyTariff
 
 
 class Company(Base):
@@ -26,3 +36,11 @@ class Company(Base):
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="company")
     operators: Mapped[list[Operator]] = relationship(back_populates="company")
     usage_logs: Mapped[list[UsageLog]] = relationship(back_populates="company_rel")
+    users: Mapped[list[User]] = relationship(back_populates="company")
+    memberships: Mapped[list[CompanyMembership]] = relationship(back_populates="company")
+    operator_profiles: Mapped[list[OperatorProfile]] = relationship(back_populates="company")
+    finance_profiles: Mapped[list[FinanceParticipantProfile]] = relationship(back_populates="company")
+    finance_user_access: Mapped[list[UserFinanceCompany]] = relationship(back_populates="company")
+    operator_user_access: Mapped[list[UserOperatorCompany]] = relationship(back_populates="company")
+    executor_user_access: Mapped[list[UserExecutorCompany]] = relationship(back_populates="company")
+    tariff: Mapped[CompanyTariff | None] = relationship(back_populates="company", uselist=False)

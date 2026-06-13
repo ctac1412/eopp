@@ -1,4 +1,15 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { Card, Modal, Space } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
 function formatMoney(amount) {
   return `${Math.round(Number(amount || 0)).toLocaleString("ru-RU")} ₽`;
@@ -6,7 +17,9 @@ function formatMoney(amount) {
 
 function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("ru-RU", {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -19,28 +32,18 @@ function allocationStatus(item) {
   return item.allocation?.status || "not_allocated";
 }
 
-function SummaryCard({ label, value, tone = "secondary" }) {
-  return (
-    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
-      <div className="text-secondary-emphasis small">{label}</div>
-      <div className="fw-semibold text-light">{value}</div>
-    </div>
-  );
+function allocationLabel(allocation) {
+  const status = allocation?.status || "not_allocated";
+  if (status === "fully_allocated") return "Распределён";
+  if (status === "partially_allocated") return `Частично ${allocation.allocated_pct || 0}%`;
+  return "Не распределён";
 }
 
-function AllocationBadge({ allocation }) {
+function allocationTone(allocation) {
   const status = allocation?.status || "not_allocated";
-  if (status === "fully_allocated") {
-    return <span className="badge bg-success">Распределен</span>;
-  }
-  if (status === "partially_allocated") {
-    return (
-      <span className="badge bg-warning text-dark">
-        Частично ({allocation.allocated_pct}%)
-      </span>
-    );
-  }
-  return <span className="badge bg-secondary">Не распределен</span>;
+  if (status === "fully_allocated") return "confirmed";
+  if (status === "partially_allocated") return "warning";
+  return "neutral";
 }
 
 export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate, onRefresh }) {
@@ -58,7 +61,7 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate
       }
     });
     users?.forEach((user) => options.set(String(user.id), user.name));
-    return [...options.entries()].map(([id, name]) => ({ id, name }));
+    return [...options.entries()].map(([value, label]) => ({ value, label }));
   }, [expenses, users]);
 
   const filteredExpenses = useMemo(() => {
@@ -86,158 +89,164 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate
       if (to && createdAt && createdAt > to) return false;
       return true;
     });
-  }, [expenses, search, userFilter, allocationFilter, dateFrom, dateTo]);
+  }, [allocationFilter, dateFrom, dateTo, expenses, search, userFilter]);
 
-  const metrics = useMemo(() => {
+  const stats = useMemo(() => {
     const sum = filteredExpenses.reduce((acc, expense) => acc + (expense.amount || 0), 0);
-    const allocated = filteredExpenses.filter(
-      (expense) => allocationStatus(expense) === "fully_allocated",
-    ).length;
-    const partial = filteredExpenses.filter(
-      (expense) => allocationStatus(expense) === "partially_allocated",
-    ).length;
-    return {
-      count: filteredExpenses.length,
-      sum,
-      avg: filteredExpenses.length ? Math.round(sum / filteredExpenses.length) : 0,
-      allocated,
-      partial,
-      unallocated: filteredExpenses.length - allocated - partial,
-    };
+    const allocated = filteredExpenses.filter((expense) => allocationStatus(expense) === "fully_allocated").length;
+    const partial = filteredExpenses.filter((expense) => allocationStatus(expense) === "partially_allocated").length;
+    const unallocated = filteredExpenses.length - allocated - partial;
+    return { sum, allocated, partial, unallocated, avg: filteredExpenses.length ? Math.round(sum / filteredExpenses.length) : 0 };
   }, [filteredExpenses]);
 
+  const metrics = [
+    { key: "count", label: "Показано", value: `${filteredExpenses.length} / ${expenses.length}`, tone: filteredExpenses.length === expenses.length ? "neutral" : "warning" },
+    { key: "sum", label: "Сумма", value: formatMoney(stats.sum), tone: stats.sum > 0 ? "danger" : "neutral" },
+    { key: "avg", label: "Средний", value: formatMoney(stats.avg), tone: "neutral" },
+    { key: "allocated", label: "Распределены", value: stats.allocated, tone: stats.allocated > 0 ? "success" : "neutral" },
+    { key: "partial", label: "Частично", value: stats.partial, tone: stats.partial > 0 ? "warning" : "neutral" },
+    { key: "open", label: "Не распределены", value: stats.unallocated, tone: stats.unallocated > 0 ? "warning" : "success" },
+  ];
+
+  const confirmDelete = (expense) => {
+    Modal.confirm({
+      title: "Удалить расход?",
+      content: `Расход #${expense.id} на ${formatMoney(expense.amount)} будет удалён.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: () => onDelete(expense.id),
+    });
+  };
+
+  const columns = [
+    { title: "ID", dataIndex: "id", width: 54, render: (value) => <span className="text-muted">#{value}</span> },
+    {
+      title: "Сумма",
+      dataIndex: "amount",
+      width: 92,
+      align: "right",
+      render: (value) => <span className="font-monospace">{formatMoney(value)}</span>,
+    },
+    { title: "Причина", dataIndex: "reason", width: 150, ellipsis: true, render: (value) => value || "—" },
+    { title: "Комментарий", dataIndex: "comment", width: 180, ellipsis: true, render: (value) => <span title={value || "—"}>{value || "—"}</span> },
+    { title: "Кто понёс", dataIndex: "user_name", width: 120, ellipsis: true, render: (value) => value || "—" },
+    {
+      title: "Распределение",
+      dataIndex: "allocation",
+      width: 136,
+      align: "center",
+      render: (allocation) => <StatusTag status={allocationTone(allocation)} label={allocationLabel(allocation)} />,
+    },
+    { title: "Создан", dataIndex: "created_at", width: 132, render: formatDate },
+    {
+      title: "",
+      width: 112,
+      align: "right",
+      render: (_, expense) => (
+        <Space size={4}>
+          <Button size="small" onClick={() => onEdit(expense)}>Изм.</Button>
+          <Button size="small" variant="danger" onClick={() => confirmDelete(expense)}>Удал.</Button>
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="d-flex gap-2 align-items-center">
-          <button className="btn btn-outline-secondary btn-sm" onClick={onRefresh}>
-            Обновить
-          </button>
-          <span className="text-muted small">Показано: {filteredExpenses.length} из {expenses.length}</span>
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={onCreate}>
-          + Новый расход
-        </button>
-      </div>
+    <div data-eopp-component="ExpensesTab" className="expenses-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Расходы</h2>
+            <div className="small text-muted">
+              Операционные расходы, ответственные пользователи и статус распределения по выплатам
+            </div>
+          </div>
+        }
+        right={
+          <Space wrap>
+            <Button size="small" onClick={onRefresh}>Обновить</Button>
+            <Button size="small" variant="primary" onClick={onCreate}>Новый расход</Button>
+          </Space>
+        }
+      />
 
-      <div className="row g-2 mb-3">
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Показано" value={`${metrics.count} из ${expenses.length}`} tone="primary" />
-        </div>
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Сумма" value={formatMoney(metrics.sum)} tone="danger" />
-        </div>
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Средний расход" value={formatMoney(metrics.avg)} />
-        </div>
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Распределены" value={metrics.allocated} tone="success" />
-        </div>
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Частично" value={metrics.partial} tone="warning" />
-        </div>
-        <div className="col-6 col-xl-2">
-          <SummaryCard label="Не распределены" value={metrics.unallocated} tone="dark" />
-        </div>
-      </div>
+      <MetricsStrip items={metrics} />
 
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-xl-4">
-          <label className="form-label small mb-1">Поиск</label>
-          <input
-            className="form-control form-control-sm"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Причина, комментарий, пользователь, ID"
-          />
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Кто понес</label>
-          <select className="form-select form-select-sm" value={userFilter} onChange={(e) => setUserFilter(e.target.value)}>
-            <option value="all">Все</option>
-            {userOptions.map((user) => (
-              <option key={user.id} value={user.id}>{user.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Распределение</label>
-          <select className="form-select form-select-sm" value={allocationFilter} onChange={(e) => setAllocationFilter(e.target.value)}>
-            <option value="all">Все</option>
-            <option value="fully_allocated">Распределены</option>
-            <option value="partially_allocated">Частично</option>
-            <option value="not_allocated">Не распределены</option>
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">С даты</label>
-          <input className="form-control form-control-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">По дату</label>
-          <input className="form-control form-control-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-      </div>
-
-      {expenses.length === 0 && <div className="table__empty">Нет записей</div>}
-      {total > 0 && total !== metrics.sum && (
-        <div className="text-muted small mb-2">Всего расходов без фильтров: {formatMoney(total)}</div>
+      {total > 0 && total !== stats.sum && (
+        <div className="text-muted small mt-2">Всего расходов без фильтров: {formatMoney(total)}</div>
       )}
 
-      <div className="table-responsive">
-        <table className="table table-sm table-hover table-bordered align-middle">
-          <thead className="table-light">
-            <tr>
-              <th className="text-center">ID</th>
-              <th className="text-end">Сумма</th>
-              <th>Причина</th>
-              <th>Комментарий</th>
-              <th>Кто понес</th>
-              <th className="text-center">Распределение</th>
-              <th className="text-center">Создан</th>
-              <th className="text-center">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredExpenses.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="text-center text-muted py-4">
-                  Нет расходов по выбранным фильтрам
-                </td>
-              </tr>
-            ) : (
-              filteredExpenses.map((expense) => (
-                <tr key={expense.id}>
-                  <td className="text-center fw-bold">{expense.id}</td>
-                  <td className="text-end font-monospace small">{formatMoney(expense.amount)}</td>
-                  <td>{expense.reason}</td>
-                  <td className="small">{expense.comment || "—"}</td>
-                  <td>{expense.user_name || "—"}</td>
-                  <td className="text-center"><AllocationBadge allocation={expense.allocation} /></td>
-                  <td className="text-center text-muted small">{formatDate(expense.created_at)}</td>
-                  <td className="text-center">
-                    <button
-                      className="btn btn-sm btn-outline-primary me-1"
-                      onClick={() => onEdit(expense)}
-                      title="Редактировать"
-                    >
-                      &#9998;
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => onDelete(expense.id)}
-                      title="Удалить"
-                    >
-                      &#128465;
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
+      <Card data-eopp-component="ExpensesListCard" className="mt-3" size="small" title="Список расходов">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 expenses-search">
+            Поиск
+            <TextInput
+              size="small"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="причина, комментарий, пользователь, ID"
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Кто понёс
+            <SelectInput
+              size="small"
+              value={userFilter}
+              onChange={(value) => setUserFilter(value || "all")}
+              options={[{ value: "all", label: "Все" }, ...userOptions]}
+              allowClear={false}
+              style={{ minWidth: 170 }}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Распределение
+            <SelectInput
+              size="small"
+              value={allocationFilter}
+              onChange={(value) => setAllocationFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "fully_allocated", label: "Распределены" },
+                { value: "partially_allocated", label: "Частично" },
+                { value: "not_allocated", label: "Не распределены" },
+              ]}
+              allowClear={false}
+              style={{ minWidth: 170 }}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            С даты
+            <TextInput
+              data-eopp-component="ExpensesDateFrom"
+              size="small"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            По дату
+            <TextInput
+              data-eopp-component="ExpensesDateTo"
+              size="small"
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </label>
+        </FilterBar>
+
+        <DataTable
+          className="expenses-table"
+          rowKey="id"
+          data={filteredExpenses}
+          columns={columns}
+          emptyText="Нет расходов"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+        />
+      </Card>
+    </div>
   );
 }
-

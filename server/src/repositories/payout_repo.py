@@ -21,8 +21,8 @@ from src.db.payouts import (
 )
 
 
-def list_payouts() -> list[dict]:
-    return db_list_payouts()
+def list_payouts(company_id: int | None = None) -> list[dict]:
+    return db_list_payouts(company_id=company_id)
 
 
 def preview_payout(invoice_ids: list[int], expense_ids: list[int], user_splits: list[dict]) -> dict:

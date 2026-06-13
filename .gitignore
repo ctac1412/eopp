@@ -36,6 +36,7 @@ nul
 *.egg-info/
 dist/
 build/
+tmp/
 
 *.db
 *.pkl

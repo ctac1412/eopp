@@ -1,5 +1,16 @@
 import React, { useMemo, useState } from "react";
+import { Card, Modal, Space } from "antd";
 import { formatMoney } from "../../utils/format";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -10,6 +21,14 @@ function formatDate(iso) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function normalizeText(value) {
+  return String(value || "").toLowerCase();
+}
+
+function MoneyCell({ value, tone = "" }) {
+  return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value || 0)}</span>;
 }
 
 export function PrepaidPackagesTab({
@@ -25,6 +44,8 @@ export function PrepaidPackagesTab({
   const [form, setForm] = useState({ api_key_id: "", balance_amount: "", active: true });
   const [topUpPackage, setTopUpPackage] = useState(null);
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [packageSearch, setPackageSearch] = useState("");
+  const [packageStatusFilter, setPackageStatusFilter] = useState("all");
   const [deductionKeyFilter, setDeductionKeyFilter] = useState("all");
   const [deductionDateFrom, setDeductionDateFrom] = useState("");
   const [deductionDateTo, setDeductionDateTo] = useState("");
@@ -40,12 +61,16 @@ export function PrepaidPackagesTab({
     return map;
   }, [keyOptions]);
 
-  const totals = useMemo(() => {
-    const active = packages.filter((pkg) => pkg.active);
-    const balance = packages.reduce((sum, pkg) => sum + Number(pkg.balance_amount || 0), 0);
-    const deducted = deductions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-    return { active: active.length, balance, deducted };
-  }, [packages, deductions]);
+  const filteredPackages = useMemo(() => {
+    const q = normalizeText(packageSearch.trim());
+    return packages.filter((pkg) => {
+      const keyLabel = keyById.get(pkg.api_key_id) || `#${pkg.api_key_id}`;
+      if (packageStatusFilter === "active" && !pkg.active) return false;
+      if (packageStatusFilter === "inactive" && pkg.active) return false;
+      if (!q) return true;
+      return normalizeText([pkg.id, pkg.api_key_id, keyLabel, pkg.balance_amount].join(" ")).includes(q);
+    });
+  }, [keyById, packageSearch, packageStatusFilter, packages]);
 
   const filteredDeductions = useMemo(() => {
     const from = deductionDateFrom ? new Date(`${deductionDateFrom}T00:00:00`) : null;
@@ -59,8 +84,25 @@ export function PrepaidPackagesTab({
     });
   }, [deductions, deductionKeyFilter, deductionDateFrom, deductionDateTo]);
 
-  const handleCreate = async (e) => {
-    e.preventDefault();
+  const totals = useMemo(() => {
+    const active = packages.filter((pkg) => pkg.active);
+    const balance = packages.reduce((sum, pkg) => sum + Number(pkg.balance_amount || 0), 0);
+    const visibleBalance = filteredPackages.reduce((sum, pkg) => sum + Number(pkg.balance_amount || 0), 0);
+    const deducted = filteredDeductions.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    return { active: active.length, balance, visibleBalance, deducted };
+  }, [deductions, filteredDeductions, filteredPackages, packages]);
+
+  const metrics = [
+    { key: "packages", label: "Пакеты", value: `${filteredPackages.length} / ${packages.length}`, tone: filteredPackages.length === packages.length ? "neutral" : "warning" },
+    { key: "active", label: "Активных", value: totals.active, tone: totals.active > 0 ? "success" : "neutral" },
+    { key: "balance", label: "Баланс всего", value: formatMoney(totals.balance), tone: "success" },
+    { key: "visible", label: "Баланс выборки", value: formatMoney(totals.visibleBalance), tone: "info" },
+    { key: "deducted", label: "Списано", value: formatMoney(totals.deducted), tone: totals.deducted > 0 ? "warning" : "neutral" },
+    { key: "deductions", label: "Списания", value: `${filteredDeductions.length} / ${deductions.length}`, tone: filteredDeductions.length === deductions.length ? "neutral" : "warning" },
+  ];
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
     if (!form.api_key_id) return;
     await onCreate({
       api_key_id: Number(form.api_key_id),
@@ -70,260 +112,213 @@ export function PrepaidPackagesTab({
     setForm((prev) => ({ ...prev, balance_amount: "" }));
   };
 
-  const submitTopUp = async (e) => {
-    e.preventDefault();
+  const submitTopUp = async () => {
     if (!topUpPackage || !topUpAmount) return;
     await onTopUp(topUpPackage.id, Number(topUpAmount));
     setTopUpPackage(null);
     setTopUpAmount("");
   };
 
+  const confirmDelete = (pkg) => {
+    Modal.confirm({
+      title: "Удалить пакет предоплаты?",
+      content: `Пакет #${pkg.id} для ключа ${keyById.get(pkg.api_key_id) || `#${pkg.api_key_id}`} будет удален.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: () => onDelete(pkg.id),
+    });
+  };
+
+  const packageColumns = [
+    { title: "ID", dataIndex: "id", width: 64, render: (value) => <span className="text-muted">#{value}</span> },
+    {
+      title: "Ключ",
+      dataIndex: "api_key_id",
+      ellipsis: true,
+      render: (value) => <span title={keyById.get(value) || `#${value}`}>{keyById.get(value) || `#${value}`}</span>,
+    },
+    { title: "Баланс", dataIndex: "balance_amount", width: 120, align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
+    { title: "Статус", dataIndex: "active", width: 96, align: "center", render: (value) => <StatusTag status={value ? "confirmed" : "offline"} label={value ? "Активен" : "Выкл"} /> },
+    { title: "Обновлен", dataIndex: "updated_at", width: 130, render: formatDate },
+    {
+      title: "",
+      width: 230,
+      align: "right",
+      render: (_, pkg) => (
+        <Space size={4} wrap>
+          <Button size="small" onClick={() => setTopUpPackage(pkg)}>Пополнить</Button>
+          <Button
+            size="small"
+            onClick={() => onUpdate(pkg.id, { balance_amount: pkg.balance_amount, active: !pkg.active })}
+          >
+            {pkg.active ? "Выключить" : "Включить"}
+          </Button>
+          <Button size="small" variant="danger" onClick={() => confirmDelete(pkg)}>Удалить</Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const deductionColumns = [
+    { title: "ID", dataIndex: "id", width: 64, render: (value) => <span className="text-muted">#{value}</span> },
+    { title: "Дата", dataIndex: "created_at", width: 130, render: formatDate },
+    { title: "Пакет", dataIndex: "package_id", width: 80, align: "center", render: (value) => `#${value}` },
+    { title: "Ключ", dataIndex: "api_key_id", width: 150, ellipsis: true, render: (value, item) => item.key_label || keyById.get(value) || `#${value}` },
+    { title: "Лог", dataIndex: "usage_log_id", width: 80, align: "center", render: (value) => `#${value}` },
+    { title: "Компания", dataIndex: "company", ellipsis: true, render: (value) => <span title={value || "—"}>{value || "—"}</span> },
+    { title: "Сумма", dataIndex: "amount", width: 110, align: "right", render: (value) => <MoneyCell value={value} /> },
+  ];
+
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="d-flex gap-2 align-items-center">
-          <button className="btn btn-sm btn-outline-secondary" onClick={onRefresh}>
-            Обновить
-          </button>
-          <span className="text-muted small">Пакетов: {packages.length}</span>
-        </div>
-      </div>
+    <div data-eopp-component="PrepaidPackagesTab" className="prepaid-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Предоплата</h2>
+            <div className="small text-muted">Пакеты баланса API-ключей и журнал автоматических списаний</div>
+          </div>
+        }
+        right={<Button size="small" onClick={onRefresh}>Обновить</Button>}
+      />
 
-      <div className="row g-2 mb-3">
-        <div className="col-6 col-xl-3">
-          <div className="border-start border-4 border-primary bg-dark-subtle rounded px-2 py-1 h-100">
-            <div className="text-secondary-emphasis small">Активных</div>
-            <div className="fw-semibold text-light">{totals.active}</div>
-          </div>
-        </div>
-        <div className="col-6 col-xl-3">
-          <div className="border-start border-4 border-success bg-dark-subtle rounded px-2 py-1 h-100">
-            <div className="text-secondary-emphasis small">Баланс</div>
-            <div className="fw-semibold text-light">{formatMoney(totals.balance)}</div>
-          </div>
-        </div>
-        <div className="col-6 col-xl-3">
-          <div className="border-start border-4 border-warning bg-dark-subtle rounded px-2 py-1 h-100">
-            <div className="text-secondary-emphasis small">Списано</div>
-            <div className="fw-semibold text-light">{formatMoney(totals.deducted)}</div>
-          </div>
-        </div>
-      </div>
+      <MetricsStrip items={metrics} />
 
-      <form className="row g-2 align-items-end mb-3" onSubmit={handleCreate}>
-        <div className="col-12 col-lg-4">
-          <label className="form-label small mb-1">API ключ</label>
-          <select
-            className="form-select form-select-sm"
-            value={form.api_key_id}
-            onChange={(e) => setForm((prev) => ({ ...prev, api_key_id: e.target.value }))}
-            required
-          >
-            <option value="">Выбери ключ</option>
-            {keyOptions.map((key) => (
-              <option key={key.id} value={key.id}>
-                {key.label} (#{key.id})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6 col-lg-3">
-          <label className="form-label small mb-1">Начальный баланс</label>
-          <input
-            className="form-control form-control-sm"
+      <Card data-eopp-component="PrepaidCreateCard" className="mt-3" size="small" title="Новый пакет">
+        <form className="prepaid-create-form" onSubmit={handleCreate}>
+          <label className="form-label small mb-0">
+            API ключ
+            <SelectInput
+              size="small"
+              value={form.api_key_id}
+              onChange={(value) => setForm((prev) => ({ ...prev, api_key_id: value || "" }))}
+              options={[
+                { value: "", label: "Выбери ключ" },
+                ...keyOptions.map((key) => ({ value: String(key.id), label: `${key.label} (#${key.id})` })),
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Начальный баланс
+            <TextInput
+              data-eopp-component="PrepaidInitialBalanceInput"
+              size="small"
+              type="number"
+              min="0"
+              value={form.balance_amount}
+              onChange={(event) => setForm((prev) => ({ ...prev, balance_amount: event.target.value }))}
+              required
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Активен
+            <SelectInput
+              size="small"
+              value={form.active ? "1" : "0"}
+              onChange={(value) => setForm((prev) => ({ ...prev, active: value === "1" }))}
+              options={[
+                { value: "1", label: "Да" },
+                { value: "0", label: "Нет" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <Button size="small" variant="primary" htmlType="submit">Добавить пакет</Button>
+        </form>
+      </Card>
+
+      <Card data-eopp-component="PrepaidPackagesCard" className="mt-3" size="small" title="Пакеты">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 prepaid-search">
+            Поиск
+            <TextInput size="small" value={packageSearch} onChange={(event) => setPackageSearch(event.target.value)} placeholder="ключ, ID, баланс" />
+          </label>
+          <label className="form-label small mb-0">
+            Статус
+            <SelectInput
+              size="small"
+              value={packageStatusFilter}
+              onChange={(value) => setPackageStatusFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "active", label: "Активные" },
+                { value: "inactive", label: "Выключенные" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+        </FilterBar>
+        <DataTable
+          className="prepaid-packages-table"
+          rowKey="id"
+          data={filteredPackages}
+          columns={packageColumns}
+          emptyText="Нет пакетов"
+          pagination={{ pageSize: 12, showSizeChanger: true, pageSizeOptions: [10, 12, 25, 50] }}
+          scroll={false}
+        />
+      </Card>
+
+      <Card data-eopp-component="PrepaidDeductionsCard" className="mt-3" size="small" title="Журнал списаний">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0">
+            Ключ
+            <SelectInput
+              size="small"
+              value={deductionKeyFilter}
+              onChange={(value) => setDeductionKeyFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                ...keyOptions.map((key) => ({ value: String(key.id), label: `${key.label} (#${key.id})` })),
+              ]}
+              allowClear={false}
+              style={{ minWidth: 180 }}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            С даты
+            <TextInput data-eopp-component="PrepaidDeductionsDateFrom" size="small" type="date" value={deductionDateFrom} onChange={(event) => setDeductionDateFrom(event.target.value)} />
+          </label>
+          <label className="form-label small mb-0">
+            По дату
+            <TextInput data-eopp-component="PrepaidDeductionsDateTo" size="small" type="date" value={deductionDateTo} onChange={(event) => setDeductionDateTo(event.target.value)} />
+          </label>
+        </FilterBar>
+        <DataTable
+          className="prepaid-deductions-table"
+          rowKey="id"
+          data={filteredDeductions}
+          columns={deductionColumns}
+          emptyText="Списаний пока нет"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          scroll={false}
+        />
+      </Card>
+
+      <Modal
+        title={topUpPackage ? `Пополнение предоплаты #${topUpPackage.id}` : "Пополнение предоплаты"}
+        open={!!topUpPackage}
+        onCancel={() => setTopUpPackage(null)}
+        onOk={submitTopUp}
+        okText="Пополнить"
+        cancelText="Отмена"
+        destroyOnClose
+      >
+        <label className="form-label small mb-0 w-100">
+          Сумма пополнения
+          <TextInput
+            data-eopp-component="PrepaidTopUpAmountInput"
             type="number"
-            min="0"
-            value={form.balance_amount}
-            onChange={(e) => setForm((prev) => ({ ...prev, balance_amount: e.target.value }))}
+            min="1"
+            value={topUpAmount}
+            onChange={(event) => setTopUpAmount(event.target.value)}
+            autoFocus
             required
           />
-        </div>
-        <div className="col-6 col-lg-2">
-          <label className="form-label small mb-1">Активен</label>
-          <select
-            className="form-select form-select-sm"
-            value={form.active ? "1" : "0"}
-            onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.value === "1" }))}
-          >
-            <option value="1">Да</option>
-            <option value="0">Нет</option>
-          </select>
-        </div>
-        <div className="col-12 col-lg-3">
-          <button className="btn btn-sm btn-primary w-100" type="submit">
-            Добавить пакет
-          </button>
-        </div>
-      </form>
-
-      <div className="table-responsive mb-4">
-        <table className="table table-sm table-hover table-bordered align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th>ID</th>
-              <th>Ключ</th>
-              <th className="text-end">Баланс</th>
-              <th className="text-center">Активен</th>
-              <th>Обновлен</th>
-              <th className="text-center">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {packages.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center text-muted py-3">
-                  Нет пакетов
-                </td>
-              </tr>
-            ) : (
-              packages.map((pkg) => (
-                <tr key={pkg.id}>
-                  <td>{pkg.id}</td>
-                  <td>{keyById.get(pkg.api_key_id) || `#${pkg.api_key_id}`}</td>
-                  <td className="text-end">{formatMoney(pkg.balance_amount)}</td>
-                  <td className="text-center">
-                    <span className={`badge ${pkg.active ? "bg-success" : "bg-secondary"}`}>
-                      {pkg.active ? "Да" : "Нет"}
-                    </span>
-                  </td>
-                  <td className="small text-nowrap">{formatDate(pkg.updated_at)}</td>
-                  <td className="text-center text-nowrap">
-                    <button
-                      className="btn btn-sm btn-outline-success me-1"
-                      onClick={() => setTopUpPackage(pkg)}
-                    >
-                      Пополнить
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline-primary me-1"
-                      onClick={() =>
-                        onUpdate(pkg.id, {
-                          balance_amount: pkg.balance_amount,
-                          active: !pkg.active,
-                        })
-                      }
-                    >
-                      {pkg.active ? "Выключить" : "Включить"}
-                    </button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(pkg.id)}>
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="d-flex justify-content-between align-items-center mb-2">
-        <h6 className="mb-0">Журнал списаний</h6>
-        <span className="text-muted small">Показано: {filteredDeductions.length} из {deductions.length}</span>
-      </div>
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-lg-4">
-          <label className="form-label small mb-1">Ключ</label>
-          <select
-            className="form-select form-select-sm"
-            value={deductionKeyFilter}
-            onChange={(e) => setDeductionKeyFilter(e.target.value)}
-          >
-            <option value="all">Все</option>
-            {keyOptions.map((key) => (
-              <option key={key.id} value={key.id}>
-                {key.label} (#{key.id})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-6 col-lg-2">
-          <label className="form-label small mb-1">С даты</label>
-          <input
-            className="form-control form-control-sm"
-            type="date"
-            value={deductionDateFrom}
-            onChange={(e) => setDeductionDateFrom(e.target.value)}
-          />
-        </div>
-        <div className="col-6 col-lg-2">
-          <label className="form-label small mb-1">По дату</label>
-          <input
-            className="form-control form-control-sm"
-            type="date"
-            value={deductionDateTo}
-            onChange={(e) => setDeductionDateTo(e.target.value)}
-          />
-        </div>
-      </div>
-      <div className="table-responsive">
-        <table className="table table-sm table-hover table-bordered align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th>ID</th>
-              <th>Дата</th>
-              <th>Пакет</th>
-              <th>Ключ</th>
-              <th>Лог</th>
-              <th>Компания</th>
-              <th className="text-end">Сумма</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredDeductions.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center text-muted py-3">
-                  Списаний пока нет
-                </td>
-              </tr>
-            ) : (
-              filteredDeductions.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td className="small text-nowrap">{formatDate(item.created_at)}</td>
-                  <td>#{item.package_id}</td>
-                  <td>{item.key_label || keyById.get(item.api_key_id) || `#${item.api_key_id}`}</td>
-                  <td>#{item.usage_log_id}</td>
-                  <td>{item.company || "—"}</td>
-                  <td className="text-end">{formatMoney(item.amount)}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {topUpPackage && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <form className="modal-content" onSubmit={submitTopUp}>
-              <div className="modal-header">
-                <h5 className="modal-title">Пополнение предоплаты #{topUpPackage.id}</h5>
-                <button type="button" className="btn-close" onClick={() => setTopUpPackage(null)} />
-              </div>
-              <div className="modal-body">
-                <label className="form-label small">Сумма пополнения</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="1"
-                  value={topUpAmount}
-                  onChange={(e) => setTopUpAmount(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setTopUpPackage(null)}>
-                  Отмена
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Пополнить
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </label>
+      </Modal>
     </div>
   );
 }

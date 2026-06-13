@@ -135,6 +135,16 @@ async def handle_solve(body: SolveRequest):
     return JSONResponse(status_code=status, content=content)
 
 
+@router.post("/cancel-captcha")
+async def handle_cancel_captcha(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    status, content = await _runtime().cancel_captcha(body)
+    return JSONResponse(status_code=status, content=content)
+
+
 async def _prepare_icon_session(
     *,
     captcha_id: str,
@@ -314,14 +324,17 @@ async def _on_timeout(
 ) -> None:
     from src.auto_operator import cancel_auto_solve
     from src.routes.distribution import distribution_states
-    from src.sse.manager import push_sse_owner_and_operators
+    from src.sse.manager import get_master_operators, operator_api_key_id, push_sse, push_sse_owner_and_operators
 
     state = distribution_states.get(captcha_id)
     if state:
         async with state["lock"]:
             distribution_states.pop(captcha_id, None)
     cancel_auto_solve(captcha_id)
-    if api_key_id is not None:
+    if api_key_id is not None and timeout_event.get("owner_notified"):
+        for op_id in get_master_operators(api_key_id):
+            push_sse(timeout_event, api_key_id=operator_api_key_id(op_id))
+    elif api_key_id is not None:
         push_sse_owner_and_operators(timeout_event, api_key_id)
 
 
@@ -387,7 +400,9 @@ async def trigger_test(request: Request):
 
 @router.post("/broadcast")
 async def handle_broadcast(request: Request):
-    unauthorized = captcha_service.authorize_broadcast(request.headers.get("X-Admin-Token"))
+    from src.policies.access_policy import token_from_request
+
+    unauthorized = captcha_service.authorize_broadcast(token_from_request(request))
     if unauthorized:
         status, content = unauthorized
         return JSONResponse(status_code=status, content=content)

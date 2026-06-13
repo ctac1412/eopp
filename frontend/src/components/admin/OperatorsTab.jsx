@@ -1,93 +1,157 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, Modal, Space } from "antd";
+import {
+  Button,
+  CheckboxField,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SegmentedControl,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 import { adminHeaders, adminHeadersJson } from "../../features/admin/shared/adminClient";
+import {
+  isAllAccessibleMasters,
+  normalizeAllowedMasters,
+  serializeAllowedMasters,
+} from "./operatorAssignments";
 
 const ICON_DISPLAY_MODES = [
-  { value: "own_then_foreign", label: "Свои → чужие" },
+  { value: "own_then_foreign", label: "Свои -> чужие" },
   { value: "own_only", label: "Только свои" },
 ];
 
+const PAGE_TABS = [
+  { value: "dashboard", label: "Активный дэшборд" },
+  { value: "settings", label: "Настройки" },
+];
+
+const MASTER_ACCESS_MODES = [
+  { value: "all", label: "Все доступные мастера" },
+  { value: "selected", label: "Только выбранные" },
+];
+
+const PER_PAGE = 20;
+
+function formatTime(iso) {
+  if (!iso) return "—";
+  return iso.slice(0, 19).replace("T", " ");
+}
+
+function clip(value, length = 12) {
+  if (!value) return "—";
+  return value.length > length ? `${value.slice(0, length)}...` : value;
+}
+
+function uniqueNumbers(values) {
+  return Array.from(new Set((values || []).map(Number).filter(Boolean)));
+}
+
+function getOperatorCompanyScope(op) {
+  if (op.operator_all_companies === true) {
+    return { allCompanies: true, companyIds: [] };
+  }
+  if (Array.isArray(op.operator_company_ids)) {
+    return { allCompanies: false, companyIds: uniqueNumbers(op.operator_company_ids) };
+  }
+  return { allCompanies: false, companyIds: uniqueNumbers(op.company_ids) };
+}
+
+function companyName(companyId, companiesById) {
+  return companiesById.get(Number(companyId))?.name || `Компания #${companyId}`;
+}
+
+function getKeyCompanyId(key) {
+  return key.company_id == null ? null : Number(key.company_id);
+}
+
+function keyLabel(key) {
+  return key.label || `Ключ #${key.id}`;
+}
+
 export function OperatorsTab({ adminToken, onError }) {
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [operators, setOperators] = useState([]);
   const [links, setLinks] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [answersPage, setAnswersPage] = useState(1);
   const [answersTotalPages, setAnswersTotalPages] = useState(1);
   const [answersTotal, setAnswersTotal] = useState(0);
-  const [nickname, setNickname] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  // All keys (for allowed_master_keys and relink)
+  const [operatorSearch, setOperatorSearch] = useState("");
+  const [saving, setSaving] = useState(false);
   const [allKeys, setAllKeys] = useState([]);
-
-  // Companies (for company_id select)
   const [companies, setCompanies] = useState([]);
-
-  // Edit operator modal
-  const [editOp, setEditOp] = useState(null);
+  const [selectedOperatorId, setSelectedOperatorId] = useState(null);
   const [editForm, setEditForm] = useState({
     nickname: "",
     icon_display_mode: "own_then_foreign",
+    masterAccessMode: "all",
     allowed_master_keys: [],
-    companyId: "",
   });
+  const [linkSavingOperatorId, setLinkSavingOperatorId] = useState(null);
 
-  // Relink modal
-  const [relinkOp, setRelinkOp] = useState(null);
-  const [relinkMasterId, setRelinkMasterId] = useState(null);
-
-  const PER_PAGE = 20;
   const baseUrl = window.location.origin;
 
   const loadOperators = useCallback(async () => {
     try {
-      const r = await fetch("/admin/operators", { headers: adminHeaders(adminToken) });
-      setOperators(await r.json());
-    } catch (e) {
+      const res = await fetch("/admin/operators", { headers: adminHeaders(adminToken) });
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : [];
+      setOperators(rows);
+      setSelectedOperatorId((current) => {
+        if (current && rows.some((op) => op.id === current)) return current;
+        return rows[0]?.id ?? null;
+      });
+    } catch {
       onError?.("Ошибка загрузки операторов");
     }
   }, [adminToken, onError]);
 
   const loadLinks = useCallback(async () => {
     try {
-      const r = await fetch("/admin/operator-links", { headers: adminHeaders(adminToken) });
-      setLinks(await r.json());
-    } catch (e) {
-      onError?.("Ошибка загрузки связок");
+      const res = await fetch("/admin/operator-links", { headers: adminHeaders(adminToken) });
+      const data = await res.json();
+      setLinks(Array.isArray(data) ? data : []);
+    } catch {
+      onError?.("Ошибка загрузки связок операторов");
     }
   }, [adminToken, onError]);
 
   const loadAnswers = useCallback(async (page = 1) => {
     try {
-      const r = await fetch(`/admin/distribution-answers?page=${page}&per_page=${PER_PAGE}`, {
+      const res = await fetch(`/admin/distribution-answers?page=${page}&per_page=${PER_PAGE}`, {
         headers: adminHeaders(adminToken),
       });
-      const data = await r.json();
+      const data = await res.json();
       setAnswers(data.items || []);
       setAnswersPage(data.page || 1);
       setAnswersTotalPages(data.pages || 1);
       setAnswersTotal(data.total || 0);
-    } catch (e) {
-      onError?.("Ошибка загрузки действий");
+    } catch {
+      onError?.("Ошибка загрузки действий операторов");
     }
   }, [adminToken, onError]);
 
   const loadKeys = useCallback(async () => {
     try {
-      const r = await fetch("/api-keys", { headers: adminHeaders(adminToken) });
-      const data = await r.json();
+      const res = await fetch("/api-keys", { headers: adminHeaders(adminToken) });
+      const data = await res.json();
       setAllKeys(Array.isArray(data) ? data : data.keys || []);
-    } catch (e) {
+    } catch {
       setAllKeys([]);
     }
   }, [adminToken]);
 
   const loadCompanies = useCallback(async () => {
     try {
-      const r = await fetch("/admin/companies", { headers: adminHeaders(adminToken) });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
+      const res = await fetch("/admin/companies", { headers: adminHeaders(adminToken) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
       setCompanies(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setCompanies([]);
     }
   }, [adminToken]);
@@ -100,509 +164,656 @@ export function OperatorsTab({ adminToken, onError }) {
     loadCompanies();
   }, [loadOperators, loadLinks, loadAnswers, loadKeys, loadCompanies]);
 
-  // Non-external keys for multiselect
-  const internalKeys = allKeys.filter((k) => !k.is_external);
+  const internalKeys = useMemo(() => allKeys.filter((key) => !key.is_external), [allKeys]);
+  const keyLabelById = useMemo(() => {
+    const map = new Map();
+    allKeys.forEach((key) => map.set(Number(key.id), keyLabel(key)));
+    return map;
+  }, [allKeys]);
+  const companiesById = useMemo(() => new Map(companies.map((company) => [Number(company.id), company])), [companies]);
 
-  const addOperator = async () => {
-    if (!nickname.trim()) return;
-    setLoading(true);
-    try {
-      const r = await fetch("/admin/operators", {
-        method: "POST",
-        headers: adminHeadersJson(adminToken),
-        body: JSON.stringify({ nickname: nickname.trim() }),
-      });
-      if (r.ok) {
-        setNickname("");
-        await loadOperators();
+  const selectedOperator = useMemo(
+    () => operators.find((op) => op.id === selectedOperatorId) || null,
+    [operators, selectedOperatorId],
+  );
+
+  const visibleKeysForOperator = useCallback((op) => {
+    if (!op) return [];
+    const scope = getOperatorCompanyScope(op);
+    if (scope.allCompanies) return internalKeys;
+    const companyIds = new Set(scope.companyIds.map(Number));
+    return internalKeys.filter((key) => {
+      const keyCompanyId = getKeyCompanyId(key);
+      return keyCompanyId == null || companyIds.has(keyCompanyId);
+    });
+  }, [internalKeys]);
+
+  const groupedKeysForOperator = useCallback((op) => {
+    const groups = new Map();
+    visibleKeysForOperator(op).forEach((key) => {
+      const companyId = getKeyCompanyId(key);
+      const groupKey = companyId == null ? "none" : String(companyId);
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          id: groupKey,
+          title: companyId == null ? "Без компании" : companyName(companyId, companiesById),
+          keys: [],
+        });
       }
-    } catch (e) {
-      onError?.("Ошибка создания оператора");
-    } finally {
-      setLoading(false);
-    }
+      groups.get(groupKey).keys.push(key);
+    });
+    return Array.from(groups.values());
+  }, [companiesById, visibleKeysForOperator]);
+
+  const filteredOperators = useMemo(() => {
+    const q = operatorSearch.trim().toLowerCase();
+    if (!q) return operators;
+    return operators.filter((op) =>
+      [
+        op.id,
+        op.nickname,
+        op.uuid,
+        op.company_name,
+        Array.isArray(op.company_names) ? op.company_names.join(" ") : "",
+        op.operator_all_companies ? "все компании" : "",
+        op.icon_display_mode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [operatorSearch, operators]);
+
+  const metrics = useMemo(() => {
+    const online = operators.filter((op) => op.online).length;
+    const linkedOperators = new Set(links.map((link) => link.operator_id)).size;
+    return [
+      { key: "total", label: "Операторы", value: operators.length, tone: operators.length > 0 ? "info" : "neutral" },
+      { key: "online", label: "Онлайн", value: online, tone: online > 0 ? "success" : "neutral" },
+      { key: "links", label: "Активные связки", value: links.length, tone: links.length > 0 ? "success" : "neutral" },
+      { key: "linked", label: "С мастером", value: linkedOperators, tone: linkedOperators > 0 ? "info" : "neutral" },
+      { key: "answers", label: "Действия", value: answersTotal, tone: answersTotal > 0 ? "info" : "neutral" },
+    ];
+  }, [answersTotal, links, operators]);
+
+  useEffect(() => {
+    if (!selectedOperator) return;
+    const allowed = normalizeAllowedMasters(selectedOperator.allowed_master_keys);
+    setEditForm({
+      nickname: selectedOperator.nickname || "",
+      icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
+      allowed_master_keys: allowed,
+    });
+  }, [selectedOperator]);
+
+  const refreshAll = async () => {
+    await Promise.all([loadOperators(), loadLinks(), loadAnswers(answersPage), loadKeys(), loadCompanies()]);
   };
 
   const deleteOperator = async (id) => {
-    if (!window.confirm("Удалить оператора?")) return;
-    try {
-      await fetch(`/admin/operators/${id}`, {
-        method: "DELETE",
-        headers: adminHeaders(adminToken),
-      });
-      await Promise.all([loadOperators(), loadLinks()]);
-    } catch (e) {
-      onError?.("Ошибка удаления");
-    }
-  };
-
-  const unlinkOperator = async (operatorUuid, masterKeyId) => {
-    if (!window.confirm("Разорвать связку?")) return;
-    try {
-      await fetch(`/operators/${operatorUuid}/unlink`, {
-        method: "POST",
-        headers: adminHeadersJson(adminToken),
-        body: JSON.stringify({ master_id: masterKeyId }),
-      });
-      await loadLinks();
-    } catch (e) {
-      onError?.("Ошибка разрыва связки");
-    }
-  };
-
-  const openEdit = (op) => {
-    const allowed = op.allowed_master_keys;
-    setEditForm({
-      nickname: op.nickname || "",
-      icon_display_mode: op.icon_display_mode || "own_then_foreign",
-      allowed_master_keys: Array.isArray(allowed) ? allowed : (allowed == null ? [] : allowed),
-      companyId: op.company_id != null ? String(op.company_id) : "",
+    Modal.confirm({
+      title: "Удалить оператора?",
+      content: `Оператор #${id} будет удалён вместе с его активными связками.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/admin/operators/${id}`, {
+            method: "DELETE",
+            headers: adminHeaders(adminToken),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          await Promise.all([loadOperators(), loadLinks()]);
+        } catch {
+          onError?.("Ошибка удаления оператора");
+        }
+      },
     });
-    setEditOp(op);
   };
 
-  const handleEditSave = async (e) => {
-    e.preventDefault();
-    if (!editOp) return;
+  const handleEditSave = async () => {
+    if (!selectedOperator) return;
+    setSaving(true);
     try {
       const body = {
         nickname: editForm.nickname,
         icon_display_mode: editForm.icon_display_mode,
-        allowed_master_keys:
-          editForm.allowed_master_keys.length > 0
-            ? editForm.allowed_master_keys.map(Number)
-            : null,
-        company_id: editForm.companyId ? parseInt(editForm.companyId, 10) : null,
+        allowed_master_keys: serializeAllowedMasters(
+          editForm.masterAccessMode,
+          editForm.allowed_master_keys,
+        ),
       };
-      const r = await fetch(`/admin/operators/${editOp.id}`, {
+      const res = await fetch(`/admin/operators/${selectedOperator.id}`, {
         method: "PUT",
         headers: adminHeadersJson(adminToken),
         body: JSON.stringify(body),
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setEditOp(null);
-      await loadOperators();
-    } catch (e) {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await Promise.all([loadOperators(), loadLinks()]);
+    } catch {
       onError?.("Ошибка сохранения оператора");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const openRelink = (op) => {
-    const allowed = op.allowed_master_keys;
-    const allowedIds = Array.isArray(allowed) && allowed.length > 0
-      ? allowed.map(Number)
-      : null;
-    // Find current master from links
-    const currentLink = links.find(
-      (l) => l.operator_uuid === op.uuid && l.active !== false
-    );
-    const available = internalKeys.filter(
-      (k) => !allowedIds || allowedIds.includes(k.id)
-    );
-    setRelinkOp({ ...op, availableKeys: available, currentMasterId: currentLink?.master_key_id || null });
-    setRelinkMasterId(null);
-  };
-
-  const handleRelink = async () => {
-    if (!relinkOp || !relinkMasterId) return;
-    try {
-      const r = await fetch(`/admin/operators/${relinkOp.id}/link`, {
-        method: "PUT",
-        headers: adminHeadersJson(adminToken),
-        body: JSON.stringify({ master_key_id: relinkMasterId }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setRelinkOp(null);
-      setRelinkMasterId(null);
-      await loadLinks();
-    } catch (e) {
-      onError?.("Ошибка перепривязки оператора");
-    }
-  };
-
-  const toggleMasterKey = (keyId) => {
-    setEditForm((prev) => {
-      const cur = prev.allowed_master_keys.map(Number);
-      const next = cur.includes(keyId)
-        ? cur.filter((id) => id !== keyId)
-        : [...cur, keyId];
-      return { ...prev, allowed_master_keys: next };
+  const resetEditForm = () => {
+    if (!selectedOperator) return;
+    const allowed = normalizeAllowedMasters(selectedOperator.allowed_master_keys);
+    setEditForm({
+      nickname: selectedOperator.nickname || "",
+      icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
+      allowed_master_keys: allowed,
     });
   };
 
-  const formatTime = (iso) => {
-    if (!iso) return "—";
-    return iso.slice(0, 19).replace("T", " ");
+  const availableLinkOptions = (op) => {
+    const allowed = isAllAccessibleMasters(op.allowed_master_keys)
+      ? null
+      : normalizeAllowedMasters(op.allowed_master_keys);
+    return visibleKeysForOperator(op).filter(
+      (key) => !allowed || allowed.includes(Number(key.id)),
+    ).map((key) => ({
+      value: Number(key.id),
+      label: `${keyLabel(key)} #${key.id}`,
+    }));
   };
 
-  const getIconModeLabel = (mode) => {
-    const found = ICON_DISPLAY_MODES.find((m) => m.value === mode);
-    return found ? found.label : mode || "—";
+  const currentLinkForOperator = (op) => links.find(
+    (link) => link.operator_uuid === op.uuid && link.active !== false,
+  ) || null;
+
+  const changeOperatorMaster = async (op, masterKeyId) => {
+    const current = currentLinkForOperator(op);
+    setLinkSavingOperatorId(op.id);
+    try {
+      if (!masterKeyId) {
+        if (current) {
+          const res = await fetch(`/operators/${op.uuid}/unlink`, {
+            method: "POST",
+            headers: adminHeadersJson(adminToken),
+            body: JSON.stringify({ master_id: current.master_key_id }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }
+      } else {
+        const res = await fetch(`/admin/operators/${op.id}/link`, {
+          method: "PUT",
+          headers: adminHeadersJson(adminToken),
+          body: JSON.stringify({ master_key_id: Number(masterKeyId) }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }
+      await loadLinks();
+    } catch {
+      onError?.("Ошибка изменения связки оператора");
+    } finally {
+      setLinkSavingOperatorId(null);
+    }
   };
+
+  const setAllowedMaster = (masterKeyId, checked) => {
+    setEditForm((prev) => {
+      const ids = new Set((prev.allowed_master_keys || []).map(Number));
+      if (checked) ids.add(Number(masterKeyId));
+      else ids.delete(Number(masterKeyId));
+      return { ...prev, allowed_master_keys: Array.from(ids) };
+    });
+  };
+
+  const renderAllowedMasters = (allowed) => {
+    if (isAllAccessibleMasters(allowed)) return <span className="text-muted">Все доступные</span>;
+    const ids = normalizeAllowedMasters(allowed);
+    if (ids.length === 0) return <span className="text-muted">Нет выбранных</span>;
+    return (
+      <div className="operator-master-tags">
+        {ids.map((id) => (
+          <span key={id} className="operator-master-tag" title={`#${id}`}>
+            {keyLabelById.get(Number(id)) || `#${id}`}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMasterSummary = (op) => {
+    if (isAllAccessibleMasters(op.allowed_master_keys)) {
+      return <span className="operator-list-pill operator-list-pill--all">Все мастера</span>;
+    }
+    const ids = normalizeAllowedMasters(op.allowed_master_keys);
+    if (ids.length === 0) return <span className="operator-list-pill">Нет мастеров</span>;
+    return ids.map((id) => (
+      <span key={id} className="operator-list-pill" title={`#${id}`}>
+        {keyLabelById.get(Number(id)) || `#${id}`}
+      </span>
+    ));
+  };
+
+  const renderCompanyScope = (_, op) => {
+    const scope = getOperatorCompanyScope(op);
+    if (scope.allCompanies) return <span className="operator-scope-pill operator-scope-pill--global">Все компании</span>;
+    const names = scope.companyIds.map((id) => companyName(id, companiesById));
+    if (names.length === 0) return <span className="text-muted">Нет доступа</span>;
+    return (
+      <div className="operator-master-tags">
+        {names.map((name) => (
+          <span key={name} className="operator-master-tag" title={name}>
+            {name}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const getIconModeLabel = (mode) => ICON_DISPLAY_MODES.find((item) => item.value === mode)?.label || mode || "—";
+
+  const operatorColumns = [
+    { title: "ID", dataIndex: "id", width: 54, render: (value) => <span className="text-muted">#{value}</span> },
+    {
+      title: "Статус",
+      dataIndex: "online",
+      width: 76,
+      align: "center",
+      render: (value) => <StatusTag status={value ? "online" : "offline"} label={value ? "online" : "offline"} />,
+    },
+    {
+      title: "Никнейм",
+      dataIndex: "nickname",
+      width: 150,
+      ellipsis: true,
+      render: (value) => <span className="fw-semibold">{value || "—"}</span>,
+    },
+    {
+      title: "UUID",
+      dataIndex: "uuid",
+      width: 118,
+      ellipsis: true,
+      render: (value) => <span className="font-monospace" title={value}>{clip(value)}</span>,
+    },
+    { title: "Компании", dataIndex: "company_names", width: 180, render: renderCompanyScope },
+    { title: "Мастера", dataIndex: "allowed_master_keys", width: 170, render: renderAllowedMasters },
+    { title: "Иконки", dataIndex: "icon_display_mode", width: 128, render: getIconModeLabel },
+    {
+      title: "Ссылка",
+      dataIndex: "uuid",
+      width: 86,
+      render: (value) => (
+        <a href={`${baseUrl}/operators/${value}`} target="_blank" rel="noreferrer">
+          открыть
+        </a>
+      ),
+    },
+    { title: "Дата", dataIndex: "created_at", width: 100, render: (value) => value?.slice(0, 10) || "—" },
+    {
+      title: "",
+      width: 150,
+      render: (_, op) => (
+        <Space size={4} wrap>
+          <Button size="small" variant="danger" onClick={() => deleteOperator(op.id)}>Удал.</Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const answerColumns = [
+    { title: "ID", dataIndex: "id", width: 70, render: (value) => <span className="text-muted">#{value}</span> },
+    {
+      title: "Капча",
+      dataIndex: "captcha_id",
+      width: 150,
+      ellipsis: true,
+      render: (value) => <span className="font-monospace" title={value}>{clip(value)}</span>,
+    },
+    {
+      title: "Оператор",
+      dataIndex: "operator_nickname",
+      width: 180,
+      ellipsis: true,
+      render: (value, row) => (
+        <span>
+          <span className="fw-semibold">{value || "—"}</span>
+          <span className="text-muted ms-1">#{row.operator_id}</span>
+        </span>
+      ),
+    },
+    {
+      title: "Master key",
+      dataIndex: "master_key_id",
+      width: 130,
+      render: (value, row) => value ? row.master_label || keyLabelById.get(Number(value)) || `#${value}` : "—",
+    },
+    { title: "Иконка", dataIndex: "icon_position", width: 90, align: "center", render: (value) => `${Number(value || 0) + 1}/5` },
+    {
+      title: "Координаты",
+      dataIndex: "x",
+      width: 120,
+      align: "center",
+      render: (_, row) => row.x != null && row.y != null ? `${row.x}, ${row.y}` : "—",
+    },
+    { title: "Время", dataIndex: "created_at", width: 160, render: formatTime },
+    {
+      title: "duration_ms",
+      dataIndex: "duration_ms",
+      width: 120,
+      align: "right",
+      render: (value) => (value != null ? `${value} ms` : "—"),
+    },
+  ];
+
+  const operatorDashboardRows = operators.map((op) => {
+    const link = currentLinkForOperator(op);
+    return {
+      ...op,
+      current_master_key_id: link?.master_key_id ?? null,
+      current_master_label: link?.master_label ?? null,
+      linked_at: link?.created_at ?? null,
+    };
+  });
+
+  const dashboardColumns = [
+    { title: "ID", dataIndex: "id", width: 54, render: (value) => <span className="text-muted">#{value}</span> },
+    {
+      title: "Статус",
+      dataIndex: "online",
+      width: 86,
+      align: "center",
+      render: (value) => <StatusTag status={value ? "online" : "offline"} label={value ? "online" : "offline"} />,
+    },
+    {
+      title: "Оператор",
+      dataIndex: "nickname",
+      width: 180,
+      ellipsis: true,
+      render: (value, row) => (
+        <span>
+          <span className="fw-semibold">{value || "—"}</span>
+          <span className="text-muted ms-1 font-monospace">{clip(row.uuid, 10)}</span>
+        </span>
+      ),
+    },
+    { title: "Компании", dataIndex: "company_names", width: 220, render: renderCompanyScope },
+    { title: "Доступ к мастерам", dataIndex: "allowed_master_keys", width: 190, render: renderAllowedMasters },
+    {
+      title: "Текущий master key",
+      dataIndex: "current_master_key_id",
+      width: 240,
+      render: (value, op) => (
+        <SelectInput
+          size="small"
+          value={value || undefined}
+          onChange={(nextValue) => changeOperatorMaster(op, nextValue || null)}
+          options={availableLinkOptions(op)}
+          placeholder="Не назначен"
+          allowClear
+          disabled={linkSavingOperatorId === op.id}
+        />
+      ),
+    },
+    { title: "Связка с", dataIndex: "linked_at", width: 150, render: formatTime },
+    {
+      title: "Ссылка",
+      dataIndex: "uuid",
+      width: 86,
+      render: (value) => (
+        <a href={`${baseUrl}/operators/${value}`} target="_blank" rel="noreferrer">
+          открыть
+        </a>
+      ),
+    },
+  ];
+
+  const renderDashboard = () => (
+    <>
+      <MetricsStrip items={metrics} />
+
+      <Card data-eopp-component="OperatorDashboardCard" className="mt-3" size="small" title="Операторы и назначения к мастерам">
+        <DataTable
+          className="operators-table"
+          rowKey="id"
+          data={operatorDashboardRows}
+          columns={dashboardColumns}
+          emptyText="Нет операторов"
+          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [15, 30, 50] }}
+        />
+      </Card>
+
+      <Card
+        data-eopp-component="OperatorAnswersCard"
+        className="mt-3"
+        size="small"
+        title={`Журнал действий операторов (${answersTotal})`}
+        extra={<Button size="small" onClick={() => loadAnswers(answersPage)}>Обновить</Button>}
+      >
+        <DataTable
+          className="operator-answers-table"
+          rowKey="id"
+          data={answers}
+          columns={answerColumns}
+          emptyText="Нет действий"
+          pagination={{
+            current: answersPage,
+            pageSize: PER_PAGE,
+            total: answersTotal,
+            showSizeChanger: false,
+            onChange: (page) => loadAnswers(page),
+            showTotal: (total) => `${total} всего`,
+          }}
+        />
+        <div className="small text-muted mt-2">Страница {answersPage} из {answersTotalPages}</div>
+      </Card>
+    </>
+  );
+
+  const selectedScope = selectedOperator ? getOperatorCompanyScope(selectedOperator) : { allCompanies: false, companyIds: [] };
+  const selectedGroups = selectedOperator ? groupedKeysForOperator(selectedOperator) : [];
+  const selectedAllowed = new Set((editForm.allowed_master_keys || []).map(Number));
+
+  const renderSettings = () => (
+    <div className="operators-settings">
+      <Card data-eopp-component="OperatorsListCard" size="small" title="Операторы">
+        <FilterBar className="mb-3">
+          <div className="operators-auto-note">
+            Операторы появляются автоматически после выдачи пользователю operator-access.
+          </div>
+          <label className="form-label small mb-0 operators-search-input">
+            Поиск
+            <TextInput
+              size="small"
+              value={operatorSearch}
+              onChange={(event) => setOperatorSearch(event.target.value)}
+              placeholder="ник, uuid, компания"
+            />
+          </label>
+        </FilterBar>
+
+        <div className="operators-split">
+          <div className="operators-split__list">
+            {filteredOperators.map((op) => {
+              const scope = getOperatorCompanyScope(op);
+              const active = op.id === selectedOperatorId;
+              return (
+                <div
+                  key={op.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`operator-list-item ${active ? "operator-list-item--active" : ""}`}
+                  onClick={() => setSelectedOperatorId(op.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedOperatorId(op.id);
+                    }
+                  }}
+                >
+                  <span className="operator-list-item__status" aria-hidden="true" data-online={op.online ? "true" : "false"} />
+                  <span className="operator-list-item__name">
+                    {op.nickname || `#${op.id}`}
+                  </span>
+                  <a
+                    className="operator-list-item__uuid font-monospace"
+                    href={`${baseUrl}/operators/${op.uuid}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    title="Открыть страницу оператора"
+                  >
+                    {clip(op.uuid, 12)}
+                  </a>
+                  <span className="operator-list-item__companies">
+                    {scope.allCompanies
+                      ? "Все компании"
+                      : scope.companyIds.map((id) => companyName(id, companiesById)).join(", ") || "Нет доступа"}
+                  </span>
+                  <span className="operator-list-item__masters">
+                    {renderMasterSummary(op)}
+                  </span>
+                </div>
+              );
+            })}
+            {filteredOperators.length === 0 && <div className="text-muted small">Нет операторов</div>}
+          </div>
+
+          <div className="operators-split__detail">
+            {!selectedOperator ? (
+              <div className="text-muted small">Выберите оператора слева</div>
+            ) : (
+              <>
+                <div className="operators-detail-head">
+                  <div>
+                    <div className="small text-muted">Оператор #{selectedOperator.id}</div>
+                    <h3 className="fs-6 fw-semibold mb-0">{selectedOperator.nickname || "Без имени"}</h3>
+                  </div>
+                  <Space size={6} wrap>
+                    <a href={`${baseUrl}/operators/${selectedOperator.uuid}`} target="_blank" rel="noreferrer">
+                      открыть
+                    </a>
+                    <Button size="small" variant="danger" onClick={() => deleteOperator(selectedOperator.id)}>Удалить</Button>
+                  </Space>
+                </div>
+
+                <div className="operators-detail-form">
+                  <label className="form-label small mb-0">
+                    Никнейм
+                    <TextInput
+                      value={editForm.nickname}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, nickname: event.target.value }))}
+                    />
+                  </label>
+                  <label className="form-label small mb-0">
+                    Режим иконок
+                    <SelectInput
+                      value={editForm.icon_display_mode}
+                      onChange={(value) => setEditForm((prev) => ({ ...prev, icon_display_mode: value || "own_then_foreign" }))}
+                      options={ICON_DISPLAY_MODES}
+                      allowClear={false}
+                    />
+                  </label>
+                  <label className="form-label small mb-0">
+                    Текущий master key
+                    <SelectInput
+                      value={currentLinkForOperator(selectedOperator)?.master_key_id || undefined}
+                      onChange={(value) => changeOperatorMaster(selectedOperator, value || null)}
+                      options={availableLinkOptions(selectedOperator)}
+                      placeholder="Не назначен"
+                      allowClear
+                      disabled={linkSavingOperatorId === selectedOperator.id}
+                    />
+                  </label>
+
+                  <div className="operator-readonly-scope">
+                    <div className="small text-muted mb-1">Доступ к компаниям из профиля пользователя</div>
+                    {selectedScope.allCompanies ? (
+                      <span className="operator-scope-pill operator-scope-pill--global">Все компании</span>
+                    ) : (
+                      <div className="operator-master-tags operator-company-tags">
+                        {selectedScope.companyIds.map((id) => (
+                          <span key={id} className="operator-master-tag" title={companyName(id, companiesById)}>
+                            {companyName(id, companiesById)}
+                          </span>
+                        ))}
+                        {selectedScope.companyIds.length === 0 && <span className="text-muted">Нет доступных компаний</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="operator-master-access">
+                    <div className="operator-master-access__head">
+                      <div>
+                        <div className="fw-semibold">Доступ к мастерам</div>
+                        <div className="small text-muted">
+                          Ограничивает master/API keys внутри доступных оператору компаний.
+                        </div>
+                      </div>
+                      <SegmentedControl
+                        size="small"
+                        value={editForm.masterAccessMode}
+                        onChange={(value) => setEditForm((prev) => ({ ...prev, masterAccessMode: value }))}
+                        options={MASTER_ACCESS_MODES}
+                      />
+                    </div>
+
+                    {editForm.masterAccessMode === "all" ? (
+                      <div className="operator-master-access__all">
+                        {selectedScope.allCompanies ? "Оператор может подключаться ко всем мастерам всех компаний." : "Оператор может подключаться ко всем мастерам доступных компаний."}
+                      </div>
+                    ) : (
+                      <div className="operator-master-groups">
+                        {selectedGroups.map((group) => (
+                          <div key={group.id} className="operator-master-group">
+                            <div className="operator-master-group__title">{group.title}</div>
+                            <div className="operator-master-group__keys">
+                              {group.keys.map((key) => (
+                                <CheckboxField
+                                  key={key.id}
+                                  checked={selectedAllowed.has(Number(key.id))}
+                                  onChange={(event) => setAllowedMaster(key.id, event.target.checked)}
+                                >
+                                  {keyLabel(key)} <span className="text-muted">#{key.id}</span>
+                                </CheckboxField>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        {selectedGroups.length === 0 && <div className="text-muted small">Нет мастеров в доступных компаниях</div>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="operators-detail-actions">
+                    <Button size="small" onClick={resetEditForm}>Сбросить</Button>
+                    <Button size="small" variant="primary" onClick={handleEditSave} loading={saving}>
+                      Сохранить
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
 
   return (
-    <div>
-      {/* --- Управление операторами --- */}
-      <h6 className="mb-3" style={{ color: "#f0f6fc" }}>Операторы</h6>
-      <div className="d-flex gap-2 mb-3 align-items-end">
-        <div>
-          <label className="form-label mb-1" style={{ fontSize: "0.8rem" }}>Никнейм</label>
-          <input
-            type="text"
-            className="form-control form-control-sm"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addOperator()}
-            placeholder="operator1"
-            style={{ width: "200px" }}
-          />
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={addOperator} disabled={loading}>
-          + Добавить
-        </button>
-      </div>
-
-      <table className="table table-sm table-dark table-striped mb-4">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Онлайн</th>
-            <th>Никнейм</th>
-            <th>UUID</th>
-            <th>Доступные мастера</th>
-            <th>Компания</th>
-            <th>Режим иконок</th>
-            <th>Ссылка</th>
-            <th>Дата</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {operators.length === 0 && (
-            <tr><td colSpan={10} className="text-center text-muted">Нет операторов</td></tr>
-          )}
-          {operators.map((op) => (
-            <tr key={op.id}>
-              <td>{op.id}</td>
-              <td className="text-center">
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: op.online ? "#3fb950" : "#f85149",
-                    boxShadow: op.online ? "0 0 6px #3fb950" : "0 0 6px #f85149",
-                  }}
-                  title={op.online ? "Онлайн" : "Офлайн"}
-                />
-              </td>
-              <td className="fw-semibold">{op.nickname}</td>
-              <td><code style={{ fontSize: "0.75rem" }}>{op.uuid}</code></td>
-              <td style={{ fontSize: "0.72rem" }}>
-                {(() => {
-                  const allowed = op.allowed_master_keys;
-                  if (allowed == null) return <span className="text-muted">Все</span>;
-                  if (!Array.isArray(allowed) || allowed.length === 0) return <span className="text-muted">Все</span>;
-                  const keyMap = {};
-                  allKeys.forEach((k) => { keyMap[k.id] = k.label; });
-                  return allowed.map((kid, i) => (
-                    <span key={i} style={{
-                      display: "inline-block", background: "#161b22", borderRadius: 3,
-                      padding: "1px 5px", marginRight: 3, marginBottom: 2,
-                      border: "1px solid #30363d", fontSize: "0.7rem",
-                    }}>
-                      {keyMap[kid] || `#${kid}`}
-                    </span>
-                  ));
-                })()}
-              </td>
-              <td style={{ fontSize: "0.72rem" }}>{op.company_name || "—"}</td>
-              <td style={{ fontSize: "0.75rem" }}>{getIconModeLabel(op.icon_display_mode)}</td>
-              <td>
-                <a href={`${baseUrl}/operators/${op.uuid}`} target="_blank" rel="noreferrer"
-                  style={{ fontSize: "0.8rem" }}>
-                  открыть
-                </a>
-              </td>
-              <td style={{ fontSize: "0.75rem" }}>{op.created_at?.slice(0, 10)}</td>
-              <td>
-                <div className="d-flex gap-1">
-                  <button className="btn btn-sm btn-outline-primary" style={{ fontSize: "0.7rem" }}
-                    onClick={() => openEdit(op)}>
-                    изменить
-                  </button>
-                  <button className="btn btn-sm btn-outline-warning" style={{ fontSize: "0.7rem" }}
-                    onClick={() => openRelink(op)}>
-                    перепривязать
-                  </button>
-                  <button className="btn btn-sm btn-outline-danger" style={{ fontSize: "0.7rem" }}
-                    onClick={() => deleteOperator(op.id)}>
-                    удалить
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* --- Активные связки --- */}
-      <h6 className="mb-2" style={{ color: "#f0f6fc" }}>
-        Активные связки
-        <button className="btn btn-sm btn-outline-secondary ms-2" onClick={loadLinks}
-          style={{ fontSize: "0.65rem", padding: "1px 6px" }} title="Обновить">
-          ↻
-        </button>
-      </h6>
-      <table className="table table-sm table-dark table-striped mb-4">
-        <thead>
-          <tr>
-            <th>Оператор</th>
-            <th>Мастер</th>
-            <th>Создана</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {links.length === 0 && (
-            <tr><td colSpan={4} className="text-center text-muted">Нет активных связок</td></tr>
-          )}
-          {links.map((l) => (
-            <tr key={l.link_id}>
-              <td>
-                <span className="fw-semibold">{l.operator_nickname}</span>
-                <code style={{ fontSize: "0.7rem", marginLeft: 6 }}>#{l.operator_id}</code>
-              </td>
-              <td>
-                <span>{l.master_label || `Мастер #${l.master_key_id}`}</span>
-                <code style={{ fontSize: "0.7rem", marginLeft: 6 }}>#{l.master_key_id}</code>
-              </td>
-              <td style={{ fontSize: "0.75rem" }}>{formatTime(l.created_at)}</td>
-              <td>
-                <button className="btn btn-sm btn-outline-warning" style={{ fontSize: "0.7rem" }}
-                  onClick={() => unlinkOperator(l.operator_uuid, l.master_key_id)}>
-                  разорвать
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* --- Edit Operator Modal --- */}
-      {editOp && (
-        <div className="modal fade show d-block" tabIndex="-1"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          onClick={(e) => e.target === e.currentTarget && setEditOp(null)}>
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Редактировать оператора #{editOp.id}</h5>
-                <button type="button" className="btn-close" onClick={() => setEditOp(null)}></button>
-              </div>
-              <div className="modal-body">
-                <form onSubmit={handleEditSave}>
-                  <div className="mb-3">
-                    <label className="form-label">Никнейм</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={editForm.nickname}
-                      onChange={(e) => setEditForm((p) => ({ ...p, nickname: e.target.value }))}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Компания</label>
-                    <select
-                      className="form-select"
-                      value={editForm.companyId || ""}
-                      onChange={(e) => setEditForm((p) => ({ ...p, companyId: e.target.value }))}
-                      style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}
-                    >
-                      <option value="">Без компании</option>
-                      {companies.map((c) => (
-                        <option key={c.id} value={String(c.id)}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Режим отображения иконок</label>
-                    <select
-                      className="form-select"
-                      value={editForm.icon_display_mode}
-                      onChange={(e) => setEditForm((p) => ({ ...p, icon_display_mode: e.target.value }))}
-                      style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}
-                    >
-                      {ICON_DISPLAY_MODES.map((m) => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">
-                      Доступные мастера
-                      <span style={{ fontSize: "0.7rem", color: "#8b949e", marginLeft: 6 }}>
-                        (пусто = все доступны)
-                      </span>
-                    </label>
-                    <div style={{
-                      maxHeight: "180px", overflowY: "auto",
-                      background: "#0d1117", border: "1px solid #30363d",
-                      borderRadius: 4, padding: "6px 8px",
-                    }}>
-                      {internalKeys.length === 0 && (
-                        <div style={{ color: "#8b949e", fontSize: "0.75rem" }}>Нет внутренних ключей</div>
-                      )}
-                      {internalKeys.map((k) => {
-                        const checked = editForm.allowed_master_keys.includes(k.id);
-                        return (
-                          <label key={k.id} style={{
-                            display: "flex", alignItems: "center", gap: 6,
-                            padding: "2px 0", cursor: "pointer",
-                            fontSize: "0.8rem", color: "#c9d1d9",
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleMasterKey(k.id)}
-                              className="form-check-input"
-                              style={{ margin: 0 }}
-                            />
-                            {k.label || `Ключ #${k.id}`}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </form>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-sm btn-secondary" onClick={() => setEditOp(null)}>Отмена</button>
-                <button className="btn btn-sm btn-primary" onClick={handleEditSave}>Сохранить</button>
-              </div>
+    <div data-eopp-component="OperatorsTab" className="operators-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Операторы</h2>
+            <div className="small text-muted">
+              Настройки операторов и ограничения доступа к master/API keys
             </div>
           </div>
-        </div>
-      )}
+        }
+        right={<Button size="small" onClick={refreshAll}>Обновить</Button>}
+      />
 
-      {/* --- Relink Modal --- */}
-      {relinkOp && (
-        <div className="modal fade show d-block" tabIndex="-1"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          onClick={(e) => e.target === e.currentTarget && setRelinkOp(null)}>
-          <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Перепривязать оператора</h5>
-                <button type="button" className="btn-close" onClick={() => setRelinkOp(null)}></button>
-              </div>
-              <div className="modal-body">
-                <p style={{ fontSize: "0.8rem", color: "#8b949e" }}>
-                  Оператор: <strong style={{ color: "#c9d1d9" }}>{relinkOp.nickname || `#${relinkOp.id}`}</strong>
-                  {relinkOp.currentMasterId && (
-                    <> (текущий мастер: #{relinkOp.currentMasterId})</>
-                  )}
-                </p>
-                <label className="form-label" style={{ fontSize: "0.8rem" }}>Новый мастер</label>
-                <select
-                  className="form-select"
-                  value={relinkMasterId || ""}
-                  onChange={(e) => setRelinkMasterId(e.target.value ? Number(e.target.value) : null)}
-                  style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}
-                >
-                  <option value="">Выберите мастера</option>
-                  {(relinkOp.availableKeys || []).map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.label || `Ключ #${k.id}`} {k.is_external ? "(внешний)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="modal-footer">
-                <button className="btn btn-sm btn-secondary" onClick={() => setRelinkOp(null)}>Отмена</button>
-                <button className="btn btn-sm btn-primary" onClick={handleRelink} disabled={!relinkMasterId}>
-                  Перепривязать
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- Действия (distribution answers) --- */}
-      <h6 className="mb-2" style={{ color: "#f0f6fc" }}>
-        Действия
-        <span style={{ fontSize: "0.7rem", color: "#8b949e", marginLeft: 8 }}>
-          {answersTotal} всего
-        </span>
-        <button className="btn btn-sm btn-outline-secondary ms-2" onClick={() => loadAnswers(answersPage)}
-          style={{ fontSize: "0.65rem", padding: "1px 6px" }} title="Обновить">
-          ↻
-        </button>
-      </h6>
-      <table className="table table-sm table-dark table-striped mb-2">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Капча</th>
-            <th>Оператор</th>
-            <th>Иконка</th>
-            <th>X</th>
-            <th>Y</th>
-            <th>Время</th>
-            <th>Δ мс</th>
-          </tr>
-        </thead>
-        <tbody>
-          {answers.length === 0 && (
-            <tr><td colSpan={8} className="text-center text-muted">Нет действий</td></tr>
-          )}
-          {answers.map((a) => (
-            <tr key={a.id}>
-              <td>{a.id}</td>
-              <td>
-                <code style={{ fontSize: "0.7rem" }} title={a.captcha_id}>
-                  {a.captcha_id?.slice(0, 12)}…
-                </code>
-              </td>
-              <td>
-                <span className="fw-semibold">{a.operator_nickname}</span>
-                <code style={{ fontSize: "0.7rem", marginLeft: 4 }}>#{a.operator_id}</code>
-              </td>
-              <td>{a.icon_position + 1}/5</td>
-              <td>{a.x}</td>
-              <td>{a.y}</td>
-              <td style={{ fontSize: "0.7rem" }}>{formatTime(a.created_at)}</td>
-              <td style={{ fontSize: "0.7rem", color: a.duration_ms != null ? "#c9d1d9" : "#484f58" }}>
-                {a.duration_ms != null ? `${a.duration_ms} ms` : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {answersTotalPages > 1 && (
-        <div className="d-flex justify-content-center align-items-center gap-2 mb-3">
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            disabled={answersPage <= 1}
-            onClick={() => loadAnswers(answersPage - 1)}
-            style={{ fontSize: "0.7rem" }}
-          >
-            ←
-          </button>
-          <span style={{ fontSize: "0.75rem", color: "#8b949e" }}>
-            {answersPage} / {answersTotalPages}
-          </span>
-          <button
-            className="btn btn-sm btn-outline-secondary"
-            disabled={answersPage >= answersTotalPages}
-            onClick={() => loadAnswers(answersPage + 1)}
-            style={{ fontSize: "0.7rem" }}
-          >
-            →
-          </button>
-        </div>
-      )}
+      {renderSettings()}
     </div>
   );
 }

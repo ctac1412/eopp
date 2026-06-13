@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from src.models import ConfirmUsageBody, FailUsageBody, RegisterUsageBody
+from src.policies.access_policy import token_from_request
 from src.services import usage_service
 
 router = APIRouter(tags=["usage"])
@@ -29,7 +30,7 @@ async def handle_confirm_usage(body: ConfirmUsageBody):
 async def delete_usage_log_entry(usage_log_id: int, request: Request):
     status, content = usage_service.delete_usage(
         usage_log_id,
-        request.headers.get("X-Admin-Token"),
+        token_from_request(request),
     )
     return JSONResponse(status_code=status, content=content)
 
@@ -43,7 +44,7 @@ async def get_usage_log(
     hide_test: bool = Query(True),
 ):
     status, content = usage_service.list_usage(
-        admin_token=request.headers.get("X-Admin-Token"),
+        admin_token=token_from_request(request),
         api_key_id=api_key_id,
         api_key=api_key,
         hide_test=hide_test,

@@ -3,8 +3,8 @@
 from src.repositories import payout_repo
 
 
-def list_payouts() -> tuple[int, list[dict]]:
-    return 200, payout_repo.list_payouts()
+def list_payouts(company_id: int | None = None) -> tuple[int, list[dict]]:
+    return 200, payout_repo.list_payouts(company_id=company_id)
 
 
 def preview_payout(body) -> tuple[int, dict]:
