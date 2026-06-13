@@ -9,6 +9,7 @@ def tariff_to_dict(tariff: Tariff | CompanyTariff, *, source: str, company_id: i
         "price_reschedule": tariff.price_reschedule,
         "price_create_peak": tariff.price_create_peak,
         "price_custom_slots": tariff.price_custom_slots,
+        "executor_amount": getattr(tariff, "executor_amount", 0),
         "source": source,
     }
     if company_id is not None:
@@ -81,6 +82,7 @@ def upsert_company_tariff(
     price_reschedule: int,
     price_create_peak: int | None = None,
     price_custom_slots: int | None = None,
+    executor_amount: int = 0,
 ) -> CompanyTariff:
     now = datetime.now(UTC).isoformat()
     with get_session() as session:
@@ -90,6 +92,7 @@ def upsert_company_tariff(
             tariff.price_reschedule = price_reschedule
             tariff.price_create_peak = price_create_peak
             tariff.price_custom_slots = price_custom_slots
+            tariff.executor_amount = executor_amount
             tariff.updated_at = now
         else:
             tariff = CompanyTariff(
@@ -98,6 +101,7 @@ def upsert_company_tariff(
                 price_reschedule=price_reschedule,
                 price_create_peak=price_create_peak,
                 price_custom_slots=price_custom_slots,
+                executor_amount=executor_amount,
                 created_at=now,
                 updated_at=now,
             )

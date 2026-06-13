@@ -127,6 +127,44 @@ def _operator_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, di
     return payouts
 
 
+def _executor_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, dict]:
+    if not invoice_ids:
+        return {}
+    placeholders = ",".join("?" * len(invoice_ids))
+    rows = conn.execute(
+        f"""
+        WITH log_executor AS (
+            SELECT
+                ul.id AS usage_log_id,
+                MIN(uec.user_id) AS user_id,
+                COALESCE(ct.executor_amount, 0) AS executor_amount
+            FROM usage_log ul
+            JOIN company_tariffs ct ON ct.company_id = ul.company_id
+            JOIN user_executor_companies uec
+              ON uec.active = 1
+             AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
+            WHERE ul.invoice_id IN ({placeholders})
+              AND ul.company_id IS NOT NULL
+              AND COALESCE(ct.executor_amount, 0) > 0
+            GROUP BY ul.id, ct.executor_amount
+        )
+        SELECT user_id, COUNT(*) AS log_count, SUM(executor_amount) AS amount
+        FROM log_executor
+        WHERE user_id IS NOT NULL
+        GROUP BY user_id
+        """,
+        invoice_ids,
+    ).fetchall()
+    payouts: dict[int, dict] = {}
+    for row in rows:
+        user_id = int(row["user_id"])
+        payouts[user_id] = {
+            "executor_count": int(row["log_count"] or 0),
+            "executor_amount": float(row["amount"] or 0),
+        }
+    return payouts
+
+
 def calculate_payout(
     invoice_ids: list[int],
     expense_ids: list[int],
@@ -206,7 +244,9 @@ def calculate_payout(
     total_compensated = sum(compensated.values())
     operator_payouts = _operator_payouts_for_invoices(conn, invoice_ids)
     total_operator_amount = sum(item["operator_amount"] for item in operator_payouts.values())
-    net = invoices_total - total_compensated - total_operator_amount
+    executor_payouts = _executor_payouts_for_invoices(conn, invoice_ids)
+    total_executor_amount = sum(item["executor_amount"] for item in executor_payouts.values())
+    net = invoices_total - total_compensated - total_operator_amount - total_executor_amount
 
     # 4. Делим net пропорционально split_pct только между директорами.
     split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
@@ -242,8 +282,10 @@ def calculate_payout(
         exp_comp = user_expenses_comp.get(uid, 0.0)
         operator_item = operator_payouts.get(uid, {})
         operator_amount = operator_item.get("operator_amount", 0.0)
+        executor_item = executor_payouts.get(uid, {})
+        executor_amount = executor_item.get("executor_amount", 0.0)
         profit = profit_shares.get(uid, 0.0)
-        total = profit + exp_comp + operator_amount
+        total = profit + exp_comp + operator_amount + executor_amount
         payout_shares.append(
             {
                 "user_id": uid,
@@ -253,25 +295,34 @@ def calculate_payout(
                 "expenses_compensation": exp_comp,
                 "operator_icons": operator_item.get("operator_icons", 0),
                 "operator_amount": operator_amount,
+                "executor_count": executor_item.get("executor_count", 0),
+                "executor_amount": executor_amount,
                 "profit_share": profit,
                 "total": total,
             }
         )
-    for uid, operator_item in operator_payouts.items():
+    side_payment_user_ids = set(operator_payouts) | set(executor_payouts)
+    for uid in side_payment_user_ids:
         if uid in payout_user_ids:
             continue
+        operator_item = operator_payouts.get(uid, {})
         operator_amount = operator_item.get("operator_amount", 0.0)
+        executor_item = executor_payouts.get(uid, {})
+        executor_amount = executor_item.get("executor_amount", 0.0)
+        exp_comp = user_expenses_comp.get(uid, 0.0)
         payout_shares.append(
             {
                 "user_id": uid,
                 "split_pct": 0.0,
                 "commission_amount": user_commission.get(uid, 0.0),
                 "tax_amount": user_tax.get(uid, 0.0),
-                "expenses_compensation": user_expenses_comp.get(uid, 0.0),
+                "expenses_compensation": exp_comp,
                 "operator_icons": operator_item.get("operator_icons", 0),
                 "operator_amount": operator_amount,
+                "executor_count": executor_item.get("executor_count", 0),
+                "executor_amount": executor_amount,
                 "profit_share": 0.0,
-                "total": operator_amount + user_expenses_comp.get(uid, 0.0),
+                "total": operator_amount + executor_amount + exp_comp,
             }
         )
 
@@ -282,6 +333,7 @@ def calculate_payout(
         "total_commission": total_commission,
         "total_tax": total_tax,
         "total_operator_amount": total_operator_amount,
+        "total_executor_amount": total_executor_amount,
         "expenses_total": sum(float(e["amount"]) for e in expenses),
         "compensated_total": total_compensated,
         "net": net,
@@ -307,6 +359,7 @@ def preview_payout(
             "total_commission": 0.0,
             "total_tax": 0.0,
             "total_operator_amount": 0.0,
+            "total_executor_amount": 0.0,
             "total_expenses": 0.0,
             "net_amount": 0.0,
             "shares": [
@@ -317,6 +370,8 @@ def preview_payout(
                     "expenses_compensation": 0.0,
                     "operator_icons": 0,
                     "operator_amount": 0.0,
+                    "executor_count": 0,
+                    "executor_amount": 0.0,
                     "profit_share": 0.0,
                     "total": 0.0,
                 }
@@ -348,6 +403,7 @@ def preview_payout(
         "total_commission": calc["total_commission"],
         "total_tax": calc["total_tax"],
         "total_operator_amount": calc["total_operator_amount"],
+        "total_executor_amount": calc["total_executor_amount"],
         "total_expenses": original_expenses_total,
         "net_amount": net_amount,
         "shares": calc["payout_shares"],
@@ -368,14 +424,16 @@ def _create_share(
     expenses_compensation: float,
     operator_icons: int,
     operator_amount: float,
+    executor_count: int,
+    executor_amount: float,
     profit_share: float,
     total: float,
 ) -> int:
     conn = get_connection()
     cur = conn.execute(
         """INSERT INTO payout_shares
-           (payout_id, user_id, split_pct, commission_amount, tax_amount, expenses_compensation, operator_icons, operator_amount, profit_share, total)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           (payout_id, user_id, split_pct, commission_amount, tax_amount, expenses_compensation, operator_icons, operator_amount, executor_count, executor_amount, profit_share, total)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             payout_id,
             user_id,
@@ -385,6 +443,8 @@ def _create_share(
             expenses_compensation,
             operator_icons,
             operator_amount,
+            executor_count,
+            executor_amount,
             profit_share,
             total,
         ),
@@ -460,6 +520,8 @@ def create_payout_with_calculation(
             share["expenses_compensation"],
             share.get("operator_icons", 0),
             share.get("operator_amount", 0.0),
+            share.get("executor_count", 0),
+            share.get("executor_amount", 0.0),
             share["profit_share"],
             share["total"],
         )
@@ -506,8 +568,9 @@ def _build_payout_response(payout: dict) -> dict:
     total_commission = sum(s.get("commission_amount", 0) for s in payout["shares"])
     total_tax = sum(s.get("tax_amount", 0) for s in payout["shares"])
     total_operator_amount = sum(s.get("operator_amount", 0) for s in payout["shares"])
+    total_executor_amount = sum(s.get("executor_amount", 0) for s in payout["shares"])
 
-    net_amount = invoices_total - expenses_compensated - total_operator_amount
+    net_amount = invoices_total - expenses_compensated - total_operator_amount - total_executor_amount
 
     # Копируем shares в удобном формате
     shares = payout["shares"]
@@ -518,6 +581,7 @@ def _build_payout_response(payout: dict) -> dict:
         "total_commission": total_commission,
         "total_tax": total_tax,
         "total_operator_amount": total_operator_amount,
+        "total_executor_amount": total_executor_amount,
         "total_expenses": original_expenses_total,
         "net_amount": net_amount,
         "shares": shares,
@@ -654,6 +718,8 @@ def recalculate_payout(
             share["expenses_compensation"],
             share.get("operator_icons", 0),
             share.get("operator_amount", 0.0),
+            share.get("executor_count", 0),
+            share.get("executor_amount", 0.0),
             share["profit_share"],
             share["total"],
         )

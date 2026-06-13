@@ -85,6 +85,7 @@ function PayoutDetails({ payout }) {
     { title: "Налог", dataIndex: "tax_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
     { title: "Расходы", dataIndex: "expenses_compensation", align: "right", render: (value) => <MoneyCell value={value} tone="text-danger" /> },
     { title: "Операторы", dataIndex: "operator_amount", align: "right", render: (value, row) => <span title={`${row.operator_icons || 0} иконок`}><MoneyCell value={value} tone="text-info" /></span> },
+    { title: "Исполнители", dataIndex: "executor_amount", align: "right", render: (value, row) => <span title={`${row.executor_count || 0} логов`}><MoneyCell value={value} tone="text-info" /></span> },
     { title: "Прибыль", dataIndex: "profit_share", align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
     { title: "Итого", dataIndex: "total", align: "right", render: (value) => <MoneyCell value={value} /> },
   ];
@@ -148,12 +149,13 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
     commission: filteredPayouts.reduce((sum, payout) => sum + (payout.total_commission || 0), 0),
     tax: filteredPayouts.reduce((sum, payout) => sum + (payout.total_tax || 0), 0),
     operators: filteredPayouts.reduce((sum, payout) => sum + (payout.total_operator_amount || 0), 0),
+    executors: filteredPayouts.reduce((sum, payout) => sum + (payout.total_executor_amount || 0), 0),
   }), [filteredPayouts]);
 
   const userTotals = useMemo(() => {
     const totals = {};
     allUserNames.forEach((name) => {
-      totals[name] = { total: 0, commission: 0, tax: 0, expenses: 0, operators: 0, profit: 0 };
+      totals[name] = { total: 0, commission: 0, tax: 0, expenses: 0, operators: 0, executors: 0, profit: 0 };
     });
     filteredPayouts.forEach((payout) => {
       (payout.shares || []).forEach((share) => {
@@ -163,6 +165,7 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
         totals[share.user_name].tax += share.tax_amount || 0;
         totals[share.user_name].expenses += share.expenses_compensation || 0;
         totals[share.user_name].operators += share.operator_amount || 0;
+        totals[share.user_name].executors += share.executor_amount || 0;
         totals[share.user_name].profit += share.profit_share || 0;
       });
     });
@@ -178,6 +181,7 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
     { key: "income", label: "Доход", value: formatMoney(stats.income), tone: "success" },
     { key: "expenses", label: "Расходы", value: formatMoney(stats.expenses), tone: stats.expenses > 0 ? "danger" : "neutral" },
     { key: "operators", label: "Операторы", value: formatMoney(stats.operators), tone: stats.operators > 0 ? "info" : "neutral" },
+    { key: "executors", label: "Исполнители", value: formatMoney(stats.executors), tone: stats.executors > 0 ? "info" : "neutral" },
     { key: "net", label: "Net", value: formatMoney(stats.net), tone: stats.net > 0 ? "info" : "neutral" },
   ];
 
@@ -269,6 +273,7 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
                   <div><span>Налог</span><strong className="text-warning">{formatMoney(total.tax)}</strong></div>
                   <div><span>Расходы</span><strong className="text-danger">-{formatMoney(total.expenses)}</strong></div>
                   <div><span>Операторы</span><strong className="text-info">{formatMoney(total.operators)}</strong></div>
+                  <div><span>Исполнители</span><strong className="text-info">{formatMoney(total.executors)}</strong></div>
                   <div><span>Прибыль</span><strong className="text-success">{formatMoney(total.profit)}</strong></div>
                   <div className="payout-user-total"><span>Итого</span><strong>{formatMoney(total.total)}</strong></div>
                 </div>

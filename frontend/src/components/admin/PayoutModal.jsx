@@ -242,6 +242,7 @@ export function PayoutModal({
     { title: "Налог", dataIndex: "tax_amount", width: 110, align: "right", render: formatMoney },
     { title: "Расходы", dataIndex: "expenses_compensation", width: 110, align: "right", render: formatMoney },
     { title: "Операторы", dataIndex: "operator_amount", width: 120, align: "right", render: (value, share) => `${formatMoney(value)} / ${share.operator_icons || 0}` },
+    { title: "Исполнители", dataIndex: "executor_amount", width: 120, align: "right", render: (value, share) => `${formatMoney(value)} / ${share.executor_count || 0}` },
     { title: "Итого", dataIndex: "total", width: 110, align: "right", render: (value) => <strong>{formatMoney(value)}</strong> },
   ];
 

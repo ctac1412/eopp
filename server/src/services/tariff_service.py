@@ -34,6 +34,7 @@ def upsert_company_tariff(company_id: int, body) -> tuple[int, dict]:
         body.price_reschedule,
         body.price_create_peak,
         body.price_custom_slots,
+        body.executor_amount or 0,
     )
     return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
 

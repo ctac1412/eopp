@@ -139,6 +139,7 @@ export function CompaniesTab({ adminToken, onError }) {
     price_reschedule: "",
     price_create_peak: "",
     price_custom_slots: "",
+    executor_amount: "",
   });
   const [tariffSaving, setTariffSaving] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -274,6 +275,7 @@ export function CompaniesTab({ adminToken, onError }) {
       price_reschedule: "",
       price_create_peak: "",
       price_custom_slots: "",
+      executor_amount: "",
     });
     try {
       const res = await fetch(`/admin/company-tariffs/${company.id}`, {
@@ -287,6 +289,7 @@ export function CompaniesTab({ adminToken, onError }) {
         price_reschedule: data.price_reschedule ?? "",
         price_create_peak: data.price_create_peak ?? "",
         price_custom_slots: data.price_custom_slots ?? "",
+        executor_amount: data.executor_amount ?? "",
       });
     } catch (err) {
       onError?.(`Company tariff load failed: ${err.message}`);
@@ -302,6 +305,7 @@ export function CompaniesTab({ adminToken, onError }) {
         price_reschedule: Number(tariffForm.price_reschedule) || 0,
         price_create_peak: tariffForm.price_create_peak === "" ? null : Number(tariffForm.price_create_peak),
         price_custom_slots: tariffForm.price_custom_slots === "" ? null : Number(tariffForm.price_custom_slots),
+        executor_amount: Number(tariffForm.executor_amount) || 0,
       };
       const res = await fetch(`/admin/company-tariffs/${tariffCompany.id}`, {
         method: "PUT",
@@ -583,6 +587,7 @@ export function CompaniesTab({ adminToken, onError }) {
             ["price_reschedule", "Reschedule"],
             ["price_create_peak", "Create peak"],
             ["price_custom_slots", "Custom slots"],
+            ["executor_amount", "Executor"],
           ].map(([field, label]) => (
             <label key={field} className="form-label small mb-0">
               {label}

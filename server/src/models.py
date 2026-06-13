@@ -122,6 +122,7 @@ class TariffBody(BaseModel):
     price_reschedule: int
     price_create_peak: int | None = None
     price_custom_slots: int | None = None
+    executor_amount: int | None = None
 
 
 class CreateInvoiceBody(BaseModel):
