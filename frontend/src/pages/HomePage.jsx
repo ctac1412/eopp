@@ -10,7 +10,6 @@ import LogViewer from "../components/LogViewer";
 import { CaptchaTab } from "./CaptchaTab";
 import { HistoryTab } from "./HistoryTab";
 import { HomeOperatorStrip } from "./HomeOperatorStrip";
-import { HomePluginChannels } from "./HomePluginChannels";
 import { HomeScheduledEventsStrip } from "./HomeScheduledEventsStrip";
 import { PublicCaptchasTab } from "./PublicCaptchasTab";
 import { getCurrentOperatorPageUrl } from "./homeOperatorAccess";
@@ -131,11 +130,6 @@ export function HomePage() {
 
         <aside data-eopp-component="HomeSidePanel" className="home-workspace__side">
           <HomeOperatorStrip operators={connectedOperators} />
-          <HomePluginChannels
-            adminToken={localStorage.getItem("admin_session_active") === "1" ? "session" : null}
-            masterKeyId={apiKeyId}
-            onError={(message) => useCaptchaStore.getState().addLog(message, "error")}
-          />
           <HomeScheduledEventsStrip events={scheduledEvents} />
 
           <div data-eopp-component="HomeTabsNav" className="home-tabs-nav">

@@ -3,7 +3,6 @@ import { Card, Space } from "antd";
 import {
   Button,
   CheckboxField,
-  StatusTag,
   Toolbar,
 } from "../../ui";
 import {
@@ -66,34 +65,6 @@ function operatorCompanyLabel(op) {
   return op.company_name || "Без компании";
 }
 
-function channelCompanyLabel(channel) {
-  return channel.company?.name || channel.raw_company_name || "Без компании";
-}
-
-function channelUserLabel(channel) {
-  if (typeof channel.eopp_user === "string") return channel.eopp_user;
-  return channel.eopp_user?.name || channel.eopp_user_name || "Пользователь не найден";
-}
-
-function channelRouteLabel(channel) {
-  if (channel.route_kind === "reservation_card") return "карточка";
-  if (channel.route_kind === "eopp_root") return "root";
-  return "маршрут ?";
-}
-
-function canAssignChannelToMaster(channel, master) {
-  if (!channel || !master) return false;
-  if (master.executor_all_companies === true) return true;
-  const executorCompanyIds = Array.isArray(master.executor_company_ids)
-    ? master.executor_company_ids.map(Number).filter(Boolean)
-    : [];
-  return (
-    channel.visibility === "company_masters"
-    && channel.company_id != null
-    && executorCompanyIds.includes(Number(channel.company_id))
-  );
-}
-
 function groupByLabel(items, getLabel) {
   const groups = new Map();
   items.forEach((item) => {
@@ -126,7 +97,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const [operators, setOperators] = useState([]);
   const [links, setLinks] = useState([]);
   const [keys, setKeys] = useState([]);
-  const [pluginChannels, setPluginChannels] = useState([]);
   const [streams, setStreams] = useState([]);
   const [scheduledEvents, setScheduledEvents] = useState([]);
   const [now, setNow] = useState(() => Date.now());
@@ -143,28 +113,25 @@ export function OperationsDashboardTab({ adminToken, onError }) {
 
   const loadAll = useCallback(async () => {
     try {
-      const [operatorsRes, linksRes, keysRes, streamsRes, scheduledRes, channelsRes] = await Promise.all([
+      const [operatorsRes, linksRes, keysRes, streamsRes, scheduledRes] = await Promise.all([
         fetch("/admin/operators", { headers: adminHeaders(adminToken) }),
         fetch("/admin/operator-links", { headers: adminHeaders(adminToken) }),
         fetch("/api-keys", { headers: adminHeaders(adminToken) }),
         fetch("/admin/streams", { headers: adminHeaders(adminToken) }),
         fetch("/admin/scheduled-events", { headers: adminHeaders(adminToken) }),
-        fetch("/admin/plugin-channel/sessions", { headers: adminHeadersJson(adminToken) }),
       ]);
-      const [operatorsData, linksData, keysData, streamsData, scheduledData, channelsData] = await Promise.all([
+      const [operatorsData, linksData, keysData, streamsData, scheduledData] = await Promise.all([
         operatorsRes.json(),
         linksRes.json(),
         keysRes.json(),
         streamsRes.json(),
         scheduledRes.json(),
-        channelsRes.json().catch(() => ({})),
       ]);
       setOperators(Array.isArray(operatorsData) ? operatorsData : []);
       setLinks(Array.isArray(linksData) ? linksData : []);
       setKeys(Array.isArray(keysData) ? keysData : keysData.keys || []);
       setStreams(Array.isArray(streamsData) ? streamsData : []);
       setScheduledEvents(Array.isArray(scheduledData) ? scheduledData : []);
-      setPluginChannels(Array.isArray(channelsData.sessions) ? channelsData.sessions : []);
     } catch {
       onError?.("Ошибка загрузки оперативного дэшборда");
     }
@@ -196,22 +163,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     links.forEach((link) => map.set(Number(link.operator_id), link));
     return map;
   }, [links]);
-
-  const availablePluginChannels = useMemo(
-    () => pluginChannels.filter((channel) => channel.status === "open" && !channel.claimed_master_key_id),
-    [pluginChannels],
-  );
-
-  const pluginChannelsByMasterId = useMemo(() => {
-    const map = new Map();
-    pluginChannels.forEach((channel) => {
-      const masterId = Number(channel.claimed_master_key_id);
-      if (!Number.isFinite(masterId) || masterId <= 0 || channel.status === "closed") return;
-      if (!map.has(masterId)) map.set(masterId, []);
-      map.get(masterId).push(channel);
-    });
-    return map;
-  }, [pluginChannels]);
 
   const onlineOperators = useMemo(
     () => operators.filter((op) => op.online || onlineStreams.has(operatorApiKeyId(op.id))),
@@ -411,16 +362,9 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     updateDragAutoScroll(event);
   };
 
-  const dragChannel = (event, channelId) => {
-    setDragIntent({ type: "channel", channelId: Number(channelId) });
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/json", JSON.stringify({ channelId: Number(channelId) }));
-    updateDragAutoScroll(event);
-  };
-
   const startAreaSelection = (event) => {
     if (event.button !== 0) return;
-    if (event.target.closest(".ops-operator-chip, .ops-channel-card, button, input, label, a, .ant-card-head")) return;
+    if (event.target.closest(".ops-operator-chip, button, input, label, a, .ant-card-head")) return;
     const board = boardRef.current;
     if (!board) return;
     const bounds = board.getBoundingClientRect();
@@ -440,51 +384,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
       return Array.isArray(payload.operatorIds) ? payload.operatorIds.map(Number).filter(Boolean) : [];
     } catch {
       return [];
-    }
-  };
-
-  const droppedChannelId = (event) => {
-    try {
-      const payload = JSON.parse(event.dataTransfer.getData("application/json") || "{}");
-      const channelId = Number(payload.channelId);
-      return Number.isFinite(channelId) && channelId > 0 ? channelId : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const assignChannelToMaster = async (channelId, masterId) => {
-    const channel = pluginChannels.find((item) => Number(item.id) === Number(channelId));
-    const master = masterById.get(Number(masterId));
-    if (!canAssignChannelToMaster(channel, master)) {
-      onError?.(`Канал ${channelCompanyLabel(channel || {})} нельзя назначить мастеру ${keyLabel(master || { id: masterId })}: компания не подходит`);
-      return;
-    }
-    try {
-      const response = await fetch(`/admin/plugin-channel/sessions/${channelId}/assign`, {
-        method: "POST",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify({ master_key_id: Number(masterId) }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || data.detail || `HTTP ${response.status}`);
-      await loadAll();
-    } catch (error) {
-      onError?.(error.message || "Ошибка назначения канала");
-    }
-  };
-
-  const releaseChannel = async (channelId) => {
-    try {
-      const response = await fetch(`/admin/plugin-channel/sessions/${channelId}/release`, {
-        method: "POST",
-        headers: adminHeaders(adminToken),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || data.detail || `HTTP ${response.status}`);
-      await loadAll();
-    } catch (error) {
-      onError?.(error.message || "Ошибка освобождения канала");
     }
   };
 
@@ -567,11 +466,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     event.preventDefault();
     stopDragAutoScroll();
     setDragIntent(null);
-    const channelId = droppedChannelId(event);
-    if (channelId) {
-      assignChannelToMaster(channelId, masterId);
-      return;
-    }
     const ids = droppedOperatorIds(event);
     if (ids.length) assignOperators(ids, masterId);
   };
@@ -590,10 +484,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
 
   const masterDropClass = (master) => {
     if (!dragIntent) return "";
-    if (dragIntent.type === "channel") {
-      const channel = pluginChannels.find((item) => Number(item.id) === Number(dragIntent.channelId));
-      return canAssignChannelToMaster(channel, master) ? "can-drop" : "cannot-drop";
-    }
     if (dragIntent.type === "operators") {
       const draggedOperators = operators.filter((op) => dragIntent.operatorIds.includes(Number(op.id)));
       if (!draggedOperators.length) return "";
@@ -631,39 +521,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     );
   };
 
-  const renderChannelCard = (channel, { compact = false } = {}) => (
-    <div
-      key={channel.id}
-      className={`ops-channel-card ${compact ? "ops-channel-card--compact" : ""}`}
-      draggable
-      onDragStart={(event) => dragChannel(event, channel.id)}
-      onDrag={(event) => updateDragAutoScroll(event)}
-      onDragEnd={() => {
-        stopDragAutoScroll();
-        setDragIntent(null);
-      }}
-    >
-      <div className="ops-channel-card__top">
-        <span className="ops-channel-card__company" title={channelCompanyLabel(channel)}>
-          {channelCompanyLabel(channel)}
-        </span>
-        <StatusTag status={channel.status === "claimed" ? "online" : "warning"} label={channel.status || "open"} />
-      </div>
-      <div className="ops-channel-card__user" title={channelUserLabel(channel)}>
-        {channelUserLabel(channel)}
-      </div>
-      <div className="ops-channel-card__meta">
-        <span>{channelRouteLabel(channel)}</span>
-        <span>{channel.reservation_id || "без брони"}</span>
-      </div>
-      {channel.claimed_master_key_id && (
-        <Button size="small" onClick={() => releaseChannel(channel.id)}>
-          Освободить
-        </Button>
-      )}
-    </div>
-  );
-
   return (
     <div data-eopp-component="OperationsDashboardTab" className="ops-dashboard-page">
       <Toolbar
@@ -681,19 +538,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
         <div className="ops-selection-surface__head">
           <span>Рабочая область распределения</span>
           <span>Выделяйте операторов рамкой мыши и перетаскивайте к мастерам</span>
-        </div>
-
-        <div data-eopp-component="OpsChannelRail" className="ops-channel-rail">
-          <div className="ops-channel-rail__head">
-            <span>Каналы EOPP</span>
-            <span>{availablePluginChannels.length} свободно · {pluginChannels.length} всего</span>
-          </div>
-          <div className="ops-channel-rail__list">
-            {availablePluginChannels.map((channel) => renderChannelCard(channel))}
-            {availablePluginChannels.length === 0 && (
-              <div className="ops-empty-slot">Нет свободных каналов</div>
-            )}
-          </div>
         </div>
 
         <div
@@ -719,7 +563,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
                 <div className="ops-company-group__masters">
                   {group.rows.map((master) => {
                     const assigned = operatorsByMasterId.get(Number(master.id)) || [];
-                    const assignedChannels = pluginChannelsByMasterId.get(Number(master.id)) || [];
                     const online = onlineStreams.has(Number(master.id));
                     const activeAssignedCount = assigned.filter((op) => (
                       op.online || onlineStreams.has(operatorApiKeyId(op.id))
@@ -775,11 +618,6 @@ export function OperationsDashboardTab({ adminToken, onError }) {
                         <div className="ops-master-card__operators">
                           {assigned.map(renderOperatorChip)}
                           {assigned.length === 0 && <div className="ops-empty-slot">Перетащите оператора сюда</div>}
-                        </div>
-                        <div className="ops-master-card__channels">
-                          <div className="ops-master-card__channels-title">Каналы</div>
-                          {assignedChannels.map((channel) => renderChannelCard(channel, { compact: true }))}
-                          {assignedChannels.length === 0 && <div className="ops-empty-slot">Перетащите канал сюда</div>}
                         </div>
                       </Card>
                     );

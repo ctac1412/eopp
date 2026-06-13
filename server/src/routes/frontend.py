@@ -66,7 +66,7 @@ CHANNEL_TEST_PAGE_HTML = """<!DOCTYPE html>
 <body data-route-kind="{route_kind}" data-reservation-id="{reservation_id}" data-eopp-user="{eopp_user}">
   <header>
     <h1>{heading}</h1>
-    <p>Local page for channel-extension injection testing.</p>
+    <p>Local page for channel flow testing.</p>
   </header>
   <main>
     <div class="layout">
