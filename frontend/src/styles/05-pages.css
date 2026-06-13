@@ -686,6 +686,34 @@
   font-weight: 700;
 }
 
+.channel-control-shell__context,
+.channel-control-shell__commands,
+.channel-control-shell__state,
+.channel-control-shell__logs {
+  min-width: 0;
+}
+
+.channel-control-shell__state,
+.channel-control-shell__logs {
+  display: grid;
+  gap: 5px;
+  border: 1px dashed rgba(148, 163, 184, 0.38);
+  border-radius: 7px;
+  padding: 13px;
+  background: rgba(13, 17, 23, 0.24);
+  color: var(--channel-muted);
+  font-size: 0.78rem;
+}
+
+.channel-control-shell__state strong,
+.channel-control-shell__logs strong {
+  color: var(--channel-text);
+}
+
+.channel-control-shell__logs {
+  min-height: 84px;
+}
+
 .channel-control-shell__placeholder {
   display: grid;
   gap: 5px;
