@@ -1,4 +1,32 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Card, Space } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
+
+const EVENT_LABELS = {
+  claim: "Claim",
+  publish: "Publish",
+  fail: "Fail",
+  wait_end: "Wait OK",
+  wait_timeout: "Wait timeout",
+  master_alive: "Master alive",
+};
+
+const EVENT_STATUS_OPTIONS = [
+  { value: "all", label: "Все события" },
+  { value: "master", label: "Master" },
+  { value: "slave", label: "Slave" },
+  { value: "timeout", label: "Timeout" },
+  { value: "errors", label: "Ошибки" },
+];
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -14,6 +42,7 @@ function formatDate(iso) {
 }
 
 function formatTs(ts) {
+  if (!ts) return "—";
   const d = new Date(ts * 1000);
   return d.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
@@ -22,19 +51,21 @@ function formatTs(ts) {
   });
 }
 
-const EVENT_LABELS = {
-  claim: "Claim",
-  publish: "Publish",
-  fail: "Fail",
-  wait_end: "Wait OK",
-  wait_timeout: "Wait timeout",
-  master_alive: "Master alive",
-};
+function formatDuration(seconds) {
+  const safeSeconds = Math.max(0, seconds || 0);
+  if (safeSeconds >= 3600) {
+    return `${Math.floor(safeSeconds / 3600)}ч ${Math.floor((safeSeconds % 3600) / 60)}м`;
+  }
+  if (safeSeconds >= 60) {
+    return `${Math.floor(safeSeconds / 60)}м ${safeSeconds % 60}с`;
+  }
+  return `${safeSeconds}с`;
+}
 
 function shortClientId(id) {
-  if (!id) return "";
+  if (!id) return "—";
   if (id.startsWith("test-variant-")) return id.replace("test-variant-", "v");
-  if (id.length > 12) return id.slice(0, 12) + "…";
+  if (id.length > 12) return `${id.slice(0, 12)}...`;
   return id;
 }
 
@@ -48,33 +79,59 @@ function eventKey(ev) {
   ].join("|");
 }
 
-function GroupLabel({ groupKey, details }) {
+function getGroupLabel(groupKey, details) {
   const meta = details?.meta;
   if (meta?.reservationId && meta?.facilityId) {
-    const fac = meta.facilityId.slice(0, 8);
-    const res = meta.reservationId;
-    if (res.startsWith("test-variant-")) {
-      return <span className="text-muted">v{res.replace("test-variant-", "")} / {fac}…</span>;
+    const facility = meta.facilityId.slice(0, 8);
+    const reservation = meta.reservationId;
+    if (reservation.startsWith("test-variant-")) {
+      return `v${reservation.replace("test-variant-", "")} / ${facility}...`;
     }
-    return <span className="text-muted">{res.slice(0, 8)}… / {fac}…</span>;
+    return `${reservation.slice(0, 8)}... / ${facility}...`;
   }
   const parts = groupKey?.split(":") || [];
-  if (parts.length >= 3) {
-    return <span className="text-muted">{parts[1].slice(0, 8)}… / {parts[2]}</span>;
-  }
-  return <span className="text-muted">{groupKey}</span>;
+  if (parts.length >= 3) return `${parts[1].slice(0, 8)}... / ${parts[2]}`;
+  return groupKey || "—";
+}
+
+function getEventTone(event) {
+  if (event.type === "wait_timeout" || event.type === "fail") return "failed";
+  if (event.type === "wait_end" || event.type === "publish") return "confirmed";
+  if (event.details?.role === "master") return "warning";
+  if (event.details?.role === "slave") return "online";
+  return "neutral";
+}
+
+function eventMatchesFilter(event, filter) {
+  if (filter === "all") return true;
+  if (filter === "master") return event.details?.role === "master";
+  if (filter === "slave") return event.details?.role === "slave";
+  if (filter === "timeout") return event.type === "wait_timeout";
+  if (filter === "errors") return event.type === "fail" || event.details?.error;
+  return true;
 }
 
 export function StreamsTab({ streams, streamsLoading, adminToken }) {
   const [events, setEvents] = useState([]);
   const [slotsStats, setSlotsStats] = useState(null);
   const [connected, setConnected] = useState(false);
-  const eventsRef = useRef(null);
+  const [eventFilter, setEventFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const [clearResult, setClearResult] = useState(null);
+  const [clearLoading, setClearLoading] = useState(false);
 
   useEffect(() => {
-    if (!adminToken) return;
+    const timer = window.setInterval(() => {
+      setNow(Math.floor(Date.now() / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-    const url = `/admin/stream/slots?admin_token=${encodeURIComponent(adminToken)}`;
+  useEffect(() => {
+    if (!adminToken) return undefined;
+
+    const url = "/admin/stream/slots";
     const es = new EventSource(url);
 
     es.onopen = () => setConnected(true);
@@ -95,150 +152,255 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
           });
           setSlotsStats(data.stats);
         }
-      } catch {}
+      } catch {
+        // Ignore malformed diagnostic stream events.
+      }
     };
     es.onerror = () => setConnected(false);
 
     return () => es.close();
   }, [adminToken]);
 
-  return (
-    <div>
-      <h2 className="fs-6 fw-semibold mb-3">Подключённые SSE-клиенты</h2>
-      {streamsLoading && streams.length === 0 && (
-        <p className="text-muted text-center">Загрузка…</p>
-      )}
-      {streams.length === 0 && !streamsLoading && (
-        <p className="text-muted text-center">Нет активных подключений</p>
-      )}
-      {streams.length > 0 && (
-        <div className="table-responsive mb-4">
-          <table className="table table-sm table-hover table-bordered">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Label</th>
-                <th>IP</th>
-                <th>Время подключения</th>
-                <th>Длительность</th>
-              </tr>
-            </thead>
-            <tbody>
-              {streams.map((s, idx) => {
-                const elapsed = s.connected_at
-                  ? Math.floor(Date.now() / 1000 - s.connected_at)
-                  : 0;
-                const durationStr =
-                  elapsed >= 3600
-                    ? `${Math.floor(elapsed / 3600)}ч ${Math.floor((elapsed % 3600) / 60)}м`
-                    : elapsed >= 60
-                      ? `${Math.floor(elapsed / 60)}м ${elapsed % 60}с`
-                      : `${elapsed}с`;
-                return (
-                  <tr key={idx}>
-                    <td className="font-monospace small">{s.api_key_id ?? "—"}</td>
-                    <td>{s.api_key_label || "—"}</td>
-                    <td className="font-monospace small">{s.ip || "—"}</td>
-                    <td className="small">
-                      {s.connected_at_iso
-                        ? formatDate(s.connected_at_iso)
-                        : "—"}
-                    </td>
-                    <td className="small">{durationStr}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredEvents = useMemo(
+    () =>
+      events.filter((event) => {
+        if (!eventMatchesFilter(event, eventFilter)) return false;
+        if (!normalizedSearch) return true;
+        const details = event.details || {};
+        const haystack = [
+          event.type,
+          event.group_key,
+          event.client_id,
+          details.role,
+          details.status,
+          details.error,
+          getGroupLabel(event.group_key, details),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      }),
+    [eventFilter, events, normalizedSearch],
+  );
 
-      <h2 className="fs-6 fw-semibold mb-3">
-        Общие слоты
-        <span
-          className={`ms-2 badge ${connected ? "bg-success" : "bg-secondary"}`}
-          style={{ fontSize: "0.6rem", verticalAlign: "middle" }}
-        >
-          {connected ? "стрим активен" : "нет стрима"}
+  const streamMetrics = useMemo(() => {
+    const uniqueKeys = new Set(streams.map((stream) => stream.api_key_id).filter((value) => value != null));
+    const uniqueIps = new Set(streams.map((stream) => stream.ip).filter(Boolean));
+    return [
+      { key: "clients", label: "SSE клиенты", value: streams.length, tone: streams.length > 0 ? "success" : "neutral" },
+      { key: "keys", label: "Ключи", value: uniqueKeys.size, tone: uniqueKeys.size > 0 ? "info" : "neutral" },
+      { key: "ips", label: "IP", value: uniqueIps.size, tone: uniqueIps.size > 0 ? "info" : "neutral" },
+      { key: "slot-stream", label: "Slot stream", value: connected ? "on" : "off", tone: connected ? "success" : "warning" },
+      { key: "events", label: "События", value: events.length, tone: events.length > 0 ? "info" : "neutral" },
+    ];
+  }, [connected, events.length, streams]);
+
+  const slotMetrics = useMemo(
+    () => [
+      { key: "groups", label: "Группы", value: slotsStats?.groups ?? "—", tone: "neutral" },
+      { key: "ready", label: "Готово", value: slotsStats?.ready ?? "—", tone: "success" },
+      { key: "pending", label: "Ожидают", value: slotsStats?.pending ?? "—", tone: "warning" },
+    ],
+    [slotsStats],
+  );
+
+  const clearSlotGroups = async () => {
+    if (!adminToken) return;
+    setClearLoading(true);
+    setClearResult(null);
+    try {
+      const res = await fetch("/admin/slots-group/clear", {
+        method: "POST",
+        headers: {},
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.detail || `HTTP ${res.status}`);
+      setEvents([]);
+      setSlotsStats(data.stats || null);
+      setClearResult("Группы слотов сброшены");
+    } catch (err) {
+      setClearResult(err.message);
+    } finally {
+      setClearLoading(false);
+    }
+  };
+
+  const streamColumns = [
+    {
+      title: "Key",
+      dataIndex: "api_key_id",
+      width: 90,
+      render: (value) => <span className="font-monospace">{value ?? "—"}</span>,
+    },
+    {
+      title: "Label",
+      dataIndex: "api_key_label",
+      ellipsis: true,
+      render: (value) => value || "—",
+    },
+    {
+      title: "IP",
+      dataIndex: "ip",
+      width: 150,
+      render: (value) => <span className="font-monospace">{value || "—"}</span>,
+    },
+    {
+      title: "Подключён",
+      dataIndex: "connected_at_iso",
+      width: 170,
+      render: formatDate,
+    },
+    {
+      title: "Длительность",
+      dataIndex: "connected_at",
+      width: 120,
+      render: (value) => formatDuration(value ? now - value : 0),
+    },
+  ];
+
+  const eventColumns = [
+    {
+      title: "Время",
+      dataIndex: "timestamp",
+      width: 90,
+      render: formatTs,
+    },
+    {
+      title: "Событие",
+      dataIndex: "type",
+      width: 140,
+      render: (value, event) => (
+        <StatusTag status={getEventTone(event)} label={EVENT_LABELS[value] || value || "—"} />
+      ),
+    },
+    {
+      title: "Роль",
+      width: 90,
+      render: (_, event) => event.details?.role || "—",
+    },
+    {
+      title: "Группа",
+      dataIndex: "group_key",
+      width: 180,
+      ellipsis: true,
+      render: (value, event) => (
+        <span className="font-monospace stream-cell-clip" title={value || "—"}>
+          {getGroupLabel(value, event.details || {})}
         </span>
-      </h2>
+      ),
+    },
+    {
+      title: "Client",
+      dataIndex: "client_id",
+      width: 130,
+      ellipsis: true,
+      render: (value) => <span className="font-monospace">{shortClientId(value)}</span>,
+    },
+    {
+      title: "Детали",
+      width: 300,
+      ellipsis: true,
+      render: (_, event) => {
+        const detail = event.details || {};
+        const chunks = [
+          detail.status,
+          detail.error,
+          detail.ttl != null ? `ttl:${detail.ttl}с` : "",
+          detail.remaining != null ? `ждёт ${detail.remaining}с` : "",
+          detail.waiters != null ? `waiters:${detail.waiters}` : "",
+          detail.slots_count != null ? `${detail.slots_count} слотов` : "",
+        ].filter(Boolean);
+        const text = chunks.join(" · ") || "—";
+        return <span title={text}>{text}</span>;
+      },
+    },
+  ];
 
-      {slotsStats && (
-        <div className="d-flex gap-3 mb-3 small align-items-center">
-          <span className="text-muted">Групп: {slotsStats.groups}</span>
-          <span className="text-success">Готово: {slotsStats.ready}</span>
-          <span className="text-warning">Ожидают: {slotsStats.pending}</span>
-          <button
-            className="btn btn-sm btn-outline-danger ms-auto"
-            onClick={async () => {
-              await fetch("/admin/slots-group/clear", {
-                method: "POST",
-                headers: { "X-Admin-Token": adminToken },
-              });
-              setEvents([]);
-            }}
-            style={{ fontSize: "0.65rem", lineHeight: 1 }}
-          >
-            Сбросить группы
-          </button>
-        </div>
+  return (
+    <div data-eopp-component="StreamsTab" className="streams-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">SSE и общие слоты</h2>
+            <div className="small text-muted">
+              Подключения клиентов, состояние slot stream и последние события групп
+            </div>
+          </div>
+        }
+        right={
+          <Space wrap>
+            <StatusTag status={connected ? "online" : "offline"} label={connected ? "slot stream on" : "slot stream off"} />
+            <Button size="small" variant="danger" onClick={clearSlotGroups} loading={clearLoading}>
+              Сбросить группы
+            </Button>
+          </Space>
+        }
+      />
+
+      <MetricsStrip items={streamMetrics} />
+
+      {clearResult && (
+        <Alert
+          data-eopp-component="StreamsClearResult"
+          className="my-3"
+          type={clearResult.includes("HTTP") ? "error" : "success"}
+          showIcon
+          message={clearResult}
+        />
       )}
 
-      <div
-        ref={eventsRef}
-        className="border rounded"
-        style={{
-          maxHeight: "400px",
-          overflowY: "auto",
-          fontFamily: "var(--bs-font-monospace)",
-          fontSize: "0.75rem",
-          background: "#1a1d23",
-          color: "#e0e0e0",
-        }}
-      >
-        {events.length === 0 && (
-          <div className="p-3 text-center text-muted">
-            {connected ? "Ожидание событий…" : "Подключение к стриму…"}
-          </div>
-        )}
-        {events.map((ev, i) => {
-          const label = EVENT_LABELS[ev.type] || ev.type;
-          const detail = ev.details || {};
-          const role = detail.role || "";
-          const isSlave = role === "slave";
-          const isTimeout = ev.type === "wait_timeout";
-          const isAlive = ev.type === "master_alive";
+      <Card data-eopp-component="StreamsClientsCard" className="mt-3" size="small" title="Подключённые SSE-клиенты">
+        <DataTable
+          className="streams-clients-table"
+          rowKey={(row) => `${row.api_key_id ?? "anon"}-${row.ip}-${row.connected_at}`}
+          data={streams}
+          columns={streamColumns}
+          loading={streamsLoading}
+          emptyText="Нет активных подключений"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+        />
+      </Card>
 
-          const status = detail.status || "";
-          const extra = isAlive
-            ? [`ждёт ${detail.remaining}с`, detail.waiters != null ? `waiters:${detail.waiters}` : ""]
-            : [status, detail.error, detail.ttl != null ? `ttl:${detail.ttl}с` : "", detail.waiters != null ? `waiters:${detail.waiters}` : "", detail.slots_count != null ? `${detail.slots_count} слотов` : ""];
-          const extraStr = extra.filter(Boolean).join(" ");
+      <Card data-eopp-component="StreamsSlotsCard" className="mt-3" size="small" title="Общие слоты">
+        <div className="streams-slot-metrics">
+          <MetricsStrip items={slotMetrics} />
+        </div>
 
-          return (
-            <div
-              key={i}
-              className="px-2 py-1 border-bottom"
-              style={{
-                borderColor: "#333 !important",
-                background: isSlave ? "rgba(0,255,100,0.04)" : isTimeout ? "rgba(255,80,80,0.08)" : isAlive ? "rgba(255,200,0,0.04)" : "transparent",
-              }}
-            >
-              <span className="text-muted me-2">{formatTs(ev.timestamp)}</span>
-              <span className={`me-1 ${role === "master" ? "text-warning" : role === "slave" ? "text-success" : ""}`}>
-                {role === "master" ? "🟡" : role === "slave" ? "🟢" : "○"}
-              </span>
-              <span className={`me-2 ${isTimeout ? "text-danger" : isAlive ? "text-warning" : "text-info"}`}>
-                {label}
-              </span>
-              {isSlave && <span className="text-success me-2 small">подписался</span>}
-              <GroupLabel groupKey={ev.group_key} details={detail} />
-              <span className="text-secondary ms-2">{shortClientId(ev.client_id)}</span>
-              {extraStr && <span className={`ms-2 ${isTimeout ? "text-danger" : isAlive ? "text-warning" : "text-info"}`}>{extraStr}</span>}
-            </div>
-          );
-        })}
-      </div>
+        <FilterBar className="my-3">
+          <label className="form-label small mb-0">
+            Тип событий
+            <SelectInput
+              size="small"
+              value={eventFilter}
+              onChange={(value) => setEventFilter(value || "all")}
+              options={EVENT_STATUS_OPTIONS}
+              allowClear={false}
+              style={{ minWidth: 170 }}
+            />
+          </label>
+          <label className="form-label small mb-0 streams-event-search">
+            Поиск
+            <TextInput
+              size="small"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="group, client, role, error"
+            />
+          </label>
+        </FilterBar>
+
+        <DataTable
+          className="streams-events-table"
+          rowKey={eventKey}
+          data={filteredEvents}
+          columns={eventColumns}
+          emptyText={connected ? "Ожидание событий" : "Нет подключения к slot stream"}
+          pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+        />
+      </Card>
     </div>
   );
 }

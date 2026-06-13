@@ -24,7 +24,7 @@ def _defer_job(name: str, payload: dict[str, Any]) -> None:
 def calculate_usage_price(payload: dict[str, Any]) -> None:
     """Calculate and store usage price, then request prepaid deduction."""
 
-    from src.db.tariffs import get_tariff
+    from src.db.tariffs import get_effective_tariff
     from src.db.usage_log import _calculate_usage_price
 
     usage_log_id = int(payload["usage_log_id"])
@@ -40,7 +40,7 @@ def calculate_usage_price(payload: dict[str, Any]) -> None:
 
         config_json = json.loads(row["config_json"]) if row["config_json"] else None
         mode = config_json.get("mode", "create") if config_json else "create"
-        tariff = get_tariff(row["api_key_id"])
+        tariff = get_effective_tariff(row["api_key_id"])
         price = 0
         if tariff:
             price = _calculate_usage_price(
@@ -133,4 +133,3 @@ def register_jobs(registry) -> None:
     registry.register("billing.deduct_prepaid", deduct_prepaid)
     registry.register("billing.link_open_invoice", link_open_invoice)
     registry.register("billing_confirm", calculate_usage_price)
-

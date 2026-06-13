@@ -1,5 +1,7 @@
 import React from "react";
+import { Pagination } from "antd";
 import { HistoryTable as SharedHistoryTable } from "../history/HistoryRow";
+import { Button, Toolbar } from "../../ui";
 
 export function UsageHistory({
   keyId,
@@ -22,25 +24,47 @@ export function UsageHistory({
   onPriceChange,
   onTogglePaid,
 }) {
+  const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [historyData, keyId]);
+
   if (isLoading) return <div className="table__loading">Загрузка…</div>;
   if (isError) return <div className="table__empty">Ошибка загрузки</div>;
   if (isEmpty) return <div className="table__empty">Нет записей</div>;
 
+  const safeHistoryData = Array.isArray(historyData) ? historyData : [];
+  const pageStart = (page - 1) * pageSize;
+  const pageRecords = safeHistoryData.slice(pageStart, pageStart + pageSize);
+
   return (
     <>
-      <div className="d-flex gap-2 mb-3">
-        <button
-          className={`btn btn-sm ${hideTest ? "btn-primary" : "btn-outline-secondary"}`}
+      <Toolbar
+        className="api-key-history-toolbar mb-3"
+        left={
+          <>
+        <Button
+          size="small"
+          variant={hideTest ? "primary" : "secondary"}
           onClick={onToggleHideTest}
         >
           {hideTest ? "Скрыть тестовые" : "Показать тестовые"}
-        </button>
-        <button className="btn btn-sm btn-outline-secondary" onClick={onRefresh}>
+        </Button>
+        <Button size="small" onClick={onRefresh}>
           Обновить
-        </button>
-      </div>
+        </Button>
+          </>
+        }
+        right={
+          <span className="small text-muted">
+            Показано {pageRecords.length} из {safeHistoryData.length}
+          </span>
+        }
+      />
       <SharedHistoryTable
-        records={historyData}
+        records={pageRecords}
         preset="admin"
         expandedLogs={expandedLogs}
         expandedConfig={expandedConfig}
@@ -54,6 +78,24 @@ export function UsageHistory({
         onTogglePaid={onTogglePaid}
         columns={["id", "type", "time", "status", "slot", "fio", "test", "price", "paid", "error", "actions"]}
       />
+      {safeHistoryData.length > pageSize && (
+        <Pagination
+          data-eopp-component="AdminUsageHistoryPagination"
+          className="api-key-history-pagination"
+          current={page}
+          pageSize={pageSize}
+          total={safeHistoryData.length}
+          showSizeChanger
+          pageSizeOptions={[10, 25, 50, 100]}
+          showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+          locale={{ items_per_page: "" }}
+          size="small"
+          onChange={(nextPage, nextPageSize) => {
+            setPage(nextPage);
+            setPageSize(nextPageSize);
+          }}
+        />
+      )}
     </>
   );
 }

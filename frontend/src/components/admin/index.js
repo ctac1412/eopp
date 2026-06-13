@@ -1,4 +1,3 @@
-export { AdminAuth } from "./AdminAuth";
 export { ApiKeysTab } from "./ApiKeysTab";
 export { StreamsTab } from "./StreamsTab";
 export { BackendLogsTab } from "./BackendLogsTab";
@@ -13,6 +12,7 @@ export { PayoutsTab } from "./PayoutsTab";
 export { PayoutModal } from "./PayoutModal";
 export { UsersTab } from "./UsersTab";
 export { UserModal } from "./UserModal";
+export { UserStatsModal } from "./UserStatsModal";
 export { CaptchasTab } from "./CaptchasTab";
 export { AITab } from "./AITab";
 export { OperatorsTab } from "./OperatorsTab";

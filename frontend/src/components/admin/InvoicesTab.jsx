@@ -1,14 +1,25 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Card, Modal, Space } from "antd";
 import { formatMoney } from "../../utils/format";
-import { InvoiceEditModal } from "./InvoiceEditModal";
 import { InvoiceCreateModal } from "./InvoiceCreateModal";
+import { InvoiceEditModal } from "./InvoiceEditModal";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
-function adminHeaders(token) {
-  return { "Content-Type": "application/json", "X-Admin-Token": token };
+function adminHeaders() {
+  return { "Content-Type": "application/json" };
 }
 
-function adminHeadersJson(token) {
-  return { "X-Admin-Token": token };
+function adminHeadersJson() {
+  return {};
 }
 
 function formatDate(iso) {
@@ -26,28 +37,11 @@ function allocationStatus(invoice) {
   return invoice.allocation?.status || "not_allocated";
 }
 
-function SummaryCard({ label, value, tone = "secondary" }) {
-  return (
-    <div className={`border-start border-4 border-${tone} bg-dark-subtle rounded px-2 py-1 h-100`}>
-      <div className="text-secondary-emphasis small">{label}</div>
-      <div className="fw-semibold text-light">{value}</div>
-    </div>
-  );
-}
-
-function AllocationBadge({ allocation }) {
+function allocationTag(allocation) {
   const status = allocation?.status || "not_allocated";
-  if (status === "fully_allocated") {
-    return <span className="badge bg-success">Распределен</span>;
-  }
-  if (status === "partially_allocated") {
-    return (
-      <span className="badge bg-warning text-dark">
-        Частично ({allocation.allocated_pct}%)
-      </span>
-    );
-  }
-  return <span className="badge bg-secondary">Не распределен</span>;
+  if (status === "fully_allocated") return <StatusTag status="confirmed" label="Распределен" />;
+  if (status === "partially_allocated") return <StatusTag status="pending" label={`Частично ${allocation.allocated_pct}%`} />;
+  return <StatusTag status="neutral" label="Не распределен" />;
 }
 
 function findUserName(users, id) {
@@ -69,6 +63,10 @@ function invoiceSearchText(invoice, users) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function MoneyCell({ value, tone = "" }) {
+  return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value || 0)}</span>;
 }
 
 export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
@@ -93,9 +91,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/admin/invoices", {
-        headers: adminHeadersJson(adminToken),
-      });
+      const res = await fetch("/admin/invoices", { headers: adminHeadersJson(adminToken) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setInvoices(Array.isArray(data) ? data : []);
@@ -133,10 +129,12 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   }, [fetchInvoices, fetchCompanySettings]);
 
   useEffect(() => {
-    if (focusInvoiceId) {
-      setSearch(String(focusInvoiceId));
-    }
+    if (focusInvoiceId) setSearch(String(focusInvoiceId));
   }, [focusInvoiceId]);
+
+  const refreshBilling = async () => {
+    await Promise.all([fetchInvoices(), fetchCompanySettings()]);
+  };
 
   const togglePaid = async (invoice) => {
     const newPaid = !invoice.paid;
@@ -148,42 +146,42 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const updated = await res.json();
-      setInvoices((prev) =>
-        prev.map((inv) => (inv.id === invoice.id ? { ...inv, ...updated } : inv)),
-      );
+      setInvoices((prev) => prev.map((inv) => (inv.id === invoice.id ? { ...inv, ...updated } : inv)));
     } catch (err) {
       setError(err.message);
       onError?.(err.message);
     }
   };
 
-  const deleteInvoice = async (invoice) => {
-    if (!confirm(`Удалить счет #${invoice.id}?`)) return;
-    try {
-      const res = await fetch(`/admin/invoices/${invoice.id}`, {
-        method: "DELETE",
-        headers: adminHeaders(adminToken),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setInvoices((prev) => prev.filter((inv) => inv.id !== invoice.id));
-    } catch (err) {
-      setError(err.message);
-      onError?.(err.message);
-    }
+  const deleteInvoice = (invoice) => {
+    Modal.confirm({
+      title: "Удалить счет?",
+      content: `Счет #${invoice.id} будет удален.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/admin/invoices/${invoice.id}`, {
+            method: "DELETE",
+            headers: adminHeaders(adminToken),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          setInvoices((prev) => prev.filter((inv) => inv.id !== invoice.id));
+        } catch (err) {
+          setError(err.message);
+          onError?.(err.message);
+        }
+      },
+    });
   };
 
   const handleSaveEdit = async (updated) => {
-    setInvoices((prev) =>
-      prev.map((inv) => (inv.id === updated.id ? { ...inv, ...updated } : inv)),
-    );
+    setInvoices((prev) => prev.map((inv) => (inv.id === updated.id ? { ...inv, ...updated } : inv)));
   };
 
   const handleCreated = (newInvoice) => {
     setInvoices((prev) => [newInvoice, ...prev]);
-  };
-
-  const refreshBilling = async () => {
-    await Promise.all([fetchInvoices(), fetchCompanySettings()]);
   };
 
   const openAutoInvoice = async () => {
@@ -237,8 +235,8 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     }
   };
 
-  const saveAlias = async (e) => {
-    e.preventDefault();
+  const saveAlias = async (event) => {
+    event.preventDefault();
     try {
       const res = await fetch("/admin/company-aliases", {
         method: "POST",
@@ -274,12 +272,8 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     const options = new Map();
     users?.forEach((user) => options.set(String(user.id), user.name));
     invoices.forEach((invoice) => {
-      if (invoice.commission_user_id) {
-        options.set(String(invoice.commission_user_id), findUserName(users, invoice.commission_user_id));
-      }
-      if (invoice.tax_user_id) {
-        options.set(String(invoice.tax_user_id), findUserName(users, invoice.tax_user_id));
-      }
+      if (invoice.commission_user_id) options.set(String(invoice.commission_user_id), findUserName(users, invoice.commission_user_id));
+      if (invoice.tax_user_id) options.set(String(invoice.tax_user_id), findUserName(users, invoice.tax_user_id));
     });
     return [...options.entries()].map(([id, name]) => ({ id, name }));
   }, [invoices, users]);
@@ -288,48 +282,32 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     const rows = new Map();
     invoices.forEach((invoice) => {
       if (!invoice.company) return;
-      const current = rows.get(invoice.company) || {
-        company: invoice.company,
-        activeInvoice: null,
-        closedCount: 0,
-      };
+      const current = rows.get(invoice.company) || { company: invoice.company, activeInvoice: null, closedCount: 0 };
       if (invoice.is_open) current.activeInvoice = invoice;
       else current.closedCount += 1;
       rows.set(invoice.company, current);
     });
     companySettings.forEach((setting) => {
-      const current = rows.get(setting.company) || {
-        company: setting.company,
-        activeInvoice: null,
-        closedCount: 0,
-      };
+      const current = rows.get(setting.company) || { company: setting.company, activeInvoice: null, closedCount: 0 };
       current.auto_invoice_reopen = !!setting.auto_invoice_reopen;
       rows.set(setting.company, current);
     });
     companyAliases.forEach((alias) => {
       if (!rows.has(alias.company)) {
-        rows.set(alias.company, {
-          company: alias.company,
-          activeInvoice: null,
-          closedCount: 0,
-          auto_invoice_reopen: false,
-        });
+        rows.set(alias.company, { company: alias.company, activeInvoice: null, closedCount: 0, auto_invoice_reopen: false });
       }
     });
     return [...rows.values()].sort((a, b) => a.company.localeCompare(b.company, "ru"));
   }, [invoices, companySettings, companyAliases]);
 
   useEffect(() => {
-    if (!autoCompany && companyRows.length > 0) {
-      setAutoCompany(companyRows[0].company);
-    }
+    if (!autoCompany && companyRows.length > 0) setAutoCompany(companyRows[0].company);
   }, [autoCompany, companyRows]);
 
   const filteredInvoices = useMemo(() => {
     const q = search.trim().toLowerCase();
     const from = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
     const to = dateTo ? new Date(`${dateTo}T23:59:59`) : null;
-
     return invoices.filter((invoice) => {
       const createdAt = invoice.created_at ? new Date(invoice.created_at) : null;
       if (q && !invoiceSearchText(invoice, users).includes(q)) return false;
@@ -353,275 +331,270 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     const sum = (field) => filteredInvoices.reduce((acc, invoice) => acc + (invoice[field] || 0), 0);
     const paid = filteredInvoices.filter((invoice) => invoice.paid);
     const unpaid = filteredInvoices.filter((invoice) => !invoice.paid);
-    return {
-      count: filteredInvoices.length,
-      total: sum("total_amount"),
-      debt: sum("debt_amount"),
-      commission: sum("percent_amount"),
-      tax: sum("tax_amount"),
-      paidCount: paid.length,
-      unpaidCount: unpaid.length,
-      unpaidTotal: unpaid.reduce((acc, invoice) => acc + (invoice.total_amount || 0), 0),
-    };
-  }, [filteredInvoices]);
+    return [
+      { key: "count", label: "Счета", value: `${filteredInvoices.length} / ${invoices.length}`, tone: filteredInvoices.length === invoices.length ? "neutral" : "warning" },
+      { key: "total", label: "Итого", value: formatMoney(sum("total_amount")), tone: "info" },
+      { key: "debt", label: "Долг", value: formatMoney(sum("debt_amount")), tone: "success" },
+      { key: "commission", label: "Комиссия", value: formatMoney(sum("percent_amount")), tone: "neutral" },
+      { key: "tax", label: "Налог", value: formatMoney(sum("tax_amount")), tone: "warning" },
+      { key: "unpaid", label: "Не оплачено", value: `${unpaid.length} / ${formatMoney(unpaid.reduce((acc, invoice) => acc + (invoice.total_amount || 0), 0))}`, tone: unpaid.length ? "danger" : "success" },
+      { key: "paid", label: "Оплачено", value: paid.length, tone: paid.length ? "success" : "neutral" },
+    ];
+  }, [filteredInvoices, invoices.length]);
 
-  if (loading) return <div className="text-center text-muted py-5">Загрузка…</div>;
-  if (error) return <div className="alert alert-danger">Ошибка: {error}</div>;
+  const companyColumns = [
+    { title: "Компания", dataIndex: "company", ellipsis: true, render: (value) => <span title={value}>{value}</span> },
+    { title: "Открытый", dataIndex: "activeInvoice", width: 92, align: "center", render: (invoice) => (invoice ? `#${invoice.id}` : "—") },
+    { title: "Долг", dataIndex: "activeInvoice", width: 110, align: "right", render: (invoice) => <MoneyCell value={invoice?.debt_amount || 0} /> },
+    {
+      title: "Авто",
+      dataIndex: "auto_invoice_reopen",
+      width: 84,
+      align: "center",
+      render: (enabled, row) => (
+        <Button size="small" variant={enabled ? "primary" : "secondary"} onClick={() => setAutoReopen(row.company, !enabled)}>
+          {enabled ? "Вкл" : "Выкл"}
+        </Button>
+      ),
+    },
+    { title: "Ист.", dataIndex: "closedCount", width: 64, align: "center" },
+  ];
+
+  const invoiceColumns = [
+    {
+      title: "Счет",
+      width: 170,
+      ellipsis: true,
+      render: (_, invoice) => (
+        <div className="invoice-title-cell" title={invoice.invoice_number || `#${invoice.id}`}>
+          <span className="font-monospace">{invoice.invoice_number || `#${invoice.id}`}</span>
+          <span className="text-muted">#{invoice.id} · {formatDate(invoice.created_at)}</span>
+        </div>
+      ),
+    },
+    { title: "Компания", dataIndex: "company", width: 130, ellipsis: true, render: (value) => <span title={value || "—"}>{value || "—"}</span> },
+    {
+      title: "Суммы",
+      width: 160,
+      align: "right",
+      render: (_, invoice) => (
+        <div className="invoice-stack-cell">
+          <span><span className="text-muted">Долг</span> <MoneyCell value={invoice.debt_amount} /></span>
+          <span><span className="text-muted">Итого</span> <MoneyCell value={invoice.total_amount} tone="text-primary fw-semibold" /></span>
+        </div>
+      ),
+    },
+    {
+      title: "Начисл.",
+      width: 145,
+      align: "right",
+      render: (_, invoice) => (
+        <div className="invoice-stack-cell">
+          <span><span className="text-muted">Ком.</span> <MoneyCell value={invoice.percent_amount} /></span>
+          <span><span className="text-muted">Нал.</span> <MoneyCell value={invoice.tax_amount} /></span>
+        </div>
+      ),
+    },
+    { title: "Распр.", dataIndex: "allocation", width: 112, align: "center", render: allocationTag },
+    {
+      title: "Ответств.",
+      width: 120,
+      align: "center",
+      render: (_, invoice) => (
+        <div className="invoice-stack-cell invoice-stack-cell--center">
+          <span title={findUserName(users, invoice.commission_user_id)}>К: {findUserName(users, invoice.commission_user_id)}</span>
+          <span title={findUserName(users, invoice.tax_user_id)}>Н: {findUserName(users, invoice.tax_user_id)}</span>
+        </div>
+      ),
+    },
+    {
+      title: "Оплата",
+      dataIndex: "paid",
+      width: 70,
+      align: "center",
+      render: (paid, invoice) => (
+        <Button size="small" variant={paid ? "primary" : "secondary"} onClick={() => togglePaid(invoice)}>
+          {paid ? "Опл." : "Нет"}
+        </Button>
+      ),
+    },
+    {
+      title: "",
+      width: 92,
+      align: "right",
+      render: (_, invoice) => (
+        <Space size={4}>
+          <Button size="small" onClick={() => setEditingInvoice(invoice)}>Изм.</Button>
+          <Button size="small" variant="danger" onClick={() => deleteInvoice(invoice)}>Удал.</Button>
+        </Space>
+      ),
+    },
+  ];
+
+  if (loading) {
+    return <div data-eopp-component="InvoicesTabLoading" className="text-center text-muted py-5">Загрузка…</div>;
+  }
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div className="d-flex gap-2 align-items-center">
-          <button className="btn btn-outline-secondary btn-sm" onClick={fetchInvoices}>
-            Обновить
-          </button>
-          <span className="text-muted small">Показано: {filteredInvoices.length} из {invoices.length}</span>
-        </div>
-        <button className="btn btn-sm btn-primary" onClick={() => setShowCreate(true)}>
-          + Новый счет
-        </button>
-      </div>
+    <div data-eopp-component="InvoicesTab" className="invoices-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Счета</h2>
+            <div className="small text-muted">Авто-счета, ручные счета, распределение комиссии и налогов</div>
+          </div>
+        }
+        right={
+          <Space wrap>
+            <Button size="small" onClick={refreshBilling}>Обновить</Button>
+            <Button size="small" variant="primary" onClick={() => setShowCreate(true)}>Новый счет</Button>
+          </Space>
+        }
+      />
 
-      <div className="row g-2 mb-3">
-        <div className="col-6 col-xl-2"><SummaryCard label="Счетов" value={metrics.count} tone="primary" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Итого" value={formatMoney(metrics.total)} tone="dark" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Долг" value={formatMoney(metrics.debt)} tone="success" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Комиссия" value={formatMoney(metrics.commission)} tone="info" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Налог" value={formatMoney(metrics.tax)} tone="warning" /></div>
-        <div className="col-6 col-xl-2"><SummaryCard label="Не оплачено" value={`${metrics.unpaidCount} / ${formatMoney(metrics.unpaidTotal)}`} tone="danger" /></div>
-      </div>
+      {error ? (
+        <Alert
+          data-eopp-component="InvoicesError"
+          className="mb-3"
+          type="error"
+          showIcon
+          message="Ошибка"
+          description={error}
+        />
+      ) : null}
 
-      <div className="border rounded bg-dark-subtle p-3 mb-3">
-        <div className="d-flex justify-content-between align-items-center mb-2">
-          <h6 className="mb-0">Авто-счета по компаниям</h6>
-          <span className="text-muted small">Активных: {companyRows.filter((row) => row.activeInvoice).length}</span>
-        </div>
+      <MetricsStrip items={metrics} />
 
-        <div className="row g-2 align-items-end mb-3">
-          <div className="col-12 col-lg-4">
-            <label className="form-label small mb-1">Компания</label>
-            <input
-              className="form-control form-control-sm"
+      <Card data-eopp-component="InvoicesAutomationCard" className="mt-3" size="small" title="Авто-счета по компаниям">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 invoices-search">
+            Компания
+            <TextInput
+              data-eopp-component="InvoicesAutoCompanyInput"
+              size="small"
               list="auto-invoice-companies"
               value={autoCompany}
-              onChange={(e) => setAutoCompany(e.target.value)}
+              onChange={(event) => setAutoCompany(event.target.value)}
               placeholder="Название компании"
             />
             <datalist id="auto-invoice-companies">
-              {companyRows.map((row) => (
-                <option key={row.company} value={row.company} />
-              ))}
+              {companyRows.map((row) => <option key={row.company} value={row.company} />)}
             </datalist>
-          </div>
-          <div className="col-12 col-lg-4">
-            <label className="form-label small mb-1">Комментарий фиксации</label>
-            <input
-              className="form-control form-control-sm"
-              value={autoIssueComment}
-              onChange={(e) => setAutoIssueComment(e.target.value)}
-              placeholder="Например: май 2026"
-            />
-          </div>
-          <div className="col-6 col-lg-2">
-            <button className="btn btn-sm btn-outline-primary w-100" onClick={openAutoInvoice}>
-              Создать авто-счет
-            </button>
-          </div>
-          <div className="col-6 col-lg-2">
-            <button className="btn btn-sm btn-primary w-100" onClick={issueAutoInvoice}>
-              Зафиксировать
-            </button>
-          </div>
-        </div>
-
-        <div className="table-responsive mb-3">
-          <table className="table table-sm table-bordered align-middle mb-0">
-            <thead className="table-light">
-              <tr>
-                <th>Компания</th>
-                <th>Активный авто-счет</th>
-                <th className="text-end">Долг</th>
-                <th className="text-center">Автооткрытие</th>
-                <th className="text-center">История</th>
-              </tr>
-            </thead>
-            <tbody>
-              {companyRows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="text-center text-muted py-3">
-                    Компаний пока нет
-                  </td>
-                </tr>
-              ) : (
-                companyRows.map((row) => (
-                  <tr key={row.company}>
-                    <td>{row.company}</td>
-                    <td>{row.activeInvoice ? `#${row.activeInvoice.id}` : "—"}</td>
-                    <td className="text-end">{formatMoney(row.activeInvoice?.debt_amount || 0)}</td>
-                    <td className="text-center">
-                      <button
-                        className={`btn btn-sm ${row.auto_invoice_reopen ? "btn-success" : "btn-outline-secondary"}`}
-                        onClick={() => setAutoReopen(row.company, !row.auto_invoice_reopen)}
-                      >
-                        {row.auto_invoice_reopen ? "Вкл" : "Выкл"}
-                      </button>
-                    </td>
-                    <td className="text-center small">{row.closedCount}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <form className="row g-2 align-items-end" onSubmit={saveAlias}>
-          <div className="col-12 col-lg-4">
-            <label className="form-label small mb-1">Алиас компании</label>
-            <input
-              className="form-control form-control-sm"
-              value={aliasForm.alias}
-              onChange={(e) => setAliasForm((prev) => ({ ...prev, alias: e.target.value }))}
-              placeholder="Как приходит из логов"
-            />
-          </div>
-          <div className="col-12 col-lg-4">
-            <label className="form-label small mb-1">Нормальное название</label>
-            <input
-              className="form-control form-control-sm"
-              value={aliasForm.company}
-              onChange={(e) => setAliasForm((prev) => ({ ...prev, company: e.target.value }))}
-              placeholder="Как вести биллинг"
-            />
-          </div>
-          <div className="col-12 col-lg-2">
-            <button className="btn btn-sm btn-outline-primary w-100" type="submit">
-              Сохранить алиас
-            </button>
-          </div>
-          <div className="col-12 col-lg-2">
-            <select
-              className="form-select form-select-sm"
-              value=""
-              onChange={(e) => e.target.value && deleteAlias(e.target.value)}
-            >
-              <option value="">Удалить алиас</option>
-              {companyAliases.map((alias) => (
-                <option key={alias.alias} value={alias.alias}>
-                  {alias.alias} → {alias.company}
-                </option>
-              ))}
-            </select>
-          </div>
+          </label>
+          <label className="form-label small mb-0 invoices-search">
+            Комментарий фиксации
+            <TextInput size="small" value={autoIssueComment} onChange={(event) => setAutoIssueComment(event.target.value)} placeholder="Например: май 2026" />
+          </label>
+          <Button size="small" onClick={openAutoInvoice}>Создать авто-счет</Button>
+          <Button size="small" variant="primary" onClick={issueAutoInvoice}>Зафиксировать</Button>
+        </FilterBar>
+        <DataTable
+          className="invoices-company-table"
+          rowKey="company"
+          data={companyRows}
+          columns={companyColumns}
+          emptyText="Компаний пока нет"
+          pagination={{ pageSize: 8, showSizeChanger: false }}
+          scroll={false}
+        />
+        <form data-eopp-component="InvoiceAliasForm" className="invoice-alias-form" onSubmit={saveAlias}>
+          <label className="form-label small mb-0">
+            Алиас
+            <TextInput size="small" value={aliasForm.alias} onChange={(event) => setAliasForm((prev) => ({ ...prev, alias: event.target.value }))} placeholder="Как приходит из логов" />
+          </label>
+          <label className="form-label small mb-0">
+            Компания
+            <TextInput size="small" value={aliasForm.company} onChange={(event) => setAliasForm((prev) => ({ ...prev, company: event.target.value }))} placeholder="Как вести биллинг" />
+          </label>
+          <Button size="small" variant="primary" type="submit">Сохранить</Button>
+          <SelectInput
+            size="small"
+            value=""
+            onChange={(value) => value && deleteAlias(value)}
+            options={[{ value: "", label: "Удалить алиас" }, ...companyAliases.map((alias) => ({ value: alias.alias, label: `${alias.alias} -> ${alias.company}` }))]}
+            style={{ minWidth: 220 }}
+          />
         </form>
-      </div>
+      </Card>
 
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-xl-4">
-          <label className="form-label small mb-1">Поиск</label>
-          <input className="form-control form-control-sm" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Номер, ID, комментарий, участник" />
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Оплата</label>
-          <select className="form-select form-select-sm" value={paidFilter} onChange={(e) => setPaidFilter(e.target.value)}>
-            <option value="all">Все</option>
-            <option value="paid">Оплаченные</option>
-            <option value="unpaid">Не оплаченные</option>
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Распределение</label>
-          <select className="form-select form-select-sm" value={allocationFilter} onChange={(e) => setAllocationFilter(e.target.value)}>
-            <option value="all">Все</option>
-            <option value="fully_allocated">Распределены</option>
-            <option value="partially_allocated">Частично</option>
-            <option value="not_allocated">Не распределены</option>
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-2">
-          <label className="form-label small mb-1">Участник</label>
-          <select className="form-select form-select-sm" value={userFilter} onChange={(e) => setUserFilter(e.target.value)}>
-            <option value="all">Все</option>
-            {userOptions.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-          </select>
-        </div>
-        <div className="col-6 col-md-3 col-xl-1">
-          <label className="form-label small mb-1">С даты</label>
-          <input className="form-control form-control-sm" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-        </div>
-        <div className="col-6 col-md-3 col-xl-1">
-          <label className="form-label small mb-1">По дату</label>
-          <input className="form-control form-control-sm" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="table-responsive">
-        <table className="table table-sm table-hover table-bordered align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th className="text-center" style={{ width: "40px" }}>#</th>
-              <th style={{ width: "80px" }}>ID</th>
-              <th style={{ width: "140px" }}>Дата</th>
-              <th>Номер</th>
-              <th className="text-end">Долг</th>
-              <th className="text-end">Комиссия</th>
-              <th className="text-end">Налог</th>
-              <th className="text-end fw-bold">Итого</th>
-              <th>Комментарий</th>
-              <th className="text-center">Распределение</th>
-              <th className="text-center">Комиссия</th>
-              <th className="text-center">Налог</th>
-              <th className="text-center">Оплата</th>
-              <th className="text-center">Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredInvoices.length === 0 ? (
-              <tr><td colSpan={14} className="text-center text-muted py-4">Нет счетов по выбранным фильтрам</td></tr>
-            ) : (
-              filteredInvoices.map((invoice, idx) => (
-                <tr key={invoice.id}>
-                  <td className="text-center text-muted small">{idx + 1}</td>
-                  <td className="text-center font-monospace small">{invoice.id}</td>
-                  <td className="small text-nowrap">{formatDate(invoice.created_at)}</td>
-                  <td className="small"><code>{invoice.invoice_number || "—"}</code></td>
-                  <td className="text-end font-monospace small">{formatMoney(invoice.debt_amount)}</td>
-                  <td className="text-end font-monospace small">{formatMoney(invoice.percent_amount)}</td>
-                  <td className="text-end font-monospace small">{formatMoney(invoice.tax_amount)}</td>
-                  <td className="text-end fw-bold text-primary">{formatMoney(invoice.total_amount)}</td>
-                  <td className="small text-truncate" style={{ maxWidth: "180px" }} title={invoice.comment || ""}>{invoice.comment || "—"}</td>
-                  <td className="text-center"><AllocationBadge allocation={invoice.allocation} /></td>
-                  <td className="text-center small text-success">{findUserName(users, invoice.commission_user_id)}</td>
-                  <td className="text-center small text-danger">{findUserName(users, invoice.tax_user_id)}</td>
-                  <td className="text-center">
-                    <button
-                      className={`btn btn-sm ${invoice.paid ? "btn-success" : "btn-outline-secondary"}`}
-                      onClick={() => togglePaid(invoice)}
-                    >
-                      {invoice.paid ? "Оплачен" : "Не оплачен"}
-                    </button>
-                  </td>
-                  <td className="text-center text-nowrap">
-                    <button
-                      className="btn btn-sm btn-outline-primary me-1"
-                      onClick={() => setEditingInvoice(invoice)}
-                      title="Редактировать"
-                    >
-                      &#9998;
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => deleteInvoice(invoice)}
-                      title="Удалить"
-                    >
-                      Г—
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Card data-eopp-component="InvoicesListCard" className="mt-3" size="small" title="Список счетов">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 invoices-search">
+            Поиск
+            <TextInput size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Номер, ID, компания, комментарий, участник" />
+          </label>
+          <label className="form-label small mb-0">
+            Оплата
+            <SelectInput
+              size="small"
+              value={paidFilter}
+              onChange={(value) => setPaidFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "paid", label: "Оплаченные" },
+                { value: "unpaid", label: "Не оплаченные" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Распределение
+            <SelectInput
+              size="small"
+              value={allocationFilter}
+              onChange={(value) => setAllocationFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "fully_allocated", label: "Распределены" },
+                { value: "partially_allocated", label: "Частично" },
+                { value: "not_allocated", label: "Не распределены" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Участник
+            <SelectInput
+              size="small"
+              value={userFilter}
+              onChange={(value) => setUserFilter(value || "all")}
+              options={[{ value: "all", label: "Все" }, ...userOptions.map((user) => ({ value: user.id, label: user.name }))]}
+              allowClear={false}
+              style={{ minWidth: 150 }}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            С даты
+            <TextInput
+              data-eopp-component="InvoicesDateFrom"
+              size="small"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            По дату
+            <TextInput
+              data-eopp-component="InvoicesDateTo"
+              size="small"
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </label>
+        </FilterBar>
+        <DataTable
+          className="invoices-table"
+          rowKey="id"
+          data={filteredInvoices}
+          columns={invoiceColumns}
+          emptyText="Нет счетов по выбранным фильтрам"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          scroll={false}
+        />
+      </Card>
 
       <InvoiceEditModal
         show={!!editingInvoice}
@@ -642,4 +615,3 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     </div>
   );
 }
-

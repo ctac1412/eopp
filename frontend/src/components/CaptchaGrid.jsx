@@ -7,6 +7,7 @@ import IconClickCaptcha from "./IconClickCaptcha";
 import CountdownTimer from "./CountdownTimer";
 import Clock from "./Clock";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { StatusTag } from "../ui";
 
 function CaptchaGrid() {
   const queue = useCaptchaStore((s) => s.queue);
@@ -48,14 +49,12 @@ function CaptchaGrid() {
   });
 
   return (
-    <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%" }}>
+    <div className="captcha-panel">
       <div className="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div className="d-flex align-items-center gap-2">
           <span className="fw-semibold" style={{ fontSize: "0.8125rem" }}>Капча {active.id}</span>
           {superKioskMode && active.ownerLabel && (
-            <span className="badge bg-info" style={{ fontSize: "0.7rem" }}>
-              для: {active.ownerLabel}
-            </span>
+            <StatusTag color="blue" label={`для: ${active.ownerLabel}`} />
           )}
         </div>
         <div className="d-flex align-items-center gap-2">
@@ -70,8 +69,8 @@ function CaptchaGrid() {
           </div>
         </div>
       </div>
-      <div className="card-body p-3 d-flex align-items-center justify-content-center flex-grow-1" style={{ minHeight: 0 }}>
-        <div className="row row-cols-5 g-2 w-100 justify-content-center">
+      <div className="captcha-panel__body">
+        <div className="captcha-variants-grid">
           {ordered.map((key) => (
             <div key={active.id + "-" + key}>
               <CaptchaCard entry={active} index={key} />

@@ -7,11 +7,12 @@ from src.captcha_assembly import assemble_captchas, get_valid_variant_index, is_
 from src.services import captcha_file_service
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
+from src.policies.access_policy import is_admin_token
 from src.sse import get_connected_streams, push_sse
 
 
 def authorize_broadcast(admin_token: str | None) -> tuple[int, dict] | None:
-    if admin_token and api_key_repo.check_admin_token(admin_token):
+    if is_admin_token(admin_token):
         return None
     return 401, {"error": "Unauthorized"}
 

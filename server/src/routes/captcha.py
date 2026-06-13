@@ -387,7 +387,9 @@ async def trigger_test(request: Request):
 
 @router.post("/broadcast")
 async def handle_broadcast(request: Request):
-    unauthorized = captcha_service.authorize_broadcast(request.headers.get("X-Admin-Token"))
+    from src.policies.access_policy import token_from_request
+
+    unauthorized = captcha_service.authorize_broadcast(token_from_request(request))
     if unauthorized:
         status, content = unauthorized
         return JSONResponse(status_code=status, content=content)

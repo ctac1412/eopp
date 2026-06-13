@@ -1,6 +1,17 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
+import { Alert, Card, Space } from "antd";
 import { formatMoney } from "../../utils/format";
 import { UsageHistory } from "./AdminUsageHistory";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -30,6 +41,37 @@ function copyToClipboard(text) {
   });
 }
 
+function keySearchText(key) {
+  const tariff = key.tariff || {};
+  const debt = key.debt || {};
+  return [
+    key.id,
+    key.label,
+    key.key,
+    key.comment,
+    key.user_name,
+    key.company_name,
+    key.created_at,
+    tariff.price_create,
+    tariff.price_reschedule,
+    tariff.price_create_peak,
+    tariff.price_custom_slots,
+    debt.unpaid_total,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function hasDebt(key) {
+  const debt = key.debt || {};
+  return (debt.unpaid_count || 0) > 0 || (debt.no_price_count || 0) > 0 || (debt.unpaid_total || 0) > 0;
+}
+
+function MoneyCell({ value, tone = "" }) {
+  return <span className={`font-monospace text-nowrap ${tone}`}>{value != null ? formatMoney(value) : "—"}</span>;
+}
+
 export function ApiKeysTab({
   keys,
   loading,
@@ -54,184 +96,305 @@ export function ApiKeysTab({
   onPriceChange,
   onTogglePaid,
 }) {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [debtFilter, setDebtFilter] = useState("all");
+
+  const filteredKeys = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return keys.filter((key) => {
+      if (q && !keySearchText(key).includes(q)) return false;
+      if (statusFilter === "active" && !key.active) return false;
+      if (statusFilter === "inactive" && key.active) return false;
+      if (clientFilter === "external" && !key.is_external) return false;
+      if (clientFilter === "internal" && key.is_external) return false;
+      if (debtFilter === "debt" && !hasDebt(key)) return false;
+      if (debtFilter === "clean" && hasDebt(key)) return false;
+      return true;
+    });
+  }, [clientFilter, debtFilter, keys, search, statusFilter]);
+
+  const metrics = useMemo(() => {
+    const active = keys.filter((key) => key.active).length;
+    const external = keys.filter((key) => key.is_external).length;
+    const debtKeys = keys.filter(hasDebt);
+    const unpaidTotal = keys.reduce((sum, key) => sum + Number(key.debt?.unpaid_total || 0), 0);
+    const usage = keys.reduce((sum, key) => sum + Number(key.usage_count || 0), 0);
+    return [
+      { key: "visible", label: "Ключи", value: `${filteredKeys.length} / ${keys.length}`, tone: filteredKeys.length === keys.length ? "neutral" : "warning" },
+      { key: "active", label: "Активные", value: active, tone: active > 0 ? "success" : "neutral" },
+      { key: "external", label: "Внешние", value: external, tone: external > 0 ? "warning" : "neutral" },
+      { key: "usage", label: "Использований", value: usage, tone: "info" },
+      { key: "debt", label: "С долгом", value: debtKeys.length, tone: debtKeys.length > 0 ? "warning" : "success" },
+      { key: "unpaid", label: "Долг", value: formatMoney(unpaidTotal), tone: unpaidTotal > 0 ? "danger" : "success" },
+    ];
+  }, [filteredKeys.length, keys]);
+
+  const expandedRowKeys = useMemo(
+    () => Object.keys(expandedHistory || {}).map((id) => Number(id)),
+    [expandedHistory],
+  );
+
+  const columns = [
+    {
+      title: "Ключ",
+      width: 210,
+      ellipsis: true,
+      render: (_, key) => (
+        <div className="api-key-title-cell">
+          <span className="fw-semibold" title={key.label || "—"}>{key.label || "—"}</span>
+          <span>
+            <span className="text-muted">#{key.id} · </span>
+            <Button
+              data-eopp-component="ApiKeyCopyTokenButton"
+              size="small"
+              className="api-key-token-button"
+              onClick={() => copyToClipboard(key.key)}
+              title="Скопировать ключ"
+            >
+              ...{key.key?.slice(-4) || "—"}
+            </Button>
+          </span>
+        </div>
+      ),
+    },
+    { title: "Создан", dataIndex: "created_at", width: 118, render: formatDate },
+    {
+      title: "Владелец",
+      width: 150,
+      ellipsis: true,
+      render: (_, key) => (
+        <div className="api-key-stack-cell">
+          <span title={key.user_name || "—"}>{key.user_name || "—"}</span>
+          <span className="text-muted" title={key.company_name || ""}>{key.company_name || ""}</span>
+        </div>
+      ),
+    },
+    { title: "Комментарий", dataIndex: "comment", ellipsis: true, render: (value) => <span title={value || "—"}>{value || "—"}</span> },
+    {
+      title: "Тарифы",
+      width: 150,
+      align: "right",
+      render: (_, key) => {
+        const tariff = key.tariff;
+        return (
+          <div className="api-key-stack-cell">
+            <span><span className="text-muted">Б</span> <MoneyCell value={tariff?.price_create} /></span>
+            <span><span className="text-muted">П</span> <MoneyCell value={tariff?.price_reschedule} /></span>
+          </div>
+        );
+      },
+    },
+    {
+      title: "Доп.",
+      width: 136,
+      align: "right",
+      render: (_, key) => {
+        const tariff = key.tariff;
+        return (
+          <div className="api-key-stack-cell">
+            <span><span className="text-muted">12</span> <MoneyCell value={tariff?.price_create_peak} /></span>
+            <span><span className="text-muted">Св</span> <MoneyCell value={tariff?.price_custom_slots} /></span>
+          </div>
+        );
+      },
+    },
+    {
+      title: "Исп.",
+      width: 86,
+      align: "center",
+      render: (_, key) => `${key.usage_count ?? 0}${key.max_uses != null ? ` / ${key.max_uses}` : ""}`,
+    },
+    {
+      title: "Долг",
+      width: 96,
+      align: "center",
+      render: (_, key) => {
+        const debt = key.debt || { unpaid_count: 0, no_price_count: 0, unpaid_total: 0 };
+        return hasDebt(key) ? (
+          <StatusTag
+            status="warning"
+            label={formatMoney(debt.unpaid_total || 0)}
+            color="warning"
+          />
+        ) : (
+          <StatusTag status="confirmed" label={formatMoney(0)} />
+        );
+      },
+    },
+    {
+      title: "Флаги",
+      width: 96,
+      align: "center",
+      render: (_, key) => (
+        <Space size={4} wrap>
+          <StatusTag status={key.active ? "online" : "offline"} label={key.active ? "Актив" : "Выкл"} />
+          {key.is_external ? <StatusTag status="warning" label="Внеш." /> : null}
+        </Space>
+      ),
+    },
+    {
+      title: "",
+      width: 176,
+      align: "right",
+      render: (_, key) => {
+        const isExpanded = expandedHistory[key.id] !== undefined;
+        return (
+          <Space size={4} wrap>
+            <Button size="small" onClick={() => onEditKey(key)}>Изм.</Button>
+            <Button size="small" onClick={() => onToggleActive(key)}>{key.active ? "Выкл" : "Вкл"}</Button>
+            <Button size="small" variant={isExpanded ? "primary" : "secondary"} onClick={() => onToggleHistory(key.id)}>
+              {isExpanded ? "Скрыть" : "Журнал"}
+            </Button>
+          </Space>
+        );
+      },
+    },
+  ];
+
+  const renderHistory = (key) => {
+    const historyData = expandedHistory[key.id];
+    return (
+      <div data-eopp-component="ApiKeyUsageHistoryPanel" className="api-key-history-panel">
+        <UsageHistory
+          keyId={key.id}
+          historyData={historyData}
+          isLoading={historyLoading[key.id]}
+          isEmpty={historyData === null}
+          isError={historyData === null}
+          hideTest={historyHideTest[key.id]}
+          onToggleHideTest={() => {
+            const next = !historyHideTest[key.id];
+            onFetchUsageHistory(key.id, next);
+          }}
+          onRefresh={() => onFetchUsageHistory(key.id, historyHideTest[key.id])}
+          onDelete={(usageId) => onDeleteUsage(key.id, usageId)}
+          onEdit={(entry) => onEditUsageLog(entry)}
+          expandedLogs={expandedLogs}
+          expandedConfig={expandedConfig}
+          onToggleLogs={(id) => onTogglePluginLogs(id)}
+          onToggleConfig={(id) => onToggleConfig(id)}
+          editingPriceId={editingPriceId}
+          setEditingPriceId={setEditingPriceId}
+          onPriceChange={onPriceChange}
+          onTogglePaid={onTogglePaid}
+        />
+      </div>
+    );
+  };
+
   if (loading && keys.length === 0) {
-    return <div className="text-center text-muted py-3">Загрузка…</div>;
-  }
-  if (keys.length === 0) {
-    return <div className="text-center text-muted py-3">Нет ключей</div>;
+    return <div data-eopp-component="ApiKeysTabLoading" className="text-center text-muted py-3">Загрузка…</div>;
   }
 
   return (
-    <>
-      {newKey && (
-        <div className="alert alert-success mb-3">
-          <h6 className="alert-heading">Ключ создан!</h6>
-          <p className="mb-2 small">
-            Этот ключ отображается только один раз. Скопируйте и сохраните.
-          </p>
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <input
-              type="text"
-              readOnly
-              value={newKey.key}
-              className="form-control form-control-sm font-monospace"
-              style={{ maxWidth: "400px" }}
-            />
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => copyToClipboard(newKey.key)}>
-              Копировать
-            </button>
+    <div data-eopp-component="ApiKeysTab" className="api-keys-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">API Keys</h2>
+            <div className="small text-muted">Ключи доступа, тарифы, лимиты, долги и быстрый переход в журнал</div>
           </div>
-          <button className="btn btn-sm btn-secondary" onClick={onCloseNewKey}>
-            Закрыть
-          </button>
-        </div>
+        }
+      />
+
+      {error ? <Alert className="mb-3" type="error" showIcon message="Ошибка" description={error} /> : null}
+
+      {newKey && (
+        <Alert
+          className="mb-3"
+          type="success"
+          showIcon
+          message="Ключ создан"
+          description={
+            <div data-eopp-component="ApiKeyCreatedAlert" className="api-key-created-alert">
+              <span>Этот ключ отображается только один раз. Скопируйте и сохраните.</span>
+              <TextInput readOnly value={newKey.key} className="font-monospace" />
+              <Space size={6}>
+                <Button size="small" onClick={() => copyToClipboard(newKey.key)}>Копировать</Button>
+                <Button size="small" onClick={onCloseNewKey}>Закрыть</Button>
+              </Space>
+            </div>
+          }
+        />
       )}
 
-      <div className="table-responsive">
-        <table className="table table-sm table-hover table-bordered align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              <th style={{ width: "50px" }}>ID</th>
-              <th>Label</th>
-              <th style={{ width: "120px" }}>Ключ</th>
-              <th style={{ width: "130px" }}>Создан</th>
-              <th>Комментарий</th>
-              <th style={{ width: "80px" }}>Бронь</th>
-              <th style={{ width: "80px" }}>Перенос</th>
-              <th style={{ width: "95px" }}>Бронь 12:00</th>
-              <th style={{ width: "80px" }}>Свои слоты</th>
-              <th style={{ width: "90px" }}>Использование</th>
-              <th style={{ width: "80px" }}>Долг</th>
-              <th style={{ width: "40px" }}>Актив</th>
-              <th style={{ width: "55px" }}>Внешний</th>
-              <th style={{ width: "160px" }}>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => {
-              const isExpanded = expandedHistory[k.id] !== undefined;
-              const historyData = expandedHistory[k.id];
-              const tariff = k.tariff;
-              const debt = k.debt || { unpaid_count: 0, no_price_count: 0, unpaid_total: 0 };
-              const hasDebt = debt.unpaid_count > 0 || debt.no_price_count > 0;
+      <MetricsStrip items={metrics} />
 
-              return (
-                <React.Fragment key={k.id}>
-                  <tr>
-                    <td>{String(k.id)}</td>
-                    <td>{k.label || "—"}</td>
-                    <td>
-                      <span
-                        className="text-muted font-monospace"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => copyToClipboard(k.key)}
-                        title="Нажмите, чтобы скопировать"
-                      >
-                        ...{k.key.slice(-4)}
-                      </span>
-                    </td>
-                    <td className="text-nowrap small">{formatDate(k.created_at)}</td>
-                    <td className="small">{k.comment || "—"}</td>
-                    <td className="text-center">
-                      {tariff ? formatMoney(tariff.price_create) : "—"}
-                    </td>
-                    <td className="text-center">
-                      {tariff ? formatMoney(tariff.price_reschedule) : "—"}
-                    </td>
-                    <td className="text-center">
-                      {tariff && tariff.price_create_peak != null
-                        ? formatMoney(tariff.price_create_peak)
-                        : "—"}
-                    </td>
-                    <td className="text-center">
-                      {tariff && tariff.price_custom_slots != null
-                        ? formatMoney(tariff.price_custom_slots)
-                        : "—"}
-                    </td>
-                    <td className="text-center">
-                      {k.usage_count ?? 0}{k.max_uses != null ? ` / ${k.max_uses}` : ""}
-                    </td>
-                    <td className="text-center">
-                      {hasDebt ? (
-                        <span
-                          className="badge bg-warning text-dark"
-                          title={`${debt.unpaid_count} не оплачено, ${debt.no_price_count} без цены`}
-                        >
-                          {formatMoney(debt.unpaid_total)}
-                        </span>
-                      ) : (
-                        <span className="badge bg-success">{formatMoney(0)}</span>
-                      )}
-                    </td>
-                    <td className="text-center">
-                      <button
-                        className={`btn btn-sm ${k.active ? "btn-success" : "btn-outline-secondary"}`}
-                        onClick={() => onToggleActive(k)}
-                        title={k.active ? "Деактивировать" : "Активировать"}
-                        style={{ width: "24px", height: "24px", padding: "0", lineHeight: "1" }}
-                      >
-                        {k.active ? "✓" : ""}
-                      </button>
-                    </td>
-                    <td className="text-center">
-                      {k.is_external ? (
-                        <span style={{ color: "#d29922", fontSize: "0.8rem" }} title="Внешний клиент">↗</span>
-                      ) : (
-                        <span style={{ color: "#484f58", fontSize: "0.8rem" }}>—</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="d-flex gap-1">
-                        <button className="btn btn-sm btn-outline-primary" onClick={() => onEditKey(k)}>
-                          Изменить
-                        </button>
-                        <button
-                          className={`btn btn-sm ${isExpanded ? "btn-outline-secondary" : "btn-outline-info"}`}
-                          onClick={() => onToggleHistory(k.id)}
-                        >
-                          {isExpanded ? "Свернуть" : "Журнал"}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+      <Card data-eopp-component="ApiKeysListCard" className="mt-3" size="small" title="Список ключей">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 api-keys-search">
+            Поиск
+            <TextInput
+              size="small"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="label, комментарий, ID, последние символы ключа"
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Статус
+            <SelectInput
+              size="small"
+              value={statusFilter}
+              onChange={(value) => setStatusFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "active", label: "Активные" },
+                { value: "inactive", label: "Выключенные" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Клиент
+            <SelectInput
+              size="small"
+              value={clientFilter}
+              onChange={(value) => setClientFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "internal", label: "Внутренние" },
+                { value: "external", label: "Внешние" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Долг
+            <SelectInput
+              size="small"
+              value={debtFilter}
+              onChange={(value) => setDebtFilter(value || "all")}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "debt", label: "Есть долг" },
+                { value: "clean", label: "Без долга" },
+              ]}
+              allowClear={false}
+            />
+          </label>
+        </FilterBar>
 
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={13} className="p-0">
-                        <div className="p-3" style={{ background: "var(--bs-dark)", borderRadius: "0.5rem" }}>
-                        <UsageHistory
-                          keyId={k.id}
-                          historyData={historyData}
-                          isLoading={historyLoading[k.id]}
-                          isEmpty={historyData === null}
-                          isError={historyData === null}
-                          hideTest={historyHideTest[k.id]}
-                          onToggleHideTest={() => {
-                            const next = !historyHideTest[k.id];
-                            onFetchUsageHistory(k.id, next);
-                          }}
-                          onRefresh={() => onFetchUsageHistory(k.id, historyHideTest[k.id])}
-                          onDelete={(usageId) => onDeleteUsage(k.id, usageId)}
-                          onEdit={(entry) => onEditUsageLog(entry)}
-                          expandedLogs={expandedLogs}
-                          expandedConfig={expandedConfig}
-                          onToggleLogs={(id) => onTogglePluginLogs(id)}
-                          onToggleConfig={(id) => onToggleConfig(id)}
-                          editingPriceId={editingPriceId}
-                          setEditingPriceId={setEditingPriceId}
-                          onPriceChange={onPriceChange}
-                          onTogglePaid={onTogglePaid}
-                        />
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
+        <DataTable
+          className="api-keys-table"
+          rowKey="id"
+          data={filteredKeys}
+          columns={columns}
+          loading={loading}
+          emptyText="Нет ключей"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          scroll={false}
+          expandable={{
+            expandedRowKeys,
+            showExpandColumn: false,
+            expandedRowRender: renderHistory,
+            rowExpandable: () => true,
+          }}
+        />
+      </Card>
+    </div>
   );
 }

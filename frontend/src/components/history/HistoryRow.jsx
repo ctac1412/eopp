@@ -1,5 +1,7 @@
 import React from "react";
+import { Checkbox, InputNumber } from "antd";
 import { formatMoney } from "../../utils/format";
+import { Button, DataTable, StatusTag } from "../../ui";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -10,18 +12,6 @@ function formatDate(iso) {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-  });
-}
-
-function formatDateShort(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
@@ -52,22 +42,35 @@ function isTestRecord(record) {
   return record.is_test === true || record.is_test === 1;
 }
 
+function statusLabel(status) {
+  if (status === "confirmed") return "Подтв.";
+  if (status === "pending") return "Ожид.";
+  return "Ошибка";
+}
+
+function getPriceTone(record) {
+  if (record.price == null || record.price <= 0) return "text-muted";
+  if (record.paid === true) return "text-success fw-semibold";
+  if (record.paid === false) return "text-danger fw-semibold";
+  return "";
+}
+
 const COLUMN_CONFIGS = {
-  checkbox: { header: "", key: "checkbox" },
-  id: { header: "ID", key: "id" },
-  type: { header: "Тип", key: "type" },
-  time: { header: "Время", key: "time" },
-  status: { header: "Статус", key: "status" },
-  slot: { header: "Дата слота", key: "slot" },
-  fio: { header: "ФИО", key: "fio" },
-  test: { header: "Тестовая", key: "test" },
-  custom_slots: { header: "Свои слоты", key: "custom_slots" },
-  price: { header: "Цена", key: "price" },
-  paid: { header: "Оплата", key: "paid" },
-  error: { header: "Ошибка", key: "error" },
-  actions: { header: "Действия", key: "actions" },
-  resid: { header: "ID брони", key: "resid" },
-  captcha: { header: "Капча", key: "captcha" },
+  checkbox: { header: "", width: 42 },
+  id: { header: "ID", width: 70 },
+  type: { header: "Тип", width: 100 },
+  time: { header: "Время", width: 118 },
+  status: { header: "Статус", width: 96 },
+  slot: { header: "Дата слота", width: 104 },
+  fio: { header: "ФИО", width: 90 },
+  test: { header: "Тестовая", width: 82 },
+  custom_slots: { header: "Свои слоты", width: 92 },
+  price: { header: "Цена", width: 100 },
+  paid: { header: "Оплата", width: 82 },
+  error: { header: "Ошибка", width: 180 },
+  actions: { header: "Действия", width: 170 },
+  resid: { header: "ID брони", width: 150 },
+  captcha: { header: "Капча", width: 150 },
 };
 
 const PRESETS = {
@@ -81,281 +84,35 @@ const PRESETS = {
   },
 };
 
-export function HistoryRow({
-  record,
-  columns,
-  actions,
-  expandedLogs,
-  expandedConfig,
-  expandedErrors,
-  selected,
-  onToggleLogs,
-  onToggleConfig,
-  onToggleError,
-  onToggleSelect,
-  onEdit,
-  onDelete,
-  onClick,
-  editingPriceId,
-  setEditingPriceId,
-  onPriceChange,
-  onTogglePaid,
-}) {
-  const isLogsExpanded = expandedLogs?.[record.id];
-  const isConfigExpanded = expandedConfig?.[record.id];
-  const isErrorExpanded = expandedErrors?.[record.id];
-  const hasLogs = record.logs && record.logs.length > 0;
-  const hasConfig = record.config_json != null;
-  const hasError = record.error_message != null && record.error_message !== "";
-  const opType = opTypeLabel(record.op_type);
-  const errorTruncated =
-    hasError && !isErrorExpanded
-      ? record.error_message.length > 100
-        ? record.error_message.slice(0, 100) + "…"
-        : record.error_message
-      : null;
-
-  const renderCell = (columnKey) => {
-    switch (columnKey) {
-      case "checkbox":
-        return (
-          <td className="align-middle" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="checkbox"
-              className="form-check-input"
-              checked={!!selected}
-              onChange={() => onToggleSelect?.(record.id)}
-            />
-          </td>
-        );
-      case "id":
-        return <td className="align-middle font-monospace small">{record.id}</td>;
-      case "type":
-        return (
-          <td className="align-middle">
-            {opType ? (
-              <span className={`badge ${opType === "Создание" ? "bg-success" : "bg-info text-dark"}`} style={{ borderRadius: "0.375rem", fontSize: "0.625rem" }}>
-                {opType}
-              </span>
-            ) : (
-              <span>—</span>
-            )}
-          </td>
-        );
-      case "time":
-        return <td className="align-middle small">{formatDate(record.created_at)}</td>;
-      case "status":
-        return (
-          <td className="align-middle text-center">
-            <span
-              className={`badge ${
-                record.status === "confirmed" ? "bg-success" :
-                record.status === "pending" ? "bg-warning text-dark" : "bg-danger"
-              }`}
-              style={{ borderRadius: "0.375rem", fontSize: "0.625rem" }}
-              title={record.status === "confirmed" ? "Подтверждено" : record.status === "pending" ? "Ожидание" : "Ошибка"}
-            >
-              {record.status === "confirmed" ? "Подтв." : record.status === "pending" ? "Ожид." : "Ошибка"}
-            </span>
-          </td>
-        );
-      case "slot":
-        return <td className="align-middle small">{record.slot_date || "—"}</td>;
-      case "fio":
-        return <td className="align-middle small">{maskFio(record.fio)}</td>;
-      case "test":
-        return <td className="align-middle small">{isTestRecord(record) ? "Да" : "Нет"}</td>;
-      case "custom_slots":
-        return <td className="align-middle small">{record.has_custom_slots ? "✅" : "—"}</td>;
-      case "resid": {
-        const rid = record.reservation_id || "";
-        return (
-          <td className="align-middle small font-monospace" style={{ maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={rid}>
-            {rid || "—"}
-          </td>
-        );
-      }
-      case "captcha":
-        return <td className="align-middle small font-monospace">{record.captcha_id || "—"}</td>;
-      case "price":
-        let priceColorClass = "text-muted";
-        if (record.price != null && record.price > 0) {
-          if (record.paid === true) {
-            priceColorClass = "text-success fw-semibold";
-          } else if (record.paid === false) {
-            priceColorClass = "text-danger fw-semibold";
-          }
-        }
-        if (editingPriceId === record.id && actions.showEdit) {
-          return (
-            <td className="align-middle small">
-              <input
-                type="number"
-                className="form-control form-control-sm"
-                style={{ width: "80px" }}
-                defaultValue={record.price ?? 0}
-                autoFocus
-                onBlur={(e) => {
-                  const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10);
-                  onPriceChange?.(record.id, val);
-                  setEditingPriceId(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10);
-                    onPriceChange?.(record.id, val);
-                    setEditingPriceId(null);
-                  }
-                  if (e.key === "Escape") {
-                    setEditingPriceId(null);
-                  }
-                }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            </td>
-          );
-        }
-        return (
-          <td
-            className={`align-middle small ${priceColorClass}`}
-            onDoubleClick={actions.showEdit ? (e) => {
-              e.stopPropagation();
-              setEditingPriceId(record.id);
-            } : undefined}
-            style={actions.showEdit ? { cursor: "pointer" } : undefined}
-            title={actions.showEdit ? "Двойной клик для редактирования" : undefined}
-          >
-            {record.price != null ? formatMoney(record.price) : "—"}
-          </td>
-        );
-      case "paid":
-        const isPaid = record.paid === true;
-        const hasInvoice = !!record.invoice_id;
-        const paidDisplay = isPaid ? "✅" : (!hasInvoice ? "—" : "—");
-        const paidTitle = isPaid ? "Оплачено" : (!hasInvoice ? "Нет счёта" : "Не оплачено");
-        return (
-          <td
-            className="align-middle small text-center"
-            onDoubleClick={actions.showEdit ? (e) => {
-              e.stopPropagation();
-              onTogglePaid?.(record.id);
-            } : undefined}
-            title={`${paidTitle}${actions.showEdit ? " (двойной клик для смены)" : ""}`}
-            style={actions.showEdit ? { cursor: "pointer" } : undefined}
-          >
-            {paidDisplay}
-          </td>
-        );
-      case "error":
-        return (
-          <td className="align-middle small">
-            {hasError ? (
-              isErrorExpanded ? (
-                <span
-                  className="text-danger"
-                  onClick={() => onToggleError?.(record.id)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {record.error_message}
-                </span>
-              ) : (
-                <span
-                  className="text-danger"
-                  onClick={() => onToggleError?.(record.id)}
-                  title="Нажмите, чтобы развернуть"
-                  style={{ cursor: "pointer" }}
-                >
-                  {errorTruncated}
-                </span>
-              )
-            ) : (
-              "—"
-            )}
-          </td>
-        );
-      case "actions":
-        return (
-          <td className="align-middle" onClick={(e) => e.stopPropagation()}>
-            <div className="d-flex gap-1">
-              {actions.showEdit && (
-                <button className="btn btn-sm btn-outline-primary" onClick={() => onEdit?.(record)} title="Редактировать">
-                  ✏️
-                </button>
-              )}
-              {actions.showDelete && (
-                <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete?.(record.id)} title="Удалить">
-                  🗑
-                </button>
-              )}
-              {actions.showLogs && (
-                <button
-                  className={`btn btn-sm ${isLogsExpanded ? "btn-primary" : "btn-outline-secondary"}`}
-                  onClick={() => onToggleLogs?.(record.id)}
-                  title={isLogsExpanded ? "Свернуть логи" : "Показать логи"}
-                >
-                  📋
-                </button>
-              )}
-              {actions.showConfig && hasConfig && (
-                <button
-                  className={`btn btn-sm ${isConfigExpanded ? "btn-primary" : "btn-outline-secondary"}`}
-                  onClick={() => onToggleConfig?.(record.id)}
-                  title={isConfigExpanded ? "Свернуть конфиг" : "Показать конфиг"}
-                >
-                  ⚙
-                </button>
-              )}
-            </div>
-          </td>
-        );
-      default:
-        return null;
-    }
-  };
-
+function DetailBlock({ title, children }) {
   return (
-    <React.Fragment>
-      <tr
-        className={onClick ? "history-row" : ""}
-        onClick={onClick ? () => onClick(record) : undefined}
-        style={onClick ? { cursor: "pointer" } : undefined}
-      >
-        {columns.map((col) => (
-          <React.Fragment key={col}>{renderCell(col)}</React.Fragment>
-        ))}
-      </tr>
-      {isConfigExpanded && hasConfig && (
-        <tr>
-          <td colSpan={columns.length} className="p-0">
-            <div className="p-2" style={{ background: "var(--bs-dark)" }}>
-              <pre className="mb-0 small" style={{ fontSize: "0.6875rem", fontFamily: "var(--bs-font-monospace)", color: "#8b949e" }}>
-                {JSON.stringify(record.config_json, null, 2)}
-              </pre>
-            </div>
-          </td>
-        </tr>
-      )}
-      {isLogsExpanded && (
-        <tr>
-          <td colSpan={columns.length} className="p-0">
-            <div className="p-2" style={{ background: "var(--bs-dark)" }}>
-              {hasLogs ? (
-                record.logs.map((line, i) => (
-                  <div key={i} className="small font-monospace" style={{ fontSize: "0.6875rem", color: "#8b949e" }}>
-                    {line}
-                  </div>
-                ))
-              ) : (
-                <div className="small" style={{ fontSize: "0.6875rem", color: "#6e7681" }}>
-                  Нет логов
-                </div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </React.Fragment>
+    <section className="history-detail-block">
+      <div className="history-detail-block__title">{title}</div>
+      <pre>{children}</pre>
+    </section>
   );
+}
+
+function HistoryDetails({ record, showConfig, showLogs }) {
+  const hasLogs = record.logs && record.logs.length > 0;
+  return (
+    <div data-eopp-component="HistoryDetails" className="history-details">
+      {showConfig && record.config_json != null && (
+        <DetailBlock title="Config">
+          {JSON.stringify(record.config_json, null, 2)}
+        </DetailBlock>
+      )}
+      {showLogs && (
+        <DetailBlock title="Логи">
+          {hasLogs ? record.logs.join("\n") : "Нет логов"}
+        </DetailBlock>
+      )}
+    </div>
+  );
+}
+
+export function HistoryRow() {
+  return null;
 }
 
 export function HistoryTable({
@@ -384,75 +141,284 @@ export function HistoryTable({
 }) {
   const resolvedColumns = columns || PRESETS[preset].columns;
   const resolvedActions = { ...PRESETS[preset].actions, ...actions };
-
-  if (records.length === 0) {
-    return <div style={{ fontSize: "0.8125rem", color: "#6e7681", padding: "1rem 0" }}>Нет записей</div>;
-  }
-
   const selectedCount = Object.values(selectedLogs).filter(Boolean).length;
 
+  const tableColumns = resolvedColumns.map((columnKey) => {
+    const config = COLUMN_CONFIGS[columnKey] || { header: "" };
+    const base = {
+      title: config.header,
+      key: columnKey,
+      width: config.width,
+      ellipsis: ["resid", "captcha", "error"].includes(columnKey),
+    };
+
+    if (columnKey === "checkbox") {
+      return {
+        ...base,
+        title: onToggleSelectAll ? (
+          <Checkbox
+            data-eopp-component="HistorySelectAll"
+            checked={!!allSelected}
+            onChange={(event) => onToggleSelectAll(event.target.checked)}
+          />
+        ) : "",
+        align: "center",
+        render: (_, record) => (
+          <Checkbox
+            data-eopp-component="HistorySelectRow"
+            checked={!!selectedLogs[record.id]}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => onToggleSelect?.(record.id)}
+          />
+        ),
+      };
+    }
+
+    if (columnKey === "id") {
+      return {
+        ...base,
+        render: (_, record) => <span className="font-monospace">{record.id}</span>,
+      };
+    }
+
+    if (columnKey === "type") {
+      return {
+        ...base,
+        align: "center",
+        render: (_, record) => {
+          const label = opTypeLabel(record.op_type);
+          if (!label) return "—";
+          return <StatusTag status={record.op_type === "create" ? "create" : "reschedule"} label={label} />;
+        },
+      };
+    }
+
+    if (columnKey === "time") {
+      return { ...base, render: (_, record) => <span className="text-nowrap">{formatDate(record.created_at)}</span> };
+    }
+
+    if (columnKey === "status") {
+      return {
+        ...base,
+        align: "center",
+        render: (_, record) => <StatusTag status={record.status} label={statusLabel(record.status)} />,
+      };
+    }
+
+    if (columnKey === "slot") {
+      return { ...base, render: (_, record) => record.slot_date || "—" };
+    }
+
+    if (columnKey === "fio") {
+      return { ...base, render: (_, record) => maskFio(record.fio) };
+    }
+
+    if (columnKey === "test") {
+      return { ...base, align: "center", render: (_, record) => (isTestRecord(record) ? "Да" : "Нет") };
+    }
+
+    if (columnKey === "custom_slots") {
+      return { ...base, align: "center", render: (_, record) => (record.has_custom_slots ? "Да" : "—") };
+    }
+
+    if (columnKey === "resid") {
+      return {
+        ...base,
+        render: (_, record) => <span className="font-monospace" title={record.reservation_id || "—"}>{record.reservation_id || "—"}</span>,
+      };
+    }
+
+    if (columnKey === "captcha") {
+      return {
+        ...base,
+        render: (_, record) => <span className="font-monospace" title={record.captcha_id || "—"}>{record.captcha_id || "—"}</span>,
+      };
+    }
+
+    if (columnKey === "price") {
+      return {
+        ...base,
+        align: "right",
+        render: (_, record) => {
+          if (editingPriceId === record.id && resolvedActions.showEdit) {
+            return (
+              <InputNumber
+                data-eopp-component="HistoryPriceInput"
+                size="small"
+                min={0}
+                defaultValue={record.price ?? 0}
+                autoFocus
+                onBlur={(event) => {
+                  const value = event.target.value === "" ? 0 : parseInt(event.target.value, 10);
+                  onPriceChange?.(record.id, value);
+                  setEditingPriceId?.(null);
+                }}
+                onPressEnter={(event) => {
+                  const value = event.target.value === "" ? 0 : parseInt(event.target.value, 10);
+                  onPriceChange?.(record.id, value);
+                  setEditingPriceId?.(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setEditingPriceId?.(null);
+                }}
+                onClick={(event) => event.stopPropagation()}
+                className="history-price-input"
+              />
+            );
+          }
+          return (
+            <span
+              className={getPriceTone(record)}
+              onDoubleClick={resolvedActions.showEdit ? (event) => {
+                event.stopPropagation();
+                setEditingPriceId?.(record.id);
+              } : undefined}
+              title={resolvedActions.showEdit ? "Двойной клик для редактирования" : undefined}
+            >
+              {record.price != null ? formatMoney(record.price) : "—"}
+            </span>
+          );
+        },
+      };
+    }
+
+    if (columnKey === "paid") {
+      return {
+        ...base,
+        align: "center",
+        render: (_, record) => {
+          const isPaid = record.paid === true;
+          const hasInvoice = !!record.invoice_id;
+          const paidTitle = isPaid ? "Оплачено" : (!hasInvoice ? "Нет счета" : "Не оплачено");
+          return (
+            <span
+              onDoubleClick={resolvedActions.showEdit ? (event) => {
+                event.stopPropagation();
+                onTogglePaid?.(record.id);
+              } : undefined}
+              title={`${paidTitle}${resolvedActions.showEdit ? " (двойной клик для смены)" : ""}`}
+            >
+              {isPaid ? "Да" : "—"}
+            </span>
+          );
+        },
+      };
+    }
+
+    if (columnKey === "error") {
+      return {
+        ...base,
+        render: (_, record) => {
+          const hasError = record.error_message != null && record.error_message !== "";
+          if (!hasError) return "—";
+          const isExpanded = expandedErrors?.[record.id];
+          const value = isExpanded || record.error_message.length <= 100
+            ? record.error_message
+            : `${record.error_message.slice(0, 100)}…`;
+          return (
+            <span
+              className="text-danger history-error-text"
+              title="Нажмите, чтобы развернуть"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleError?.(record.id);
+              }}
+            >
+              {value}
+            </span>
+          );
+        },
+      };
+    }
+
+    if (columnKey === "actions") {
+      return {
+        ...base,
+        fixed: "right",
+        render: (_, record) => {
+          const isLogsExpanded = expandedLogs?.[record.id];
+          const isConfigExpanded = expandedConfig?.[record.id];
+          const hasConfig = record.config_json != null;
+          return (
+            <div className="history-actions" onClick={(event) => event.stopPropagation()}>
+              {resolvedActions.showEdit && (
+                <Button size="small" onClick={() => onEdit?.(record)} title="Редактировать">
+                  Изм.
+                </Button>
+              )}
+              {resolvedActions.showDelete && (
+                <Button size="small" variant="danger" onClick={() => onDelete?.(record.id)} title="Удалить">
+                  Удал.
+                </Button>
+              )}
+              {resolvedActions.showLogs && (
+                <Button
+                  size="small"
+                  variant={isLogsExpanded ? "primary" : "secondary"}
+                  onClick={() => onToggleLogs?.(record.id)}
+                  title={isLogsExpanded ? "Свернуть логи" : "Показать логи"}
+                >
+                  Логи
+                </Button>
+              )}
+              {resolvedActions.showConfig && hasConfig && (
+                <Button
+                  size="small"
+                  variant={isConfigExpanded ? "primary" : "secondary"}
+                  onClick={() => onToggleConfig?.(record.id)}
+                  title={isConfigExpanded ? "Свернуть конфиг" : "Показать конфиг"}
+                >
+                  CFG
+                </Button>
+              )}
+            </div>
+          );
+        },
+      };
+    }
+
+    return { ...base, render: () => null };
+  });
+
+  const expandedRowKeys = records
+    .filter((record) => expandedLogs?.[record.id] || expandedConfig?.[record.id])
+    .map((record) => record.id);
+
   return (
-    <div>
+    <div data-eopp-component="HistoryTable" className="history-table">
       {onGenerateInvoice && selectedCount > 0 && (
-        <div className="d-flex justify-content-between align-items-center mb-2 p-2" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem" }}>
-          <span className="small" style={{ fontSize: "0.8125rem", color: "#6e7681" }}>Выбрано: {selectedCount}</span>
-          <button className="btn btn-sm btn-primary" onClick={onGenerateInvoice}>
-            Сформировать счёт
-          </button>
+        <div data-eopp-component="HistoryInvoiceToolbar" className="history-invoice-toolbar">
+          <span>Выбрано: {selectedCount}</span>
+          <Button size="small" variant="primary" onClick={onGenerateInvoice}>
+            Сформировать счет
+          </Button>
         </div>
       )}
-      <div className="table-responsive">
-        <table className="table table-hover table-bordered align-middle mb-0">
-          <thead className="table-light">
-            <tr>
-              {resolvedColumns.map((col) => {
-                if (col === "checkbox" && onToggleSelectAll != null) {
-                  return (
-                    <th key={col} className="text-center">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        onChange={(e) => onToggleSelectAll(e.target.checked)}
-                        checked={!!allSelected}
-                      />
-                    </th>
-                  );
-                }
-                return (
-                  <th key={col} className="small fw-semibold">
-                    {COLUMN_CONFIGS[col]?.header || ""}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => (
-              <HistoryRow
-                key={record.id}
-                record={record}
-                columns={resolvedColumns}
-                actions={resolvedActions}
-                expandedLogs={expandedLogs}
-                expandedConfig={expandedConfig}
-                expandedErrors={expandedErrors}
-                selected={selectedLogs[record.id]}
-                onToggleLogs={onToggleLogs}
-                onToggleConfig={onToggleConfig}
-                onToggleError={onToggleError}
-                onToggleSelect={onToggleSelect}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onClick={onRowClick}
-                editingPriceId={editingPriceId}
-                setEditingPriceId={setEditingPriceId}
-                onPriceChange={onPriceChange}
-                onTogglePaid={onTogglePaid}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        className="history-data-table"
+        rowKey="id"
+        data={records}
+        columns={tableColumns}
+        emptyText="Нет записей"
+        pagination={false}
+        scroll={{ x: "max-content" }}
+        onRow={(record) => ({
+          onClick: onRowClick ? () => onRowClick(record) : undefined,
+          className: onRowClick ? "history-row" : "",
+        })}
+        expandable={{
+          expandedRowKeys,
+          showExpandColumn: false,
+          expandedRowRender: (record) => (
+            <HistoryDetails
+              record={record}
+              showConfig={!!expandedConfig?.[record.id]}
+              showLogs={!!expandedLogs?.[record.id]}
+            />
+          ),
+          rowExpandable: (record) => !!expandedLogs?.[record.id] || !!expandedConfig?.[record.id],
+        }}
+      />
     </div>
   );
 }

@@ -1,11 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Card, Checkbox, Input, Modal, Pagination } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SegmentedControl,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
-function adminHeaders(token) {
-  return { "Content-Type": "application/json", "X-Admin-Token": token };
+function adminHeaders() {
+  return { "Content-Type": "application/json" };
 }
 
-function adminHeadersJson(token) {
-  return { "X-Admin-Token": token };
+function adminHeadersJson() {
+  return {};
 }
 
 function formatDate(iso) {
@@ -357,9 +369,8 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
 
   const solvedBadge = (correctAnswer, status) => {
     const isPassed = status === "passed" || status === "confirmed";
-    const cls = isPassed ? "bg-success" : "bg-danger";
     const label = isPassed ? "Решена" : "Не пройдена";
-    return <span className={`badge ${cls}`}>{label}</span>;
+    return <StatusTag status={isPassed ? "confirmed" : "failed"} label={label} />;
   };
 
   const hashCounts = useMemo(() => {
@@ -570,46 +581,171 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     if (filesPage > filesPageCount) setFilesPage(filesPageCount);
   }, [filesPage, filesPageCount]);
 
+  const operationMetricItems = [
+    { key: "total", label: "Всего", value: metrics.total, tone: "neutral" },
+    { key: "passed", label: "Решено", value: metrics.passed, tone: "success" },
+    { key: "failed", label: "Не прошли", value: metrics.failed, tone: metrics.failed > 0 ? "danger" : "success" },
+    { key: "answerKnown", label: "С ответом", value: metrics.answerKnown, tone: "info" },
+    { key: "duplicates", label: "Повторы", value: metrics.duplicatePuzzles, tone: metrics.duplicatePuzzles > 0 ? "warning" : "neutral" },
+  ];
+
+  const fileMetricItems = [
+    { key: "total", label: "Файлы", value: fileMetrics.total, tone: "neutral" },
+    { key: "answerKnown", label: "С ответом", value: fileMetrics.answerKnown, tone: "info" },
+    { key: "ranked", label: "С rank", value: fileMetrics.rankedCount, tone: "success" },
+    { key: "top1", label: "Top1", value: `${fileMetrics.top1RankZeroPercent}%`, tone: fileMetrics.top1RankZeroPercent >= 80 ? "success" : "warning" },
+    { key: "distance", label: "Сред. rank", value: fileMetrics.avgSolverDistance, tone: "neutral" },
+    { key: "duplicates", label: "Повторы", value: fileMetrics.duplicatePuzzles, tone: fileMetrics.duplicatePuzzles > 0 ? "warning" : "neutral" },
+  ];
+
   const renderPagination = (page, totalPages, setPage, totalItems, shownItems) => {
-    const start = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
-    const end = Math.min(totalItems, start + shownItems - 1);
+    const currentPage = Math.min(page, totalPages);
     return (
-      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap my-2">
-        <div className="d-flex align-items-center gap-2">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary"
-            disabled={page <= 1}
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-          >
-            &lt;
-          </button>
-          <span className="small text-muted">{page} / {totalPages}</span>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary"
-            disabled={page >= totalPages}
-            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-          >
-            &gt;
-          </button>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <span className="small text-muted">{start}-{end} / {totalItems}</span>
-          <select
-            className="form-select form-select-sm"
-            style={{ width: 86 }}
-            value={pageSize}
-            onChange={(event) => setPageSize(Number(event.target.value))}
-          >
-            {PAGE_SIZE_OPTIONS.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <Pagination
+        data-eopp-component="CaptchasPagination"
+        className="captchas-pagination"
+        current={currentPage}
+        pageSize={pageSize}
+        total={totalItems}
+        showSizeChanger
+        pageSizeOptions={PAGE_SIZE_OPTIONS.map(String)}
+        showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+        onChange={(nextPage, nextPageSize) => {
+          setPage(nextPage);
+          setPageSize(nextPageSize);
+        }}
+        size="small"
+      />
     );
   };
+
+  const renderFilePreview = (captcha) => (
+    captcha.valid_index != null || captcha.solver_valid_rank == null ? (
+      <img
+        data-eopp-component="CaptchaFilePreview"
+        className="captchas-preview"
+        src={`/admin/captcha-files/${captcha.captcha_id}/thumbnail?${captcha.valid_index == null ? "mode=solver_top1" : ""}`}
+        alt={captcha.valid_index == null ? "solver top1" : "variant"}
+        loading="lazy"
+        onError={(event) => { event.currentTarget.style.display = "none"; }}
+        onClick={() => {
+          setPreviewCaptchaId(captcha.captcha_id);
+          setPreviewMode(captcha.valid_index == null ? "solver_top1" : null);
+        }}
+      />
+    ) : "—"
+  );
+
+  const renderOperationPreview = (captcha) => (
+    fileValidIndex.has(captcha.captcha_id) ? (
+      <img
+        data-eopp-component="CaptchaOperationPreview"
+        className="captchas-preview"
+        src={`/admin/captcha-files/${captcha.captcha_id}/thumbnail`}
+        alt="variant"
+        loading="lazy"
+        onError={(event) => { event.currentTarget.style.display = "none"; }}
+        onClick={() => {
+          setPreviewCaptchaId(captcha.captcha_id);
+          setPreviewMode(null);
+        }}
+      />
+    ) : "—"
+  );
+
+  const labelingStatus = (captcha) => {
+    if (captcha.has_coordinates && captcha.has_boxes) return <StatusTag status="confirmed" label="точки+боксы" />;
+    if (captcha.has_coordinates) return <StatusTag status="failed" label="точки" />;
+    if (captcha.has_boxes) return <StatusTag status="pending" label="боксы" />;
+    if (captcha.manual_labeled) return <StatusTag status="warning" label="пазл" />;
+    return <span className="text-muted">—</span>;
+  };
+
+  const fileColumns = [
+    { title: "ID", dataIndex: "id", width: 56, render: (value) => <span className="text-muted">#{value}</span> },
+    { title: "Captcha ID", dataIndex: "captcha_id", width: 210, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Тип", dataIndex: "captcha_type", width: 92, render: (value) => value || "unknown" },
+    {
+      title: "Класс",
+      dataIndex: "classification",
+      width: 118,
+      render: (value, captcha) => (
+        <SelectInput
+          size="small"
+          value={value || ""}
+          onChange={(next) => setFileClassification(captcha.captcha_id, next || null)}
+          options={[
+            { value: "", label: "—" },
+            { value: "digit", label: "Цифры" },
+            { value: "figures", label: "Фигуры" },
+            { value: "puzzle", label: "Пазл" },
+            { value: "icon_click", label: "Иконки" },
+          ]}
+          allowClear={false}
+        />
+      ),
+    },
+    { title: "Rank", dataIndex: "solver_valid_rank", width: 70, align: "center", render: solverRankBadge },
+    {
+      title: "Вариант",
+      width: 76,
+      align: "center",
+      render: (_, captcha) => captcha.valid_index != null
+        ? captcha.valid_index
+        : captcha.no_valid_index != null
+          ? <span className="text-danger fw-semibold">{captcha.no_valid_index}</span>
+          : "—",
+    },
+    { title: "Разм.", width: 118, align: "center", render: (_, captcha) => labelingStatus(captcha) },
+    { title: "Hash", dataIndex: "tiles_hash", width: 120, ellipsis: true, render: (value) => <span className="font-monospace" title={value || "—"}>{value || "—"}</span> },
+    { title: "Usage", width: 130, ellipsis: true, render: (_, captcha) => <span className="font-monospace">{captchaToUsageLogs.get(captcha.captcha_id)?.join(", ") || "—"}</span> },
+    { title: "Размер", dataIndex: "file_size", width: 88, render: (value) => (value ? `${Math.round(value / 1024)} KB` : "—") },
+    { title: "Превью", width: 90, render: (_, captcha) => renderFilePreview(captcha) },
+    { title: "Статус", dataIndex: "file_status", width: 98, align: "center", render: (value) => <StatusTag status={value === "labeled" ? "confirmed" : "failed"} label={value === "labeled" ? "Решена" : "Не решена"} /> },
+    { title: "Дата", dataIndex: "file_mtime", width: 132, render: formatDate },
+    {
+      title: "",
+      width: 104,
+      align: "right",
+      render: (_, captcha) => (
+        <Button size="small" onClick={() => openLabelingPopup(captcha.captcha_id)}>Разметка</Button>
+      ),
+    },
+  ];
+
+  const operationColumns = [
+    { title: "ID", dataIndex: "id", width: 56, render: (value) => <span className="text-muted">#{value}</span> },
+    { title: "Captcha ID", dataIndex: "captcha_id", width: 210, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Решена", width: 98, align: "center", render: (_, captcha) => solvedBadge(captcha.correct_answer, captcha.status) },
+    { title: "Причина", dataIndex: "fail_reason", width: 150, ellipsis: true, render: (value) => <span className="text-danger" title={value || "—"}>{value || "—"}</span> },
+    { title: "Hash", dataIndex: "tiles_hash", width: 120, ellipsis: true, render: (value) => <span className="font-monospace" title={value || "—"}>{value || "—"}</span> },
+    {
+      title: "Разм.",
+      width: 84,
+      align: "center",
+      render: (_, captcha) => {
+        const file = captchaFileById.get(captcha.captcha_id);
+        if (!file) return "—";
+        return file.manual_labeled ? <StatusTag status="warning" label="Ручная" /> : <StatusTag status="neutral" label="Исх." />;
+      },
+    },
+    { title: "Rank", width: 70, align: "center", render: (_, captcha) => captchaFileById.get(captcha.captcha_id) ? solverRankBadge(captchaFileById.get(captcha.captcha_id).solver_valid_rank) : "—" },
+    {
+      title: "Вариант",
+      width: 76,
+      align: "center",
+      render: (_, captcha) => {
+        const file = captchaFileById.get(captcha.captcha_id);
+        const variant = file?.valid_index ?? file?.no_valid_index ?? null;
+        return variant != null ? variant : "—";
+      },
+    },
+    { title: "Пользователь", dataIndex: "key_label", width: 130, ellipsis: true, render: (value) => value || "—" },
+    { title: "Usage", dataIndex: "usage_log_id", width: 82, align: "center" },
+    { title: "Дата", dataIndex: "created_at", width: 132, render: formatDate },
+    { title: "Время", dataIndex: "duration_ms", width: 86, render: formatDuration },
+    { title: "Превью", width: 90, render: (_, captcha) => renderOperationPreview(captcha) },
+  ];
 
   if (subtab === "operations" && loading) {
     return <div className="text-center text-muted py-3">Загрузка…</div>;
@@ -620,257 +756,216 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   }
 
   return (
-    <div>
-      <div className="btn-group btn-group-sm mb-3" role="group" aria-label="Раздел капч">
-        <button
-          className={`btn ${subtab === "operations" ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setSubtab("operations")}
-        >
-          По операциям
-        </button>
-        <button
-          className={`btn ${subtab === "files" ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setSubtab("files")}
-        >
-          Все капчи
-        </button>
-      </div>
-
-      <div className="d-flex gap-2 mb-2 align-items-center flex-wrap">
-        <div className="btn-group btn-group-sm" role="group" aria-label="Фильтр капч">
-          {[
-            { id: "all", label: "Все" },
-            { id: "passed", label: "Решенные" },
-            { id: "failed", label: "Не прошедшие" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              className={`btn ${preset === item.id ? "btn-primary" : "btn-outline-secondary"}`}
-              onClick={() => setPreset(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        <button
-          className="btn btn-sm btn-outline-secondary"
-          onClick={subtab === "files" ? fetchCaptchaFiles : fetchCaptchas}
-        >
-          Обновить
-        </button>
-        {subtab === "files" && (
-          <button
-            className="btn btn-sm btn-outline-success"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            {syncing ? "Синхронизация…" : "Синхронизировать"}
-          </button>
-        )}
-        {syncResult && subtab === "files" && (
-          <span className="badge bg-success" style={{ fontSize: "0.75rem" }}>
-            +{syncResult.new} новых, ↻{syncResult.updated} обновлено
-            {syncResult.action_date_set > 0 && `, 📅${syncResult.action_date_set} дат`}
-            {syncResult.icon_coords_backfilled > 0 && `, 🖱${syncResult.icon_coords_backfilled} иконок`}
-            {syncResult.errors > 0 && `, ⚠${syncResult.errors} ошибок`}
+    <div data-eopp-component="CaptchasTab" className="captchas-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Капчи</h2>
+            <div className="small text-muted">
+              Архив операций, файлы капч, ручная разметка и подготовка курсов
+            </div>
+          </div>
+        }
+        right={
+          <span className="text-muted small">
+            {subtab === "files"
+              ? `Показано: ${filteredCaptchaFiles.length} из ${captchaFiles.length}`
+              : `Показано: ${filteredCaptchas.length} из ${captchas.length}`}
           </span>
-        )}
-        {subtab === "operations" && (
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={handleSendSelected}
-            disabled={selected.size === 0 || sending}
-          >
-            {sending
-              ? "Отправка…"
-              : `Отправить выбранные (${selected.size})`}
-          </button>
-        )}
-        <span className="text-muted small ms-auto">
-          {subtab === "files"
-            ? `Показано: ${filteredCaptchaFiles.length} из ${captchaFiles.length}`
-            : `Показано: ${filteredCaptchas.length} из ${captchas.length}`}
-        </span>
-      </div>
+        }
+      />
 
-      <div className="row g-2 align-items-end mb-3">
-        <div className="col-12 col-xl-4">
-          <label className="form-label small mb-1">Поиск</label>
-          <input
-            className="form-control form-control-sm"
+      <Toolbar
+        className="mb-2"
+        left={
+          <>
+            <SegmentedControl
+              size="small"
+              value={subtab}
+              onChange={setSubtab}
+              options={[
+                { value: "operations", label: "По операциям" },
+                { value: "files", label: "Все капчи" },
+              ]}
+            />
+            <SegmentedControl
+              size="small"
+              value={preset}
+              onChange={setPreset}
+              options={[
+                { value: "all", label: "Все" },
+                { value: "passed", label: "Решенные" },
+                { value: "failed", label: "Не прошедшие" },
+              ]}
+            />
+            <Button size="small" onClick={subtab === "files" ? fetchCaptchaFiles : fetchCaptchas}>
+              Обновить
+            </Button>
+            {subtab === "files" && (
+              <Button size="small" onClick={handleSync} disabled={syncing}>
+                {syncing ? "Синхронизация…" : "Синхронизировать"}
+              </Button>
+            )}
+            {subtab === "operations" && (
+              <Button
+                size="small"
+                variant="primary"
+                onClick={handleSendSelected}
+                disabled={selected.size === 0 || sending}
+              >
+                {sending ? "Отправка…" : `Отправить выбранные (${selected.size})`}
+              </Button>
+            )}
+          </>
+        }
+        right={
+          syncResult && subtab === "files" ? (
+            <StatusTag
+              status={syncResult.errors > 0 ? "failed" : "confirmed"}
+              label={`+${syncResult.new} новых, ↻${syncResult.updated} обновлено${syncResult.action_date_set > 0 ? `, ${syncResult.action_date_set} дат` : ""}${syncResult.icon_coords_backfilled > 0 ? `, ${syncResult.icon_coords_backfilled} иконок` : ""}${syncResult.errors > 0 ? `, ${syncResult.errors} ошибок` : ""}`}
+            />
+          ) : null
+        }
+      />
+
+      <FilterBar className="mb-3">
+        <label className="form-label small mb-0 captchas-search">
+          Поиск
+          <TextInput
+            size="small"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Captcha ID, hash, причина, usage log, пользователь"
           />
-        </div>
-        <div className="col-6 col-md-4 col-xl-3">
-          <label className="form-label small mb-1">Пользователь</label>
-          <select className="form-select form-select-sm" value={keyFilter} onChange={(event) => setKeyFilter(event.target.value)}>
-            <option value="all">Все</option>
-            {keyOptions.map((key) => <option key={key.id} value={key.id}>{key.label}</option>)}
-          </select>
-        </div>
-        <div className="col-6 col-md-4 col-xl-2">
-          <label className="form-label small mb-1">Ответ</label>
-          <select className="form-select form-select-sm" value={answerFilter} onChange={(event) => setAnswerFilter(event.target.value)}>
-            <option value="all">Все</option>
-            <option value="known">Есть ответ</option>
-            <option value="missing">Без ответа</option>
-          </select>
-        </div>
-        <div className="col-6 col-md-4 col-xl-2">
-          <label className="form-label small mb-1">Класс</label>
-          <select className="form-select form-select-sm" value={classificationFilter} onChange={(event) => setClassificationFilter(event.target.value)}>
-            <option value="all">Все</option>
-            <option value="digit">Цифры</option>
-            <option value="figures">Фигуры</option>
-            <option value="puzzle">Пазл</option>
-            <option value="icon_click">Иконки</option>
-            <option value="unset">Без класса</option>
-          </select>
-        </div>
-        <div className="col-12 col-md-4 col-xl-3">
-          <div className="form-check mb-1">
-            <input
-              className="form-check-input"
-              type="checkbox"
-              id="duplicateCaptchas"
-              checked={duplicatesOnly}
-              onChange={(event) => setDuplicatesOnly(event.target.checked)}
-            />
-            <label className="form-check-label" htmlFor="duplicateCaptchas">
-              Только повторные пазлы
-            </label>
-          </div>
-        </div>
-      </div>
+        </label>
+        <label className="form-label small mb-0">
+          Пользователь
+          <SelectInput
+            size="small"
+            value={keyFilter}
+            onChange={(value) => setKeyFilter(value || "all")}
+            options={[
+              { value: "all", label: "Все" },
+              ...keyOptions.map((key) => ({ value: key.id, label: key.label })),
+            ]}
+            allowClear={false}
+            style={{ minWidth: 180 }}
+          />
+        </label>
+        <label className="form-label small mb-0">
+          Ответ
+          <SelectInput
+            size="small"
+            value={answerFilter}
+            onChange={(value) => setAnswerFilter(value || "all")}
+            options={[
+              { value: "all", label: "Все" },
+              { value: "known", label: "Есть ответ" },
+              { value: "missing", label: "Без ответа" },
+            ]}
+            allowClear={false}
+          />
+        </label>
+        <label className="form-label small mb-0">
+          Класс
+          <SelectInput
+            size="small"
+            value={classificationFilter}
+            onChange={(value) => setClassificationFilter(value || "all")}
+            options={[
+              { value: "all", label: "Все" },
+              { value: "digit", label: "Цифры" },
+              { value: "figures", label: "Фигуры" },
+              { value: "puzzle", label: "Пазл" },
+              { value: "icon_click", label: "Иконки" },
+              { value: "unset", label: "Без класса" },
+            ]}
+            allowClear={false}
+          />
+        </label>
+        <Checkbox
+          data-eopp-component="CaptchasDuplicatesOnly"
+          className="captchas-duplicates-toggle"
+            checked={duplicatesOnly}
+            onChange={(event) => setDuplicatesOnly(event.target.checked)}
+        >
+          Только повторные пазлы
+        </Checkbox>
+      </FilterBar>
 
-      {subtab === "files" ? (
-        <div className="table-responsive mb-3">
-          <table className="table table-sm table-bordered align-middle mb-0">
-            <thead className="table-light">
-              <tr>
-                <th style={{ width: "120px" }}>{"Метрика"}</th>
-                <th className="text-center" style={{ width: "88px" }}>{"Значение"}</th>
-                <th>{"Деталь"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>{"Всего"}</td>
-                <td className="text-center fw-semibold">{fileMetrics.total}</td>
-                <td className="text-muted small">{"Файлы капч по текущим фильтрам"}</td>
-              </tr>
-              <tr>
-                <td>{"С ответом"}</td>
-                <td className="text-center fw-semibold">{fileMetrics.answerKnown}</td>
-                <td className="text-muted small">{"Есть valid_index"}</td>
-              </tr>
-              <tr>
-                <td>{"С rank"}</td>
-                <td className="text-center fw-semibold">{fileMetrics.rankedCount}</td>
-                <td className="text-muted small">{"Из них без rank"}: {fileMetrics.unrankedKnown}</td>
-              </tr>
-              <tr>
-                <td>{"Потенциал"}</td>
-                <td className="text-center fw-semibold text-success">{fileMetrics.top1RankZeroPercent}%</td>
-                <td className="text-muted small">{"Правильный ответ на rank 0"}: {fileMetrics.top1RankZero}</td>
-              </tr>
-              <tr>
-                <td>{"Удаленность"}</td>
-                <td className="text-center fw-semibold">{fileMetrics.avgSolverDistance}</td>
-                <td className="text-muted small">{"Средняя; медиана"}: {fileMetrics.medianSolverDistance}</td>
-              </tr>
-              <tr>
-                <td>{"Повторы"}</td>
-                <td className="text-center fw-semibold">{fileMetrics.duplicatePuzzles}</td>
-                <td className="text-muted small">{"Пазлы с одинаковым tiles_hash"}</td>
-              </tr>
-            </tbody>
-          </table>
-          <table className="table table-sm table-bordered align-middle mt-2 mb-0">
-            <thead className="table-light">
-              <tr>
-                <th style={{ width: "120px" }}>Rank</th>
-                <th className="text-center" style={{ width: "88px" }}>{"Капч"}</th>
-                <th className="text-center" style={{ width: "88px" }}>%</th>
-                <th>{"Смысл"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fileMetrics.buckets.map((bucket) => (
-                <tr key={bucket.id}>
-                  <td className="fw-semibold">{bucket.label}</td>
-                  <td className="text-center">{bucket.count}</td>
-                  <td className="text-center">{bucket.percent}</td>
-                  <td className="text-muted small">{bucket.hint}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="d-flex flex-wrap gap-2 mb-3">
-          <span className="badge text-bg-secondary">Всего: {metrics.total}</span>
-          <span className="badge text-bg-success">Решено: {metrics.passed}</span>
-          <span className="badge text-bg-danger">Не прошли: {metrics.failed}</span>
-          <span className="badge text-bg-primary">С ответом: {metrics.answerKnown}</span>
-          <span className="badge text-bg-warning">Повторы: {metrics.duplicatePuzzles}</span>
+      <MetricsStrip items={subtab === "files" ? fileMetricItems : operationMetricItems} />
+
+      {subtab === "files" && (
+        <div data-eopp-component="CaptchasRankBuckets" className="captchas-rank-buckets">
+          {fileMetrics.buckets.map((bucket) => (
+            <div key={bucket.id} className="captchas-rank-bucket">
+              <strong>{bucket.label}</strong>
+              <span>{bucket.count}</span>
+              <small>{bucket.percent}</small>
+            </div>
+          ))}
         </div>
       )}
       {subtab === "operations" && (failureSummary.length > 0 || userSummary.length > 0) && (
-        <div className="row g-3 mb-3">
+        <div className="captchas-summary-grid mb-3">
           {failureSummary.length > 0 && (
-            <div className="col-12 col-xl-7">
-              <div className="card h-100">
-                <div className="card-header fw-semibold">Причины непройденных капч</div>
-                <div className="card-body p-0">
-                  <table className="table table-sm table-bordered mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th>Причина</th>
-                        <th className="text-center" style={{ width: "72px" }}>Кол-во</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {failureSummary.map((row) => (
-                        <tr key={row.reason}>
-                          <td className="small" title={row.reason}>{row.reason}</td>
-                          <td className="text-center fw-semibold">{row.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <Card data-eopp-component="CaptchasFailureSummaryCard" size="small" title="Причины непройденных капч">
+              <DataTable
+                className="captchas-summary-table"
+                rowKey="reason"
+                data={failureSummary}
+                columns={[
+                  {
+                    title: "Причина",
+                    dataIndex: "reason",
+                    ellipsis: true,
+                    render: (value) => <span title={value}>{value}</span>,
+                  },
+                  {
+                    title: "Кол-во",
+                    dataIndex: "count",
+                    width: 80,
+                    align: "center",
+                    render: (value) => <strong>{value}</strong>,
+                  },
+                ]}
+                emptyText="Нет причин"
+                pagination={false}
+                scroll={false}
+              />
+            </Card>
           )}
           {userSummary.length > 0 && (
-            <div className="col-12 col-xl-5">
-              <div className="card h-100">
-                <div className="card-header fw-semibold">Капчи по пользователям</div>
-                <div className="card-body p-0">
-                  <table className="table table-sm table-bordered mb-0">
-                    <thead className="table-light">
-                      <tr>
-                        <th>Пользователь</th>
-                        <th className="text-center">Всего</th>
-                        <th className="text-center">Ошибки</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userSummary.map((row) => (
-                        <tr key={row.label}>
-                          <td className="small">{row.label}</td>
-                          <td className="text-center">{row.total}</td>
-                          <td className="text-center">{row.failed}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <Card data-eopp-component="CaptchasUserSummaryCard" size="small" title="Капчи по пользователям">
+              <DataTable
+                className="captchas-summary-table"
+                rowKey="label"
+                data={userSummary}
+                columns={[
+                  {
+                    title: "Пользователь",
+                    dataIndex: "label",
+                    ellipsis: true,
+                  },
+                  {
+                    title: "Всего",
+                    dataIndex: "total",
+                    width: 76,
+                    align: "center",
+                  },
+                  {
+                    title: "Ошибки",
+                    dataIndex: "failed",
+                    width: 76,
+                    align: "center",
+                  },
+                ]}
+                emptyText="Нет пользователей"
+                pagination={false}
+                scroll={false}
+              />
+            </Card>
           )}
         </div>
       )}
@@ -886,129 +981,24 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
               <span className="text-muted me-2" style={{ fontSize: "0.85rem" }}>
                 Выбрано: {selectedFileIds.size}
               </span>
-              <button
-                className="btn btn-sm btn-success"
-                onClick={() => setShowCourseModal(true)}
-              >
-                📚 Создать курс
-              </button>
+              <Button size="small" variant="primary" onClick={() => setShowCourseModal(true)}>
+                Создать курс
+              </Button>
             </div>
           )}
-          <div className="table-responsive">
-            <table className="table table-sm table-hover table-bordered align-middle mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th style={{ width: "30px" }}>
-                    <input
-                      type="checkbox"
-                      checked={pagedCaptchaFiles.length > 0 && pagedCaptchaFiles.every((f) => selectedFileIds.has(f.id))}
-                      onChange={toggleFileSelectAll}
-                    />
-                  </th>
-                  <th style={{ width: "50px" }}>ID</th>
-                  <th>Captcha ID</th>
-                   <th style={{ width: "110px" }}>Тип</th>
-                   <th style={{ width: "90px" }}>Класс</th>
-                   <th style={{ width: "110px" }}>{"Действия"}</th>
-                  <th style={{ width: "90px" }}>Rank</th>
-                  <th style={{ width: "110px" }}>Вариант</th>
-
-                  <th style={{ width: "100px" }}>{"Разм."}</th>
-                  <th style={{ width: "120px" }}>Tiles Hash</th>
-                  <th style={{ width: "130px" }}>Usage Log IDs</th>
-                  <th style={{ width: "110px" }}>Размер</th>
-                  <th style={{ width: "90px" }}>Превью</th>
-                  <th style={{ width: "110px" }}>{"Статус"}</th>
-                  <th style={{ width: "160px" }}>Дата файла</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedCaptchaFiles.map((c) => (
-                  <tr key={c.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selectedFileIds.has(c.id)}
-                        onChange={() => toggleFileSelect(c.id)}
-                      />
-                    </td>
-                    <td>{c.id}</td>
-                    <td className="font-monospace small">{c.captcha_id}</td>
-                    <td className="small">{c.captcha_type || "unknown"}</td>
-                    <td>
-                      <select
-                        className="form-select form-select-sm"
-                        style={{ width: 80, padding: "2px 4px", fontSize: "0.75rem" }}
-                        value={c.classification || ""}
-                        onChange={(e) => setFileClassification(c.captcha_id, e.target.value || null)}
-                      >
-                        <option value="">—</option>
-                        <option value="digit">Цифры</option>
-                        <option value="figures">Фигуры</option>
-                        <option value="puzzle">Пазл</option>
-                        <option value="icon_click">Иконки</option>
-                      </select>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() => openLabelingPopup(c.captcha_id)}
-                      >
-                        {"Разметка"}
-                      </button>
-                    </td>
-                    <td>{solverRankBadge(c.solver_valid_rank)}</td>
-                    <td>
-                      {c.valid_index != null
-                        ? c.valid_index
-                        : c.no_valid_index != null
-                          ? <span className="text-danger fw-semibold">{c.no_valid_index}</span>
-                          : "—"}
-                    </td>
-
-                    <td className="text-center" style={{ fontSize: "0.7rem" }}>
-                      {c.has_coordinates && c.has_boxes ? (
-                        <span className="badge bg-success">точки+боксы</span>
-                      ) : c.has_coordinates ? (
-                        <span className="badge bg-danger">точки</span>
-                      ) : c.has_boxes ? (
-                        <span className="badge bg-primary">боксы</span>
-                      ) : c.manual_labeled ? (
-                        <span className="badge bg-warning text-dark">пазл</span>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="font-monospace small">{c.tiles_hash || "—"}</td>
-                    <td className="font-monospace small">{captchaToUsageLogs.get(c.captcha_id)?.join(", ") || "—"}</td>
-                    <td>{c.file_size ? `${Math.round(c.file_size / 1024)} KB` : "—"}</td>
-                    <td>
-                      {c.valid_index != null || c.solver_valid_rank == null ? (
-                        <img
-                          src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}${c.valid_index == null ? "&mode=solver_top1" : ""}`}
-                          alt={c.valid_index == null ? "solver top1" : "variant"}
-                          style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
-                          loading="lazy"
-                          onError={(e) => { e.target.style.display = "none" }}
-                          onClick={() => {
-                            setPreviewCaptchaId(c.captcha_id);
-                            setPreviewMode(c.valid_index == null ? "solver_top1" : null);
-                          }}
-                        />
-                      ) : "—"}
-                    </td>
-                    <td>
-                      <span className={`badge ${c.file_status === "labeled" ? "bg-success" : "bg-danger"}`}>
-                        {c.file_status === "labeled" ? "Решена" : "Не решена"}
-                      </span>
-                    </td>
-                    <td className="small">{formatDate(c.file_mtime)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            className="captchas-files-table"
+            rowKey="id"
+            data={pagedCaptchaFiles}
+            columns={fileColumns}
+            emptyText="Нет файлов капч"
+            pagination={false}
+            scroll={{ x: 1420 }}
+            rowSelection={{
+              selectedRowKeys: [...selectedFileIds],
+              onChange: (keys) => setSelectedFileIds(new Set(keys)),
+            }}
+          />
           {renderPagination(currentFilesPage, filesPageCount, setFilesPage, filteredCaptchaFiles.length, pagedCaptchaFiles.length)}
           </>
         )
@@ -1017,87 +1007,19 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       ) : (
         <>
         {renderPagination(currentOperationsPage, operationsPageCount, setOperationsPage, filteredCaptchas.length, pagedCaptchas.length)}
-        <div className="table-responsive">
-          <table className="table table-sm table-hover table-bordered align-middle mb-0">
-            <thead className="table-light">
-              <tr>
-                <th style={{ width: "40px" }}>
-                  <input
-                    type="checkbox"
-                    checked={
-                      pagedCaptchas.length > 0 &&
-                      pagedCaptchas.every((captcha) => selected.has(captcha.id))
-                    }
-                    onChange={toggleSelectAll}
-                  />
-                </th>
-                <th style={{ width: "50px" }}>ID</th>
-                <th>Captcha ID</th>
-                <th style={{ width: "100px" }}>Решена</th>
-                <th style={{ width: "120px" }}>Причина отказа</th>
-                <th style={{ width: "100px" }}>Tiles Hash</th>
-                <th style={{ width: "90px" }}>{"Разметка"}</th>
-                <th style={{ width: "70px" }}>Rank</th>
-                <th style={{ width: "80px" }}>{"Вариант"}</th>
-                <th style={{ width: "120px" }}>Пользователь</th>
-                  <th style={{ width: "100px" }}>Usage Log</th>
-                <th style={{ width: "160px" }}>Дата</th>
-                <th style={{ width: "80px" }}>Время</th>
-                  <th style={{ width: "90px" }}>Превью</th>
-                </tr>
-            </thead>
-            <tbody>
-              {pagedCaptchas.map((c) => {
-                const file = captchaFileById.get(c.captcha_id);
-                const variant = file?.valid_index ?? file?.no_valid_index ?? null;
-                return (
-                <tr key={c.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.id)}
-                      onChange={() => toggleSelect(c.id)}
-                    />
-                  </td>
-                  <td>{c.id}</td>
-                  <td className="font-monospace small">{c.captcha_id}</td>
-                  <td>{solvedBadge(c.correct_answer, c.status)}</td>
-                  <td className="small text-danger">{c.fail_reason || "—"}</td>
-                  <td className="font-monospace small">{c.tiles_hash || "—"}</td>
-                  <td className="small">
-                    {file
-                      ? file.manual_labeled
-                        ? <span className="text-warning fw-semibold">{"Ручная"}</span>
-                        : <span className="text-muted">{"Исх."}</span>
-                      : "-"}
-                  </td>
-                  <td>{file ? solverRankBadge(file.solver_valid_rank) : <span className="text-muted">-</span>}</td>
-                  <td className="fw-semibold">{variant != null ? variant : "-"}</td>
-                  <td className="small">{c.key_label || "—"}</td>
-                  <td>{c.usage_log_id}</td>
-                  <td className="small">{formatDate(c.created_at)}</td>
-                  <td className="small">{formatDuration(c.duration_ms)}</td>
-                  <td>
-                    {fileValidIndex.has(c.captcha_id) ? (
-                      <img
-                        src={`/admin/captcha-files/${c.captcha_id}/thumbnail?admin_token=${adminToken}`}
-                        alt="variant"
-                        style={{ width: 80, height: 60, objectFit: "contain", cursor: "pointer" }}
-                        loading="lazy"
-                        onError={(e) => { e.target.style.display = "none" }}
-                        onClick={() => {
-                          setPreviewCaptchaId(c.captcha_id);
-                          setPreviewMode(null);
-                        }}
-                      />
-                    ) : "—"}
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          className="captchas-operations-table"
+          rowKey="id"
+          data={pagedCaptchas}
+          columns={operationColumns}
+          emptyText="Нет капч"
+          pagination={false}
+          scroll={{ x: 1320 }}
+          rowSelection={{
+            selectedRowKeys: [...selected],
+            onChange: (keys) => setSelected(new Set(keys)),
+          }}
+        />
         {renderPagination(currentOperationsPage, operationsPageCount, setOperationsPage, filteredCaptchas.length, pagedCaptchas.length)}
         </>
       )}
@@ -1115,7 +1037,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           }}
         >
           <img
-            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail?admin_token=${adminToken}${previewMode ? `&mode=${previewMode}` : ""}`}
+            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail${previewMode ? `?mode=${previewMode}` : ""}`}
             alt="variant large"
             style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()}
@@ -1144,13 +1066,16 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
               {labelingCaptcha && (
                 <div className="font-monospace small text-muted">{labelingCaptcha.captcha_id}</div>
               )}
-              <button
-                type="button"
-                className="btn-close ms-auto"
+              <Button
+                data-eopp-component="CaptchasLabelCloseButton"
+                size="small"
+                className="ms-auto"
                 onClick={() => setLabelingCaptcha(null)}
                 disabled={labelSaving}
-                aria-label="Close"
-              />
+                title="Закрыть"
+              >
+                Закрыть
+              </Button>
             </div>
             <div className="p-3">
               {labelLoading ? (
@@ -1165,98 +1090,103 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                       onSaved={() => { setLabelingCaptcha(null); setLabelSelectedIndex(0); fetchCaptchaFiles(); }}
                     />
                   ) : (
-                    <div className="row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-2">
+                    <div className="captchas-label-variants">
                       {labelVariantIndexes.map((index) => (
-                        <div className="col" key={index}>
-                          <button
-                            type="button"
-                            className={`card w-100 text-start ${labelSelectedIndex === index ? "border-primary border-2" : ""}`}
-                            style={{ cursor: "pointer" }}
+                          <Button
+                            key={index}
+                            htmlType="button"
+                            className={`captchas-label-variant ${labelSelectedIndex === index ? "is-selected" : ""}`}
                             onClick={() => setLabelSelectedIndex(index)}
                           >
                             <img
                               src={`data:image/png;base64,${labelingCaptcha.images[String(index)]}`}
                               alt={`Вариант ${index}`}
-                              style={{ width: "100%", objectFit: "contain", maxHeight: 160 }}
+                              className="captchas-label-variant__image"
                             />
-                            <div className="card-body py-2 px-3">
-                              <div className="d-flex justify-content-between align-items-center mb-2">
-                                <span className="fw-semibold">{"Вариант"} {index}</span>
+                            <div className="captchas-label-variant__body">
+                              <div className="captchas-label-variant__header">
+                                <span>Вариант {index}</span>
                                 {labelSelectedIndex === index && (
-                                  <span className="badge bg-primary">{"Выбран"}</span>
+                                  <StatusTag status="confirmed" label="Выбран" />
                                 )}
                               </div>
-                              <div className="d-flex flex-wrap gap-1">
+                              <div className="captchas-label-variant__tags">
                                 {labelingCaptcha.valid_index === index && (
-                                  <span className="badge bg-success">{"Был выдан"}</span>
+                                  <StatusTag status="confirmed" label="Был выдан" />
                                 )}
                                 {labelingCaptcha.no_valid_index === index && (
-                                  <span className="badge bg-danger">{"Не выбран"}</span>
+                                  <StatusTag status="failed" label="Не выбран" />
                                 )}
                                 {solverResultByVariant.get(index)?.rank === 1 && (
-                                  <span className="badge bg-info text-dark">{"Прогноз"}</span>
+                                  <StatusTag status="pending" label="Прогноз" />
                                 )}
                                 {solverTop3.has(index) && solverResultByVariant.get(index)?.rank !== 1 && (
-                                  <span className="badge bg-info text-dark">Top 3</span>
+                                  <StatusTag status="pending" label="Top 3" />
                                 )}
                                 {recomputeResult?.best_variant === index && (
-                                  <span className="badge bg-success">New Top1</span>
+                                  <StatusTag status="confirmed" label="New Top1" />
                                 )}
                                 {solverResultByVariant.get(index) && (
-                                  <span className="badge bg-light text-dark border">
-                                    #{solverResultByVariant.get(index).rank} score {solverResultByVariant.get(index).score}
-                                  </span>
+                                  <StatusTag
+                                    status="neutral"
+                                    label={`#${solverResultByVariant.get(index).rank} score ${solverResultByVariant.get(index).score}`}
+                                  />
                                 )}
                                 {solverResultByVariant.get(index) && (
-                                  <span className="badge bg-secondary">{"Расчеты"}</span>
+                                  <StatusTag status="neutral" label="Расчеты" />
                                 )}
                               </div>
                               {solverResultByVariant.get(index) && (
-                                <div className="small text-muted mt-1">
+                                <div className="captchas-label-variant__metrics">
                                   d {solverResultByVariant.get(index).discontinuity} · ssim {solverResultByVariant.get(index).ssim} · coh {solverResultByVariant.get(index).coherence} · sobel {solverResultByVariant.get(index).sobel}
                                 </div>
                               )}
                             </div>
-                          </button>
-                        </div>
+                          </Button>
                       ))}
                     </div>
                   )}
-                  <div className="d-flex gap-2 mt-3 align-items-center">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-info"
+                  <Toolbar
+                    className="captchas-label-toolbar mt-3"
+                    left={
+                      <>
+                    <Button
+                      htmlType="button"
+                      size="small"
                       onClick={handleRecompute}
                       disabled={recomputeLoading}
                     >
                       {recomputeLoading ? "Считаю..." : "Пересчитать"}
-                    </button>
+                    </Button>
                     {recomputeResult && (
-                      <span className="small">
-                        <span className="badge bg-info text-dark me-1">{recomputeResult.classification}</span>
+                      <span className="captchas-recompute-result">
+                        <StatusTag status="neutral" label={recomputeResult.classification} />
                         <span className="text-muted">{recomputeResult.solver}</span>
-                        <span className="ms-1">Top1: <b>{recomputeResult.best_variant}</b></span>
+                        <span>Top1: <b>{recomputeResult.best_variant}</b></span>
                       </span>
                     )}
-                    <div className="ms-auto d-flex gap-2">
-                      <button
+                      </>
+                    }
+                    right={
+                      <>
+                      <Button
                         type="button"
-                        className="btn btn-outline-secondary"
                         onClick={() => setLabelingCaptcha(null)}
                         disabled={labelSaving}
                       >
                         Отмена
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="btn btn-primary"
+                        variant="primary"
                         onClick={saveLabelingChoice}
                         disabled={labelSaving || labelSelectedIndex == null}
                       >
                         {labelSaving ? "Сохранение..." : "Сохранить как верный"}
-                      </button>
-                    </div>
-                  </div>
+                      </Button>
+                      </>
+                    }
+                  />
                 </>
               )}
             </div>
@@ -1265,72 +1195,49 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       )}
 
       {/* Course creation modal */}
-      {showCourseModal && (
-        <div className="modal d-block" tabIndex="-1" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Создать курс</h5>
-                <button type="button" className="btn-close" onClick={() => setShowCourseModal(false)} />
-              </div>
-              <div className="modal-body">
-                <p className="text-muted" style={{ fontSize: "0.85rem" }}>
-                  Выбрано капч: <strong>{selectedFileIds.size}</strong>
-                </p>
-                <div className="mb-3">
-                  <label className="form-label">Название курса</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={courseName}
-                    onChange={(e) => setCourseName(e.target.value)}
-                    placeholder="Например: Базовый курс для новичков"
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Описание (опционально)</label>
-                  <textarea
-                    className="form-control"
-                    rows={3}
-                    value={courseDescription}
-                    onChange={(e) => setCourseDescription(e.target.value)}
-                    placeholder="Инструкции или заметки к курсу"
-                  />
-                </div>
-                <div className="mb-3 form-check">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    id="coursePauseBetween"
-                    checked={coursePauseBetween}
-                    onChange={(e) => setCoursePauseBetween(e.target.checked)}
-                  />
-                  <label className="form-check-label" htmlFor="coursePauseBetween" style={{ fontSize: "0.85rem" }}>
-                    Режим экзамена — паузы 2–7 сек между капчами
-                  </label>
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowCourseModal(false)}
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={handleCreateCourse}
-                  disabled={courseCreating || !courseName.trim()}
-                >
-                  {courseCreating ? "Создание..." : "Создать курс"}
-                </button>
-              </div>
-            </div>
-          </div>
+      <Modal
+        data-eopp-component="CaptchaCourseModal"
+        title="Создать курс"
+        open={showCourseModal}
+        onCancel={() => setShowCourseModal(false)}
+        onOk={handleCreateCourse}
+        okText={courseCreating ? "Создание..." : "Создать курс"}
+        okButtonProps={{ disabled: courseCreating || !courseName.trim(), loading: courseCreating }}
+        cancelText="Отмена"
+        destroyOnClose
+      >
+        <div className="captcha-course-form">
+          <p className="text-muted small mb-0">
+            Выбрано капч: <strong>{selectedFileIds.size}</strong>
+          </p>
+          <label className="form-label mb-0">
+            Название курса
+            <TextInput
+              data-eopp-component="CaptchaCourseNameInput"
+              value={courseName}
+              onChange={(e) => setCourseName(e.target.value)}
+              placeholder="Например: Базовый курс для новичков"
+            />
+          </label>
+          <label className="form-label mb-0">
+            Описание
+            <Input.TextArea
+              data-eopp-component="CaptchaCourseDescriptionInput"
+              rows={3}
+              value={courseDescription}
+              onChange={(e) => setCourseDescription(e.target.value)}
+              placeholder="Инструкции или заметки к курсу"
+            />
+          </label>
+          <Checkbox
+            data-eopp-component="CaptchaCoursePauseCheckbox"
+            checked={coursePauseBetween}
+            onChange={(e) => setCoursePauseBetween(e.target.checked)}
+          >
+            Режим экзамена — паузы 2–7 сек между капчами
+          </Checkbox>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
@@ -1448,7 +1355,7 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
     try {
       const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-coordinates`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coordinates: points.slice(0, 5) }),
       });
       if (!res.ok) {
@@ -1468,7 +1375,7 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
     try {
       const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-boxes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ boxes }),
       });
       if (!res.ok) {
@@ -1484,18 +1391,17 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+    <div data-eopp-component="IconClickLabelView" className="icon-click-label">
       {/* Mode toggle */}
-      <div className="btn-group btn-group-sm">
-        <button
-          className={`btn ${mode === "points" ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setMode("points")}
-        >Точки</button>
-        <button
-          className={`btn ${mode === "boxes" ? "btn-primary" : "btn-outline-secondary"}`}
-          onClick={() => setMode("boxes")}
-        >Боксы</button>
-      </div>
+      <SegmentedControl
+        size="small"
+        value={mode}
+        onChange={(value) => setMode(value)}
+        options={[
+          { value: "points", label: "Точки" },
+          { value: "boxes", label: "Боксы" },
+        ]}
+      />
 
       {/* Main image */}
       <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", lineHeight: 0 }}>
@@ -1616,45 +1522,52 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
 
       {/* Points mode controls */}
       {mode === "points" && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+        <Toolbar
+          className="icon-click-label__toolbar"
+          left={
+            <span className="icon-click-label__hint">
             Кликов: {pointsCount}/5 — кликайте по иконкам в порядке 1→5
           </span>
-          <button className="btn btn-sm btn-outline-secondary" onClick={resetPoints} style={{ fontSize: "0.7rem" }}>
+          }
+          right={
+            <>
+          <Button size="small" onClick={resetPoints}>
             Сбросить
-          </button>
-          <button
-            className="btn btn-sm btn-primary"
+          </Button>
+          <Button
+            size="small"
+            variant="primary"
             onClick={handleSavePoints}
             disabled={saving || pointsCount < 5}
           >
             {saving ? "Сохранение..." : "Сохранить точки"}
-          </button>
-        </div>
+          </Button>
+            </>
+          }
+        />
       )}
 
       {/* Box position selector */}
       {mode === "boxes" && (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {[0, 1, 2, 3, 4].map(pos => (
-            <button
-              key={pos}
-              className={`btn btn-sm ${activePos === pos ? "btn-primary" : "btn-outline-secondary"}`}
-              style={{ minWidth: 36, fontSize: "0.8rem" }}
-              onClick={() => setActivePos(pos)}
-            >
-              {pos + 1}
-            </button>
-          ))}
-          <button
-            className="btn btn-sm btn-outline-danger"
-            style={{ fontSize: "0.7rem" }}
-            onClick={() => clearBox(activePos)}
-          >✕</button>
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+        <Toolbar
+          className="icon-click-label__toolbar"
+          left={
+            <>
+          <SegmentedControl
+            size="small"
+            value={activePos}
+            onChange={(value) => setActivePos(Number(value))}
+            options={[0, 1, 2, 3, 4].map((pos) => ({ value: pos, label: String(pos + 1) }))}
+          />
+          <Button size="small" variant="danger" onClick={() => clearBox(activePos)}>
+            Очистить
+          </Button>
+          <span className="icon-click-label__hint">
             Выделите область для иконки #{activePos + 1}
           </span>
-        </div>
+            </>
+          }
+        />
       )}
 
       {/* Icons strip */}
@@ -1674,13 +1587,14 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
 
       {/* Save boxes button */}
       {mode === "boxes" && (
-        <button
-          className="btn btn-primary btn-sm"
+        <Button
+          size="small"
+          variant="primary"
           onClick={handleSaveBoxes}
           disabled={saving}
         >
           {saving ? "Сохранение..." : "Сохранить боксы"}
-        </button>
+        </Button>
       )}
     </div>
   );

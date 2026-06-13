@@ -23,6 +23,7 @@ frontend/dist/
 
 # AI tools
 .qwen/
+.superpowers/
 
 # OS
 .DS_Store
@@ -33,6 +34,7 @@ nul
 *.egg-info/
 dist/
 build/
+tmp/
 
 *.db
 *.pkl

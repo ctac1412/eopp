@@ -1,5 +1,6 @@
 import React from "react";
 import Clock from "../Clock";
+import { Button, SelectInput } from "../../ui";
 
 export default function OperatorHeader({
   masterOnline,
@@ -18,10 +19,18 @@ export default function OperatorHeader({
   handleReconnect,
   handleDisconnect,
 }) {
+  const masterOptions = [
+    { value: "", label: "Выберите мастера" },
+    ...masters.map((master) => ({
+      value: String(master.id),
+      label: master.label || `Мастер #${master.id}`,
+    })),
+  ];
+
   return (
-    <div className="op-header d-flex justify-content-between align-items-center p-3 border-bottom">
+    <div data-eopp-component="OperatorHeader" className="op-header">
       {/* ── левая часть ── */}
-      <div className="d-flex align-items-center gap-2">
+      <div className="op-header__main">
         {/* точка мастера */}
         <span
           style={{
@@ -51,7 +60,7 @@ export default function OperatorHeader({
 
         {/* бейдж очереди */}
         {queueLen > 1 && (
-          <span className="op-header__queue-badge badge">
+          <span className="op-header__queue-badge">
             +{queueLen - 1}
           </span>
         )}
@@ -59,7 +68,7 @@ export default function OperatorHeader({
         {/* бейдж fellow operators */}
         {fellowOperators.length > 0 && (
           <span
-            className="op-header__fellow-badge badge"
+            className="op-header__fellow-badge"
             title={fellowOperators
               .map((f) => f.nickname || `#${f.id}`)
               .join(", ")}
@@ -71,15 +80,7 @@ export default function OperatorHeader({
         {/* бейдж режима иконок */}
         {iconDisplayMode && (
           <span
-            className="badge"
-            style={{
-              background:
-                iconDisplayMode === "own_only" ? "#1a3320" : "#1a2a3a",
-              color:
-                iconDisplayMode === "own_only" ? "#3fb950" : "#58a6ff",
-              fontSize: "0.65rem",
-              border: `1px solid ${iconDisplayMode === "own_only" ? "#238636" : "#1f6feb"}`,
-            }}
+            className={`op-header__mode-badge ${iconDisplayMode === "own_only" ? "is-own" : "is-all"}`}
           >
             {iconDisplayMode === "own_only"
               ? "Только свои"
@@ -99,32 +100,21 @@ export default function OperatorHeader({
       </div>
 
       {/* ── правая часть ── */}
-      <div className="d-flex align-items-center gap-2">
+      <div className="op-header__controls">
         {/* селект мастера */}
-        <select
-          className="op-header__master-select form-select form-select-sm"
-          value={masterId || ""}
-          onChange={(e) => handleMasterChange(e.target.value)}
-        >
-          <option value="">Выберите мастера</option>
-          {masters.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label || `Мастер #${m.id}`}
-            </option>
-          ))}
-        </select>
+        <SelectInput
+          data-eopp-component="OperatorMasterSelect"
+          className="op-header__master-select"
+          size="small"
+          value={masterId ? String(masterId) : ""}
+          onChange={(value) => handleMasterChange(value)}
+          options={masterOptions}
+          allowClear={false}
+        />
 
         {/* бейдж solvedCount / assigned */}
         <span
-          className="badge"
-          style={{
-            background: active?.complete
-              ? "#198754"
-              : active?.waiting
-                ? "#f59e0b"
-                : "#495057",
-            fontSize: "0.8rem",
-          }}
+          className={`op-header__progress-badge ${active?.complete ? "is-complete" : active?.waiting ? "is-waiting" : ""}`}
         >
           {active?.complete
             ? "Решено"
@@ -136,22 +126,27 @@ export default function OperatorHeader({
         </span>
 
         {/* кнопка переподключения */}
-        <button
-          className="op-header__action-btn btn btn-sm btn-outline-secondary"
+        <Button
+          data-eopp-component="OperatorReconnectButton"
+          className="op-header__action-btn"
+          size="small"
           onClick={handleReconnect}
           title="Переподключиться"
         >
           ↻
-        </button>
+        </Button>
 
         {/* кнопка отключения */}
-        <button
-          className="op-header__action-btn btn btn-sm btn-outline-danger"
+        <Button
+          data-eopp-component="OperatorDisconnectButton"
+          className="op-header__action-btn"
+          size="small"
+          variant="danger"
           onClick={handleDisconnect}
           title="Отключиться"
         >
           ✕
-        </button>
+        </Button>
       </div>
     </div>
   );

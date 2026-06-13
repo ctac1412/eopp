@@ -46,11 +46,17 @@ from src.models import (
     UpdateUsageLogBody,
     UpdateUserBody,
 )
-from src.modules.access.permissions import Permission
+from src.modules.access.permissions import Permission, serialize_roles
 from src.modules.access.service import AccessService
 from src.modules.audit.service import AuditService
-from src.policies.access_policy import authorize_request, requires_admin
-from src.repositories import api_key_repo, company_repo, usage_log_repo
+from src.policies.access_policy import (
+    ADMIN_SESSION_COOKIE,
+    authorize_request,
+    requires_admin,
+    token_from_request,
+)
+from src.repositories import api_key_repo, company_repo, usage_log_repo, user_repo
+from src.routes.auth import login_response
 
 logger = logging.getLogger("eopp.admin")
 from src.services import billing_service, captcha_service, reporting_service
@@ -65,7 +71,7 @@ def admin_auth_middleware_factory(app):
     async def admin_auth_middleware(request, call_next):
         path = request.url.path
         if requires_admin(request.method, path):
-            token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+            token = token_from_request(request)
             decision = authorize_request(request.method, path, token)
             request.state.access_decision = decision
             if not decision.allowed and decision.reason == "unauthenticated":
@@ -91,7 +97,7 @@ def _access_decision_for_request(request: Request, permission: Permission):
     decision = getattr(request.state, "access_decision", None)
     if decision is not None:
         return decision
-    token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    token = token_from_request(request)
     return AccessService().authorize_token(token, permission)
 
 
@@ -113,6 +119,136 @@ def _audit_business_action(
     )
 
 
+def _session_user(request: Request):
+    return user_repo.get_session_user(token_from_request(request))
+
+
+def _tenant_company_id(request: Request) -> int | None:
+    user = _session_user(request)
+    if not user or user.system_role:
+        return None
+    if user.company_id is not None:
+        return user.company_id
+    for membership in getattr(user, "company_memberships", []):
+        if membership.active:
+            return membership.company_id
+    return None
+
+
+def _require_system_scope(request: Request) -> JSONResponse | None:
+    user = _session_user(request)
+    if user and user.system_role:
+        return None
+    return JSONResponse(status_code=403, content={"error": "Forbidden: system scope required"})
+
+
+def _forbid_company_scope() -> JSONResponse:
+    return JSONResponse(status_code=403, content={"error": "Forbidden: company scope required"})
+
+
+def _company_ids_from_user_body(body) -> set[int]:
+    ids: set[int] = set()
+    if getattr(body, "company_id", None) is not None:
+        ids.add(int(body.company_id))
+    for membership in getattr(body, "company_memberships", None) or []:
+        if membership.get("company_id") is not None:
+            ids.add(int(membership["company_id"]))
+    for attr in ("master_profile", "operator_profile", "finance_profile"):
+        profile = getattr(body, attr, None) or {}
+        if profile.get("company_id") is not None:
+            ids.add(int(profile["company_id"]))
+        for company_id in profile.get("company_ids") or []:
+            ids.add(int(company_id))
+    return ids
+
+
+def _guard_tenant_user_body(request: Request, body, *, default_company: bool = False) -> JSONResponse | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is None:
+        return None
+    if "system_role" in getattr(body, "model_fields_set", set()):
+        return _forbid_company_scope()
+    if getattr(body, "company_id", None) is None and default_company:
+        body.company_id = tenant_company_id
+    company_ids = _company_ids_from_user_body(body)
+    if any(company_id != tenant_company_id for company_id in company_ids):
+        return _forbid_company_scope()
+    master_profile = getattr(body, "master_profile", None) or {}
+    if master_profile.get("scope") == "all_companies":
+        return _forbid_company_scope()
+    return None
+
+
+def _guard_tenant_user_target(request: Request, user_id: int) -> JSONResponse | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is None:
+        return None
+    user = user_repo.get_user(user_id)
+    if not user:
+        return None
+    if user.get("company_id") != tenant_company_id:
+        return _forbid_company_scope()
+    return None
+
+
+def _tenant_company_name(request: Request) -> str | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is None:
+        return None
+    company = company_repo.get_company(tenant_company_id)
+    return company.name if company else None
+
+
+def _guard_tenant_company_name(request: Request, company_name: str | None) -> JSONResponse | None:
+    tenant_company_name = _tenant_company_name(request)
+    if tenant_company_name is None:
+        return None
+    if company_name != tenant_company_name:
+        return _forbid_company_scope()
+    return None
+
+
+def _guard_tenant_invoice_target(request: Request, invoice_id: int) -> JSONResponse | None:
+    tenant_company_name = _tenant_company_name(request)
+    if tenant_company_name is None:
+        return None
+    from src.db.invoices import get_invoice
+
+    invoice = get_invoice(invoice_id)
+    if invoice is None:
+        return None
+    if invoice.get("company") != tenant_company_name:
+        return _forbid_company_scope()
+    return None
+
+
+def _guard_tenant_api_key_target(request: Request, api_key_id: int | None) -> JSONResponse | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is None or api_key_id is None:
+        return None
+    key = api_key_repo.get_key_by_id(int(api_key_id))
+    if key is None:
+        return None
+    if key.company_id != tenant_company_id:
+        return _forbid_company_scope()
+    return None
+
+
+def _prepaid_package_api_key_id(package_id: int) -> int | None:
+    from src.entities import PrepaidPackage, get_session
+
+    with get_session() as session:
+        package = session.get(PrepaidPackage, package_id)
+        return package.api_key_id if package else None
+
+
+def _guard_tenant_prepaid_package_target(request: Request, package_id: int) -> JSONResponse | None:
+    api_key_id = _prepaid_package_api_key_id(package_id)
+    if api_key_id is None:
+        return None
+    return _guard_tenant_api_key_target(request, api_key_id)
+
+
 def _tail_lines(path: Path, limit: int) -> list[str]:
     if limit <= 0:
         return []
@@ -122,20 +258,19 @@ def _tail_lines(path: Path, limit: int) -> list[str]:
 
 @router.post("/auth")
 async def admin_auth(body: AdminAuthBody):
-    access = AccessService()
-    audit = AuditService()
-    actor = access.authenticate_token(body.token)
-    if actor:
-        decision = access.authorize_token(body.token, Permission.BILLING_VIEW)
-        audit.record_security(
-            "admin.login.succeeded",
-            decision=decision,
-            metadata={"role": actor.role},
-        )
-        role = actor.role
-        return JSONResponse(content={"ok": True, "role": role})
-    audit.record_security("admin.login.failed", metadata={"reason": "invalid_token"})
-    return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return login_response(body)
+
+
+@router.get("/roles")
+async def admin_roles():
+    return JSONResponse(content={"roles": serialize_roles()})
+
+
+@router.post("/logout")
+async def admin_logout():
+    response = JSONResponse(content={"ok": True})
+    response.delete_cookie(ADMIN_SESSION_COOKIE)
+    return response
 
 
 @router.get("/streams")
@@ -351,9 +486,52 @@ async def delete_admin_tariff(api_key_id: int, request: Request):
     return _json_result(result)
 
 
+@router.get("/company-tariffs/{company_id}")
+async def get_admin_company_tariff(company_id: int, request: Request):
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and tenant_company_id != company_id:
+        return JSONResponse(status_code=403, content={"error": "Forbidden: company scope required"})
+    return _json_result(billing_service.get_company_tariff(company_id))
+
+
+@router.put("/company-tariffs/{company_id}")
+async def create_update_company_tariff(company_id: int, body: TariffBody, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
+    result = billing_service.upsert_company_tariff(company_id, body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="company_tariff",
+            target_id=company_id,
+        )
+    return _json_result(result)
+
+
+@router.delete("/company-tariffs/{company_id}")
+async def delete_admin_company_tariff(company_id: int, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
+    result = billing_service.delete_company_tariff(company_id)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="company_tariff",
+            target_id=company_id,
+            metadata={"deleted": True},
+        )
+    return _json_result(result)
+
+
 @router.patch("/api-keys/{id}")
 async def update_api_key(id: int, body: UpdateApiKeyBody, request: Request):
-    admin_token = request.headers.get("X-Admin-Token") or request.query_params.get("admin_token")
+    admin_token = token_from_request(request)
     decision = AccessService().authorize_token(admin_token, Permission.ADMIN_USERS_MANAGE)
     return _json_result(billing_service.update_api_key(id, body, access_decision=decision))
 
@@ -378,8 +556,8 @@ async def generate_invoice(body: GenerateInvoiceBody, request: Request):
 
 
 @router.get("/invoices")
-async def list_admin_invoices():
-    return _json_result(billing_service.list_invoices())
+async def list_admin_invoices(request: Request):
+    return _json_result(billing_service.list_invoices(_tenant_company_id(request)))
 
 
 @router.post("/invoices")
@@ -398,6 +576,9 @@ async def create_admin_invoice(body: CreateInvoiceBody, request: Request):
 
 @router.patch("/invoices/{id}")
 async def update_admin_invoice(id: int, body: UpdateInvoiceBody, request: Request):
+    scope_guard = _guard_tenant_invoice_target(request, id)
+    if scope_guard:
+        return scope_guard
     result = billing_service.update_invoice(id, body)
     if result[0] < 400:
         _audit_business_action(request, "invoice.changed", Permission.BILLING_EDIT, "invoice", id)
@@ -406,6 +587,9 @@ async def update_admin_invoice(id: int, body: UpdateInvoiceBody, request: Reques
 
 @router.delete("/invoices/{id}")
 async def delete_admin_invoice(id: int, request: Request):
+    scope_guard = _guard_tenant_invoice_target(request, id)
+    if scope_guard:
+        return scope_guard
     result = billing_service.delete_invoice(id)
     if result[0] < 400:
         _audit_business_action(
@@ -420,17 +604,26 @@ async def delete_admin_invoice(id: int, request: Request):
 
 
 @router.post("/open-invoices/ensure")
-async def ensure_admin_open_invoice(body: OpenInvoiceBody):
+async def ensure_admin_open_invoice(body: OpenInvoiceBody, request: Request):
+    scope_guard = _guard_tenant_company_name(request, body.company)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.ensure_open_invoice(body.company))
 
 
 @router.post("/auto-invoices/open")
-async def open_admin_auto_invoice(body: OpenInvoiceBody):
+async def open_admin_auto_invoice(body: OpenInvoiceBody, request: Request):
+    scope_guard = _guard_tenant_company_name(request, body.company)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.ensure_open_invoice(body.company))
 
 
 @router.post("/open-invoices/issue")
-async def issue_admin_open_invoice(body: OpenInvoiceBody):
+async def issue_admin_open_invoice(body: OpenInvoiceBody, request: Request):
+    scope_guard = _guard_tenant_company_name(request, body.company)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.issue_open_invoice(body.company, body.comment))
 
 
@@ -465,12 +658,15 @@ async def delete_admin_company_alias(alias: str):
 
 
 @router.get("/companies")
-async def list_admin_companies():
-    return JSONResponse(content=company_repo.list_companies())
+async def list_admin_companies(request: Request):
+    return JSONResponse(content=company_repo.list_companies(_tenant_company_id(request)))
 
 
 @router.post("/companies")
-async def create_admin_company(body: CompanyBody):
+async def create_admin_company(body: CompanyBody, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
     try:
         c = company_repo.create_company(
             name=body.name,
@@ -487,7 +683,10 @@ async def create_admin_company(body: CompanyBody):
 
 
 @router.put("/companies/{company_id}")
-async def update_admin_company(company_id: int, body: UpdateCompanyBody):
+async def update_admin_company(company_id: int, body: UpdateCompanyBody, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
     kwargs = {k: v for k, v in body.model_dump().items() if v is not None}
     c = company_repo.update_company(company_id, **kwargs)
     if not c:
@@ -498,7 +697,10 @@ async def update_admin_company(company_id: int, body: UpdateCompanyBody):
 
 
 @router.delete("/companies/{company_id}")
-async def delete_admin_company(company_id: int):
+async def delete_admin_company(company_id: int, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
     ok = company_repo.delete_company(company_id)
     if not ok:
         return JSONResponse(status_code=404, content={"error": "Company not found"})
@@ -506,8 +708,8 @@ async def delete_admin_company(company_id: int):
 
 
 @router.get("/expenses")
-async def list_admin_expenses():
-    return _json_result(billing_service.list_expenses())
+async def list_admin_expenses(request: Request):
+    return _json_result(billing_service.list_expenses(_tenant_company_id(request)))
 
 
 @router.post("/expenses")
@@ -526,8 +728,8 @@ async def delete_admin_expense(id: int):
 
 
 @router.get("/payouts")
-async def list_admin_payouts():
-    return _json_result(billing_service.list_payouts())
+async def list_admin_payouts(request: Request):
+    return _json_result(billing_service.list_payouts(_tenant_company_id(request)))
 
 
 @router.post("/payouts/preview")
@@ -536,8 +738,8 @@ async def preview_admin_payout(body: PreviewPayoutBody):
 
 
 @router.get("/payouts/available")
-async def get_available_resources():
-    return _json_result(billing_service.available_resources())
+async def get_available_resources(request: Request):
+    return _json_result(billing_service.available_resources(_tenant_company_id(request)))
 
 
 @router.post("/payouts")
@@ -608,47 +810,98 @@ async def recalculate_admin_payout(id: int, body: CreatePayoutBody, request: Req
 
 
 @router.get("/users")
-async def list_admin_users():
-    return _json_result(billing_service.list_users())
+async def list_admin_users(request: Request):
+    return _json_result(billing_service.list_users(_tenant_company_id(request)))
+
+
+@router.get("/users/{id}/stats")
+async def get_admin_user_stats(id: int, request: Request):
+    target_guard = _guard_tenant_user_target(request, id)
+    if target_guard:
+        return target_guard
+    return _json_result(billing_service.get_user_stats(id))
+
+
+@router.get("/finance-participants")
+async def list_admin_finance_participants(request: Request, company_id: int | None = None):
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and company_id is not None and int(company_id) != tenant_company_id:
+        return JSONResponse(status_code=403, content={"error": "Forbidden: company scope required"})
+    return _json_result(billing_service.list_finance_participants(company_id or tenant_company_id))
 
 
 @router.post("/users")
-async def create_admin_user(body: CreateUserBody):
+async def create_admin_user(body: CreateUserBody, request: Request):
+    scope_guard = _guard_tenant_user_body(request, body, default_company=True)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.create_user(body))
 
 
 @router.put("/users/{id}")
-async def update_admin_user(id: int, body: UpdateUserBody):
+async def update_admin_user(id: int, body: UpdateUserBody, request: Request):
+    target_guard = _guard_tenant_user_target(request, id)
+    if target_guard:
+        return target_guard
+    scope_guard = _guard_tenant_user_body(request, body)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.update_user(id, body))
 
 
 @router.delete("/users/{id}")
-async def delete_admin_user(id: int):
+async def delete_admin_user(id: int, request: Request):
+    target_guard = _guard_tenant_user_target(request, id)
+    if target_guard:
+        return target_guard
     return _json_result(billing_service.delete_user(id))
 
 
 @router.get("/prepaid-packages")
-async def list_admin_prepaid_packages():
-    return _json_result(billing_service.list_prepaid_packages())
+async def list_admin_prepaid_packages(request: Request):
+    result = billing_service.list_prepaid_packages()
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and result[0] < 400:
+        result = (
+            result[0],
+            [
+                package
+                for package in result[1]
+                if not _guard_tenant_api_key_target(request, package.get("api_key_id"))
+            ],
+        )
+    return _json_result(result)
 
 
 @router.post("/prepaid-packages")
-async def create_admin_prepaid_package(body: CreatePrepaidPackageBody):
+async def create_admin_prepaid_package(body: CreatePrepaidPackageBody, request: Request):
+    scope_guard = _guard_tenant_api_key_target(request, body.api_key_id)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.create_prepaid_package(body))
 
 
 @router.patch("/prepaid-packages/{id}")
-async def update_admin_prepaid_package(id: int, body: UpdatePrepaidPackageBody):
+async def update_admin_prepaid_package(id: int, body: UpdatePrepaidPackageBody, request: Request):
+    scope_guard = _guard_tenant_prepaid_package_target(request, id)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.update_prepaid_package(id, body))
 
 
 @router.delete("/prepaid-packages/{id}")
-async def delete_admin_prepaid_package(id: int):
+async def delete_admin_prepaid_package(id: int, request: Request):
+    scope_guard = _guard_tenant_prepaid_package_target(request, id)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.delete_prepaid_package(id))
 
 
 @router.post("/prepaid-packages/{id}/top-up")
-async def top_up_admin_prepaid_package(id: int, body: TopUpPrepaidPackageBody):
+async def top_up_admin_prepaid_package(id: int, body: TopUpPrepaidPackageBody, request: Request):
+    scope_guard = _guard_tenant_prepaid_package_target(request, id)
+    if scope_guard:
+        return scope_guard
     return _json_result(billing_service.top_up_prepaid_package(id, body))
 
 
@@ -673,7 +926,7 @@ async def send_selected_captchas(body: SendSelectedCaptchasBody):
 async def backfill_captcha_duration(request: Request):
     from src.policies.access_policy import is_admin_token
 
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     from src.db.captchas import backfill_duration_ms
 
@@ -826,7 +1079,7 @@ async def admin_backfill_dates():
 @router.post("/captcha-files/sync")
 async def admin_sync_captcha_files(request: Request):
     from src.policies.access_policy import is_admin_token
-    if not is_admin_token(request.headers.get("X-Admin-Token")):
+    if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     from src.services import captcha_file_service
 
@@ -1050,10 +1303,12 @@ async def admin_slots_group_clear():
 
 
 @router.get("/stream/slots")
-async def admin_slots_stream(request: Request, admin_token: str | None = None):
+async def admin_slots_stream(request: Request):
     from src.services.slots_group_service import get_events_since, stats
+    from src.policies.access_policy import is_admin_token
 
-    if not admin_token or not api_key_repo.check_admin_token(admin_token):
+    token = token_from_request(request)
+    if not token or not is_admin_token(token):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
     async def event_generator():

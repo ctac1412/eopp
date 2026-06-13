@@ -8,11 +8,12 @@ export default function OperatorSidebar({
   scheduledEvents,
   operatorNickname,
   masterId,
+  embedded = false,
 }) {
   if (!connected) return null;
 
   return (
-    <div className="op-sidebar">
+    <div className={`op-sidebar ${embedded ? "op-sidebar--embedded" : ""}`}>
       {connectedOpsTags.length > 0 && (
         <div className="op-sidebar__ops-tags">
           {connectedOpsTags.map((op) => {

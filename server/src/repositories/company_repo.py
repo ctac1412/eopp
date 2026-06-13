@@ -46,10 +46,13 @@ def create_company(
         return c
 
 
-def list_companies() -> list[dict]:
+def list_companies(company_id: int | None = None) -> list[dict]:
     """Return all companies ordered by name."""
     with get_session() as session:
-        rows = session.query(Company).order_by(Company.name).all()
+        query = session.query(Company)
+        if company_id is not None:
+            query = query.filter(Company.id == company_id)
+        rows = query.order_by(Company.name).all()
         return [_company_to_dict(r) for r in rows]
 
 

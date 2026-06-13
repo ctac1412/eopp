@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 
-from src.repositories import invoice_repo, usage_log_repo
+from src.repositories import company_repo, invoice_repo, usage_log_repo
 
 
 def _invoice_totals(body) -> tuple[int, int, int, int]:
@@ -71,8 +71,18 @@ def generate_invoice(body) -> tuple[int, dict]:
     }
 
 
-def list_invoices() -> tuple[int, list[dict]]:
-    return 200, invoice_repo.list_invoices(limit=200)
+def _company_name_for_scope(company_id: int | None) -> str | None:
+    if company_id is None:
+        return None
+    company = company_repo.get_company(company_id)
+    return company.name if company else None
+
+
+def list_invoices(company_id: int | None = None) -> tuple[int, list[dict]]:
+    return 200, invoice_repo.list_invoices(
+        limit=200,
+        company_name=_company_name_for_scope(company_id),
+    )
 
 
 def create_invoice(body) -> tuple[int, dict]:
@@ -165,11 +175,12 @@ def issue_open_invoice(company: str, comment: str = "") -> tuple[int, dict]:
     return 200, result
 
 
-def available_resources() -> tuple[int, dict]:
+def available_resources(company_id: int | None = None) -> tuple[int, dict]:
     from src.repositories import expense_repo
 
-    invoices = invoice_repo.list_available_invoices(limit=1000)
-    expenses = expense_repo.list_expenses()
+    company_name = _company_name_for_scope(company_id)
+    invoices = invoice_repo.list_available_invoices(limit=1000, company_name=company_name)
+    expenses = expense_repo.list_expenses(company_id=company_id)
     return 200, {
         "invoices": [
             invoice

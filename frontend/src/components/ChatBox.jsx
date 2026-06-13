@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, TextInput } from "../ui";
 
 const ROLE_COLORS = {
   master: { bg: "#0d419d", text: "#58a6ff" },
@@ -99,7 +100,8 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
         display: "flex", gap: 4, padding: "4px 8px 0",
         borderTop: "1px solid #30363d",
       }}>
-        <button
+        <Button
+          size="small"
           onClick={() => handleSend("Отошёл")}
           disabled={!ownRole}
           title="Отошёл"
@@ -112,9 +114,10 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
           }}
         >
           Отошёл
-        </button>
+        </Button>
         {ownRole === "master" && (
-          <button
+          <Button
+            size="small"
             onClick={() => handleSend("Все готовы?")}
             disabled={!ownRole}
             title="Все готовы?"
@@ -127,9 +130,10 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
             }}
           >
             Все готовы?
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          size="small"
           onClick={() => handleSend("Я на месте")}
           disabled={!ownRole}
           title="Я на месте"
@@ -142,13 +146,12 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
           }}
         >
           Я на месте
-        </button>
+        </Button>
       </div>
       <div style={{
         display: "flex", gap: 4, padding: "4px 8px 6px",
       }}>
-        <input
-          type="text"
+        <TextInput
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -160,7 +163,9 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
             padding: "4px 8px", outline: "none",
           }}
         />
-        <button
+        <Button
+          size="small"
+          variant="primary"
           onClick={handleSend}
           disabled={!ownRole || !input.trim()}
           style={{
@@ -172,7 +177,7 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
           }}
         >
           Отпр.
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -44,6 +44,7 @@ class CreateApiKeyBody(BaseModel):
     max_uses: int | None = None
     is_external: bool = False
     company_id: int | None = None
+    user_id: int | None = None
 
 
 class UpdateApiKeyBody(BaseModel):
@@ -54,8 +55,8 @@ class UpdateApiKeyBody(BaseModel):
     is_admin: bool | None = None
     is_super_kiosk: bool | None = None
     is_external: bool | None = None
-    admin_role: str | None = None
     company_id: int | None = None
+    user_id: int | None = None
 
 
 class UpdateUsageLogBody(BaseModel):
@@ -88,7 +89,8 @@ class GenerateCaptchaBody(BaseModel):
 
 
 class AdminAuthBody(BaseModel):
-    token: str = ""
+    login: str = ""
+    password: str = ""
 
 
 class ValidateKeyQuery(BaseModel):
@@ -163,10 +165,30 @@ class UpdateInvoiceBody(BaseModel):
 
 class CreateUserBody(BaseModel):
     name: str
+    login: str | None = None
+    password: str | None = None
+    role: str = "manager"
+    system_role: str | None = None
+    active: bool = True
+    company_id: int | None = None
+    company_memberships: list[dict] | None = None
+    master_profile: dict | None = None
+    operator_profile: dict | None = None
+    finance_profile: dict | None = None
 
 
 class UpdateUserBody(BaseModel):
-    name: str
+    name: str | None = None
+    login: str | None = None
+    password: str | None = None
+    role: str | None = None
+    system_role: str | None = None
+    active: bool | None = None
+    company_id: int | None = None
+    company_memberships: list[dict] | None = None
+    master_profile: dict | None = None
+    operator_profile: dict | None = None
+    finance_profile: dict | None = None
 
 
 class CreateExpenseBody(BaseModel):

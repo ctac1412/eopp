@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.entities.base import Base
 
 if TYPE_CHECKING:
+    from src.entities.access_profile import OperatorProfile
     from src.entities.company import Company
 
 
@@ -28,6 +29,7 @@ class Operator(Base):
     )
 
     company: Mapped[Company | None] = relationship(back_populates="operators")
+    profile: Mapped[OperatorProfile | None] = relationship(back_populates="operator", uselist=False)
 
 
 class OperatorMasterLink(Base):

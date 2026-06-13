@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "../../ui";
 
 /**
  * Попап проверки готовности для оператора.
@@ -24,9 +25,9 @@ export default function ReadinessPopup({ readinessCheck, handleReadyClick }) {
         >
           {readinessCheck.timer}
         </div>
-        <button onClick={handleReadyClick} className="op-readiness__btn">
+        <Button onClick={handleReadyClick} className="op-readiness__btn" variant="primary">
           Готов
-        </button>
+        </Button>
       </div>
     </div>
   );

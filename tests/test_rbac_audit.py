@@ -3,6 +3,7 @@
 import ast
 import importlib
 import inspect
+import json
 
 
 def test_core_access_contract_is_side_module_free():
@@ -22,8 +23,8 @@ def test_core_access_contract_is_side_module_free():
     assert not any(".repositories." in name or name.startswith("src.repositories") for name in imported_names)
 
 
-def test_access_service_maps_legacy_admin_keys_to_permissions(client, admin_token):
-    """Existing admin API keys remain valid but receive explicit permissions."""
+def test_access_service_maps_password_sessions_to_permissions(client, admin_token, legacy_admin_api_key):
+    """Password sessions are the only admin actor tokens accepted by RBAC."""
     from src.modules.access.permissions import Permission
     from src.modules.access.service import AccessService
 
@@ -31,30 +32,36 @@ def test_access_service_maps_legacy_admin_keys_to_permissions(client, admin_toke
 
     view_decision = service.authorize_token(admin_token, Permission.BILLING_VIEW)
     edit_decision = service.authorize_token(admin_token, Permission.TARIFF_EDIT)
+    legacy_decision = service.authorize_token(legacy_admin_api_key, Permission.BILLING_VIEW)
 
     assert view_decision.allowed is True
     assert edit_decision.allowed is True
     assert view_decision.actor_id is not None
     assert view_decision.role == "super_admin"
+    assert legacy_decision.allowed is False
+    assert legacy_decision.reason == "unauthenticated"
 
 
 def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
     """RBAC must allow read-only admin work without allowing finance mutation."""
-    manager = client.post(
-        "/api-keys",
+    client.post(
+        "/admin/users",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "manager_admin"},
-    ).json()
-    client.patch(
-        f"/admin/api-keys/{manager['id']}",
-        headers={"X-Admin-Token": admin_token},
-        json={"is_admin": True, "admin_role": "manager"},
+        json={
+            "name": "Manager",
+            "login": "manager.rbac",
+            "password": "strong-password",
+            "role": "manager",
+        },
     )
+    client.post(
+        "/admin/logout",
+    )
+    client.post("/admin/auth", json={"login": "manager.rbac", "password": "strong-password"})
 
-    view = client.get("/admin/invoices", headers={"X-Admin-Token": manager["key"]})
+    view = client.get("/admin/invoices")
     edit = client.put(
-        f"/admin/tariffs/{manager['id']}",
-        headers={"X-Admin-Token": manager["key"]},
+        "/admin/tariffs/1",
         json={"price_create": 100, "price_reschedule": 50},
     )
 
@@ -63,10 +70,22 @@ def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
     assert "permission" in edit.json()["error"]
 
 
-def test_admin_key_change_is_audited_with_actor_permission_and_target(client, admin_token):
-    """Security-sensitive API key changes are synchronously audited."""
+def test_plugin_token_owner_change_is_audited_with_actor_permission_and_target(client, admin_token):
+    """Security-sensitive plugin token ownership changes are synchronously audited."""
     from src.modules.audit.repository import AuditRepository
 
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Token Owner",
+            "login": "token.owner",
+            "password": "strong-password",
+            "role": "manager",
+            "active": True,
+        },
+    )
+    assert user.status_code == 200
     created = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
@@ -76,7 +95,7 @@ def test_admin_key_change_is_audited_with_actor_permission_and_target(client, ad
     response = client.patch(
         f"/admin/api-keys/{created['id']}",
         headers={"X-Admin-Token": admin_token},
-        json={"is_admin": True, "admin_role": "manager"},
+        json={"user_id": user.json()["id"]},
     )
 
     assert response.status_code == 200
@@ -88,20 +107,16 @@ def test_admin_key_change_is_audited_with_actor_permission_and_target(client, ad
         and row["permission"] == "admin.users.manage"
         for row in rows
     )
-    assert any(
-        row["action"] == "role.changed"
-        and row["target_type"] == "api_key"
-        and row["target_id"] == created["id"]
-        for row in rows
-    )
+    changed = next(row for row in rows if row["action"] == "api_key.changed" and row["target_id"] == created["id"])
+    assert json.loads(changed["new_value"])["user_id"] == str(user.json()["id"])
 
 
-def test_admin_auth_success_and_failure_are_audited(client, admin_token):
+def test_admin_auth_success_and_failure_are_audited(client, admin_token, legacy_admin_api_key):
     """Login attempts are security events even when the token is invalid."""
     from src.modules.audit.repository import AuditRepository
 
-    ok = client.post("/admin/auth", json={"token": admin_token})
-    failed = client.post("/admin/auth", json={"token": "definitely-not-valid"})
+    ok = client.post("/admin/auth", json={"login": "admin", "password": legacy_admin_api_key})
+    failed = client.post("/admin/auth", json={"login": "admin", "password": "definitely-not-valid"})
 
     assert ok.status_code == 200
     assert failed.status_code == 401
@@ -111,9 +126,9 @@ def test_admin_auth_success_and_failure_are_audited(client, admin_token):
     assert "admin.login.failed" in actions
 
 
-def test_audit_log_endpoint_requires_audit_view(client, admin_token):
+def test_audit_log_endpoint_requires_audit_view(client, admin_token, legacy_admin_api_key):
     """Authorized admins can inspect audit rows through a dedicated endpoint."""
-    client.post("/admin/auth", json={"token": admin_token})
+    client.post("/admin/auth", json={"login": "admin", "password": legacy_admin_api_key})
 
     response = client.get("/admin/audit", headers={"X-Admin-Token": admin_token})
 

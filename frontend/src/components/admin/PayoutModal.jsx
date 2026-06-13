@@ -1,4 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
+import { Alert, Checkbox, InputNumber, Modal, Spin } from "antd";
+import { Button, DataTable, SelectInput, TextInput } from "../../ui";
+
+function formatMoney(value) {
+  return `${(Number(value) || 0).toLocaleString("ru-RU")} ₽`;
+}
+
+function allocationLabel(allocation) {
+  if (!allocation || allocation.status === "unallocated") return null;
+  return allocation.status === "fully_allocated" ? "Распределен" : `${allocation.allocated_pct}%`;
+}
 
 export function PayoutModal({
   show,
@@ -7,16 +18,14 @@ export function PayoutModal({
   onSubmit,
   onClose,
   preview,
-  users,
-  availableInvoices,
-  availableExpenses,
+  users = [],
+  availableInvoices = [],
+  availableExpenses = [],
   onPreview,
   previewLoading,
 }) {
-  const [debouncedPreview, setDebouncedPreview] = useState(null);
   const timerRef = useRef(null);
 
-  // Debounced preview call
   const triggerPreview = useCallback(
     (invoiceIds, expenseIds, splits) => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -27,311 +36,335 @@ export function PayoutModal({
     [onPreview],
   );
 
-  // Trigger preview when form changes
   useEffect(() => {
-    if (!show) return;
-    const splits = (form.splits || []).filter((s) => s.user_id != null);
-    if (splits.length === 0) return;
-    triggerPreview(form.invoice_ids || [], form.expense_ids || [], splits);
+    if (!show) return undefined;
+    const splits = (form.splits || []).filter((split) => split.user_id != null);
+    if (splits.length > 0) {
+      triggerPreview(form.invoice_ids || [], form.expense_ids || [], splits);
+    }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [show, form.invoice_ids, form.expense_ids, form.splits, triggerPreview]);
 
-  if (!show) return null;
-
   const splits = form.splits || [];
-  const totalPct = splits.reduce((s, sp) => s + (Number(sp.split_pct) || 0), 0);
+  const invoiceIds = form.invoice_ids || [];
+  const expenseIds = form.expense_ids || [];
+  const totalPct = splits.reduce((sum, split) => sum + (Number(split.split_pct) || 0), 0);
   const pctWarning = Math.abs(totalPct - 100) > 0.01 && splits.length > 0;
 
+  const userOptions = [
+    { value: "", label: "Пользователь" },
+    ...users.map((user) => ({ value: user.id, label: user.name })),
+  ];
+
+  const userName = (userId) => users.find((user) => user.id === userId)?.name || "?";
+
+  const handleSubmit = () => {
+    onSubmit({ preventDefault: () => {} });
+  };
+
   const handleAddSplit = () => {
-    setForm((p) => ({
-      ...p,
-      splits: [...(p.splits || []), { user_id: null, split_pct: 0 }],
+    setForm((prev) => ({
+      ...prev,
+      splits: [...(prev.splits || []), { user_id: null, split_pct: 0 }],
     }));
   };
 
-  const handleRemoveSplit = (idx) => {
-    setForm((p) => ({
-      ...p,
-      splits: (p.splits || []).filter((_, i) => i !== idx),
+  const handleRemoveSplit = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      splits: (prev.splits || []).filter((_, splitIndex) => splitIndex !== index),
     }));
   };
 
-  const handleSplitUserChange = (idx, userId) => {
-    setForm((p) => {
-      const newSplits = [...(p.splits || [])];
-      newSplits[idx] = { ...newSplits[idx], user_id: userId };
-      return { ...p, splits: newSplits };
+  const handleSplitUserChange = (index, userId) => {
+    setForm((prev) => {
+      const nextSplits = [...(prev.splits || [])];
+      nextSplits[index] = { ...nextSplits[index], user_id: userId };
+      return { ...prev, splits: nextSplits };
     });
   };
 
-  const handleSplitPctChange = (idx, val) => {
-    setForm((p) => {
-      const newSplits = [...(p.splits || [])];
-      newSplits[idx] = { ...newSplits[idx], split_pct: Number(val) || 0 };
-      return { ...p, splits: newSplits };
+  const handleSplitPctChange = (index, value) => {
+    setForm((prev) => {
+      const nextSplits = [...(prev.splits || [])];
+      nextSplits[index] = { ...nextSplits[index], split_pct: Number(value) || 0 };
+      return { ...prev, splits: nextSplits };
     });
   };
 
-  const toggleInvoice = (invId) => {
-    setForm((p) => {
-      const ids = p.invoice_ids || [];
-      const newIds = ids.includes(invId)
-        ? ids.filter((id) => id !== invId)
-        : [...ids, invId];
-      return { ...p, invoice_ids: newIds };
+  const toggleInvoice = (invoiceId) => {
+    setForm((prev) => {
+      const ids = prev.invoice_ids || [];
+      const nextIds = ids.includes(invoiceId) ? ids.filter((id) => id !== invoiceId) : [...ids, invoiceId];
+      return { ...prev, invoice_ids: nextIds };
     });
   };
 
-  const toggleExpense = (expId) => {
-    setForm((p) => {
-      const ids = p.expense_ids || [];
-      const newIds = ids.includes(expId)
-        ? ids.filter((id) => id !== expId)
-        : [...ids, expId];
-      return { ...p, expense_ids: newIds };
+  const toggleExpense = (expenseId) => {
+    setForm((prev) => {
+      const ids = prev.expense_ids || [];
+      const nextIds = ids.includes(expenseId) ? ids.filter((id) => id !== expenseId) : [...ids, expenseId];
+      return { ...prev, expense_ids: nextIds };
     });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(e);
-  };
+  const invoiceColumns = [
+    {
+      title: "",
+      width: 38,
+      align: "center",
+      render: (_, invoice) => (
+        <Checkbox
+          data-eopp-component="PayoutInvoiceCheckbox"
+          checked={invoiceIds.includes(invoice.id)}
+          onChange={() => toggleInvoice(invoice.id)}
+        />
+      ),
+    },
+    {
+      title: "Счет",
+      width: 160,
+      render: (_, invoice) => (
+        <div className="payout-modal__stack-cell">
+          <strong>#{invoice.id} {invoice.invoice_number || ""}</strong>
+          {invoice.comment && <span className="text-muted">{invoice.comment}</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Сумма",
+      dataIndex: "debt_amount",
+      width: 110,
+      align: "right",
+      render: (value, invoice) => (
+        <div className="payout-modal__stack-cell payout-modal__stack-cell--right">
+          <strong>{formatMoney(value)}</strong>
+          {invoice.total_amount !== invoice.debt_amount && <span className="text-muted">всего {formatMoney(invoice.total_amount)}</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Распределение",
+      width: 130,
+      render: (_, invoice) => allocationLabel(invoice.allocation) || <span className="text-muted">-</span>,
+    },
+  ];
 
-  const formatMoney = (n) => (n || 0).toLocaleString("ru-RU");
+  const expenseColumns = [
+    {
+      title: "",
+      width: 38,
+      align: "center",
+      render: (_, expense) => (
+        <Checkbox
+          data-eopp-component="PayoutExpenseCheckbox"
+          checked={expenseIds.includes(expense.id)}
+          onChange={() => toggleExpense(expense.id)}
+        />
+      ),
+    },
+    {
+      title: "Расход",
+      render: (_, expense) => (
+        <div className="payout-modal__stack-cell">
+          <strong>#{expense.id} {expense.reason}</strong>
+          {expense.user_name && <span className="text-muted">{expense.user_name}</span>}
+        </div>
+      ),
+    },
+    {
+      title: "Сумма",
+      dataIndex: "amount",
+      width: 110,
+      align: "right",
+      render: (value) => <strong>{formatMoney(value)}</strong>,
+    },
+    {
+      title: "Распределение",
+      width: 130,
+      render: (_, expense) => allocationLabel(expense.allocation) || <span className="text-muted">-</span>,
+    },
+  ];
 
-  const userName = (userId) => {
-    const u = users.find((u) => u.id === userId);
-    return u ? u.name : "?";
-  };
+  const splitColumns = [
+    {
+      title: "Участник",
+      render: (_, split, index) => (
+        <SelectInput
+          size="small"
+          value={split.user_id ?? ""}
+          onChange={(value) => handleSplitUserChange(index, value ? Number(value) : null)}
+          options={userOptions}
+          allowClear={false}
+          className="payout-modal__select"
+        />
+      ),
+    },
+    {
+      title: "Доля",
+      width: 140,
+      align: "right",
+      render: (_, split, index) => (
+        <InputNumber
+          data-eopp-component="PayoutSplitPctInput"
+          size="small"
+          min={0}
+          max={100}
+          step={0.01}
+          value={split.split_pct}
+          onChange={(value) => handleSplitPctChange(index, value)}
+          addonAfter="%"
+          status={pctWarning ? "warning" : undefined}
+          className="payout-modal__pct"
+        />
+      ),
+    },
+    {
+      title: "",
+      width: 78,
+      align: "right",
+      render: (_, __, index) => (
+        <Button size="small" variant="danger" onClick={() => handleRemoveSplit(index)}>
+          Удалить
+        </Button>
+      ),
+    },
+  ];
+
+  const previewShares = preview?.shares || [];
+  const previewColumns = [
+    { title: "Участник", width: 140, render: (_, share) => <strong>{userName(share.user_id)}</strong> },
+    { title: "Доля", dataIndex: "split_pct", width: 70, align: "right", render: (value) => `${value}%` },
+    { title: "Прибыль", dataIndex: "profit_share", width: 110, align: "right", render: formatMoney },
+    { title: "Комиссия", dataIndex: "commission_amount", width: 110, align: "right", render: formatMoney },
+    { title: "Налог", dataIndex: "tax_amount", width: 110, align: "right", render: formatMoney },
+    { title: "Расходы", dataIndex: "expenses_compensation", width: 110, align: "right", render: formatMoney },
+    { title: "Итого", dataIndex: "total", width: 110, align: "right", render: (value) => <strong>{formatMoney(value)}</strong> },
+  ];
 
   return (
-    <div
-      className="modal fade show d-block"
-      tabIndex="-1"
-      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+    <Modal
+      data-eopp-component="PayoutModal"
+      title={form.id ? "Редактировать выплату" : "Новая выплата"}
+      open={show}
+      onCancel={onClose}
+      width={980}
+      destroyOnClose
+      footer={[
+        <Button key="cancel" size="small" onClick={onClose}>
+          Отмена
+        </Button>,
+        <Button
+          key="submit"
+          size="small"
+          variant="primary"
+          onClick={handleSubmit}
+          disabled={pctWarning || splits.length === 0}
+        >
+          {form.id ? "Сохранить" : "Создать"}
+        </Button>,
+      ]}
     >
-      <div className="modal-dialog modal-lg modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">{form.id ? "Редактировать выплату" : "Новая выплата"}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
-            <form onSubmit={handleSubmit}>
-              {/* Name */}
-              <div className="mb-3">
-                <label className="form-label">Название</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                  className="form-control"
-                  placeholder="Выплата за май 2026"
-                  required
-                />
-              </div>
+      <div className="payout-modal">
+        <label className="form-label small mb-0">
+          Название
+          <TextInput
+            value={form.name}
+            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+            placeholder="Выплата за май 2026"
+            required
+          />
+        </label>
 
-              {/* Invoices selector */}
-              <div className="mb-3">
-                <label className="form-label fw-bold">
-                  Счета ({(form.invoice_ids || []).length} выбрано из {availableInvoices.length})
-                </label>
-                <div style={{ maxHeight: "150px", overflowY: "auto", border: "1px solid #dee2e6", borderRadius: "6px", padding: "8px" }}>
-                  {availableInvoices.length === 0 && (
-                    <div className="text-muted small">Нет счетов</div>
-                  )}
-                  {availableInvoices.map((inv) => {
-                    const checked = (form.invoice_ids || []).includes(inv.id);
-                    return (
-                      <label key={inv.id} className="d-flex align-items-center gap-2 mb-1" style={{ cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleInvoice(inv.id)}
-                        />
-                        <span className="small">
-                          #{inv.id} {inv.invoice_number || ""} — <strong>{formatMoney(inv.debt_amount)} ₽</strong>
-                          {inv.total_amount !== inv.debt_amount && <span className="text-muted"> (всего {formatMoney(inv.total_amount)})</span>}
-                          {inv.comment && <span className="text-muted"> ({inv.comment})</span>}
-                          {inv.allocation && inv.allocation.status !== "unallocated" && (
-                            <span className={`badge ms-1 ${
-                              inv.allocation.status === "fully_allocated" ? "bg-success" : "bg-warning text-dark"
-                            }`}>
-                              {inv.allocation.status === "fully_allocated" ? "распределён" : `${inv.allocation.allocated_pct}%`}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+        <div className="payout-modal__resource-grid">
+          <section className="payout-modal__section">
+            <div className="payout-modal__section-title">
+              Счета <span className="text-muted">({invoiceIds.length} из {availableInvoices.length})</span>
+            </div>
+            <DataTable
+              className="payout-modal__table"
+              rowKey="id"
+              data={availableInvoices}
+              columns={invoiceColumns}
+              emptyText="Нет счетов"
+              pagination={false}
+              scroll={{ x: 500, y: 180 }}
+            />
+          </section>
 
-              {/* Expenses selector */}
-              <div className="mb-3">
-                <label className="form-label fw-bold">
-                  Расходы ({(form.expense_ids || []).length} выбрано из {availableExpenses.length})
-                </label>
-                <div style={{ maxHeight: "150px", overflowY: "auto", border: "1px solid #dee2e6", borderRadius: "6px", padding: "8px" }}>
-                  {availableExpenses.length === 0 && (
-                    <div className="text-muted small">Нет расходов</div>
-                  )}
-                  {availableExpenses.map((exp) => {
-                    const checked = (form.expense_ids || []).includes(exp.id);
-                    return (
-                      <label key={exp.id} className="d-flex align-items-center gap-2 mb-1" style={{ cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleExpense(exp.id)}
-                        />
-                        <span className="small">
-                          #{exp.id} {exp.reason} — <strong>{formatMoney(exp.amount)} ₽</strong>
-                          {exp.user_name && <span className="text-muted"> ({exp.user_name})</span>}
-                          {exp.allocation && exp.allocation.status !== "unallocated" && (
-                            <span className={`badge ms-1 ${
-                              exp.allocation.status === "fully_allocated" ? "bg-success" : "bg-warning text-dark"
-                            }`}>
-                              {exp.allocation.status === "fully_allocated" ? "распределён" : `${exp.allocation.allocated_pct}%`}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <hr />
-
-              {/* User splits */}
-              <div className="mb-3">
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <label className="form-label fw-bold mb-0">Участники и доли</label>
-                  <button type="button" className="btn btn-sm btn-outline-primary" onClick={handleAddSplit}>
-                    + Добавить
-                  </button>
-                </div>
-
-                {splits.length === 0 && (
-                  <div className="text-muted small mb-2">Добавьте участников</div>
-                )}
-
-                {splits.map((sp, idx) => (
-                  <div key={idx} className="row g-2 mb-2 align-items-center">
-                    <div className="col-7">
-                      <select
-                        value={sp.user_id ?? ""}
-                        onChange={(e) => handleSplitUserChange(idx, e.target.value ? parseInt(e.target.value) : null)}
-                        className="form-select form-select-sm"
-                      >
-                        <option value="">— Пользователь —</option>
-                        {users.map((u) => (
-                          <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-4">
-                      <div className="input-group input-group-sm">
-                        <input
-                          type="number"
-                          value={sp.split_pct}
-                          onChange={(e) => handleSplitPctChange(idx, e.target.value)}
-                          className={`form-control ${pctWarning ? "is-invalid" : ""}`}
-                          min="0"
-                          max="100"
-                          step="0.01"
-                        />
-                        <span className="input-group-text">%</span>
-                      </div>
-                    </div>
-                    <div className="col-1 text-center">
-                      <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => handleRemoveSplit(idx)}>
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                {pctWarning && (
-                  <div className="alert alert-warning py-1 small mt-2 mb-0">
-                    Сумма долей: {totalPct.toFixed(1)}% (должно быть 100%)
-                  </div>
-                )}
-              </div>
-
-              {/* Preview */}
-              {(preview || previewLoading) && (
-                <div className="mb-0">
-                  {previewLoading ? (
-                    <div className="small text-muted">Расчёт...</div>
-                  ) : preview ? (
-                    <div className="table-responsive">
-                      <table className="table table-sm table-bordered align-middle mb-0" style={{ fontSize: "0.8rem" }}>
-                        <thead className="table-light">
-                          <tr>
-                            <th>Участник</th>
-                            <th className="text-end">Доля</th>
-                            <th className="text-end">Прибыль</th>
-                            <th className="text-end">Комиссия</th>
-                            <th className="text-end">Налог</th>
-                            <th className="text-end">Расходы</th>
-                            <th className="text-end fw-bold">Итого</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(preview.shares || []).map((sh, i) => (
-                            <tr key={i}>
-                              <td className="fw-bold">{userName(sh.user_id)}</td>
-                              <td className="text-end font-monospace">{sh.split_pct}%</td>
-                              <td className="text-end font-monospace">{formatMoney(sh.profit_share)} ₽</td>
-                              <td className="text-end font-monospace">{formatMoney(sh.commission_amount || 0)} ₽</td>
-                              <td className="text-end font-monospace">{formatMoney(sh.tax_amount || 0)} ₽</td>
-                              <td className="text-end font-monospace">{formatMoney(sh.expenses_compensation || 0)} ₽</td>
-                              <td className="text-end font-monospace fw-bold">{formatMoney(sh.total)} ₽</td>
-                            </tr>
-                          ))}
-                          <tr style={{ backgroundColor: "#e9ecef" }}>
-                            <td className="fw-bold">Итого</td>
-                            <td className="text-end font-monospace fw-bold">{splits.reduce((s, sp) => s + (Number(sp.split_pct) || 0), 0).toFixed(1)}%</td>
-                            <td className="text-end font-monospace fw-bold">{formatMoney(preview.shares.reduce((s, sh) => s + (sh.profit_share || 0), 0))} ₽</td>
-                            <td className="text-end font-monospace fw-bold">{formatMoney(preview.total_commission)} ₽</td>
-                            <td className="text-end font-monospace fw-bold">{formatMoney(preview.total_tax)} ₽</td>
-                            <td className="text-end font-monospace fw-bold">{formatMoney(preview.total_expenses)} ₽</td>
-                            <td className="text-end font-monospace fw-bold">{formatMoney(preview.shares.reduce((s, sh) => s + (sh.total || 0), 0))} ₽</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <div className="small text-muted mt-1">
-                        {preview.invoice_count} счетов, {preview.expense_count} расходов &rarr;
-                        доход {formatMoney(preview.total_income)} ₽
-                        &nbsp;−&nbsp; расходы {formatMoney(preview.total_expenses)} ₽
-                        &nbsp;=&nbsp; <strong>net {formatMoney(preview.net_amount)} ₽</strong>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </form>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>
-              Отмена
-            </button>
-            <button
-              type="submit"
-              className="btn btn-sm btn-primary"
-              onClick={handleSubmit}
-              disabled={pctWarning || splits.length === 0}
-            >
-              {form.id ? "Сохранить" : "Создать"}
-            </button>
-          </div>
+          <section className="payout-modal__section">
+            <div className="payout-modal__section-title">
+              Расходы <span className="text-muted">({expenseIds.length} из {availableExpenses.length})</span>
+            </div>
+            <DataTable
+              className="payout-modal__table"
+              rowKey="id"
+              data={availableExpenses}
+              columns={expenseColumns}
+              emptyText="Нет расходов"
+              pagination={false}
+              scroll={{ x: 500, y: 180 }}
+            />
+          </section>
         </div>
+
+        <section className="payout-modal__section">
+          <div className="payout-modal__section-title">
+            <span>Участники и доли</span>
+            <Button size="small" variant="primary" onClick={handleAddSplit}>
+              Добавить
+            </Button>
+          </div>
+          <DataTable
+            className="payout-modal__table"
+            rowKey={(_, index) => index}
+            data={splits}
+            columns={splitColumns}
+            emptyText="Добавьте участников"
+            pagination={false}
+            scroll={false}
+          />
+          {pctWarning && (
+            <Alert
+              data-eopp-component="PayoutSplitWarning"
+              type="warning"
+              showIcon
+              message={`Сумма долей: ${totalPct.toFixed(1)}%, должно быть 100%`}
+            />
+          )}
+        </section>
+
+        {(preview || previewLoading) && (
+          <section className="payout-modal__section">
+            <div className="payout-modal__section-title">Предварительный расчет</div>
+            {previewLoading ? (
+              <div className="payout-modal__preview-loading">
+                <Spin size="small" /> <span>Расчет...</span>
+              </div>
+            ) : preview ? (
+              <>
+                <DataTable
+                  className="payout-modal__table"
+                  rowKey={(share) => share.user_id}
+                  data={previewShares}
+                  columns={previewColumns}
+                  emptyText="Нет данных расчета"
+                  pagination={false}
+                  scroll={{ x: 760 }}
+                />
+                <div className="payout-modal__preview-note">
+                  {preview.invoice_count} счетов, {preview.expense_count} расходов:
+                  доход {formatMoney(preview.total_income)}
+                  {" - "}расходы {formatMoney(preview.total_expenses)}
+                  {" = "}<strong>net {formatMoney(preview.net_amount)}</strong>
+                </div>
+              </>
+            ) : null}
+          </section>
+        )}
       </div>
-    </div>
+    </Modal>
   );
 }

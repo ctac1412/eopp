@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, StatusTag } from "../ui";
 
 function isSequentialEnabled() {
   try {
@@ -83,9 +84,9 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
   const resetMarkers = () => setMarkers([]);
 
   return (
-    <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="captcha-panel">
       <Header entry={entry} superKioskMode={superKioskMode} status={entry.solved ? "Решено" : `${markers.length}/5`} markersCount={markers.length} onReset={resetMarkers} />
-      <div className="card-body d-flex flex-column align-items-center justify-content-center flex-grow-1" style={{ gap: "12px", minHeight: 0 }}>
+      <div className="captcha-panel__body captcha-panel__body--column">
         <ClickArea
           image={mainImage}
           markers={markers}
@@ -205,21 +206,23 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
 
   if (complete || entry.solved) {
     return (
-      <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%", display: "flex", flexDirection: "column" }}>
+      <div className="captcha-panel">
         <Header entry={entry} superKioskMode={superKioskMode} status="Решено" role={role} />
-        <div className="card-body d-flex align-items-center justify-content-center flex-grow-1">
-          <span className="badge bg-success" style={{ fontSize: "1.2rem", padding: "12px 24px" }}>
-            Решено (distributed {numOperators}op)
-          </span>
+        <div className="captcha-panel__body">
+          <StatusTag
+            status="confirmed"
+            label={`Решено (distributed ${numOperators}op)`}
+            style={{ fontSize: "1rem", padding: "8px 16px", marginInlineEnd: 0 }}
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="card" style={{ animation: "fade-in 0.3s ease", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="captcha-panel">
       <Header entry={entry} superKioskMode={superKioskMode} status={`${solvedCount}/5 решено`} role={role} />
-      <div className="card-body d-flex flex-column align-items-center justify-content-center flex-grow-1" style={{ gap: "12px", minHeight: 0 }}>
+      <div className="captcha-panel__body captcha-panel__body--column">
         {currentImage && (
           <ClickArea
             image={currentImage}
@@ -328,33 +331,25 @@ function Header({ entry, superKioskMode, status, role, markersCount, onReset }) 
         <span className="fw-semibold" style={{ fontSize: "0.9rem" }}>
           Капча {entry.id}
         </span>
-        <span className="badge" style={{ background: "#6f42c1", fontSize: "0.7rem" }}>
-          клик-капча
-        </span>
+        <StatusTag color="purple" label="клик-капча" style={{ marginInlineEnd: 0 }} />
         {role && (
-          <span className="badge" style={{ background: "#17a2b8", fontSize: "0.7rem" }}>
-            {role}
-          </span>
+          <StatusTag color="cyan" label={role} style={{ marginInlineEnd: 0 }} />
         )}
         {superKioskMode && entry.ownerLabel && (
-          <span className="badge bg-info" style={{ fontSize: "0.7rem" }}>
-            для: {entry.ownerLabel}
-          </span>
+          <StatusTag color="blue" label={`для: ${entry.ownerLabel}`} style={{ marginInlineEnd: 0 }} />
         )}
       </div>
       <div className="d-flex align-items-center gap-2">
         {markersCount > 0 && status !== "Решено" && (
-          <button className="btn btn-sm btn-outline-secondary" onClick={onReset}
-            style={{ fontSize: "0.7rem", padding: "2px 8px" }}>
+          <Button size="small" onClick={onReset}>
             Сбросить
-          </button>
+          </Button>
         )}
-        <span className="badge" style={{
-          background: status === "Решено" ? "#198754" : "#495057",
-          fontSize: "0.8rem",
-        }}>
-          {status}
-        </span>
+        <StatusTag
+          status={status === "Решено" ? "confirmed" : "neutral"}
+          label={status}
+          style={{ marginInlineEnd: 0 }}
+        />
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { Card, Checkbox } from "antd";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, EmptyState } from "../ui";
 
 function SuperKioskPanel() {
   const helpFor = useCaptchaStore((s) => s.helpFor);
@@ -23,18 +25,16 @@ function SuperKioskPanel() {
   }, [apiKey]);
 
   useEffect(() => {
-    const adminToken = localStorage.getItem("admin_token");
-    if (!adminToken) {
+    const hasAdminSession = localStorage.getItem("admin_session_active") === "1";
+    if (!hasAdminSession) {
       setLoading(false);
       return;
     }
-    fetch("/api-keys", {
-      headers: { "X-Admin-Token": adminToken },
-    })
+    fetch("/api-keys")
       .then((r) => r.json())
       .then((data) => {
         const filtered = (Array.isArray(data) ? data : []).filter(
-          (k) => k.active && !k.is_admin && k.id !== ownKeyId
+          (key) => key.active && !key.is_admin && key.id !== ownKeyId,
         );
         setKeys(filtered);
         setLoading(false);
@@ -46,7 +46,7 @@ function SuperKioskPanel() {
     setPending((prev) => {
       const current = prev !== null ? prev : helpFor;
       if (current.includes(id)) {
-        return current.filter((x) => x !== id);
+        return current.filter((item) => item !== id);
       }
       return [...current, id];
     });
@@ -58,7 +58,7 @@ function SuperKioskPanel() {
   };
 
   const selectAll = () => {
-    setPending(keys.map((k) => k.id));
+    setPending(keys.map((key) => key.id));
   };
 
   const deselectAll = () => {
@@ -71,73 +71,82 @@ function SuperKioskPanel() {
 
   if (loading) {
     return (
-      <div className="card mb-3" style={{ borderColor: "rgba(245, 158, 11, 0.3)" }}>
-        <div className="card-body py-2" style={{ fontSize: "0.8125rem", color: "#484f58" }}>
-          Загрузка ключей...
-        </div>
-      </div>
+      <Card
+        data-eopp-component="SuperKioskPanel"
+        className="super-kiosk-panel"
+        size="small"
+      >
+        <EmptyState title="Загрузка ключей..." />
+      </Card>
     );
   }
 
   if (keys.length === 0) {
     return (
-      <div className="card mb-3" style={{ borderColor: "rgba(245, 158, 11, 0.3)" }}>
-        <div className="card-body py-2" style={{ fontSize: "0.8125rem", color: "#484f58" }}>
-          Нет доступных ключей
-        </div>
-      </div>
+      <Card
+        data-eopp-component="SuperKioskPanel"
+        className="super-kiosk-panel"
+        size="small"
+      >
+        <EmptyState title="Нет доступных ключей" />
+      </Card>
     );
   }
 
   return (
-    <div className="card mb-3" style={{ borderColor: "rgba(245, 158, 11, 0.3)" }}>
-      <div className="card-header d-flex justify-content-between align-items-center py-2" style={{ background: "rgba(245, 158, 11, 0.08)" }}>
-        <span className="fw-semibold" style={{ fontSize: "0.8125rem" }}>
-          Супер Киоск — Помогаю: {activeCount} из {totalCount}
-        </span>
-        <div className="d-flex gap-1">
-          <button className="btn btn-sm btn-outline-secondary" onClick={selectAll} style={{ fontSize: "0.7rem" }}>Все</button>
-          <button className="btn btn-sm btn-outline-secondary" onClick={deselectAll} style={{ fontSize: "0.7rem" }}>Никого</button>
+    <Card
+      data-eopp-component="SuperKioskPanel"
+      className="super-kiosk-panel"
+      size="small"
+      title={`Супер Киоск — помогаю: ${activeCount} из ${totalCount}`}
+      extra={
+        <div className="super-kiosk-panel__actions">
+          <Button size="small" onClick={selectAll}>
+            Все
+          </Button>
+          <Button size="small" onClick={deselectAll}>
+            Никого
+          </Button>
         </div>
+      }
+    >
+      <div className="super-kiosk-panel__list">
+        {keys.map((key) => {
+          const checked = current.includes(key.id);
+          return (
+            <Checkbox
+              data-eopp-component="SuperKioskKeyCheckbox"
+              key={key.id}
+              className="super-kiosk-panel__item"
+              checked={checked}
+              onChange={() => toggleKey(key.id)}
+            >
+              <span className="super-kiosk-panel__name">{key.label || key.key}</span>
+              {key.comment && (
+                <span className="super-kiosk-panel__comment">({key.comment})</span>
+              )}
+            </Checkbox>
+          );
+        })}
       </div>
-      <div className="card-body py-2" style={{ maxHeight: "200px", overflowY: "auto" }}>
-        <div className="d-flex flex-column gap-1">
-          {keys.map((k) => {
-            const checked = current.includes(k.id);
-            return (
-              <label
-                key={k.id}
-                className="d-flex align-items-center gap-2"
-                style={{ fontSize: "0.8125rem", cursor: "pointer" }}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => toggleKey(k.id)}
-                />
-                <span className="fw-medium">{k.label || k.key}</span>
-                {k.comment && (
-                  <span style={{ fontSize: "0.7rem", color: "#6e7681" }}>({k.comment})</span>
-                )}
-              </label>
-            );
-          })}
-        </div>
-      </div>
-      <div className="card-footer py-2 d-flex justify-content-end gap-2" style={{ background: "transparent" }}>
-        {pending !== null && (
+
+      <div className="super-kiosk-panel__footer">
+        {pending !== null ? (
           <>
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => setPending(null)}>Отмена</button>
-            <button className="btn btn-sm btn-warning" onClick={apply}>Применить</button>
+            <Button size="small" onClick={() => setPending(null)}>
+              Отмена
+            </Button>
+            <Button size="small" variant="primary" onClick={apply}>
+              Применить
+            </Button>
           </>
-        )}
-        {pending === null && (
-          <span style={{ fontSize: "0.7rem", color: "#6e7681" }}>
+        ) : (
+          <span className="super-kiosk-panel__hint">
             {helpFor.length === 0 ? "Помогаю всем (подписки не заданы)" : "Нажмите на чекбокс для изменения"}
           </span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 

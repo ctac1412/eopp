@@ -50,12 +50,23 @@ def client(isolated_api_db):
 
 
 @pytest.fixture
-def admin_token(isolated_api_db):
+def legacy_admin_api_key(isolated_api_db):
     from src.db import list_keys
 
     admin_key = next((key for key in list_keys() if key["is_admin"]), None)
     assert admin_key is not None
     return admin_key["key"]
+
+
+@pytest.fixture
+def admin_token(client, legacy_admin_api_key):
+    response = client.post(
+        "/admin/auth",
+        json={"login": "admin", "password": legacy_admin_api_key},
+    )
+    assert response.status_code == 200
+    assert "eopp_admin_session" in response.cookies
+    return response.cookies["eopp_admin_session"]
 
 
 @pytest.fixture

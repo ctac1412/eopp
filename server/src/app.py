@@ -25,6 +25,7 @@ from src.db import init_db
 from src.logging_config import configure_logging
 from src.routes import register_all_routes
 from src.services import telegram_service
+from src.services.tech_user_bootstrap import ensure_env_tech_user
 from src.sse import lock, pending, push_sse
 
 logger = logging.getLogger("eopp")
@@ -68,6 +69,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 def create_app() -> FastAPI:
     init_db()
+    ensure_env_tech_user()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

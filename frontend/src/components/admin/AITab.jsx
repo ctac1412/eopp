@@ -1,11 +1,47 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Card, Checkbox, Space, Spin } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  SegmentedControl,
+  SelectInput,
+  StatusTag,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 
-function adminHeaders(token) {
-  return { "Content-Type": "application/json", "X-Admin-Token": token };
+function adminHeaders() {
+  return { "Content-Type": "application/json" };
 }
 
 const CLASS_LABELS = { digit: "Цифры", puzzle: "Пазл", default: "Пазл", figures: "Фигуры", icon_click: "Иконки" };
-const CLASS_BADGES = { digit: "bg-warning text-dark", puzzle: "bg-secondary", default: "bg-secondary", figures: "bg-info text-dark", icon_click: "bg-purple text-white" };
+const CLASS_STATUS = { digit: "warning", puzzle: "neutral", default: "neutral", figures: "online", icon_click: "pending" };
+
+function fmt(value, digits = 2) {
+  return typeof value === "number" ? value.toFixed(digits) : "—";
+}
+
+function fmtDate(value) {
+  return value ? value.replace("T", " ").slice(0, 19) : "—";
+}
+
+function classTag(kind) {
+  return <StatusTag status={CLASS_STATUS[kind] || "neutral"} label={CLASS_LABELS[kind] || kind || "—"} />;
+}
+
+function expectedKind(row) {
+  if (row.ground_truth === "digit") return "digit";
+  if (row.ground_truth === "figures") return "figures";
+  return "default";
+}
+
+function solverLabel(run) {
+  if (!run?.solver_top1_total) return "—";
+  const percent = Math.round((run.solver_top1_hits / run.solver_top1_total) * 100);
+  return `${run.solver_top1_hits}/${run.solver_top1_total} (${percent}%)`;
+}
 
 export function AITab({ adminToken }) {
   const [models, setModels] = useState([]);
@@ -23,8 +59,8 @@ export function AITab({ adminToken }) {
     fetch("/admin/ai/models", { headers: adminHeaders(adminToken) })
       .then((r) => r.json())
       .then((data) => {
-        setModels(data);
-        if (data.length > 0 && !selectedModel) {
+        setModels(Array.isArray(data) ? data : []);
+        if (Array.isArray(data) && data.length > 0 && !selectedModel) {
           setSelectedModel(`${data[0].name}_v${data[0].version}`);
         }
       })
@@ -34,7 +70,7 @@ export function AITab({ adminToken }) {
   const fetchRuns = () => {
     fetch("/admin/ai/runs", { headers: adminHeaders(adminToken) })
       .then((r) => r.json())
-      .then(setRuns)
+      .then((data) => setRuns(Array.isArray(data) ? data : []))
       .catch(() => {});
   };
 
@@ -43,28 +79,21 @@ export function AITab({ adminToken }) {
     fetchRuns();
   }, [adminToken]);
 
-  const runClassify = async () => {
-    await doRun({ classifier, check_solver: checkSolver });
-  };
-
-  const runClassifyWith = async (body) => {
-    await doRun(body);
-  };
-
   const doRun = async (body) => {
     setRunning(true);
     setError(null);
     setResults(null);
     try {
-      if (body.classifier === "digits" && selectedModel) {
+      const payload = { ...body };
+      if (payload.classifier === "digits" && selectedModel) {
         const [name, ver] = selectedModel.split("_v");
-        body.model_name = name;
-        body.model_version = parseInt(ver);
+        payload.model_name = name;
+        payload.model_version = parseInt(ver, 10);
       }
       const res = await fetch("/admin/ai/classify", {
         method: "POST",
         headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -80,270 +109,220 @@ export function AITab({ adminToken }) {
     }
   };
 
-  const filtered = results
-    ? results.results.filter((r) => {
-        if (filter === "digit" && r.kind !== "digit") return false;
-        if (filter === "figures" && r.kind !== "figures") return false;
-        if (filter === "puzzle" && r.kind !== "default") return false;
-        if (filter === "changed") {
-          const expectedKind = r.ground_truth === "digit" ? "digit" :
-                               r.ground_truth === "figures" ? "figures" : "default";
-          if (r.kind === expectedKind) return false;
-        }
-        if (search && !r.captcha_id.toLowerCase().includes(search.toLowerCase())) return false;
-        return true;
-      })
-    : [];
+  const filteredResults = useMemo(() => {
+    if (!results) return [];
+    const q = search.trim().toLowerCase();
+    return (results.results || []).filter((row) => {
+      if (filter === "digit" && row.kind !== "digit") return false;
+      if (filter === "figures" && row.kind !== "figures") return false;
+      if (filter === "puzzle" && row.kind !== "default") return false;
+      if (filter === "changed" && row.kind === expectedKind(row)) return false;
+      if (q && !row.captcha_id.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [filter, results, search]);
+
+  const latestRun = runs[0];
+  const changedCount = useMemo(
+    () => (results?.results || []).filter((row) => row.kind !== expectedKind(row)).length,
+    [results],
+  );
+
+  const runMetrics = [
+    { key: "models", label: "Модели", value: models.length, tone: models.length ? "success" : "neutral" },
+    { key: "runs", label: "Прогоны", value: runs.length, tone: runs.length ? "info" : "neutral" },
+    { key: "lastTotal", label: "Последний total", value: latestRun?.total ?? "—", tone: "neutral" },
+    { key: "lastF1", label: "Последний F1", value: fmt(latestRun?.f1), tone: (latestRun?.f1 || 0) >= 0.8 ? "success" : "warning" },
+    { key: "solver", label: "Solver", value: solverLabel(latestRun), tone: latestRun?.solver_top1_hits === latestRun?.solver_top1_total ? "success" : "warning" },
+    { key: "speed", label: "Speed", value: latestRun?.speed_avg ? `${fmt(latestRun.speed_avg, 3)}s` : "—", tone: "info" },
+  ];
+
+  const resultMetrics = results ? [
+    { key: "total", label: "Всего", value: results.total, tone: "neutral" },
+    { key: "figures", label: "Фигуры", value: results.figure_count ?? 0, tone: "info" },
+    { key: "digits", label: "Цифры", value: results.digit_count, tone: "warning" },
+    { key: "puzzles", label: "Пазлы", value: results.puzzle_count, tone: "neutral" },
+    { key: "changed", label: "Измененные", value: changedCount, tone: changedCount ? "warning" : "success" },
+    { key: "speed", label: "Avg speed", value: `${results.speed?.avg ?? "—"}s`, tone: "info" },
+  ] : [];
+
+  const runColumns = [
+    { title: "Модель", width: 140, render: (_, run) => <span className="font-monospace">{run.model_name} v{run.model_version}</span> },
+    { title: "Total", dataIndex: "total", width: 70, align: "center" },
+    { title: "Fig/Dig", width: 82, align: "center", render: (_, run) => `${run.figure_found ?? 0}/${run.digit_found ?? 0}` },
+    { title: "TP/FP", width: 82, align: "center", render: (_, run) => `${run.true_positives ?? 0}/${run.false_positives ?? 0}` },
+    { title: "FN/TN", width: 82, align: "center", render: (_, run) => `${run.false_negatives ?? 0}/${run.true_negatives ?? 0}` },
+    { title: "Acc", dataIndex: "accuracy", width: 70, align: "center", render: (value) => fmt(value) },
+    { title: "Prec", dataIndex: "precision", width: 70, align: "center", render: (value) => fmt(value) },
+    { title: "Rec", dataIndex: "recall", width: 70, align: "center", render: (value) => fmt(value) },
+    { title: "F1", dataIndex: "f1", width: 70, align: "center", render: (value) => fmt(value) },
+    { title: "Solver", width: 110, align: "center", render: (_, run) => solverLabel(run) },
+    { title: "Speed", dataIndex: "speed_avg", width: 82, align: "center", render: (value) => (value ? `${fmt(value, 3)}s` : "—") },
+    { title: "Дата", dataIndex: "created_at", width: 140, render: fmtDate },
+  ];
+
+  const resultColumns = [
+    {
+      title: "Превью",
+      width: 126,
+      render: (_, row) => row.preview ? (
+        <img
+          data-eopp-component="AiResultPreview"
+          className="ai-result-preview"
+          src={`data:image/png;base64,${row.preview}`}
+          alt="preview"
+        />
+      ) : "—",
+    },
+    { title: "Captcha ID", dataIndex: "captcha_id", ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Класс", dataIndex: "kind", width: 110, align: "center", render: classTag },
+    { title: "GT", dataIndex: "ground_truth", width: 110, align: "center", render: classTag },
+    { title: "Метод", width: 110, ellipsis: true, render: (_, row) => row.details?.classifier || row.details?.method || "—" },
+    { title: "Conf", dataIndex: "confidence", width: 74, align: "center", render: (value) => fmt(value) },
+    { title: "Тайлы", width: 74, align: "center", render: (_, row) => `${row.details?.tiles_with_digits ?? "—"}/${row.details?.total_tiles ?? "—"}` },
+    {
+      title: "Solver",
+      width: 74,
+      align: "center",
+      render: (_, row) => row.solver_top1_match === true
+        ? <StatusTag status="confirmed" label="top1" />
+        : row.solver_top1_match === false
+          ? <StatusTag status="failed" label="no" />
+          : "—",
+    },
+    { title: "Время", dataIndex: "time_s", width: 78, align: "center", render: (value) => `${value}s` },
+  ];
 
   return (
-    <div>
-      <div className="d-flex gap-2 align-items-end mb-3 flex-wrap">
-        <div>
-          <label className="form-label small mb-1">Классификатор</label>
-          <div className="btn-group btn-group-sm">
-            {[
-              { id: "chain", label: "Chain" },
-              { id: "figures", label: "Фигуры" },
-              { id: "digits", label: "Цифры" },
-            ].map((c) => (
-              <button
-                key={c.id}
-                className={`btn ${classifier === c.id ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => setClassifier(c.id)}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {classifier === "digits" && (
+    <div data-eopp-component="AITab" className="ai-page">
+      <Toolbar
+        className="mb-3"
+        left={
           <div>
-            <label className="form-label small mb-1">Модель</label>
-            <select
-              className="form-select form-select-sm"
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              style={{ width: 200 }}
-            >
-              {models.map((m) => (
-                <option key={`${m.name}_v${m.version}`} value={`${m.name}_v${m.version}`}>
-                  {m.name} v{m.version}
-                </option>
-              ))}
-            </select>
+            <h2 className="fs-6 fw-semibold mb-1">ИИ классификатор</h2>
+            <div className="small text-muted">Прогоны моделей по архиву капч, сравнение классов и проверка solver top-1</div>
           </div>
-        )}
-        <button className="btn btn-sm btn-primary" onClick={runClassify} disabled={running}>
-          {running ? <><span className="spinner-border spinner-border-sm me-1" />Прогон...</> : "Прогнать"}
-        </button>
-        <div className="form-check mb-1 ms-2">
-          <input className="form-check-input" type="checkbox" id="checkSolver"
-            checked={checkSolver} onChange={(e) => setCheckSolver(e.target.checked)} />
-          <label className="form-check-label small" htmlFor="checkSolver">Проверить резолвер</label>
-        </div>
+        }
+        right={<Button size="small" onClick={fetchRuns}>Обновить историю</Button>}
+      />
 
-        <div className="vr mx-1"></div>
-        <span className="small text-muted me-1">Тест резолвера:</span>
-        {[
-          { id: "figures", label: "Фигуры", cls: "btn-info" },
-          { id: "digit", label: "Цифры", cls: "btn-warning" },
-        ].map((t) => (
-          <button
-            key={t.id}
-            className={`btn btn-sm btn-outline-secondary`}
-            onClick={() => {
-              setClassifier(t.id);
-              setCheckSolver(true);
-              runClassifyWith({ classifier: t.id, check_solver: true, gt_only: t.id });
-            }}
-            disabled={running}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {error ? <Alert className="mb-3" type="error" showIcon message="Ошибка" description={error} /> : null}
 
-      {error && <div className="alert alert-danger py-1 px-2 small">{error}</div>}
+      <MetricsStrip items={runMetrics} />
 
-      {runs.length > 0 && (
-        <details className="mb-3" open>
-          <summary className="fw-semibold small mb-2" style={{ cursor: "pointer" }}>
-            История прогонов ({runs.length})
-          </summary>
-          <div className="table-responsive">
-            <table className="table table-sm table-bordered align-middle mb-0 small">
-              <thead className="table-light">
-                <tr>
-                  <th>Модель</th>
-                  <th>Total</th>
-                  <th>Fig</th>
-                  <th>Dig</th>
-                  <th>TP</th>
-                  <th>FP</th>
-                  <th>FN</th>
-                  <th>TN</th>
-                  <th>Acc</th>
-                  <th>Prec</th>
-                  <th>Rec</th>
-                  <th>F1</th>
-                  <th>Solver</th>
-                  <th>Speed</th>
-                  <th>Дата</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((r) => (
-                  <tr key={r.id}>
-                    <td className="font-monospace">{r.model_name} v{r.model_version}</td>
-                    <td>{r.total}</td>
-                    <td>{r.figure_found ?? 0}</td>
-                    <td>{r.digit_found}</td>
-                    <td className="text-success">{r.true_positives}</td>
-                    <td className="text-danger">{r.false_positives}</td>
-                    <td className="text-danger">{r.false_negatives}</td>
-                    <td className="text-success">{r.true_negatives}</td>
-                    <td>{r.accuracy?.toFixed(2)}</td>
-                    <td>{r.precision?.toFixed(2)}</td>
-                    <td>{r.recall?.toFixed(2)}</td>
-                    <td>{r.f1?.toFixed(2)}</td>
-                    <td>{r.solver_top1_total > 0
-                      ? <span className={r.solver_top1_hits === r.solver_top1_total ? "text-success" : "text-warning"}>
-                          {r.solver_top1_hits}/{r.solver_top1_total} ({Math.round(r.solver_top1_hits/r.solver_top1_total*100)}%)
-                        </span>
-                      : "—"}</td>
-                    <td>{r.speed_avg?.toFixed(3)}s</td>
-                    <td className="text-muted">{r.created_at?.replace("T", " ").slice(0, 19)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      )}
-
-      {results && (
-        <>
-          <div className="d-flex gap-2 mb-2 flex-wrap align-items-center">
-            <span className="badge text-bg-secondary">Всего: {results.total}</span>
-            <span className="badge text-bg-info">Фигуры: {results.figure_count ?? 0}</span>
-            <span className="badge text-bg-warning">Цифры: {results.digit_count}</span>
-            <span className="badge text-bg-secondary">Пазлы: {results.puzzle_count}</span>
-            <span className="text-muted small">
-              Скорость: avg={results.speed.avg}s median={results.speed.median}s
-            </span>
-          </div>
-
-          {results.stats && (
-            <div className="row g-2 mb-2">
-              <div className="col-auto">
-                <span className="badge bg-success">TP: {results.stats.tp}</span>
-              </div>
-              <div className="col-auto">
-                <span className="badge bg-danger">FP: {results.stats.fp}</span>
-              </div>
-              <div className="col-auto">
-                <span className="badge bg-danger">FN: {results.stats.fn}</span>
-              </div>
-              <div className="col-auto">
-                <span className="badge bg-success">TN: {results.stats.tn}</span>
-              </div>
-              <div className="col-auto">
-                <span className="small text-muted">
-                  acc={results.stats.accuracy} prec={results.stats.precision} rec={results.stats.recall} f1={results.stats.f1}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div className="d-flex gap-2 mb-2 align-items-center flex-wrap">
-            <div className="btn-group btn-group-sm">
-              {[
-                { id: "all", label: "Все" },
-                { id: "figures", label: "Фигуры" },
-                { id: "digit", label: "Цифры" },
-                { id: "puzzle", label: "Пазлы" },
-                { id: "changed", label: "Изменённые" },
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  className={`btn ${filter === f.id ? "btn-primary" : "btn-outline-secondary"}`}
-                  onClick={() => setFilter(f.id)}
-                >
-                  {f.label}
-                  {f.id === "changed" && results && (
-                    <span className="ms-1 badge bg-light text-dark">
-                      {results.results.filter((r) => r.kind !== (
-                        r.ground_truth === "digit" ? "digit" : r.ground_truth === "figures" ? "figures" : "default"
-                      )).length}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-            <input
-              className="form-control form-control-sm"
-              style={{ width: 200 }}
-              placeholder="Поиск по ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+      <Card data-eopp-component="AiRunCard" className="mt-3" size="small" title="Запуск">
+        <FilterBar>
+          <label className="form-label small mb-0">
+            Классификатор
+            <SegmentedControl
+              size="small"
+              value={classifier}
+              onChange={setClassifier}
+              options={[
+                { value: "chain", label: "Chain" },
+                { value: "figures", label: "Фигуры" },
+                { value: "digits", label: "Цифры" },
+              ]}
             />
-          </div>
+          </label>
+          {classifier === "digits" ? (
+            <label className="form-label small mb-0">
+              Модель
+              <SelectInput
+                size="small"
+                value={selectedModel}
+                onChange={(value) => setSelectedModel(value || "")}
+                options={models.map((model) => ({
+                  value: `${model.name}_v${model.version}`,
+                  label: `${model.name} v${model.version}`,
+                }))}
+                style={{ minWidth: 190 }}
+              />
+            </label>
+          ) : null}
+          <Checkbox
+            data-eopp-component="AiCheckSolverCheckbox"
+            className="ai-check-solver"
+            checked={checkSolver}
+            onChange={(event) => setCheckSolver(event.target.checked)}
+          >
+            Проверить резолвер
+          </Checkbox>
+          <Button size="small" variant="primary" onClick={() => doRun({ classifier, check_solver: checkSolver })} disabled={running}>
+            {running ? <><Spin size="small" /> Прогон...</> : "Прогнать"}
+          </Button>
+          <Button size="small" onClick={() => { setClassifier("figures"); setCheckSolver(true); doRun({ classifier: "figures", check_solver: true, gt_only: "figures" }); }} disabled={running}>
+            Тест фигур
+          </Button>
+          <Button size="small" onClick={() => { setClassifier("digit"); setCheckSolver(true); doRun({ classifier: "digit", check_solver: true, gt_only: "digit" }); }} disabled={running}>
+            Тест цифр
+          </Button>
+        </FilterBar>
+      </Card>
 
-          <div className="table-responsive">
-            <table className="table table-sm table-hover table-bordered align-middle mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th style={{ width: 40 }}>#</th>
-                  <th style={{ width: 130 }}>Превью</th>
-                  <th>Captcha ID</th>
-                  <th style={{ width: 100 }}>Новый класс</th>
-                  <th style={{ width: 90 }}>Сработал</th>
-                  <th style={{ width: 80 }}>Conf</th>
-                  <th style={{ width: 100 }}>GT класс</th>
-                  <th style={{ width: 60 }}>Тайлов</th>
-                  <th style={{ width: 75 }}>Solver</th>
-                  <th style={{ width: 80 }}>Время</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r, idx) => {
-                  const changed = r.kind !== (
-                    r.ground_truth === "digit" ? "digit" : r.ground_truth === "figures" ? "figures" : "default"
-                  );
-                  return (
-                    <tr key={r.captcha_id} className={changed ? "table-warning" : ""}>
-                      <td className="text-muted small">{idx + 1}</td>
-                      <td>
-                        {r.preview ? (
-                          <img src={`data:image/png;base64,${r.preview}`} alt="preview" style={{ width: 120, height: 68, objectFit: "contain" }} />
-                        ) : (
-                          <span className="text-muted small">—</span>
-                        )}
-                      </td>
-                      <td className="font-monospace small">{r.captcha_id}</td>
-                      <td><span className={`badge ${CLASS_BADGES[r.kind] || "bg-light text-dark"}`}>{CLASS_LABELS[r.kind] || r.kind}</span></td>
-                      <td className="small text-muted">{r.details?.classifier || r.details?.method || "—"}</td>
-                      <td className="small">{r.confidence.toFixed(2)}</td>
-                      <td><span className={`badge ${CLASS_BADGES[r.ground_truth] || "bg-light text-dark"}`}>{CLASS_LABELS[r.ground_truth] || r.ground_truth || "—"}</span></td>
-                      <td className="small">{r.details?.tiles_with_digits ?? "—"}/{r.details?.total_tiles ?? "—"}</td>
-                      <td className="small">
-                        {r.solver_top1_match === true ? <span className="text-success fw-bold">top1</span> :
-                         r.solver_top1_match === false ? <span className="text-danger">no</span> :
-                         <span className="text-muted">—</span>}
-                      </td>
-                      <td className="small text-muted">{r.time_s}s</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+      <Card data-eopp-component="AiRunsCard" className="mt-3" size="small" title="История прогонов">
+        <DataTable
+          className="ai-runs-table"
+          rowKey="id"
+          data={runs}
+          columns={runColumns}
+          emptyText="Нет прогонов"
+          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          scroll={false}
+        />
+      </Card>
 
-      {!results && !running && !error && (
-        <div className="text-center text-muted py-5">Выбери модель и нажми «Прогнать»</div>
-      )}
+      {results ? (
+        <Card data-eopp-component="AiResultsCard" className="mt-3" size="small" title="Результаты текущего прогона">
+          <MetricsStrip items={resultMetrics} />
+          {results.stats ? (
+            <div data-eopp-component="AiStatsLine" className="ai-stats-line">
+              <StatusTag status="confirmed" label={`TP ${results.stats.tp}`} />
+              <StatusTag status="failed" label={`FP ${results.stats.fp}`} />
+              <StatusTag status="failed" label={`FN ${results.stats.fn}`} />
+              <StatusTag status="confirmed" label={`TN ${results.stats.tn}`} />
+              <span className="text-muted small">
+                acc={results.stats.accuracy} prec={results.stats.precision} rec={results.stats.recall} f1={results.stats.f1}
+              </span>
+            </div>
+          ) : null}
+          <FilterBar className="my-3">
+            <label className="form-label small mb-0">
+              Фильтр
+              <SegmentedControl
+                size="small"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: "all", label: "Все" },
+                  { value: "figures", label: "Фигуры" },
+                  { value: "digit", label: "Цифры" },
+                  { value: "puzzle", label: "Пазлы" },
+                  { value: "changed", label: `Изм. ${changedCount}` },
+                ]}
+              />
+            </label>
+            <label className="form-label small mb-0 ai-results-search">
+              Поиск
+              <TextInput size="small" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Captcha ID" />
+            </label>
+          </FilterBar>
+          <DataTable
+            className="ai-results-table"
+            rowKey="captcha_id"
+            data={filteredResults}
+            columns={resultColumns}
+            rowClassName={(row) => (row.kind !== expectedKind(row) ? "ai-result-row--changed" : "")}
+            emptyText="Нет результатов"
+            pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+            scroll={false}
+          />
+        </Card>
+      ) : !running && !error ? (
+        <Card data-eopp-component="AiEmptyCard" className="mt-3" size="small">
+          <div className="text-center text-muted py-5">Выбери модель и нажми «Прогнать»</div>
+        </Card>
+      ) : null}
     </div>
   );
 }

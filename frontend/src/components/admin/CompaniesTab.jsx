@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Card, Input, InputNumber, Modal, Space } from "antd";
+import {
+  Button,
+  DataTable,
+  FilterBar,
+  MetricsStrip,
+  TextInput,
+  Toolbar,
+} from "../../ui";
 import { adminHeaders, adminHeadersJson } from "../../features/admin/shared/adminClient";
 
 function formatDate(iso) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("ru-RU", {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -12,18 +23,37 @@ function formatDate(iso) {
   });
 }
 
+function parseAliases(value) {
+  return value
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function clip(value, length = 120) {
+  if (!value) return "—";
+  return value.length > length ? `${value.slice(0, length)}...` : value;
+}
+
 export function CompaniesTab({ adminToken, onError }) {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: "", aliases: "", notes: "" });
+  const [tariffCompany, setTariffCompany] = useState(null);
+  const [tariffForm, setTariffForm] = useState({
+    price_create: "",
+    price_reschedule: "",
+    price_create_peak: "",
+    price_custom_slots: "",
+  });
+  const [tariffSaving, setTariffSaving] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deleteId, setDeleteId] = useState(null);
+  const [search, setSearch] = useState("");
 
   const fetchCompanies = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/admin/companies", {
         headers: adminHeadersJson(adminToken),
@@ -32,7 +62,7 @@ export function CompaniesTab({ adminToken, onError }) {
       const data = await res.json();
       setCompanies(Array.isArray(data) ? data : []);
     } catch (err) {
-      onError?.("Ошибка загрузки компаний: " + err.message);
+      onError?.(`Ошибка загрузки компаний: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -41,6 +71,37 @@ export function CompaniesTab({ adminToken, onError }) {
   useEffect(() => {
     fetchCompanies();
   }, [fetchCompanies]);
+
+  const filteredCompanies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return companies;
+    return companies.filter((company) =>
+      [
+        company.id,
+        company.name,
+        company.notes,
+        ...(Array.isArray(company.aliases) ? company.aliases : []),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [companies, search]);
+
+  const metrics = useMemo(() => {
+    const aliasesCount = companies.reduce(
+      (total, company) => total + (Array.isArray(company.aliases) ? company.aliases.length : 0),
+      0,
+    );
+    const withNotes = companies.filter((company) => company.notes).length;
+    return [
+      { key: "companies", label: "Компании", value: companies.length, tone: companies.length > 0 ? "info" : "neutral" },
+      { key: "aliases", label: "Алиасы", value: aliasesCount, tone: aliasesCount > 0 ? "success" : "neutral" },
+      { key: "notes", label: "С заметками", value: withNotes, tone: withNotes > 0 ? "info" : "neutral" },
+      { key: "visible", label: "В выборке", value: filteredCompanies.length, tone: filteredCompanies.length === companies.length ? "neutral" : "warning" },
+    ];
+  }, [companies, filteredCompanies.length]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -58,16 +119,10 @@ export function CompaniesTab({ adminToken, onError }) {
     setShowModal(true);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const saveCompany = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
-
-    const aliasesArray = form.aliases
-      .split("\n")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
+    const aliasesArray = parseAliases(form.aliases);
     const body = {
       name: form.name.trim(),
       aliases: aliasesArray.length > 0 ? aliasesArray : null,
@@ -75,279 +130,302 @@ export function CompaniesTab({ adminToken, onError }) {
     };
 
     try {
-      const url = editingId
-        ? `/admin/companies/${editingId}`
-        : "/admin/companies";
+      const url = editingId ? `/admin/companies/${editingId}` : "/admin/companies";
       const method = editingId ? "PUT" : "POST";
-
       const res = await fetch(url, {
         method,
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       setShowModal(false);
       setEditingId(null);
       setForm({ name: "", aliases: "", notes: "" });
       await fetchCompanies();
     } catch (err) {
-      onError?.("Ошибка сохранения компании: " + err.message);
+      onError?.(`Ошибка сохранения компании: ${err.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
+  const deleteCompany = (company) => {
+    Modal.confirm({
+      title: "Удалить компанию?",
+      content: `Компания "${company.name}" будет удалена. Это действие нельзя отменить.`,
+      okText: "Удалить",
+      okButtonProps: { danger: true },
+      cancelText: "Отмена",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/admin/companies/${company.id}`, {
+            method: "DELETE",
+            headers: adminHeadersJson(adminToken),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          await fetchCompanies();
+        } catch (err) {
+          onError?.(`Ошибка удаления компании: ${err.message}`);
+        }
+      },
+    });
+  };
+
+  const openTariff = async (company) => {
+    setTariffCompany(company);
+    setTariffForm({
+      price_create: "",
+      price_reschedule: "",
+      price_create_peak: "",
+      price_custom_slots: "",
+    });
     try {
-      const res = await fetch(`/admin/companies/${deleteId}`, {
-        method: "DELETE",
+      const res = await fetch(`/admin/company-tariffs/${company.id}`, {
         headers: adminHeadersJson(adminToken),
       });
+      if (res.status === 404) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setDeleteId(null);
-      await fetchCompanies();
+      const data = await res.json();
+      setTariffForm({
+        price_create: data.price_create ?? "",
+        price_reschedule: data.price_reschedule ?? "",
+        price_create_peak: data.price_create_peak ?? "",
+        price_custom_slots: data.price_custom_slots ?? "",
+      });
     } catch (err) {
-      onError?.("Ошибка удаления компании: " + err.message);
+      onError?.(`Company tariff load failed: ${err.message}`);
     }
   };
 
-  if (loading) {
-    return <div className="text-center text-muted py-3">Загрузка…</div>;
-  }
+  const saveTariff = async () => {
+    if (!tariffCompany) return;
+    setTariffSaving(true);
+    try {
+      const body = {
+        price_create: Number(tariffForm.price_create) || 0,
+        price_reschedule: Number(tariffForm.price_reschedule) || 0,
+        price_create_peak: tariffForm.price_create_peak === "" ? null : Number(tariffForm.price_create_peak),
+        price_custom_slots: tariffForm.price_custom_slots === "" ? null : Number(tariffForm.price_custom_slots),
+      };
+      const res = await fetch(`/admin/company-tariffs/${tariffCompany.id}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTariffCompany(null);
+    } catch (err) {
+      onError?.(`Company tariff save failed: ${err.message}`);
+    } finally {
+      setTariffSaving(false);
+    }
+  };
+
+  const deleteTariff = async () => {
+    if (!tariffCompany) return;
+    setTariffSaving(true);
+    try {
+      const res = await fetch(`/admin/company-tariffs/${tariffCompany.id}`, {
+        method: "DELETE",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+      setTariffCompany(null);
+    } catch (err) {
+      onError?.(`Company tariff delete failed: ${err.message}`);
+    } finally {
+      setTariffSaving(false);
+    }
+  };
+
+  const columns = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      width: 70,
+      render: (value) => <span className="text-muted">#{value}</span>,
+    },
+    {
+      title: "Название",
+      dataIndex: "name",
+      width: 240,
+      ellipsis: true,
+      render: (value) => <span className="fw-semibold">{value}</span>,
+    },
+    {
+      title: "Алиасы",
+      dataIndex: "aliases",
+      width: 320,
+      render: (aliases) => {
+        if (!Array.isArray(aliases) || aliases.length === 0) return <span className="text-muted">—</span>;
+        return (
+          <div className="company-alias-tags">
+            {aliases.map((alias) => (
+              <span key={alias} className="company-alias-tag" title={alias}>
+                {alias}
+              </span>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      title: "Заметки",
+      dataIndex: "notes",
+      ellipsis: true,
+      render: (value) => <span title={value || "—"}>{clip(value)}</span>,
+    },
+    {
+      title: "Создана",
+      dataIndex: "created_at",
+      width: 150,
+      render: formatDate,
+    },
+    {
+      title: "",
+      width: 150,
+      align: "right",
+      render: (_, company) => (
+        <Space size={4}>
+          <Button size="small" onClick={() => openTariff(company)}>Tariff</Button>
+          <Button size="small" onClick={() => openEdit(company)}>Изм.</Button>
+          <Button size="small" variant="danger" onClick={() => deleteCompany(company)}>Удал.</Button>
+        </Space>
+      ),
+    },
+  ];
 
   return (
-    <div>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h6 className="mb-0" style={{ color: "#f0f6fc" }}>Компании</h6>
-        <button className="btn btn-sm btn-primary" onClick={openCreate}>
-          + Добавить компанию
-        </button>
-      </div>
-
-      {companies.length === 0 && !loading && (
-        <div className="text-center text-muted py-3">Нет компаний</div>
-      )}
-
-      {companies.length > 0 && (
-        <div className="table-responsive">
-          <table className="table table-sm table-hover table-bordered align-middle mb-0">
-            <thead className="table-light">
-              <tr>
-                <th style={{ width: "50px" }}>ID</th>
-                <th>Название</th>
-                <th style={{ width: "250px" }}>Алиасы</th>
-                <th>Заметки</th>
-                <th style={{ width: "140px" }}>Дата создания</th>
-                <th style={{ width: "120px" }}>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {companies.map((c) => (
-                <tr key={c.id}>
-                  <td className="text-center fw-bold">{c.id}</td>
-                  <td className="fw-semibold">{c.name}</td>
-                  <td>
-                    {Array.isArray(c.aliases) && c.aliases.length > 0 ? (
-                      <div className="d-flex flex-wrap gap-1">
-                        {c.aliases.map((alias, i) => (
-                          <span
-                            key={i}
-                            className="badge bg-secondary"
-                            style={{ fontSize: "0.7rem" }}
-                          >
-                            {alias}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  <td className="small" style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.notes || "—"}
-                  </td>
-                  <td className="text-nowrap small">{formatDate(c.created_at)}</td>
-                  <td>
-                    <div className="d-flex gap-1">
-                      <button
-                        className="btn btn-sm btn-outline-primary"
-                        style={{ fontSize: "0.7rem" }}
-                        onClick={() => openEdit(c)}
-                      >
-                        изменить
-                      </button>
-                      <button
-                        className="btn btn-sm btn-outline-danger"
-                        style={{ fontSize: "0.7rem" }}
-                        onClick={() => setDeleteId(c.id)}
-                      >
-                        удалить
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Create / Edit Modal */}
-      {showModal && (
-        <div
-          className="modal fade show d-block"
-          tabIndex="-1"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          onClick={(e) => e.target === e.currentTarget && setShowModal(false)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  {editingId ? "Редактировать компанию" : "Добавить компанию"}
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <form onSubmit={handleSubmit}>
-                  <div className="mb-3">
-                    <label className="form-label">Название *</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      value={form.name}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, name: e.target.value }))
-                      }
-                      placeholder="ООО Компания"
-                      required
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">
-                      Алиасы
-                      <span
-                        style={{
-                          fontSize: "0.7rem",
-                          color: "#8b949e",
-                          marginLeft: 6,
-                        }}
-                      >
-                        (по одному на строку)
-                      </span>
-                    </label>
-                    <textarea
-                      className="form-control"
-                      rows={4}
-                      value={form.aliases}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, aliases: e.target.value }))
-                      }
-                      placeholder={"ООО Ромашка\nRomashka Ltd"}
-                      style={{
-                        background: "#0d1117",
-                        color: "#c9d1d9",
-                        border: "1px solid #30363d",
-                      }}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Заметки</label>
-                    <textarea
-                      className="form-control"
-                      rows={3}
-                      value={form.notes}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, notes: e.target.value }))
-                      }
-                      placeholder="Любые заметки…"
-                      style={{
-                        background: "#0d1117",
-                        color: "#c9d1d9",
-                        border: "1px solid #30363d",
-                      }}
-                    />
-                  </div>
-                </form>
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => setShowModal(false)}
-                >
-                  Отмена
-                </button>
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={handleSubmit}
-                  disabled={saving}
-                >
-                  {saving
-                    ? "Сохранение…"
-                    : editingId
-                      ? "Сохранить"
-                      : "Создать"}
-                </button>
-              </div>
+    <div data-eopp-component="CompaniesTab" className="companies-page">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h2 className="fs-6 fw-semibold mb-1">Компании</h2>
+            <div className="small text-muted">
+              CRM-справочник компаний, алиасов и заметок для биллинга и отчётов
             </div>
           </div>
-        </div>
-      )}
+        }
+        right={
+          <Space wrap>
+            <Button size="small" onClick={fetchCompanies} loading={loading}>Обновить</Button>
+            <Button size="small" variant="primary" onClick={openCreate}>Добавить компанию</Button>
+          </Space>
+        }
+      />
 
-      {/* Delete Confirmation Modal */}
-      {deleteId && (
-        <div
-          className="modal fade show d-block"
-          tabIndex="-1"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
-          onClick={(e) => e.target === e.currentTarget && setDeleteId(null)}
-        >
-          <div
-            className="modal-dialog modal-dialog-centered modal-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Подтверждение</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setDeleteId(null)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <p>
-                  Вы уверены, что хотите удалить эту компанию? Это действие
-                  нельзя отменить.
-                </p>
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => setDeleteId(null)}
-                >
-                  Отмена
-                </button>
-                <button
-                  className="btn btn-sm btn-danger"
-                  onClick={handleDelete}
-                >
-                  Удалить
-                </button>
-              </div>
-            </div>
-          </div>
+      <MetricsStrip items={metrics} />
+
+      <Card data-eopp-component="CompaniesListCard" className="mt-3" size="small" title="Список компаний">
+        <FilterBar className="mb-3">
+          <label className="form-label small mb-0 companies-search">
+            Поиск
+            <TextInput
+              size="small"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="название, алиас, заметка"
+            />
+          </label>
+        </FilterBar>
+
+        <DataTable
+          className="companies-table"
+          rowKey="id"
+          data={filteredCompanies}
+          columns={columns}
+          loading={loading}
+          emptyText="Нет компаний"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+        />
+      </Card>
+
+      <Modal
+        title={editingId ? "Редактировать компанию" : "Добавить компанию"}
+        open={showModal}
+        onOk={saveCompany}
+        onCancel={() => setShowModal(false)}
+        okText={editingId ? "Сохранить" : "Создать"}
+        cancelText="Отмена"
+        confirmLoading={saving}
+        destroyOnHidden
+      >
+        <div className="companies-modal-form">
+          <label className="form-label small mb-0">
+            Название
+            <TextInput
+              value={form.name}
+              onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder="ООО Компания"
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Алиасы
+            <Input.TextArea
+              data-eopp-component="CompaniesAliasesTextarea"
+              className="companies-textarea"
+              rows={5}
+              value={form.aliases}
+              onChange={(event) => setForm((prev) => ({ ...prev, aliases: event.target.value }))}
+              placeholder={"ООО Ромашка\nRomashka Ltd"}
+            />
+          </label>
+          <label className="form-label small mb-0">
+            Заметки
+            <Input.TextArea
+              data-eopp-component="CompaniesNotesTextarea"
+              className="companies-textarea"
+              rows={4}
+              value={form.notes}
+              onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+              placeholder="Любые заметки"
+            />
+          </label>
         </div>
-      )}
+      </Modal>
+
+      <Modal
+        title={tariffCompany ? `Company tariff: ${tariffCompany.name}` : "Company tariff"}
+        open={!!tariffCompany}
+        onOk={saveTariff}
+        onCancel={() => setTariffCompany(null)}
+        okText="Save"
+        cancelText="Cancel"
+        confirmLoading={tariffSaving}
+        footer={(_, { OkBtn, CancelBtn }) => (
+          <div className="key-form-footer">
+            <Button size="small" variant="danger" onClick={deleteTariff} loading={tariffSaving}>
+              Delete tariff
+            </Button>
+            <Space size={6}>
+              <CancelBtn />
+              <OkBtn />
+            </Space>
+          </div>
+        )}
+        destroyOnHidden
+      >
+        <div className="companies-modal-form">
+          {[
+            ["price_create", "Create"],
+            ["price_reschedule", "Reschedule"],
+            ["price_create_peak", "Create peak"],
+            ["price_custom_slots", "Custom slots"],
+          ].map(([field, label]) => (
+            <label key={field} className="form-label small mb-0">
+              {label}
+              <InputNumber
+                className="key-form-number"
+                value={tariffForm[field] === "" || tariffForm[field] == null ? null : Number(tariffForm[field])}
+                onChange={(value) => setTariffForm((prev) => ({ ...prev, [field]: value == null ? "" : value }))}
+                min={0}
+                controls={false}
+              />
+            </label>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

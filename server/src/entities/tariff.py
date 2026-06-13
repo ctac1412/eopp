@@ -9,6 +9,7 @@ from src.entities.base import Base
 
 if TYPE_CHECKING:
     from src.entities.api_key import ApiKey
+    from src.entities.company import Company
 
 
 class Tariff(Base):
@@ -26,3 +27,20 @@ class Tariff(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
     api_key: Mapped[ApiKey] = relationship(back_populates="tariff")
+
+
+class CompanyTariff(Base):
+    __tablename__ = "company_tariffs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("companies.id"), nullable=False, unique=True
+    )
+    price_create: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_reschedule: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_create_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+    company: Mapped[Company] = relationship(back_populates="tariff")

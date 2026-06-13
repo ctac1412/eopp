@@ -192,11 +192,11 @@ export function getErrorInfo(record) {
   return { category: "other", label: "Не распознали ошибку", tone: "secondary" };
 }
 
-export function getErrorToneClass(errorInfo) {
-  if (errorInfo.tone === "warning") return "bg-warning text-dark";
-  if (errorInfo.tone === "danger") return "bg-danger";
-  if (errorInfo.tone === "success") return "bg-success";
-  return "bg-secondary";
+export function getErrorTagColor(errorInfo) {
+  if (errorInfo.tone === "warning") return "warning";
+  if (errorInfo.tone === "danger") return "error";
+  if (errorInfo.tone === "success") return "success";
+  return "default";
 }
 
 export function groupFailuresByCategory(records) {
@@ -232,11 +232,4 @@ export function getStatusLabel(status) {
   if (status === "failed") return "Ошибка";
   if (status === "pending") return "В работе";
   return status || "—";
-}
-
-export function getStatusClass(status) {
-  if (status === "confirmed") return "bg-success";
-  if (status === "failed") return "bg-danger";
-  if (status === "pending") return "bg-warning text-dark";
-  return "bg-secondary";
 }

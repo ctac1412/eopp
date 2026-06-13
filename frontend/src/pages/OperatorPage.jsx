@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
 import OperatorHeader from "../components/operator/OperatorHeader";
 import CaptchaArea from "../components/operator/CaptchaArea";
@@ -6,6 +7,7 @@ import OperatorSidebar from "../components/operator/OperatorSidebar";
 import ReadinessPopup from "../components/operator/ReadinessPopup";
 import { playTickSound, playOperatorCaptchaSound, playReadinessStart, playScheduledNew } from "../utils/sounds";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { Button, SelectInput, WorkbenchPage } from "../ui";
 
 const STORAGE_KEY = "operator_master";
 
@@ -544,36 +546,66 @@ export function OperatorPage() {
   const selectedMaster = masters.find((m) => m.id === masterId);
   const queueLen = captchaQueue.length;
   const hasActive = active && !active.complete && !active.waiting;
+  const masterOptions = [
+    { value: "", label: "Выберите мастера" },
+    ...masters.map((master) => ({
+      value: String(master.id),
+      label: master.label || `Мастер #${master.id}`,
+    })),
+  ];
 
   return (
-    <div className="container-fluid py-3">
+    <div className={connected ? "operator-page-root" : "container-fluid py-3"}>
       <ReadinessPopup readinessCheck={readinessCheck} handleReadyClick={handleReadyClick} />
 
       {!connected ? (
-        <div className="card p-4" style={{ background: "#161b22", border: "1px solid #30363d" }}>
-          <h5 style={{ color: "#f0f6fc", marginBottom: 16 }}>
-            Оператор распределённого решения
-            <a href={`/training?op=${encodeURIComponent(uuid)}`} className="ms-2" style={{ fontSize: "0.8rem", color: "#58a6ff" }}>🎓 Тренировка</a>
-          </h5>
-          <label style={{ fontSize: 13, color: "#8b949e", marginBottom: 4 }}>Помогать мастеру</label>
-          <select className="form-select mb-3" value={masterId || ""} onChange={(e) => handleMasterChange(e.target.value)}
-            style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}>
-            <option value="">Выберите мастера</option>
-            {masters.map((m) => (
-              <option key={m.id} value={m.id}>{m.label || `Мастер #${m.id}`}</option>
-            ))}
-          </select>
-          <button className="btn btn-success w-100" onClick={() => connectViaId(masterId)} disabled={!masterId || connecting}>
+        <Card
+          data-eopp-component="OperatorConnectCard"
+          className="operator-connect-card"
+          size="small"
+        >
+          <div className="operator-connect-card__header">
+            <div>
+              <h1 className="operator-connect-card__title">Оператор распределённого решения</h1>
+              <div className="operator-connect-card__subtitle">Выберите мастера и подключитесь к очереди капч.</div>
+            </div>
+            <a
+              href={`/training?op=${encodeURIComponent(uuid)}`}
+              className="operator-connect-card__training-link"
+            >
+              Тренировка
+            </a>
+          </div>
+          <label className="operator-connect-card__field">
+            <span>Помогать мастеру</span>
+            <SelectInput
+              data-eopp-component="OperatorMasterSelect"
+              className="operator-connect-card__select"
+              value={masterId ? String(masterId) : ""}
+              onChange={(value) => handleMasterChange(value || "")}
+              options={masterOptions}
+              allowClear={false}
+            />
+          </label>
+          <Button
+            data-eopp-component="OperatorConnectButton"
+            className="operator-connect-card__button"
+            variant="primary"
+            onClick={() => connectViaId(masterId)}
+            disabled={!masterId || connecting}
+          >
             {connecting ? "Подключение..." : "Подключиться"}
-          </button>
-        </div>
+          </Button>
+        </Card>
       ) : (
-        <div>
+        <WorkbenchPage
+          main={
+            <>
           {/* Main container */}
           <div style={{
             display: "flex", flexDirection: "column", height: "calc(100vh - 120px)",
             background: "#161b22", border: "1px solid #30363d", borderRadius: "0.375rem",
-            marginRight: connected ? 260 : 0, transition: "margin-right 0.2s",
+            marginRight: 0, transition: "margin-right 0.2s",
           }}>
             <OperatorHeader
               masterOnline={masterOnline}
@@ -636,43 +668,49 @@ export function OperatorPage() {
 
             {/* Master Reassigned Notification */}
             {showReassignNotify && (
-              <div style={{
-                padding: "8px 12px", borderTop: "1px solid #30363d",
-                background: "#2d1a1a", display: "flex", alignItems: "center", justifyContent: "space-between",
-                flexShrink: 0,
-              }}>
-                <span style={{ fontSize: "0.8rem", color: "#f85149" }}>
-                  Мастер перепривязал вас к ключу #{reassignMasterId}.{" "}
-                  <button
-                    className="btn btn-sm btn-outline-warning"
-                    style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+              <div className="operator-reassign-notice">
+                <span className="operator-reassign-notice__text">
+                  Мастер перепривязал вас к ключу #{reassignMasterId}.
+                </span>
+                <div className="operator-reassign-notice__actions">
+                  <Button
+                    data-eopp-component="OperatorReconnectButton"
+                    size="small"
+                    variant="secondary"
                     onClick={() => {
                       setShowReassignNotify(false);
                       handleReconnect();
                     }}
                   >
                     Переподключиться
-                  </button>
-                </span>
-                <button
-                  className="btn btn-sm"
-                  style={{ color: "#8b949e", fontSize: "0.7rem", background: "none", border: "none" }}
-                  onClick={() => setShowReassignNotify(false)}
-                >
-                  ✕
-                </button>
+                  </Button>
+                  <Button
+                    data-eopp-component="OperatorDismissReconnectButton"
+                    size="small"
+                    variant="secondary"
+                    onClick={() => setShowReassignNotify(false)}
+                    title="Скрыть уведомление"
+                  >
+                    ✕
+                  </Button>
+                </div>
               </div>
             )}
           </div>
 
-          <OperatorSidebar
+            </>
+          }
+          side={
+            <OperatorSidebar
             connected={connected}
             connectedOpsTags={connectedOpsTags}
             scheduledEvents={scheduledEvents}
             operatorNickname={operatorNickname}
             masterId={masterId}
+            embedded
           />
-        </div>
+          }
+        />
       )}
     </div>
   );

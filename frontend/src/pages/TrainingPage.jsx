@@ -1,11 +1,32 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Card, Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button, DataTable, MetricsStrip, StatusTag, Toolbar } from "../ui";
 
 const API = "";
 
 function loadApiKey() {
   const key = localStorage.getItem("kiosk_api_key");
   return key || "";
+}
+
+function formatMs(ms) {
+  if (ms == null) return "—";
+  return `${(ms / 1000).toFixed(2)}с`;
+}
+
+function runStatus(status) {
+  if (status === "completed") return "confirmed";
+  if (status === "running") return "warning";
+  if (status === "cancelled") return "offline";
+  return "neutral";
+}
+
+function runStatusLabel(status) {
+  if (status === "completed") return "Завершён";
+  if (status === "running") return "В работе";
+  if (status === "cancelled") return "Отменён";
+  return status || "—";
 }
 
 export default function TrainingPage() {
@@ -15,22 +36,22 @@ export default function TrainingPage() {
   const [courses, setCourses] = useState([]);
   const [runs, setRuns] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [participantType, setParticipantType] = useState(null); // null = detecting
+  const [participantType, setParticipantType] = useState(null);
   const [participantId, setParticipantId] = useState(null);
   const [participantLabel, setParticipantLabel] = useState("");
   const [loading, setLoading] = useState(false);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [runsLoading, setRunsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showInstructions, setShowInstructions] = useState(true);
 
-  // Auto-detect participant
   useEffect(() => {
     const opUuid = searchParams.get("op");
 
     if (opUuid) {
-      // Coming from operator page
       fetch(`${API}/training/resolve-operator?uuid=${encodeURIComponent(opUuid)}`)
-        .then(r => r.json())
-        .then(data => {
+        .then((response) => response.json())
+        .then((data) => {
           if (data.operator_id) {
             setParticipantType("operator");
             setParticipantId(data.operator_id);
@@ -39,12 +60,11 @@ export default function TrainingPage() {
         })
         .catch(() => {});
     } else {
-      // Coming from main app — use API key from auth
       const apiKey = loadApiKey();
       if (apiKey) {
         fetch(`${API}/validate-key?api_key=${encodeURIComponent(apiKey)}`)
-          .then(r => r.json())
-          .then(data => {
+          .then((response) => response.json())
+          .then((data) => {
             if (data.valid && data.api_key_id) {
               setParticipantType("api_key");
               setParticipantId(data.api_key_id);
@@ -53,28 +73,37 @@ export default function TrainingPage() {
           })
           .catch(() => {});
       } else {
-        setParticipantType("api_key"); // fallback — will show manual input
+        setParticipantType("api_key");
       }
     }
   }, [searchParams]);
 
   useEffect(() => {
+    setCoursesLoading(true);
     fetch(`${API}/training/courses`)
-      .then(r => r.json())
-      .then(setCourses)
-      .catch(() => {});
+      .then((response) => response.json())
+      .then((data) => setCourses(Array.isArray(data) ? data : []))
+      .catch(() => setCourses([]))
+      .finally(() => setCoursesLoading(false));
   }, []);
 
+  const refreshRuns = () => {
+    if (participantId == null || !participantType) return;
+    setRunsLoading(true);
+    const params = new URLSearchParams();
+    params.set("participant_type", participantType);
+    params.set("participant_id", participantId);
+    fetch(`${API}/training/runs?${params}`)
+      .then((response) => response.json())
+      .then((data) => setRuns(Array.isArray(data) ? data : []))
+      .catch(() => setRuns([]))
+      .finally(() => setRunsLoading(false));
+  };
+
   useEffect(() => {
-    if (participantId != null && participantType) {
-      const params = new URLSearchParams();
-      params.set("participant_type", participantType);
-      params.set("participant_id", participantId);
-      fetch(`${API}/training/runs?${params}`)
-        .then(r => r.json())
-        .then(setRuns)
-        .catch(() => {});
-    }
+    refreshRuns();
+    // refreshRuns intentionally depends on state; keep this effect bound to participant identity only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [participantType, participantId]);
 
   const startRun = async () => {
@@ -101,169 +130,219 @@ export default function TrainingPage() {
       } else {
         setError(data.error || "Ошибка запуска");
       }
-    } catch (e) {
+    } catch {
       setError("Сетевая ошибка");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const formatMs = (ms) => {
-    if (ms == null) return "—";
-    return `${(ms / 1000).toFixed(2)}с`;
-  };
+  const completedRuns = runs.filter((run) => run.status === "completed");
+  const runningRuns = runs.filter((run) => run.status === "running");
+  const bestAccuracy = completedRuns.reduce((best, run) => {
+    const total = run.stats?.total || 0;
+    if (!total) return best;
+    return Math.max(best, Math.round(((run.stats?.correct || 0) / total) * 100));
+  }, 0);
+
+  const metrics = useMemo(() => ([
+    { key: "courses", label: "Курсов", value: courses.length, tone: "info" },
+    { key: "runs", label: "Прогонов", value: runs.length, tone: "neutral" },
+    { key: "completed", label: "Завершено", value: completedRuns.length, tone: "success" },
+    { key: "running", label: "В работе", value: runningRuns.length, tone: "warning" },
+    { key: "best", label: "Лучшая точность", value: completedRuns.length ? `${bestAccuracy}%` : "—", tone: "success" },
+  ]), [bestAccuracy, completedRuns.length, courses.length, runningRuns.length, runs.length]);
+
+  const columns = [
+    {
+      title: "ID",
+      dataIndex: "id",
+      width: 64,
+      align: "center",
+    },
+    {
+      title: "Курс",
+      dataIndex: "course_name",
+      ellipsis: true,
+      render: (value) => <span title={value || "—"}>{value || "—"}</span>,
+    },
+    {
+      title: "Статус",
+      dataIndex: "status",
+      width: 112,
+      align: "center",
+      render: (value) => <StatusTag status={runStatus(value)} label={runStatusLabel(value)} />,
+    },
+    {
+      title: "Правильно",
+      width: 98,
+      align: "center",
+      render: (_, run) => `${run.stats?.correct ?? 0}/${run.stats?.total ?? 0}`,
+    },
+    {
+      title: "Сред. время",
+      width: 112,
+      align: "right",
+      render: (_, run) => formatMs(run.stats?.avg_duration_ms),
+    },
+    {
+      title: "Сред. иконка",
+      width: 112,
+      align: "right",
+      render: (_, run) => formatMs(run.stats?.avg_icon_ms),
+    },
+    {
+      title: "Дата",
+      dataIndex: "created_at",
+      width: 150,
+      render: (value) => value?.slice(0, 16) || "—",
+    },
+    {
+      title: "",
+      width: 118,
+      align: "right",
+      render: (_, run) => run.status === "running" ? (
+        <Button
+          size="small"
+          onClick={(event) => {
+            event.stopPropagation();
+            navigate(`/training/run/${run.id}`);
+          }}
+        >
+          Продолжить
+        </Button>
+      ) : null,
+    },
+  ];
 
   return (
-    <div className="container py-3" style={{ maxWidth: 900 }}>
-      <a href="/" style={{ fontSize: "0.8rem", color: "#58a6ff", textDecoration: "none" }}>← На главную</a>
-      <h4 className="mb-1 mt-1">🎓 Обучение</h4>
-      <p className="text-muted" style={{ fontSize: "0.85rem" }}>
-        Тестовый полигон для тренировки решения капч
-      </p>
+    <div data-eopp-component="TrainingPage" className="training-page">
+      <Toolbar
+        className="training-page__toolbar"
+        left={
+          <Button size="small" href="/">
+            На главную
+          </Button>
+        }
+        right={
+          participantId != null ? (
+            <Button size="small" onClick={refreshRuns} loading={runsLoading}>
+              Обновить историю
+            </Button>
+          ) : null
+        }
+      />
+
+      <Card
+        data-eopp-component="TrainingIntroCard"
+        className="training-page__intro"
+        size="small"
+        title="Обучение"
+        extra={<StatusTag status={participantId != null ? "confirmed" : "warning"} label={participantId != null ? "Участник определён" : "Нужен API ключ"} />}
+      >
+        <div className="training-page__subtitle">
+          Тестовый полигон для тренировки решения капч.
+        </div>
+        <div className="training-page__participant">
+          <span>Участник</span>
+          {participantType == null ? (
+            <Spin size="small" />
+          ) : participantLabel ? (
+            <strong>{participantLabel}</strong>
+          ) : (
+            <a href="/">Войдите с API ключом</a>
+          )}
+        </div>
+        <MetricsStrip items={metrics} />
+      </Card>
 
       {showInstructions && (
-        <div className="card mb-3" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-          <div className="card-body p-3">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <strong style={{ fontSize: "0.9rem" }}>📖 Инструкция</strong>
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowInstructions(false)}>✕</button>
-            </div>
-            <ol style={{ fontSize: "0.85rem", margin: 0, paddingLeft: "1.2rem" }}>
-              <li>Выберите <strong>курс</strong> из списка (курсы создаются администратором).</li>
-              <li>Нажмите <strong>«Начать тестовый прогон»</strong>.</li>
-              <li>Капчи будут появляться по одной с интервалом 2–7 секунд.</li>
-              <li>Решайте капчи как обычно — время фиксируется автоматически.</li>
-              <li>После прохождения всех капч вы увидите результаты.</li>
-            </ol>
-          </div>
-        </div>
+        <Card
+          data-eopp-component="TrainingInstructionsCard"
+          className="training-page__instructions"
+          size="small"
+          title="Инструкция"
+          extra={
+            <Button size="small" onClick={() => setShowInstructions(false)}>
+              Скрыть
+            </Button>
+          }
+        >
+          <ol>
+            <li>Выберите курс из списка. Курсы создаются администратором.</li>
+            <li>Нажмите «Начать тестовый прогон».</li>
+            <li>Капчи будут появляться по одной с интервалом 2-7 секунд.</li>
+            <li>Решайте капчи как обычно. Время фиксируется автоматически.</li>
+            <li>После прохождения всех капч вы увидите результаты.</li>
+          </ol>
+        </Card>
       )}
 
-      {/* Participant info (auto-detected) */}
-      <div className="card mb-3" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-        <div className="card-body p-3">
-          <div className="d-flex justify-content-between align-items-center">
-            <div>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Участник: </span>
-              {participantType == null ? (
-                <span className="text-muted">определение...</span>
-              ) : participantLabel ? (
-                <strong style={{ fontSize: "0.9rem" }}>{participantLabel}</strong>
-              ) : (
-                <span className="text-warning" style={{ fontSize: "0.85rem" }}>
-                  Не авторизован —{" "}
-                  <a href="/" style={{ color: "#58a6ff" }}>войдите с API ключом</a>
-                </span>
-              )}
-            </div>
-            {participantId != null && (
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => {
-                const params = new URLSearchParams();
-                params.set("participant_type", participantType);
-                params.set("participant_id", participantId);
-                fetch(`${API}/training/runs?${params}`)
-                  .then(r => r.json())
-                  .then(setRuns)
-                  .catch(() => {});
-              }}>
-                🔄 Обновить историю
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Course selector */}
-      <div className="card mb-3" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-        <div className="card-body p-3">
-          <strong style={{ fontSize: "0.9rem" }}>Выберите курс</strong>
-          {courses.length === 0 && (
-            <p className="text-muted mt-2 mb-0" style={{ fontSize: "0.8rem" }}>Нет доступных курсов</p>
-          )}
-          <div className="row g-2 mt-2">
-            {courses.map(c => (
-              <div className="col-md-6" key={c.id}>
-                <div
-                  className={`card p-2 ${selectedCourse === c.id ? "border-primary" : ""}`}
-                  style={{
-                    cursor: "pointer",
-                    background: selectedCourse === c.id ? "rgba(13,110,253,0.08)" : "var(--surface)",
-                    border: selectedCourse === c.id ? "2px solid #0d6efd" : "1px solid var(--border)",
-                  }}
-                  onClick={() => setSelectedCourse(c.id)}
+      <Card
+        data-eopp-component="TrainingCoursesCard"
+        size="small"
+        title="Выберите курс"
+      >
+        {coursesLoading ? (
+          <div className="training-page__loading"><Spin /></div>
+        ) : courses.length === 0 ? (
+          <Alert type="info" showIcon message="Нет доступных курсов" />
+        ) : (
+          <div className="training-courses-grid">
+            {courses.map((course) => {
+              const active = selectedCourse === course.id;
+              return (
+                <Button
+                  data-eopp-component="TrainingCourseCard"
+                  key={course.id}
+                  htmlType="button"
+                  className={`training-course-card ${active ? "is-active" : ""}`}
+                  onClick={() => setSelectedCourse(course.id)}
                 >
-                  <div className="d-flex justify-content-between align-items-center">
-                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>{c.name}</span>
-                    <span className="badge bg-secondary" style={{ fontSize: "0.7rem" }}>{c.captcha_count} капч</span>
-                  </div>
-                  {c.description && (
-                    <small className="text-muted">{c.description}</small>
+                  <span className="training-course-card__title">{course.name}</span>
+                  <StatusTag status="neutral" label={`${course.captcha_count} капч`} />
+                  {course.description && (
+                    <span className="training-course-card__description">{course.description}</span>
                   )}
-                </div>
-              </div>
-            ))}
+                </Button>
+              );
+            })}
           </div>
-          <button
-            className="btn btn-primary btn-sm mt-3"
+        )}
+        <div className="training-page__start">
+          <Button
+            variant="primary"
             onClick={startRun}
             disabled={loading || !selectedCourse || participantId == null}
+            loading={loading}
           >
-            {loading ? "Запуск..." : "▶ Начать тестовый прогон"}
-          </button>
-          {error && <div className="text-danger mt-2" style={{ fontSize: "0.8rem" }}>{error}</div>}
+            Начать тестовый прогон
+          </Button>
+          {error && <Alert type="error" showIcon message={error} />}
         </div>
-      </div>
+      </Card>
 
-      {/* History */}
-      {runs.length > 0 && (
-        <div className="card" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-          <div className="card-body p-3">
-            <strong style={{ fontSize: "0.9rem" }}>📋 История прогонов</strong>
-            <div className="table-responsive mt-2">
-              <table className="table table-sm table-hover mb-0" style={{ fontSize: "0.8rem" }}>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Курс</th>
-                    <th>Статус</th>
-                    <th>Правильно</th>
-                    <th>Сред. время</th>
-                    <th>Сред. иконка</th>
-                    <th>Дата</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runs.map(r => (
-                    <tr key={r.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/training/run/${r.id}/results`)}>
-                      <td>{r.id}</td>
-                      <td>{r.course_name}</td>
-                      <td>
-                        <span className={`badge ${r.status === "completed" ? "bg-success" : r.status === "running" ? "bg-warning" : "bg-secondary"}`}>
-                          {r.status}
-                        </span>
-                      </td>
-                      <td>{r.stats.correct}/{r.stats.total}</td>
-                      <td>{formatMs(r.stats.avg_duration_ms)}</td>
-                      <td>{formatMs(r.stats.avg_icon_ms)}</td>
-                      <td>{r.created_at?.slice(0, 16)}</td>
-                      <td>
-                        {r.status === "running" && (
-                          <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={e => { e.stopPropagation(); navigate(`/training/run/${r.id}`); }}
-                          >
-                            Продолжить
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      <Card
+        data-eopp-component="TrainingRunsCard"
+        size="small"
+        title="История прогонов"
+      >
+        <DataTable
+          data-eopp-component="TrainingRunsTable"
+          className="training-runs-public-table"
+          rowKey="id"
+          data={runs}
+          columns={columns}
+          loading={runsLoading}
+          emptyText="Нет прогонов"
+          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          scroll={{ x: 840 }}
+          onRow={(run) => ({
+            onClick: () => navigate(`/training/run/${run.id}/results`),
+            className: "training-runs-public-table__row",
+          })}
+        />
+      </Card>
     </div>
   );
 }

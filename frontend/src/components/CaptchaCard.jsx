@@ -1,5 +1,6 @@
 import React from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
+import { StatusTag } from "../ui";
 
 function CaptchaCard({ entry, index }) {
   const isSelected = useCaptchaStore(
@@ -65,9 +66,11 @@ function CaptchaCard({ entry, index }) {
     >
       {entry.solved && (
         <div className="position-absolute" style={{ top: "6px", left: "6px", zIndex: 2 }}>
-          <span className="badge bg-success" style={{ fontSize: "0.65rem" }}>
-            {entry.solvedBySuper ? `Супер: ${entry.solverLabel || "?"}` : "Решено"}
-          </span>
+          <StatusTag
+            status="confirmed"
+            label={entry.solvedBySuper ? `Супер: ${entry.solverLabel || "?"}` : "Решено"}
+            style={{ fontSize: "0.65rem", marginInlineEnd: 0 }}
+          />
         </div>
       )}
       <img

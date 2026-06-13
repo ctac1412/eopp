@@ -4,10 +4,10 @@ from src.entities.utils import entity_to_dict
 from src.repositories import expense_repo
 
 
-def list_expenses() -> tuple[int, dict]:
+def list_expenses(company_id: int | None = None) -> tuple[int, dict]:
     return 200, {
-        "expenses": expense_repo.list_expenses(),
-        "total": expense_repo.get_total_expenses(),
+        "expenses": expense_repo.list_expenses(company_id=company_id),
+        "total": expense_repo.get_total_expenses(company_id=company_id),
     }
 
 

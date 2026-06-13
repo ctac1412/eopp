@@ -13,16 +13,16 @@ def create_invoice_record(**kwargs) -> int:
     return db_insert_invoice(**kwargs)
 
 
-def list_invoices(limit: int = 200) -> list[dict]:
+def list_invoices(limit: int = 200, company_name: str | None = None) -> list[dict]:
     from src.db.invoices import list_invoices_with_items as db_list_invoices_with_items
 
-    return db_list_invoices_with_items(limit=limit)
+    return db_list_invoices_with_items(limit=limit, company=company_name)
 
 
-def list_available_invoices(limit: int = 1000) -> list[dict]:
+def list_available_invoices(limit: int = 1000, company_name: str | None = None) -> list[dict]:
     from src.db.invoices import list_invoices as db_list_invoices
 
-    return db_list_invoices(limit=limit)
+    return db_list_invoices(limit=limit, company=company_name)
 
 
 def create_invoice_with_items(**kwargs) -> dict:

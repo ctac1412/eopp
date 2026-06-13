@@ -1,202 +1,204 @@
 import React from "react";
+import { Checkbox, InputNumber, Modal, Space } from "antd";
+import { Button, SelectInput, TextInput } from "../../ui";
 
-export function KeyFormModal({ show, mode, form, setForm, onSubmit, onClose, onResetUsage, onDeleteKey, companies = [] }) {
-  if (!show) return null;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(e);
+export function KeyFormModal({
+  show,
+  mode,
+  form,
+  setForm,
+  onSubmit,
+  onClose,
+  onResetUsage,
+  onDeleteKey,
+  companies = [],
+  users = [],
+}) {
+  const handleSubmit = (event) => {
+    event?.preventDefault?.();
+    onSubmit(event);
   };
 
+  const setField = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const renderNumberInput = ({ component, field, placeholder, min = 0 }) => (
+    <InputNumber
+      data-eopp-component={component}
+      className="key-form-number"
+      value={form[field] === "" || form[field] == null ? null : Number(form[field])}
+      onChange={(value) => setField(field, value == null ? "" : String(value))}
+      placeholder={placeholder}
+      min={min}
+      controls={false}
+    />
+  );
+
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal-dialog modal-dialog-centered ${mode === "edit" ? "modal-lg" : ""}`} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">{mode === "create" ? "Создать новый ключ" : "Редактировать ключ"}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body">
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3">
-                <label className="form-label">Label</label>
-                <input
-                  type="text"
-                  value={form.label}
-                  onChange={(e) => setForm((p) => ({ ...p, label: e.target.value }))}
-                  placeholder={mode === "create" ? "напр. production" : ""}
-                  className="form-control"
-                  required={mode === "create"}
-                />
-              </div>
-              {mode === "edit" && (
-                <>
-                  <div className="mb-3">
-                    <label className="form-label">Комментарий</label>
-                    <input
-                      type="text"
-                      value={form.comment}
-                      onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
-                      className="form-control"
-                    />
-                  </div>
-                  <div className="mb-3 form-check">
-                    <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id="keyActive"
-                      checked={form.active}
-                      onChange={(e) => setForm((p) => ({ ...p, active: e.target.checked }))}
-                    />
-                    <label className="form-check-label" htmlFor="keyActive">
-                      Активен
-                    </label>
-                  </div>
-                </>
-              )}
-              <div className="mb-3 form-check">
-                <input
-                  type="checkbox"
-                  className="form-check-input"
-                  id="keyIsExternal"
-                  checked={form.isExternal || false}
-                  onChange={(e) => setForm((p) => ({ ...p, isExternal: e.target.checked }))}
-                />
-                <label className="form-check-label" htmlFor="keyIsExternal">
-                  Внешний клиент
-                </label>
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Компания</label>
-                <select
-                  className="form-select"
-                  value={form.companyId || ""}
-                  onChange={(e) => setForm((p) => ({ ...p, companyId: e.target.value }))}
-                  style={{ background: "#0d1117", color: "#c9d1d9", border: "1px solid #30363d" }}
-                >
-                  <option value="">Без компании</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Max Uses (пусто = без лимита)</label>
-                <input
-                  type="number"
-                  value={form.maxUses}
-                  onChange={(e) => setForm((p) => ({ ...p, maxUses: e.target.value }))}
-                  placeholder="∞"
-                  className="form-control"
-                  min="1"
-                />
-              </div>
-              {mode === "edit" && (
-                <div className="mb-3">
-                  <div className="fw-semibold mb-2">Тариф</div>
-                  <div className="row g-2">
-                    <div className="col">
-                      <label className="form-label">Бронь (₽)</label>
-                      <input
-                        type="number"
-                        value={form.priceCreate}
-                        onChange={(e) => setForm((p) => ({ ...p, priceCreate: e.target.value }))}
-                        placeholder="1000"
-                        className="form-control"
-                        min="0"
-                      />
-                    </div>
-                    <div className="col">
-                      <label className="form-label">Перенос (₽)</label>
-                      <input
-                        type="number"
-                        value={form.priceReschedule}
-                        onChange={(e) => setForm((p) => ({ ...p, priceReschedule: e.target.value }))}
-                        placeholder="7000"
-                        className="form-control"
-                        min="0"
-                      />
-                    </div>
-                    <div className="col">
-                      <label className="form-label">Бронь 12:00 (₽)</label>
-                      <input
-                        type="number"
-                        value={form.priceCreatePeak}
-                        onChange={(e) => setForm((p) => ({ ...p, priceCreatePeak: e.target.value }))}
-                        placeholder="как перенос"
-                        className="form-control"
-                        min="0"
-                      />
-                    </div>
-                    <div className="col">
-                      <label className="form-label">Свои слоты (₽)</label>
-                      <input
-                        type="number"
-                        value={form.priceCustomSlots}
-                        onChange={(e) => setForm((p) => ({ ...p, priceCustomSlots: e.target.value }))}
-                        placeholder="0"
-                        className="form-control"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </form>
-          </div>
-          <div className="modal-footer">
-            {mode === "edit" && (
-              <>
-                <button type="button" className="btn btn-sm btn-outline-secondary me-auto" onClick={() => onResetUsage()}>
-                  Сбросить использование
-                </button>
-                <button type="button" className="btn btn-sm btn-danger" onClick={() => onDeleteKey()}>
-                  Удалить ключ
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            <button type="submit" className="btn btn-sm btn-primary" onClick={handleSubmit}>
-              {mode === "create" ? "Создать" : "Сохранить"}
-            </button>
-          </div>
+    <Modal
+      data-eopp-component="KeyFormModal"
+      title={mode === "create" ? "Создать новый ключ" : "Редактировать ключ"}
+      open={!!show}
+      onCancel={onClose}
+      onOk={handleSubmit}
+      okText={mode === "create" ? "Создать" : "Сохранить"}
+      cancelText="Отмена"
+      width={mode === "edit" ? 820 : 560}
+      destroyOnClose
+      footer={(_, { OkBtn, CancelBtn }) => (
+        <div className="key-form-footer">
+          {mode === "edit" ? (
+            <Space size={6}>
+              <Button size="small" onClick={() => onResetUsage()}>Сбросить использование</Button>
+              <Button size="small" variant="danger" onClick={() => onDeleteKey()}>Удалить ключ</Button>
+            </Space>
+          ) : <span />}
+          <Space size={6}>
+            <CancelBtn />
+            <OkBtn />
+          </Space>
         </div>
-      </div>
-    </div>
+      )}
+    >
+      <form data-eopp-component="KeyForm" className="key-form-grid" onSubmit={handleSubmit}>
+        <label className="form-label mb-0">
+          Label
+          <TextInput
+            value={form.label}
+            onChange={(event) => setForm((prev) => ({ ...prev, label: event.target.value }))}
+            placeholder={mode === "create" ? "напр. production" : ""}
+            required={mode === "create"}
+          />
+        </label>
+
+        {mode === "edit" ? (
+          <label className="form-label mb-0">
+            Комментарий
+            <TextInput
+              value={form.comment}
+              onChange={(event) => setForm((prev) => ({ ...prev, comment: event.target.value }))}
+            />
+          </label>
+        ) : null}
+
+        <label className="form-label mb-0">
+          Компания
+          <SelectInput
+            value={form.companyId || ""}
+            onChange={(value) => setForm((prev) => ({ ...prev, companyId: value || "" }))}
+            options={[
+              { value: "", label: "Без компании" },
+              ...companies.map((company) => ({ value: String(company.id), label: company.name })),
+            ]}
+            allowClear={false}
+          />
+        </label>
+
+        <label className="form-label mb-0">
+          Пользователь
+          <SelectInput
+            value={form.userId || ""}
+            onChange={(value) => setForm((prev) => ({ ...prev, userId: value || "" }))}
+            options={[
+              { value: "", label: "Без пользователя" },
+              ...users.map((user) => ({
+                value: String(user.id),
+                label: `${user.name || user.login || `#${user.id}`}${user.company_name ? ` · ${user.company_name}` : ""}`,
+              })),
+            ]}
+            allowClear={false}
+          />
+        </label>
+
+        <label className="form-label mb-0">
+          Max Uses
+          {renderNumberInput({
+            component: "KeyMaxUsesInput",
+            field: "maxUses",
+            placeholder: "∞",
+            min: 1,
+          })}
+        </label>
+
+        <div className="key-form-checks">
+          {mode === "edit" ? (
+            <Checkbox
+              data-eopp-component="KeyActiveCheckbox"
+              checked={form.active}
+              onChange={(event) => setField("active", event.target.checked)}
+            >
+              Активен
+            </Checkbox>
+          ) : null}
+          <Checkbox
+            data-eopp-component="KeyExternalCheckbox"
+            checked={form.isExternal || false}
+            onChange={(event) => setField("isExternal", event.target.checked)}
+          >
+            Внешний клиент
+          </Checkbox>
+        </div>
+
+        {mode === "edit" ? (
+          <div className="key-form-tariff">
+            <div className="fw-semibold">Тариф</div>
+            <div className="key-form-tariff-grid">
+              <label className="form-label mb-0">
+                Бронь
+                {renderNumberInput({
+                  component: "KeyPriceCreateInput",
+                  field: "priceCreate",
+                  placeholder: "1000",
+                })}
+              </label>
+              <label className="form-label mb-0">
+                Перенос
+                {renderNumberInput({
+                  component: "KeyPriceRescheduleInput",
+                  field: "priceReschedule",
+                  placeholder: "7000",
+                })}
+              </label>
+              <label className="form-label mb-0">
+                Бронь 12:00
+                {renderNumberInput({
+                  component: "KeyPriceCreatePeakInput",
+                  field: "priceCreatePeak",
+                  placeholder: "как перенос",
+                })}
+              </label>
+              <label className="form-label mb-0">
+                Свои слоты
+                {renderNumberInput({
+                  component: "KeyPriceCustomSlotsInput",
+                  field: "priceCustomSlots",
+                  placeholder: "0",
+                })}
+              </label>
+            </div>
+          </div>
+        ) : null}
+      </form>
+    </Modal>
   );
 }
 
 export function DeleteConfirmModal({ show, onConfirm, onClose }) {
-  if (!show) return null;
   return (
-    <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-dialog modal-dialog-centered modal-sm" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">Подтверждение</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
-          </div>
-          <div className="modal-body">
-            <p>Вы уверены, что хотите удалить этот ключ? Это действие нельзя отменить.</p>
-          </div>
-          <div className="modal-footer">
-            <button className="btn btn-sm btn-secondary" onClick={onClose}>
-              Отмена
-            </button>
-            <button className="btn btn-sm btn-danger" onClick={onConfirm}>
-              Удалить
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Modal
+      data-eopp-component="DeleteConfirmModal"
+      title="Подтверждение"
+      open={!!show}
+      onCancel={onClose}
+      onOk={onConfirm}
+      okText="Удалить"
+      okButtonProps={{ danger: true }}
+      cancelText="Отмена"
+      width={420}
+      destroyOnClose
+    >
+      <p className="mb-0">Вы уверены, что хотите удалить этот ключ? Это действие нельзя отменить.</p>
+    </Modal>
   );
 }

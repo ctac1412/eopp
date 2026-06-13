@@ -9,6 +9,7 @@ def create_key(
     label: str,
     max_uses: int | None = None,
     company_id: int | None = None,
+    user_id: int | None = None,
 ) -> ApiKey:
     with get_session() as session:
         key = ApiKey(
@@ -18,24 +19,30 @@ def create_key(
             max_uses=max_uses,
             active=True,
             company_id=company_id,
+            user_id=user_id,
         )
         session.add(key)
         session.flush()
         session.refresh(key)
         session.commit()
+        if user_id is not None and company_id is not None:
+            from src.repositories import user_repo
+
+            user_repo.ensure_master_profile_for_user(user_id, company_id)
         return key
 
 
-def list_keys() -> list[dict]:
+def list_keys(company_id: int | None = None) -> list[dict]:
     from sqlalchemy.orm import joinedload
 
     with get_session() as session:
-        keys = (
+        query = (
             session.query(ApiKey)
-            .options(joinedload(ApiKey.tariff), joinedload(ApiKey.company))
-            .order_by(ApiKey.created_at.desc())
-            .all()
+            .options(joinedload(ApiKey.tariff), joinedload(ApiKey.company), joinedload(ApiKey.user))
         )
+        if company_id is not None:
+            query = query.filter(ApiKey.company_id == company_id)
+        keys = query.order_by(ApiKey.created_at.desc()).all()
         result = []
         for k in keys:
             d = {
@@ -52,6 +59,8 @@ def list_keys() -> list[dict]:
                 "is_external": k.is_external,
                 "company_id": k.company_id,
                 "company_name": k.company.name if k.company else None,
+                "user_id": k.user_id,
+                "user_name": k.user.name if k.user else None,
             }
             if k.tariff:
                 d["tariff"] = {
@@ -59,14 +68,65 @@ def list_keys() -> list[dict]:
                     "price_reschedule": k.tariff.price_reschedule,
                     "price_create_peak": k.tariff.price_create_peak,
                     "price_custom_slots": k.tariff.price_custom_slots,
+                    "source": "api_key",
                 }
+            elif k.company_id is not None:
+                from src.repositories import tariff_repo
+
+                company_tariff = tariff_repo.get_company_tariff(k.company_id)
+                if company_tariff:
+                    d["tariff"] = tariff_repo.tariff_to_dict(
+                        company_tariff,
+                        source="company",
+                        company_id=k.company_id,
+                    )
             d["debt"] = calc_debt(k.id)
             result.append(d)
         return result
 
 
+def list_plugin_keys_for_user(user_id: int, company_id: int | None = None, *, include_company: bool = True) -> list[dict]:
+    """Return active plugin tokens available to one authenticated site user."""
+    from sqlalchemy.orm import joinedload
+
+    from src.entities import MasterProfile
+
+    with get_session() as session:
+        profile = (
+            session.query(MasterProfile)
+            .filter(MasterProfile.user_id == user_id, MasterProfile.active.is_(True))
+            .first()
+        )
+        if not profile:
+            return []
+        query = (
+            session.query(ApiKey)
+            .options(joinedload(ApiKey.company), joinedload(ApiKey.user))
+            .filter(ApiKey.active.is_(True))
+        )
+        if profile.scope == "all_companies":
+            pass
+        else:
+            query = query.filter(ApiKey.company_id == profile.company_id)
+        keys = query.order_by(ApiKey.user_id.desc(), ApiKey.created_at.desc()).all()
+        return [
+            {
+                "id": key.id,
+                "key": key.key,
+                "label": key.label,
+                "company_id": key.company_id,
+                "company_name": key.company.name if key.company else None,
+                "user_id": key.user_id,
+                "user_name": key.user.name if key.user else None,
+                "is_super_kiosk": key.is_super_kiosk,
+            }
+            for key in keys
+        ]
+
+
 def list_keys_for_operator(
     allowed_master_keys: list[int] | None = None,
+    company_ids: list[int] | None = None,
 ) -> list[dict]:
     """Return active keys for operator master selection.
 
@@ -85,6 +145,10 @@ def list_keys_for_operator(
             if not allowed_master_keys:
                 return []
             query = query.filter(ApiKey.id.in_(allowed_master_keys))
+        if company_ids is not None:
+            if not company_ids:
+                return []
+            query = query.filter(ApiKey.company_id.in_([int(company_id) for company_id in company_ids]))
         keys = query.all()
         return [
             {"id": k.id, "label": k.label, "active": k.active, "key": k.key, "company_id": k.company_id}
@@ -112,6 +176,10 @@ def update_key(key_id: int, **kwargs) -> ApiKey | None:
                 setattr(key, attr, value)
         session.commit()
         session.refresh(key)
+        if key.user_id is not None and key.company_id is not None:
+            from src.repositories import user_repo
+
+            user_repo.ensure_master_profile_for_user(key.user_id, key.company_id)
         return key
 
 
@@ -136,18 +204,22 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access
         if body.comment is not None and body.comment != key.comment:
             changes["comment"] = (key.comment, body.comment)
             key.comment = body.comment
-        if body.is_admin is not None and body.is_admin != key.is_admin:
-            changes["is_admin"] = (str(key.is_admin), str(body.is_admin))
-            key.is_admin = body.is_admin
         if body.is_super_kiosk is not None and body.is_super_kiosk != key.is_super_kiosk:
             changes["is_super_kiosk"] = (str(key.is_super_kiosk), str(body.is_super_kiosk))
             key.is_super_kiosk = body.is_super_kiosk
         if body.is_external is not None and body.is_external != key.is_external:
             changes["is_external"] = (str(key.is_external), str(body.is_external))
             key.is_external = body.is_external
-        if body.admin_role is not None and body.admin_role != key.admin_role:
-            changes["admin_role"] = (key.admin_role, body.admin_role)
-            key.admin_role = body.admin_role
+        if body.company_id is not None and body.company_id != key.company_id:
+            changes["company_id"] = (str(key.company_id), str(body.company_id))
+            key.company_id = body.company_id
+        if body.user_id is not None and body.user_id != key.user_id:
+            changes["user_id"] = (str(key.user_id), str(body.user_id))
+            key.user_id = body.user_id
+            if body.user_id is not None and key.company_id is not None:
+                from src.repositories import user_repo
+
+                user_repo.ensure_master_profile_for_user(body.user_id, key.company_id)
         session.commit()
         session.refresh(key)
 
@@ -166,20 +238,6 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access
                     new_value=new_value,
                     metadata={"changed_fields": sorted(changes)},
                 )
-                if {"is_admin", "admin_role"} & set(changes):
-                    AuditService().record_admin_action(
-                        "role.changed",
-                        decision=access_decision,
-                        target_type="api_key",
-                        target_id=api_key_id,
-                        old_value=old_value,
-                        new_value=new_value,
-                        metadata={
-                            "changed_fields": sorted(
-                                {"is_admin", "admin_role"} & set(changes)
-                            )
-                        },
-                    )
                 AuditService().record_admin_action(
                     "update_api_key",
                     decision=access_decision,
@@ -252,33 +310,6 @@ def validate_api_key(api_key: str) -> dict:
 def get_key_by_label(label: str) -> ApiKey | None:
     with get_session() as session:
         return session.query(ApiKey).filter(ApiKey.label == label).first()
-
-
-def check_admin_token(token: str) -> bool:
-    with get_session() as session:
-        return (
-            session.query(ApiKey)
-            .filter(ApiKey.key == token, ApiKey.active.is_(True), ApiKey.is_admin.is_(True))
-            .first()
-            is not None
-        )
-
-
-def get_admin_role(token: str) -> str | None:
-    """Return admin_role ('super_admin'|'manager'|None) for a valid admin token."""
-    with get_session() as session:
-        key = (
-            session.query(ApiKey)
-            .filter(ApiKey.key == token, ApiKey.active.is_(True), ApiKey.is_admin.is_(True))
-            .first()
-        )
-        if key is None:
-            return None
-        return key.admin_role
-
-
-def is_super_admin_token(token: str) -> bool:
-    return get_admin_role(token) == "super_admin"
 
 
 def is_super_kiosk_key(key: str) -> bool:

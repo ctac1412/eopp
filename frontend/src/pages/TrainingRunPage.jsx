@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Alert, Card, Progress, Spin } from "antd";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Button, MetricsStrip, StatusTag, Toolbar } from "../ui";
 
 const API = "";
 
@@ -266,8 +268,8 @@ export default function TrainingRunPage() {
                 borderTop: "1px solid var(--border)",
               }}>
                 #{idx}
-                {isCorrectAnswer && <span className="badge bg-success ms-1" style={{ fontSize: "0.6rem" }}>✓</span>}
-                {isWrongAnswer && <span className="badge bg-danger ms-1" style={{ fontSize: "0.6rem" }}>✗</span>}
+                {isCorrectAnswer && <StatusTag status="confirmed" label="✓" />}
+                {isWrongAnswer && <StatusTag status="failed" label="✗" />}
               </div>
             </div>
           );
@@ -386,9 +388,12 @@ export default function TrainingRunPage() {
         {iconClickTimes.length > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
             {iconClickTimes.map((t, i) => (
-              <span key={i} className="badge bg-info" style={{ fontSize: "0.75rem" }}>
-                Ик.{t.icon_position + 1}: {formatMs(t.duration_ms)}
-              </span>
+              <StatusTag
+                key={i}
+                status="neutral"
+                color="blue"
+                label={`Ик.${t.icon_position + 1}: ${formatMs(t.duration_ms)}`}
+              />
             ))}
           </div>
         )}
@@ -398,114 +403,111 @@ export default function TrainingRunPage() {
 
   if (error) {
     return (
-      <div className="container py-3 text-center">
-        <div className="text-danger mb-3">{error}</div>
-        <button className="btn btn-primary btn-sm" onClick={() => navigate("/training")}>
-          ← Назад к обучению
-        </button>
+      <div data-eopp-component="TrainingRunPage" className="training-run-page training-run-page--center">
+        <Alert type="error" showIcon message={error} />
+        <Button variant="primary" onClick={() => navigate("/training")}>
+          Назад к обучению
+        </Button>
       </div>
     );
   }
 
   if (!status) {
-    return <div className="container py-3 text-center text-muted">Загрузка...</div>;
+    return (
+      <div data-eopp-component="TrainingRunPage" className="training-run-page training-run-page--center">
+        <Spin />
+      </div>
+    );
   }
 
   if (done || status.status === "completed" || (status.remaining === 0 && status.solved > 0)) {
+    const doneMetrics = status.stats ? [
+      { key: "correct", label: "Правильно", value: `${status.stats.correct}/${status.stats.total}`, tone: "success" },
+      { key: "avg", label: "Сред. время", value: formatMs(status.stats.avg_duration_ms), tone: "neutral" },
+      { key: "avgIcon", label: "Сред. иконка", value: formatMs(status.stats.avg_icon_ms), tone: "neutral" },
+      { key: "errors", label: "Ошибок", value: status.stats.incorrect, tone: "danger" },
+    ] : [];
     return (
-      <div className="container py-3 text-center" style={{ maxWidth: 600 }}>
-        <h4>✅ Прогон завершён!</h4>
-        <p className="text-muted">
-          Решено {status.solved}/{status.total_captchas} капч
-        </p>
+      <div data-eopp-component="TrainingRunPage" className="training-run-page">
+        <Card
+          data-eopp-component="TrainingRunDoneCard"
+          size="small"
+          title="Прогон завершён"
+          extra={<StatusTag status="confirmed" label={`${status.solved}/${status.total_captchas}`} />}
+        >
+          <div className="training-run__done-text">Решено {status.solved}/{status.total_captchas} капч</div>
         {status.stats && (
-          <div className="card mb-3 p-3" style={{ background: "var(--surface-raised)" }}>
-            <div className="row g-2 text-start">
-              <div className="col-6">
-                <small className="text-muted">Правильно</small>
-                <div><strong>{status.stats.correct}/{status.stats.total}</strong></div>
-              </div>
-              <div className="col-6">
-                <small className="text-muted">Сред. время</small>
-                <div><strong>{formatMs(status.stats.avg_duration_ms)}</strong></div>
-              </div>
-              <div className="col-6">
-                <small className="text-muted">Сред. иконка</small>
-                <div><strong>{formatMs(status.stats.avg_icon_ms)}</strong></div>
-              </div>
-              <div className="col-6">
-                <small className="text-muted">Ошибок</small>
-                <div><strong>{status.stats.incorrect}</strong></div>
-              </div>
-            </div>
-          </div>
+          <MetricsStrip items={doneMetrics} />
         )}
-        <div className="d-flex gap-2 justify-content-center">
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/training/run/${runId}/results`)}>
-            📊 Подробные результаты
-          </button>
-          <button className="btn btn-outline-secondary btn-sm" onClick={() => navigate("/training")}>
-            ← К обучению
-          </button>
-        </div>
+          <div className="training-run__done-actions">
+            <Button variant="primary" onClick={() => navigate(`/training/run/${runId}/results`)}>
+              Подробные результаты
+            </Button>
+            <Button onClick={() => navigate("/training")}>
+              К обучению
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="container py-3" style={{ maxWidth: 800 }}>
-      {/* Progress bar */}
-      <div className="d-flex justify-content-between align-items-center mb-2">
-        <div>
-          <strong>Прогон #{runId}</strong>
-          <span className="text-muted ms-2" style={{ fontSize: "0.8rem" }}>
-            Капча {status.solved + 1}/{status.total_captchas}
-          </span>
-        </div>
-        <button
-          className="btn btn-sm btn-outline-danger"
+    <div data-eopp-component="TrainingRunPage" className="training-run-page">
+      <Toolbar
+        className="training-run__toolbar"
+        left={
+          <div className="training-run__title">
+            <strong>Прогон #{runId}</strong>
+            <span>Капча {status.solved + 1}/{status.total_captchas}</span>
+          </div>
+        }
+        right={
+          <Button
+          size="small"
+          variant="danger"
           onClick={async () => {
             await fetch(`${API}/training/run/${runId}/cancel`, { method: "POST" });
             navigate("/training");
           }}
         >
-          ✕ Прервать
-        </button>
-      </div>
-      <div className="progress mb-3" style={{ height: 6 }}>
-        <div
-          className="progress-bar"
-          style={{ width: `${((status.solved) / status.total_captchas) * 100}%` }}
-        />
-      </div>
+            Прервать
+          </Button>
+        }
+      />
+      <Progress
+        data-eopp-component="TrainingRunProgress"
+        percent={Math.round((status.solved / status.total_captchas) * 100)}
+        size="small"
+        showInfo={false}
+      />
 
       {waiting ? (
-        <div className="text-center py-5 text-muted">
-          <div className="spinner-border mb-2" style={{ width: "2rem", height: "2rem" }} />
-          <p>Следующая капча появится через 2–7 секунд...</p>
-        </div>
+        <Card data-eopp-component="TrainingRunWaitingCard" size="small">
+          <div className="training-run-page--center">
+            <Spin />
+            <span>Следующая капча появится через 2-7 секунд...</span>
+          </div>
+        </Card>
       ) : current ? (
-        <div className="card" style={{ background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
-          <div className="card-body p-3">
-            <div className="d-flex justify-content-between align-items-center mb-2">
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                {current.captcha_id?.slice(0, 16)}...
-              </span>
-              <span className="badge bg-secondary" style={{ fontSize: "0.7rem" }}>
-                {current.captcha_type === 1 ? "Клик-капча" : "Пазл"}
-              </span>
-            </div>
-
+        <Card
+          data-eopp-component="TrainingRunCaptchaCard"
+          size="small"
+          title={<span className="training-run__captcha-id">{current.captcha_id?.slice(0, 16)}...</span>}
+          extra={<StatusTag status="neutral" label={current.captcha_type === 1 ? "Клик-капча" : "Пазл"} />}
+        >
             {current.captcha_type === 1 ? renderIconClick() : renderPuzzle()}
 
             {feedback && (
-              <div className={`alert mt-2 mb-0 py-2 px-3 ${feedback.correct ? "alert-success" : "alert-danger"}`} style={{ fontSize: "0.85rem" }}>
-                {feedback.correct ? "✓ Правильно!" : "✗ Неправильно"}
-                {" — "}{formatMs(feedback.duration_ms)}
-              </div>
+              <Alert
+                data-eopp-component="TrainingRunFeedback"
+                className="training-run__feedback"
+                type={feedback.correct ? "success" : "error"}
+                showIcon
+                message={`${feedback.correct ? "Правильно" : "Неправильно"} — ${formatMs(feedback.duration_ms)}`}
+              />
             )}
-          </div>
-        </div>
+        </Card>
       ) : null}
     </div>
   );

@@ -1,4 +1,4 @@
-"""Local RBAC service for legacy admin/API-key compatible authorization."""
+"""Local RBAC service for password-session based authorization."""
 
 from __future__ import annotations
 
@@ -6,48 +6,44 @@ from dataclasses import dataclass
 
 from src.core.contracts.permissions import AccessDecision
 from src.modules.access.permissions import Permission, role_permissions
-from src.repositories import api_key_repo
+from src.repositories import user_repo
 
 
 @dataclass(frozen=True)
 class AccessActor:
-    """Authenticated actor derived from an existing API key row."""
+    """Authenticated actor derived from a password session."""
 
     id: int
     token: str
     label: str
     role: str
     is_admin: bool
+    source: str = "user_session"
+    company_id: int | None = None
 
 
 class AccessService:
-    """Resolve API-key actors and make centralized RBAC decisions.
-
-    The service deliberately keeps the current compatibility model: existing
-    active API keys with ``is_admin`` can still authenticate through
-    ``X-Admin-Token``. If an admin row has no explicit ``admin_role`` yet, it is
-    treated as ``super_admin`` because earlier releases allowed every admin key
-    to perform all admin mutations.
-    """
+    """Resolve password-session actors and make centralized RBAC decisions."""
 
     def authenticate_token(self, token: str | None) -> AccessActor | None:
-        """Return an actor for an active admin token, or ``None``."""
+        """Return an actor for an active password session."""
         if not token:
             return None
-        record = api_key_repo.get_key_record(token)
-        if not record or not record.active or not record.is_admin:
-            return None
-        role = record.admin_role or "super_admin"
-        return AccessActor(
-            id=record.id,
-            token=record.key,
-            label=record.label,
-            role=role,
-            is_admin=bool(record.is_admin),
-        )
+        user = user_repo.get_session_user(token)
+        if user:
+            return AccessActor(
+                id=user.id,
+                token=token,
+                label=user.name,
+                role=user.role,
+                is_admin=True,
+                source="user_session",
+                company_id=user.company_id,
+            )
+        return None
 
     def authorize_token(self, token: str | None, permission: Permission | str) -> AccessDecision:
-        """Authorize a legacy admin token for one permission."""
+        """Authorize a password session token for one permission."""
         permission_value = str(permission)
         actor = self.authenticate_token(token)
         if actor is None:
