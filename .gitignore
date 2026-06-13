@@ -23,6 +23,9 @@ frontend/dist/
 
 # AI tools
 .qwen/
+.codex/
+.superpowers/
+.opencode/
 
 # OS
 .DS_Store
@@ -63,3 +66,10 @@ server/models/tile_classifier.pkl
 server/deploy/.env.deploy
 server/deploy/.env.server
 .pytest-tmp/
+.codegraph/
+.uv-cache/
+.import_linter_cache/
+.hars/
+tmp/
+tmp/verification/
+extension/node_modules/

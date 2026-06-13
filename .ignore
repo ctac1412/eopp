@@ -1,0 +1,27 @@
+# Local search/index noise for tools that honor .ignore.
+.codegraph/
+.codex/
+.superpowers/
+.uv-cache/
+.venv/
+node_modules/
+frontend/node_modules/
+extension/node_modules/
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+.opencode/
+.qwen/
+.hars/
+tmp/
+tmp/verification/
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+server/data/backups/
+server/data/captcha_examples/
+server/data/icons/
+server/data/classification_results/
+prod/backups/
+backups/
+eopp_original.js
