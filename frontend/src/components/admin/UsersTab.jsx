@@ -41,6 +41,10 @@ function isCreatedWithin(user, days) {
   return createdAt >= threshold;
 }
 
+function hasAccess(access) {
+  return Boolean(access?.all_companies || access?.allCompanies || access?.company_ids?.length || access?.companyIds?.length);
+}
+
 const ROLE_LABELS = {
   super_admin: "Супер админ",
   administrator: "Администратор",
@@ -65,7 +69,7 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
         user.role,
         user.system_role,
         user.company_name,
-        user.master_profile?.active ? "master" : "",
+        hasAccess(user.executor_access) ? "executor" : "",
         user.operator_profile?.active ? "operator" : "",
         user.finance_profile?.active ? "finance" : "",
         user.created_at,
@@ -104,6 +108,7 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
       onOk: () => onDelete(user.id),
     });
   };
+  const openUser = (user) => onEdit(user);
 
   const columns = [
     {
@@ -148,7 +153,7 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
       width: 160,
       render: (_, user) => {
         const tags = [
-          user.master_profile?.active ? "master" : null,
+          hasAccess(user.executor_access) ? "executor" : null,
           user.operator_profile?.active ? "operator" : null,
           user.finance_profile?.active ? "finance" : null,
         ].filter(Boolean);
@@ -168,9 +173,9 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
       align: "right",
       render: (_, user) => (
         <Space size={4}>
-          <Button size="small" onClick={() => onStats(user)}>Стат.</Button>
-          <Button size="small" onClick={() => onEdit(user)}>Изм.</Button>
-          <Button size="small" variant="danger" onClick={() => confirmDelete(user)}>Удал.</Button>
+          <Button size="small" onClick={(event) => { event.stopPropagation(); onStats(user); }}>Стат.</Button>
+          <Button size="small" onClick={(event) => { event.stopPropagation(); onEdit(user); }}>Изм.</Button>
+          <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); confirmDelete(user); }}>Удал.</Button>
         </Space>
       ),
     },
@@ -230,6 +235,10 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
           columns={columns}
           emptyText="Нет пользователей"
           pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          onRow={(user) => ({
+            onClick: () => openUser(user),
+            className: "users-table-row",
+          })}
         />
       </Card>
     </div>

@@ -21,6 +21,7 @@
  * Используется: всеми компонентами для доступа к состоянию
  */
 import { create } from "zustand";
+import { upsertScheduledEvent } from "../components/scheduledEventsState";
 
 const STORAGE_KEY = "kiosk_api_key";
 const SUPER_KIOSK_KEY = "super_kiosk_mode";
@@ -149,7 +150,7 @@ const useCaptchaStore = create((set) => ({
     set({ scheduledEvents: Array.isArray(events) ? events : [] }),
 
   addScheduledEvent: (ev) =>
-    set((state) => ({ scheduledEvents: [...state.scheduledEvents, ev] })),
+    set((state) => ({ scheduledEvents: upsertScheduledEvent(state.scheduledEvents, ev) })),
 
   setPendingForceReconnect: (v) => set({ pendingForceReconnect: v }),
 

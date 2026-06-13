@@ -15,6 +15,7 @@ from src.constants import FRONTEND_DIST
 
 frontend_router = APIRouter(tags=["frontend"])
 test_router = APIRouter(prefix="/test-injector", tags=["test"])
+channel_test_router = APIRouter(prefix="/test-channel", tags=["test"])
 
 TEST_PAGE_HTML = """<!DOCTYPE html>
 <html lang="ru">
@@ -42,6 +43,90 @@ VARIANTS = {
     3: "АПП Забайкальск (Special, vehicle-3)",
     4: "АПП Забайкальск (Cargo, vehicle-4)",
 }
+
+CHANNEL_TEST_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <style>
+    body {{ margin: 0; background: #eef2f4; color: #172025; font-family: Arial, sans-serif; }}
+    header {{ background: #12343b; color: white; padding: 18px 32px; }}
+    main {{ max-width: 980px; margin: 28px auto; padding: 0 20px; }}
+    .layout {{ display: grid; grid-template-columns: 1fr 320px; gap: 18px; }}
+    .panel {{ background: white; border: 1px solid #d6dde1; border-radius: 8px; padding: 20px; }}
+    .field {{ display: grid; grid-template-columns: 190px 1fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eef2f4; }}
+    .field:last-child {{ border-bottom: 0; }}
+    label {{ color: #60727d; }}
+    input, textarea {{ width: 100%; border: 1px solid #cfd8dc; border-radius: 6px; padding: 8px; font: inherit; }}
+    .status {{ display: inline-flex; height: 26px; align-items: center; padding: 0 10px; border-radius: 6px; background: #e6f4ea; color: #186a3b; font-size: 13px; }}
+  </style>
+</head>
+<body data-route-kind="{route_kind}" data-reservation-id="{reservation_id}" data-eopp-user="{eopp_user}">
+  <header>
+    <h1>{heading}</h1>
+    <p>Local page for channel-extension injection testing.</p>
+  </header>
+  <main>
+    <div class="layout">
+      <section class="panel" aria-label="Reservation card">
+        <h2>{card_title}</h2>
+        <div class="field">
+          <label>Company:</label>
+          <strong data-company-name>{company}</strong>
+        </div>
+        <div class="field">
+          <label>EOPP user:</label>
+          <strong>{eopp_user}</strong>
+        </div>
+        <div class="field">
+          <label>Reservation ID:</label>
+          <input name="reservationId" value="{reservation_id}" readonly>
+        </div>
+        <div class="field">
+          <label>Vehicle:</label>
+          <input name="vehicleNumber" value="{vehicle}" readonly>
+        </div>
+        <div class="field">
+          <label>Comment:</label>
+          <textarea name="comment" rows="3" readonly>Company: {company}. Operator: {eopp_user}.</textarea>
+        </div>
+      </section>
+      <aside class="panel">
+        <h2>Context</h2>
+        <p class="status">{route_kind}</p>
+        <p>This page intentionally exposes visible DOM hints and data attributes. It does not contain EOPP cookies.</p>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>"""
+
+
+def _channel_test_page(
+    *,
+    title: str,
+    heading: str,
+    route_kind: str,
+    company: str,
+    eopp_user: str,
+    reservation_id: str = "",
+    vehicle: str = "",
+) -> HTMLResponse:
+    card_title = "EOPP Channel Test Card" if route_kind == "reservation_card" else "EOPP Channel Test Root"
+    return HTMLResponse(
+        CHANNEL_TEST_PAGE_HTML.format(
+            title=title,
+            heading=heading,
+            route_kind=route_kind,
+            company=company,
+            eopp_user=eopp_user,
+            reservation_id=reservation_id,
+            vehicle=vehicle,
+            card_title=card_title,
+        )
+    )
 
 
 def register_frontend_routes(app):
@@ -88,3 +173,39 @@ def register_test_pages(app):
         return HTMLResponse(TEST_PAGE_HTML.format(title=f"Тест: Перенос брони — {label}"))
 
     app.include_router(test_router)
+
+    @channel_test_router.get("/card/existing")
+    async def test_channel_existing_card():
+        return _channel_test_page(
+            title="EOPP Channel Test Card",
+            heading="Existing company reservation card",
+            route_kind="reservation_card",
+            company="Existing Carrier",
+            eopp_user="Ivan Channel Master",
+            reservation_id="reservation-card-existing",
+            vehicle="A123BC790",
+        )
+
+    @channel_test_router.get("/card/new-company")
+    async def test_channel_new_company_card():
+        return _channel_test_page(
+            title="EOPP Channel Test Card",
+            heading="New company reservation card",
+            route_kind="reservation_card",
+            company="New Auto Channel Company",
+            eopp_user="Olga Channel User",
+            reservation_id="reservation-card-new-company",
+            vehicle="B456CD790",
+        )
+
+    @channel_test_router.get("/root")
+    async def test_channel_root():
+        return _channel_test_page(
+            title="EOPP Channel Test Root",
+            heading="EOPP root page",
+            route_kind="eopp_root",
+            company="Root Company",
+            eopp_user="Root EOPP User",
+        )
+
+    app.include_router(channel_test_router)

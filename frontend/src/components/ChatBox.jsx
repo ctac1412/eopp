@@ -1,11 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
 import { Button, TextInput } from "../ui";
-
-const ROLE_COLORS = {
-  master: { bg: "#0d419d", text: "#58a6ff" },
-  operator: { bg: "#1a3320", text: "#3fb950" },
-};
 
 const OP_COLORS = [
   "#58a6ff", "#3fb950", "#d29922", "#f85149", "#a371f7",
@@ -44,74 +39,57 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
         }),
       });
     } catch {
-      // silently ignore send errors
+      // Chat is operational side-channel; captcha solving must not depend on it.
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       handleSend();
     }
   };
 
-  const getColor = (m) => {
-    if (m.sender_role === "master") return { bg: "#0d419d", text: "#58a6ff" };
-    if (m.sender_role === "system") return { bg: "#1a1a2e", text: "#8b949e" };
-    if (m.sender_role === "operator") {
-      const col = (operatorColors || {})[m.sender_label];
-      if (col) return { bg: col + "22", text: col };
-      return { bg: "#1a3320", text: "#3fb950" };
+  const getSenderClassName = (message) => {
+    if (message.sender_role === "master") return "is-master";
+    if (message.sender_role === "operator") {
+      return operatorColors?.[message.sender_label] ? "" : "is-operator";
     }
-    return { bg: "#21262d", text: "#8b949e" };
+    if (message.sender_role === "system") return "is-system";
+    return "is-unknown";
   };
 
   return (
-    <div className="chatbox" style={{
-      display: "flex", flexDirection: "column",
-      border: "1px solid #30363d", borderRadius: 8,
-      background: "#0d1117", overflow: "hidden",
-      height: "100%", minHeight: "200px",
-    }}>
-      <div ref={listRef} style={{
-        flex: 1, overflowY: "auto", padding: "8px 10px",
-        display: "flex", flexDirection: "column", gap: 4,
-      }}>
+    <div className="chatbox">
+      <div ref={listRef} className="chatbox__messages">
         {messages.length === 0 && (
-          <div style={{ color: "#484f58", fontSize: "0.75rem", textAlign: "center", padding: 16 }}>
-            Нет сообщений
-          </div>
+          <div className="chatbox__empty">Нет сообщений</div>
         )}
-        {messages.map((m, i) => {
-          const colors = getColor(m);
+        {messages.map((message, index) => {
+          const operatorColor = message.sender_role === "operator"
+            ? operatorColors?.[message.sender_label]
+            : null;
           return (
-            <div key={i} style={{
-              fontSize: "0.75rem", lineHeight: 1.4,
-            }}>
-              <span style={{ color: colors.text, fontWeight: 600 }}>
-                {m.sender_label || m.sender_role}:
+            <div className="chatbox__message" key={index}>
+              <span
+                className={`chatbox__sender ${getSenderClassName(message)}`}
+                style={operatorColor ? { color: operatorColor } : undefined}
+              >
+                {message.sender_label || message.sender_role}:
               </span>{" "}
-              <span style={{ color: "#c9d1d9" }}>{m.message}</span>
+              <span className="chatbox__text">{message.message}</span>
             </div>
           );
         })}
       </div>
-      <div style={{
-        display: "flex", gap: 4, padding: "4px 8px 0",
-        borderTop: "1px solid #30363d",
-      }}>
+
+      <div className="chatbox__quick-actions">
         <Button
           size="small"
           onClick={() => handleSend("Отошёл")}
           disabled={!ownRole}
           title="Отошёл"
-          style={{
-            background: ownRole ? "#f8514922" : "#21262d",
-            border: "1px solid #f8514944", borderRadius: 4,
-            color: "#f85149", fontSize: "0.65rem",
-            padding: "3px 6px", cursor: ownRole ? "pointer" : "default",
-            whiteSpace: "nowrap",
-          }}
+          className="chatbox__quick-action is-away"
         >
           Отошёл
         </Button>
@@ -121,13 +99,7 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
             onClick={() => handleSend("Все готовы?")}
             disabled={!ownRole}
             title="Все готовы?"
-            style={{
-              background: ownRole ? "#d2992222" : "#21262d",
-              border: "1px solid #d2992244", borderRadius: 4,
-              color: "#d29922", fontSize: "0.65rem",
-              padding: "3px 6px", cursor: ownRole ? "pointer" : "default",
-              whiteSpace: "nowrap",
-            }}
+            className="chatbox__quick-action is-ready-check"
           >
             Все готовы?
           </Button>
@@ -137,44 +109,27 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
           onClick={() => handleSend("Я на месте")}
           disabled={!ownRole}
           title="Я на месте"
-          style={{
-            background: ownRole ? "#3fb95022" : "#21262d",
-            border: "1px solid #3fb95044", borderRadius: 4,
-            color: "#3fb950", fontSize: "0.65rem",
-            padding: "3px 6px", cursor: ownRole ? "pointer" : "default",
-            whiteSpace: "nowrap",
-          }}
+          className="chatbox__quick-action is-present"
         >
           Я на месте
         </Button>
       </div>
-      <div style={{
-        display: "flex", gap: 4, padding: "4px 8px 6px",
-      }}>
+
+      <div className="chatbox__composer">
         <TextInput
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Сообщение..."
           disabled={!ownRole}
-          style={{
-            flex: 1, background: "#161b22", border: "1px solid #30363d",
-            borderRadius: 4, color: "#c9d1d9", fontSize: "0.75rem",
-            padding: "4px 8px", outline: "none",
-          }}
+          className="chatbox__input"
         />
         <Button
           size="small"
           variant="primary"
           onClick={handleSend}
           disabled={!ownRole || !input.trim()}
-          style={{
-            background: ownRole ? "#238636" : "#21262d",
-            border: "none", borderRadius: 4, color: "#fff",
-            fontSize: "0.75rem", padding: "4px 10px",
-            cursor: ownRole ? "pointer" : "default",
-            opacity: ownRole ? 1 : 0.5,
-          }}
+          className="chatbox__send"
         >
           Отпр.
         </Button>

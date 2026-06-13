@@ -6,25 +6,29 @@ import StatusBar from "../components/StatusBar";
 import AuthWizard from "../components/AuthWizard";
 import SuperKioskPanel from "../components/SuperKioskPanel";
 import ChatBox, { getOpColor } from "../components/ChatBox";
+import LogViewer from "../components/LogViewer";
 import { CaptchaTab } from "./CaptchaTab";
 import { HistoryTab } from "./HistoryTab";
+import { HomeOperatorStrip } from "./HomeOperatorStrip";
+import { HomePluginChannels } from "./HomePluginChannels";
+import { HomeScheduledEventsStrip } from "./HomeScheduledEventsStrip";
 import { PublicCaptchasTab } from "./PublicCaptchasTab";
-import { buildHomeMetrics } from "./homeMetrics";
+import { getCurrentOperatorPageUrl } from "./homeOperatorAccess";
 import { normalizeHomeSideTab } from "./homeTabs";
-import { MetricsStrip, SegmentedControl } from "../ui";
+import { SegmentedControl } from "../ui";
 
 export function HomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
-  const queue = useCaptchaStore((s) => s.queue);
-  const sseConnected = useCaptchaStore((s) => s.sseConnected);
   const connectedOperators = useCaptchaStore((s) => s.connectedOperators);
+  const scheduledEvents = useCaptchaStore((s) => s.scheduledEvents);
   const apiKeyId = useCaptchaStore((s) => s.apiKeyId);
   const apiKeyLabel = useCaptchaStore((s) => s.apiKeyLabel);
   const [activeTab, setActiveTab] = useState(
     () => normalizeHomeSideTab(searchParams.get("tab")),
   );
+  const [operatorProfile, setOperatorProfile] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
 
@@ -40,6 +44,9 @@ export function HomePage() {
         localStorage.setItem("admin_role", me.role || "");
         localStorage.setItem("admin_sections", JSON.stringify(me.sections || []));
         localStorage.setItem("admin_permissions", JSON.stringify(me.permissions || []));
+        if (!cancelled) {
+          setOperatorProfile(me.user?.operator_profile || null);
+        }
 
         const keysResp = await fetch("/auth/plugin-keys");
         if (!keysResp.ok) throw new Error("No keys");
@@ -58,6 +65,7 @@ export function HomePage() {
       } catch {
         if (!cancelled) {
           localStorage.removeItem("admin_session_active");
+          setOperatorProfile(null);
           useCaptchaStore.getState().clearApiKey();
         }
       } finally {
@@ -89,11 +97,6 @@ export function HomePage() {
     }
   }, [searchParams, activeTab]);
 
-  const homeMetrics = useMemo(
-    () => buildHomeMetrics({ connectedOperators, queue, sseConnected }),
-    [connectedOperators, queue, sseConnected],
-  );
-
   const operatorColors = useMemo(() => {
     const map = {};
     (connectedOperators || []).forEach((operator, idx) => {
@@ -115,6 +118,7 @@ export function HomePage() {
     setActiveTab(normalized);
     setSearchParams({ tab: normalized });
   };
+  const operatorPageUrl = getCurrentOperatorPageUrl(operatorProfile);
 
   return (
     <div className="container py-3 home-page">
@@ -126,11 +130,14 @@ export function HomePage() {
         </section>
 
         <aside data-eopp-component="HomeSidePanel" className="home-workspace__side">
-          <MetricsStrip
-            data-eopp-component="HomeMetricsStrip"
-            className="home-metrics-strip"
-            items={homeMetrics}
+          <HomeOperatorStrip operators={connectedOperators} />
+          <HomePluginChannels
+            adminToken={localStorage.getItem("admin_session_active") === "1" ? "session" : null}
+            masterKeyId={apiKeyId}
+            onError={(message) => useCaptchaStore.getState().addLog(message, "error")}
           />
+          <HomeScheduledEventsStrip events={scheduledEvents} />
+
           <div data-eopp-component="HomeTabsNav" className="home-tabs-nav">
             <SegmentedControl
               data-eopp-component="HomeTabsSegmented"
@@ -143,6 +150,7 @@ export function HomePage() {
                 { label: "Капчи", value: "public-captchas" },
               ]}
             />
+            <div className="home-tabs-nav__links">
             <a
               data-eopp-component="HomeTabsTrainingLink"
               className="home-tabs-nav__training"
@@ -150,6 +158,18 @@ export function HomePage() {
             >
               Обучение
             </a>
+              {operatorPageUrl && (
+                <a
+                  data-eopp-component="HomeTabsOperatorLink"
+                  className="home-tabs-nav__operator"
+                  href={operatorPageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Зайти как оператор
+                </a>
+              )}
+            </div>
           </div>
 
           <div className="home-side-panel__body">
@@ -170,6 +190,10 @@ export function HomePage() {
             )}
           </div>
         </aside>
+
+        <section data-eopp-component="HomeLogsPane" className="home-workspace__logs">
+          <LogViewer />
+        </section>
       </div>
     </div>
   );

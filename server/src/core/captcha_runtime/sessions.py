@@ -128,6 +128,16 @@ class CaptchaSessionStore:
             existing = self._pending.get(captcha_id)
         return self._coerce(existing) if existing is not None else None
 
+    def get_by_usage_log_id(self, usage_log_id: int) -> CaptchaSession | None:
+        """Return the pending session attached to a usage log, if any."""
+
+        with self._lock:
+            for entry in self._pending.values():
+                session = self._coerce(entry)
+                if session.usage_log_id == usage_log_id:
+                    return session
+        return None
+
     def pop(self, captcha_id: str) -> CaptchaSession | None:
         """Remove and return a pending session after solve or timeout."""
 

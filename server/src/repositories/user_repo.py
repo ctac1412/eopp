@@ -8,7 +8,6 @@ from src.entities import (
     AdminSession,
     CompanyMembership,
     FinanceParticipantProfile,
-    MasterProfile,
     Operator,
     OperatorProfile,
     User,
@@ -62,18 +61,6 @@ def _membership_to_dict(membership: CompanyMembership) -> dict:
     }
 
 
-def _master_profile_to_dict(profile: MasterProfile | None) -> dict | None:
-    if not profile:
-        return None
-    return {
-        "id": profile.id,
-        "company_id": profile.company_id,
-        "company_name": profile.company.name if profile.company else None,
-        "scope": profile.scope,
-        "active": profile.active,
-    }
-
-
 def _operator_profile_to_dict(profile: OperatorProfile | None) -> dict | None:
     if not profile:
         return None
@@ -103,6 +90,9 @@ def _finance_profile_to_dict(profile: FinanceParticipantProfile | None) -> dict 
 
 
 def user_to_dict(user: User) -> dict:
+    from src.repositories import user_company_access_repo
+
+    access = user_company_access_repo.get_user_access(user.id) or {}
     return {
         "id": user.id,
         "name": user.name,
@@ -118,9 +108,11 @@ def user_to_dict(user: User) -> dict:
             for membership in getattr(user, "company_memberships", [])
             if membership.active
         ],
-        "master_profile": _master_profile_to_dict(getattr(user, "master_profile", None)),
         "operator_profile": _operator_profile_to_dict(getattr(user, "operator_profile", None)),
         "finance_profile": _finance_profile_to_dict(getattr(user, "finance_profile", None)),
+        "finance_access": access.get("finance", {"all_companies": False, "company_ids": []}),
+        "operator_access": access.get("operator", {"all_companies": False, "company_ids": []}),
+        "executor_access": access.get("executor", {"all_companies": False, "company_ids": []}),
     }
 
 
@@ -133,7 +125,6 @@ def list_users(company_id: int | None = None) -> list[dict]:
             .options(
                 joinedload(User.company),
                 joinedload(User.company_memberships).joinedload(CompanyMembership.company),
-                joinedload(User.master_profile).joinedload(MasterProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.operator),
                 joinedload(User.finance_profile).joinedload(FinanceParticipantProfile.company),
@@ -154,7 +145,6 @@ def get_user(user_id: int) -> dict | None:
             .options(
                 joinedload(User.company),
                 joinedload(User.company_memberships).joinedload(CompanyMembership.company),
-                joinedload(User.master_profile).joinedload(MasterProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.operator),
                 joinedload(User.finance_profile).joinedload(FinanceParticipantProfile.company),
@@ -197,6 +187,16 @@ def _operator_profile_company_ids(profile: OperatorProfile) -> list[int]:
     return [int(profile.company_id)]
 
 
+def _access_payload_from_profile(profile: dict | None, fallback_company_id: int | None) -> dict | None:
+    if profile is None:
+        return None
+    company_id = _profile_company_id(profile, fallback_company_id)
+    company_ids = _normalize_company_ids(profile.get("company_ids"), company_id)
+    if not company_ids:
+        return None
+    return {"all_companies": False, "company_ids": company_ids}
+
+
 def _sync_memberships(session, user: User, memberships: list[dict] | None, company_id: int | None) -> None:
     now = datetime.now(UTC).isoformat()
     desired = memberships
@@ -235,31 +235,6 @@ def _sync_memberships(session, user: User, memberships: list[dict] | None, compa
         if cid not in seen and desired is not None:
             membership.active = False
             membership.updated_at = now
-
-
-def _sync_master_profile(session, user: User, payload: dict | None, fallback_company_id: int | None) -> None:
-    if payload is None:
-        return
-    now = datetime.now(UTC).isoformat()
-    company_id = _profile_company_id(payload, fallback_company_id)
-    if company_id is None:
-        return
-    active = payload.get("active", True) is not False
-    if user.master_profile:
-        user.master_profile.company_id = int(company_id)
-        user.master_profile.scope = payload.get("scope") or "own_company"
-        user.master_profile.active = active
-        user.master_profile.updated_at = now
-    else:
-        session.add(
-            MasterProfile(
-                user_id=user.id,
-                company_id=int(company_id),
-                scope=payload.get("scope") or "own_company",
-                active=active,
-                created_at=now,
-            )
-        )
 
 
 def _sync_finance_profile(session, user: User, payload: dict | None, fallback_company_id: int | None) -> None:
@@ -332,9 +307,11 @@ def create_user(
     active: bool = True,
     company_id: int | None = None,
     company_memberships: list[dict] | None = None,
-    master_profile: dict | None = None,
     operator_profile: dict | None = None,
     finance_profile: dict | None = None,
+    finance_access: dict | None = None,
+    operator_access: dict | None = None,
+    executor_access: dict | None = None,
 ) -> dict:
     if role not in ROLE_PERMISSIONS:
         raise ValueError("unknown_role")
@@ -355,11 +332,27 @@ def create_user(
         session.add(user)
         session.flush()
         _sync_memberships(session, user, company_memberships, company_id)
-        _sync_master_profile(session, user, master_profile, company_id)
         _sync_operator_profile(session, user, operator_profile, company_id)
         _sync_finance_profile(session, user, finance_profile, company_id)
         session.commit()
         session.refresh(user)
+        user_id = user.id
+    from src.repositories import user_company_access_repo
+
+    user_company_access_repo.set_user_access(
+        user_id,
+        {
+            key: value
+            for key, value in {
+                "finance": finance_access if finance_access is not None else _access_payload_from_profile(finance_profile, company_id),
+                "operator": operator_access if operator_access is not None else _access_payload_from_profile(operator_profile, company_id),
+                "executor": executor_access,
+            }.items()
+            if value is not None
+        },
+    )
+    with get_session() as session:
+        user = session.get(User, user_id)
         return user_to_dict(user)
 
 
@@ -373,9 +366,11 @@ def update_user(
     active: bool | None = None,
     company_id=UNSET,
     company_memberships: list[dict] | None = None,
-    master_profile: dict | None = None,
     operator_profile: dict | None = None,
     finance_profile: dict | None = None,
+    finance_access: dict | None = None,
+    operator_access: dict | None = None,
+    executor_access: dict | None = None,
 ) -> dict | None:
     if role is not None and role not in ROLE_PERMISSIONS:
         raise ValueError("unknown_role")
@@ -402,11 +397,31 @@ def update_user(
         session.flush()
         fallback_company_id = user.company_id
         _sync_memberships(session, user, company_memberships, fallback_company_id)
-        _sync_master_profile(session, user, master_profile, fallback_company_id)
         _sync_operator_profile(session, user, operator_profile, fallback_company_id)
         _sync_finance_profile(session, user, finance_profile, fallback_company_id)
         session.commit()
         session.refresh(user)
+        target_user_id = user.id
+    from src.repositories import user_company_access_repo
+
+    fallback_company_id = company_id if company_id is not UNSET else None
+    if fallback_company_id is None:
+        current = get_user(target_user_id)
+        fallback_company_id = current.get("company_id") if current else None
+    user_company_access_repo.set_user_access(
+        target_user_id,
+        {
+            key: value
+            for key, value in {
+                "finance": finance_access if finance_access is not None else _access_payload_from_profile(finance_profile, fallback_company_id),
+                "operator": operator_access if operator_access is not None else _access_payload_from_profile(operator_profile, fallback_company_id),
+                "executor": executor_access,
+            }.items()
+            if value is not None
+        },
+    )
+    with get_session() as session:
+        user = session.get(User, target_user_id)
         return user_to_dict(user)
 
 
@@ -429,7 +444,6 @@ def authenticate_user(login: str, password: str) -> User | None:
             .options(
                 joinedload(User.company),
                 joinedload(User.company_memberships).joinedload(CompanyMembership.company),
-                joinedload(User.master_profile).joinedload(MasterProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.company),
                 joinedload(User.operator_profile).joinedload(OperatorProfile.operator),
                 joinedload(User.finance_profile).joinedload(FinanceParticipantProfile.company),
@@ -471,7 +485,6 @@ def get_session_user(token: str | None) -> User | None:
             .options(
                 joinedload(AdminSession.user).joinedload(User.company),
                 joinedload(AdminSession.user).joinedload(User.company_memberships).joinedload(CompanyMembership.company),
-                joinedload(AdminSession.user).joinedload(User.master_profile).joinedload(MasterProfile.company),
                 joinedload(AdminSession.user).joinedload(User.operator_profile).joinedload(OperatorProfile.company),
                 joinedload(AdminSession.user).joinedload(User.operator_profile).joinedload(OperatorProfile.operator),
                 joinedload(AdminSession.user).joinedload(User.finance_profile).joinedload(FinanceParticipantProfile.company),
@@ -492,48 +505,10 @@ def get_session_user(token: str | None) -> User | None:
         return user
 
 
-def ensure_master_profile_for_user(user_id: int, company_id: int | None) -> None:
-    """Ensure an API-key owner has a master profile for plugin token use."""
-    if company_id is None:
-        return
-    now = datetime.now(UTC).isoformat()
-    with get_session() as session:
-        existing = session.query(MasterProfile).filter(MasterProfile.user_id == user_id).first()
-        if existing:
-            existing.company_id = company_id
-            existing.scope = "own_company"
-            existing.active = True
-            existing.updated_at = now
-        else:
-            session.add(
-                MasterProfile(
-                    user_id=user_id,
-                    company_id=company_id,
-                    scope="own_company",
-                    active=True,
-                    created_at=now,
-                )
-            )
-        session.commit()
-
-
 def list_finance_participants(company_id: int | None = None) -> list[dict]:
-    from sqlalchemy.orm import joinedload
+    from src.repositories import user_company_access_repo
 
-    with get_session() as session:
-        query = (
-            session.query(User)
-            .join(FinanceParticipantProfile, FinanceParticipantProfile.user_id == User.id)
-            .options(
-                joinedload(User.company),
-                joinedload(User.finance_profile).joinedload(FinanceParticipantProfile.company),
-            )
-            .filter(User.active.is_(True), FinanceParticipantProfile.active.is_(True))
-            .order_by(User.name)
-        )
-        if company_id is not None:
-            query = query.filter(FinanceParticipantProfile.company_id == company_id)
-        return [user_to_dict(user) for user in query.all()]
+    return user_company_access_repo.list_finance_participants(company_id)
 
 
 def get_user_stats(user_id: int) -> dict | None:

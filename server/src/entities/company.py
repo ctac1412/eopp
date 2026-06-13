@@ -11,8 +11,10 @@ if TYPE_CHECKING:
     from src.entities.access_profile import (
         CompanyMembership,
         FinanceParticipantProfile,
-        MasterProfile,
         OperatorProfile,
+        UserExecutorCompany,
+        UserFinanceCompany,
+        UserOperatorCompany,
     )
     from src.entities.api_key import ApiKey
     from src.entities.operator import Operator
@@ -36,7 +38,9 @@ class Company(Base):
     usage_logs: Mapped[list[UsageLog]] = relationship(back_populates="company_rel")
     users: Mapped[list[User]] = relationship(back_populates="company")
     memberships: Mapped[list[CompanyMembership]] = relationship(back_populates="company")
-    master_profiles: Mapped[list[MasterProfile]] = relationship(back_populates="company")
     operator_profiles: Mapped[list[OperatorProfile]] = relationship(back_populates="company")
     finance_profiles: Mapped[list[FinanceParticipantProfile]] = relationship(back_populates="company")
+    finance_user_access: Mapped[list[UserFinanceCompany]] = relationship(back_populates="company")
+    operator_user_access: Mapped[list[UserOperatorCompany]] = relationship(back_populates="company")
+    executor_user_access: Mapped[list[UserExecutorCompany]] = relationship(back_populates="company")
     tariff: Mapped[CompanyTariff | None] = relationship(back_populates="company", uselist=False)

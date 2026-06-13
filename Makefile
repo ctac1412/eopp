@@ -1,9 +1,9 @@
 # === Server ===
 
-run-prod: build-frontend build-extension
+run-prod: build-frontend build-extension build-channel-extension
 	uv run python server/manage.py --host 0.0.0.0 --no-ssl --data-dir server/data --port 8766
 
-run-prod-start: build-frontend build-extension
+run-prod-start: build-frontend build-extension build-channel-extension
 	@powershell -Command "$$root = (Get-Location).Path; $$pidFile = Join-Path $$root '.run-prod.pid'; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$listener.OwningProcess | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod already running, PID=' + $$listener.OwningProcess); exit 0 }; Start-Process -FilePath 'uv' -ArgumentList 'run','python','server/manage.py','--host','0.0.0.0','--no-ssl','--data-dir','server/data','--port','8766' -WorkingDirectory $$root -WindowStyle Hidden; $$serverPid = $$null; for ($$i = 0; $$i -lt 20; $$i++) { Start-Sleep -Milliseconds 250; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$serverPid = $$listener.OwningProcess; break } }; if (!$$serverPid) { Write-Error 'run-prod failed to start (port 8766 not listening)'; exit 1 }; $$serverPid | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod started, PID=' + $$serverPid + ', pidfile=' + $$pidFile)"
 
 run-prod-stop:
@@ -38,6 +38,25 @@ build-extension-dev:
 
 typecheck-extension:
 	cd extension && npm run typecheck
+
+install-channel-extension:
+	cd channel-extension && npm install
+
+build-channel-extension:
+	cd channel-extension && npm run build
+
+build-channel-extension-dev:
+	cd channel-extension && DEV_BUILD=true npm run build
+
+typecheck-channel-extension:
+	cd channel-extension && npm run typecheck
+
+build-channel-crx: typecheck-channel-extension build-channel-extension
+	@echo "Packing channel extension to CRX..."
+	@powershell -Command "New-Item -ItemType Directory -Force -Path '$(CURDIR)/plugins/channel' | Out-Null"
+	@"C:\Program Files\Yandex\YandexBrowser\Application\browser.exe" --pack-extension="$(CURDIR)/channel-extension/dist" --no-sandbox --pack-extension-key="$(CURDIR)/extension/my.pem"
+	@powershell -Command "$$ver = (Get-Content '$(CURDIR)/channel-extension/dist/manifest.json' | ConvertFrom-Json).version; Move-Item -Force '$(CURDIR)/channel-extension/dist.crx' -Destination ('$(CURDIR)/plugins/channel/eopp-channel-v' + $$ver + '.crx'); if (Test-Path '$(CURDIR)/channel-extension/dist.crx') { Remove-Item -Force '$(CURDIR)/channel-extension/dist.crx' }; Write-Host ('CRX created: plugins/channel/eopp-channel-v' + $$ver + '.crx')"
+	@powershell -Command "$$envFile = '$(CURDIR)/server/deploy/.env.server'; $$serverUrl = 'https://localhost:8765'; if (Test-Path $$envFile) { Get-Content $$envFile | ForEach-Object { if ($$_ -match '^\s*SERVER_URL\s*=\s*(.+?)\s*$$') { $$serverUrl = $$matches[1].Trim() } } }; try { $$uri = [Uri]$$serverUrl; $$host = $$uri.Host.ToLower(); $$isLocal = ($$host -eq 'localhost' -or $$host -eq '127.0.0.1' -or $$host -eq '::1'); if (-not $$isLocal -and $$uri.Scheme -eq 'http') { $$builder = New-Object System.UriBuilder($$uri); $$builder.Scheme = 'https'; if ($$builder.Port -eq 80) { $$builder.Port = -1 }; $$serverUrl = $$builder.Uri.AbsoluteUri.TrimEnd('/') } else { $$serverUrl = $$serverUrl.TrimEnd('/') } } catch { $$serverUrl = $$serverUrl.TrimEnd('/') }; $$ver = (Get-Content '$(CURDIR)/channel-extension/dist/manifest.json' | ConvertFrom-Json).version; $$codebase = $$serverUrl + '/plugins/channel/eopp-channel-v' + $$ver + '.crx'; ('<?xml version=\"1.0\" encoding=\"UTF-8\"?>' + [Environment]::NewLine + '<gupdate xmlns=\"http://www.google.com/update2/response\" protocol=\"2.0\">' + [Environment]::NewLine + '  <app appid=\"hoammcmegehdaaiiegpchhlaiiabbhli\">' + [Environment]::NewLine + ('    <updatecheck codebase=\"' + $$codebase + '\" version=\"' + $$ver + '\" />') + [Environment]::NewLine + '  </app>' + [Environment]::NewLine + '</gupdate>') | Set-Content '$(CURDIR)/plugins/channel/update.xml' -Encoding UTF8; Write-Host ('channel update.xml updated to v' + $$ver + ' at ' + $$codebase)"
 
 build-crx: typecheck-extension build-extension
 	@echo "Packing extension to CRX..."

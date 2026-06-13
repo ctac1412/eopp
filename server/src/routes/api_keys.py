@@ -44,7 +44,12 @@ def _api_key_allows_tenant(request: Request, key_id: int) -> JSONResponse | None
     record = api_key_repo.get_key_by_id(key_id)
     if record is None:
         return None
-    if record.company_id != tenant_company_id:
+    if record.user_id is None:
+        if record.company_id == tenant_company_id:
+            return None
+        return _forbid_company_scope()
+    user = user_repo.get_user(record.user_id)
+    if not user or user.get("company_id") != tenant_company_id:
         return _forbid_company_scope()
     return None
 
@@ -109,18 +114,22 @@ async def list_public_keys():
 
 @router.post("/api-keys")
 async def create_api_key(body: CreateApiKeyBody, request: Request):
-    company_id = _requested_company_id_for_tenant(request, body.company_id, default=True)
+    company_id = _requested_company_id_for_tenant(request, body.company_id, default=False)
     if isinstance(company_id, JSONResponse):
         return company_id
-    user_guard = _guard_api_key_user(request, body.user_id)
-    if user_guard:
-        return user_guard
-    record = api_key_repo.create_key(
-        body.label,
-        body.max_uses,
-        company_id=company_id,
-        user_id=body.user_id,
-    )
+    if body.user_id is not None:
+        user_guard = _guard_api_key_user(request, body.user_id)
+        if user_guard:
+            return user_guard
+    try:
+        record = api_key_repo.create_key(
+            body.label,
+            body.max_uses,
+            company_id=company_id,
+            user_id=body.user_id,
+        )
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
     if body.is_external:
         api_key_repo.update_key(record.id, is_external=True)
         record = api_key_repo.get_key_by_id(record.id)
@@ -149,6 +158,11 @@ async def list_api_keys(request: Request):
             "company_name": k.get("company_name"),
             "user_id": k.get("user_id"),
             "user_name": k.get("user_name"),
+            "is_master_key": k.get("is_master_key"),
+            "executor_all_companies": k.get("executor_all_companies"),
+            "executor_company_ids": k.get("executor_company_ids"),
+            "executor_company_names": k.get("executor_company_names"),
+            "user_role": k.get("user_role"),
         }
         if k.get("tariff"):
             item["tariff"] = k["tariff"]
@@ -164,12 +178,14 @@ async def update_api_key(key_id: int, body: UpdateApiKeyBody, request: Request):
     privileged_guard = _guard_privileged_key_fields(request, body)
     if privileged_guard:
         return privileged_guard
-    company_id = _requested_company_id_for_tenant(request, body.company_id)
-    if isinstance(company_id, JSONResponse):
-        return company_id
     user_guard = _guard_api_key_user(request, body.user_id)
     if user_guard:
         return user_guard
+    company_id = None
+    if body.company_id is not None:
+        company_id = _requested_company_id_for_tenant(request, body.company_id, default=False)
+        if isinstance(company_id, JSONResponse):
+            return company_id
     kwargs = {
         k: v for k, v in {
             "label": body.label,

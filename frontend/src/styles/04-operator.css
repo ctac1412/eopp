@@ -9,6 +9,36 @@
   background: #0a0e14;
 }
 
+.operator-workbench-panel {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid #30363d;
+  background: #161b22;
+}
+
+.operator-workbench-log {
+  height: 36px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-top: 1px solid #30363d;
+  background: #0d1117;
+  padding: 2px 12px;
+  color: #8b949e;
+  font-size: 9px;
+  text-align: left;
+}
+
+.operator-workbench-log__row.is-success {
+  color: #3fb950;
+}
+
+.operator-workbench-log__row.is-error {
+  color: #f85149;
+}
+
 .operator-connect-card {
   width: min(100%, 460px);
   margin: 0 auto;
@@ -66,15 +96,20 @@
   font-weight: 600;
 }
 
-.operator-connect-card__select,
+.operator-connect-card__assigned-master,
 .operator-connect-card__button {
   width: 100%;
 }
 
-.operator-connect-card__select .ant-select-selector {
-  background: #0d1117 !important;
-  color: #c9d1d9 !important;
-  border-color: #30363d !important;
+.operator-connect-card__assigned-master {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .operator-reassign-notice {
@@ -207,6 +242,23 @@
   text-decoration: underline;
 }
 
+.op-header__master-static {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  min-height: 24px;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .op-header__master-select {
   width: 180px;
   min-width: 140px;
@@ -256,26 +308,6 @@
   border: 1px solid #30363d;
 }
 
-.op-captcha__marker {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-.op-captcha__marker-circle {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 3px solid #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 16px;
-  font-weight: bold;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
-}
-
 .op-captcha__idle {
   text-align: center;
 }
@@ -287,59 +319,10 @@
 }
 
 .op-captcha__icons-strip {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  align-items: center;
   margin-top: 2px;
+  border: 0;
+  background: transparent;
   padding: 2px 6px 6px;
-}
-
-.op-captcha__icon {
-  position: relative;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s;
-}
-
-.op-captcha__icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 4px;
-}
-
-.op-captcha__icon-check {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #3fb950;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: #fff;
-  font-weight: bold;
-  border: 1.5px solid var(--bs-dark);
-}
-
-.op-captcha__dots {
-  display: flex;
-  gap: 4px;
-  justify-content: center;
-  margin-top: 8px;
-}
-
-.op-captcha__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
 }
 
 /* ── OperatorSidebar ── */
@@ -363,18 +346,18 @@
   border-left: 0;
 }
 
-.op-sidebar__ops-tags {
-  padding: 6px 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.op-sidebar__strip {
+  padding: 6px 8px 0;
+  border-top: 1px solid #30363d;
   flex-shrink: 0;
 }
 
-.op-sidebar__scheduled {
-  padding: 4px 8px;
-  border-top: 1px solid #30363d;
-  flex-shrink: 0;
+.op-sidebar__strip:first-child {
+  border-top: 0;
+}
+
+.op-sidebar__strip .home-operator-strip {
+  border-radius: 7px;
 }
 
 .op-sidebar__chat-wrap {
@@ -432,6 +415,15 @@
     overflow-x: auto;
     justify-content: flex-start;
     padding-inline: 10px;
+  }
+
+  .operator-workbench-panel {
+    height: 100vh;
+    border-right: 0;
+  }
+
+  .operator-workbench-log {
+    height: 30px;
   }
 
   .op-sidebar:not(.op-sidebar--embedded) {

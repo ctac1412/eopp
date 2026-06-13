@@ -49,7 +49,22 @@ def verify_usage_log_matches_captcha(usage_log_id: int, captcha_id: str) -> bool
 
 
 def load_captcha_file(captcha_id: str) -> dict | None:
-    return captcha_file_service.load_captcha_payload(captcha_id)
+    data = captcha_file_service.load_captcha_payload(captcha_id)
+    if data:
+        return data
+
+    from src.repositories import captcha_file_repo
+
+    cf = captcha_file_repo.get_by_captcha_id(captcha_id)
+    if not cf or not cf.file_path or not os.path.isfile(cf.file_path):
+        return None
+
+    try:
+        with open(cf.file_path, encoding="utf-8") as f:
+            fallback_data = json.load(f)
+        return fallback_data if isinstance(fallback_data, dict) else None
+    except Exception:
+        return None
 
 
 def read_label_captcha(captcha_id: str) -> dict | None:
@@ -199,12 +214,17 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
     if not streams:
         return None
 
-    def send_captchas():
-        for cid in captcha_ids:
-            data = load_captcha_file(cid)
-            if not data:
-                continue
+    replay_payloads: list[tuple[str, dict]] = []
+    for cid in captcha_ids:
+        data = load_captcha_file(cid)
+        if data:
+            replay_payloads.append((cid, data))
 
+    if not replay_payloads:
+        return 0
+
+    def send_captchas():
+        for cid, data in replay_payloads:
             if is_icon_click_type(data):
                 from src.captcha_solver_engine.images import assemble_icon_click_preview
                 puzzle_data = data.get("puzzle", data)
@@ -250,7 +270,7 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
 
     t = threading.Thread(target=send_captchas, daemon=True)
     t.start()
-    return len(captcha_ids)
+    return len(replay_payloads)
 
 
 def save_captcha_boxes(captcha_id: str, boxes: list[dict]) -> tuple[int, dict]:

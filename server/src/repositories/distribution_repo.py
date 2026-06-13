@@ -81,6 +81,8 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
                     if a.operator_id == 0
                     else (op.nickname if op else f"#{a.operator_id}")
                 ),
+                "master_key_id": apikey.id if apikey else None,
+                "master_label": apikey.label if apikey else None,
                 "icon_position": a.icon_position,
                 "x": a.x,
                 "y": a.y,

@@ -3,6 +3,28 @@
 from datetime import UTC, datetime
 
 
+def _create_executor_key(client, admin_token, *, label: str, company_id: int, login_suffix: str):
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": f"Executor {label}",
+            "login": f"executor.{login_suffix}",
+            "password": "strong-password",
+            "company_id": company_id,
+            "executor_access": {"company_ids": [company_id], "all_companies": False},
+        },
+    )
+    assert user.status_code == 200
+    key = client.post(
+        "/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json={"label": label, "company_id": company_id, "user_id": user.json()["id"]},
+    )
+    assert key.status_code == 200
+    return key.json()
+
+
 def test_password_user_login_returns_cookie_permissions_and_company(client, admin_token):
     company = client.post(
         "/admin/companies",
@@ -44,6 +66,7 @@ def test_password_user_login_returns_cookie_permissions_and_company(client, admi
     assert "eopp_admin_session" in login.cookies
     assert "billing.view" in session["permissions"]
     assert "admin.users.manage" not in session["permissions"]
+    assert "channels" in session["sections"]
     assert session["user"]["company_id"] == company_id
 
 
@@ -233,6 +256,8 @@ def test_roles_endpoint_exposes_section_access_for_admin_ui(client, admin_token)
     roles = {role["id"]: role for role in response.json()["roles"]}
     assert set(roles) == {"super_admin", "administrator", "manager", "operator"}
     assert "users" in roles["super_admin"]["sections"]
+    assert "channels" in roles["super_admin"]["sections"]
+    assert "channels" in roles["manager"]["sections"]
     assert "users" not in roles["manager"]["sections"]
     assert roles["operator"]["permissions"] == ["operator.answer"]
 
@@ -372,13 +397,13 @@ def test_user_create_exposes_memberships_and_function_profiles(client, admin_tok
             "company_memberships": [
                 {"company_id": company_id, "role": "administrator", "active": True}
             ],
-            "master_profile": {"company_id": company_id, "active": True},
             "operator_profile": {
                 "company_id": company_id,
                 "active": True,
                 "nickname": "profile-operator",
             },
             "finance_profile": {"company_id": company_id, "active": True},
+            "executor_access": {"company_ids": [company_id], "all_companies": False},
         },
     )
 
@@ -393,8 +418,8 @@ def test_user_create_exposes_memberships_and_function_profiles(client, admin_tok
             "active": True,
         }
     ]
-    assert body["master_profile"]["active"] is True
-    assert body["master_profile"]["company_id"] == company_id
+    assert "master" + "_profile" not in body
+    assert body["executor_access"] == {"all_companies": False, "company_ids": [company_id]}
     assert body["operator_profile"]["active"] is True
     assert body["operator_profile"]["nickname"] == "profile-operator"
     assert body["finance_profile"]["active"] is True
@@ -438,21 +463,9 @@ def test_operator_profile_supports_multiple_companies_and_scoped_links(client, a
     operator_id = operator_profile["operator_id"]
     operator_uuid = operator_profile["uuid"]
 
-    alpha_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "operator-alpha-key", "company_id": alpha["id"]},
-    ).json()
-    beta_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "operator-beta-key", "company_id": beta["id"]},
-    ).json()
-    gamma_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "operator-gamma-key", "company_id": gamma["id"]},
-    ).json()
+    alpha_key = _create_executor_key(client, admin_token, label="operator-alpha-key", company_id=alpha["id"], login_suffix="operator.alpha")
+    beta_key = _create_executor_key(client, admin_token, label="operator-beta-key", company_id=beta["id"], login_suffix="operator.beta")
+    gamma_key = _create_executor_key(client, admin_token, label="operator-gamma-key", company_id=gamma["id"], login_suffix="operator.gamma")
 
     operators = client.get("/admin/operators", headers={"X-Admin-Token": admin_token})
     assert operators.status_code == 200
@@ -545,16 +558,8 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
     )
     assert visible.status_code == 200
     assert hidden.status_code == 200
-    own_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "own-operator-link-key", "company_id": own["id"]},
-    ).json()
-    other_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "other-operator-link-key", "company_id": other["id"]},
-    ).json()
+    own_key = _create_executor_key(client, admin_token, label="own-operator-link-key", company_id=own["id"], login_suffix="own.operator.link")
+    other_key = _create_executor_key(client, admin_token, label="other-operator-link-key", company_id=other["id"], login_suffix="other.operator.link")
     assert client.put(
         f"/admin/operators/{visible.json()['operator_profile']['operator_id']}/link",
         headers={"X-Admin-Token": admin_token},
@@ -615,21 +620,9 @@ def test_bulk_operator_assignments_save_company_and_master_combinations(client, 
         },
     ).json()
     operator_id = operator_user["operator_profile"]["operator_id"]
-    alpha_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "bulk-alpha-key", "company_id": alpha["id"]},
-    ).json()
-    beta_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "bulk-beta-key", "company_id": beta["id"]},
-    ).json()
-    gamma_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "bulk-gamma-key", "company_id": gamma["id"]},
-    ).json()
+    alpha_key = _create_executor_key(client, admin_token, label="bulk-alpha-key", company_id=alpha["id"], login_suffix="bulk.alpha")
+    beta_key = _create_executor_key(client, admin_token, label="bulk-beta-key", company_id=beta["id"], login_suffix="bulk.beta")
+    gamma_key = _create_executor_key(client, admin_token, label="bulk-gamma-key", company_id=gamma["id"], login_suffix="bulk.gamma")
 
     blocked = client.post(
         "/admin/operator-assignments/bulk",
@@ -712,7 +705,7 @@ def test_admin_created_operator_has_profile_for_company_matrix(client, admin_tok
     assert saved.json()["operators"][0]["company_ids"] == [alpha["id"], beta["id"]]
 
 
-def test_master_plugin_keys_are_limited_to_master_profile_company(client, admin_token):
+def test_executor_plugin_keys_require_executor_access(client, admin_token):
     company = client.post(
         "/admin/companies",
         headers={"X-Admin-Token": admin_token},
@@ -727,7 +720,7 @@ def test_master_plugin_keys_are_limited_to_master_profile_company(client, admin_
             "login": "scoped.master",
             "password": "strong-password",
             "company_id": company_id,
-            "master_profile": {"company_id": company_id, "active": True},
+            "executor_access": {"company_ids": [company_id], "all_companies": False},
         },
     )
     regular = client.post(
@@ -745,17 +738,10 @@ def test_master_plugin_keys_are_limited_to_master_profile_company(client, admin_
         headers={"X-Admin-Token": admin_token},
         json={
             "label": "master-owned-token",
-            "company_id": company_id,
             "user_id": master.json()["id"],
         },
     )
-    company_key = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "company-token", "company_id": company_id},
-    )
     assert master_key.status_code == 200
-    assert company_key.status_code == 200
 
     master_client = client.__class__(client.app)
     assert master_client.post(
@@ -766,7 +752,6 @@ def test_master_plugin_keys_are_limited_to_master_profile_company(client, admin_
     assert master_tokens.status_code == 200
     assert [row["label"] for row in master_tokens.json()["keys"]] == [
         "master-owned-token",
-        "company-token",
     ]
 
     regular_client = client.__class__(client.app)
@@ -1389,7 +1374,7 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
     assert [row["id"] for row in payouts.json()] == [own_payout["id"]]
 
 
-def test_super_master_profile_can_use_keys_from_any_company(client, admin_token):
+def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
     alpha = client.post(
         "/admin/companies",
         headers={"X-Admin-Token": admin_token},
@@ -1409,23 +1394,19 @@ def test_super_master_profile_can_use_keys_from_any_company(client, admin_token)
             "password": "strong-password",
             "system_role": "super_admin",
             "company_id": alpha["id"],
-            "master_profile": {
-                "company_id": alpha["id"],
-                "active": True,
-                "scope": "all_companies",
-            },
+            "executor_access": {"company_ids": [], "all_companies": True},
         },
     )
     assert user.status_code == 200
     client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "alpha-master-token", "company_id": alpha["id"]},
+        json={"label": "alpha-master-token", "company_id": alpha["id"], "user_id": user.json()["id"]},
     )
     client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "beta-master-token", "company_id": beta["id"]},
+        json={"label": "beta-master-token", "company_id": beta["id"], "user_id": user.json()["id"]},
     )
 
     master_client = client.__class__(client.app)
@@ -1442,7 +1423,7 @@ def test_super_master_profile_can_use_keys_from_any_company(client, admin_token)
     }
 
 
-def test_admin_user_update_preserves_master_scope(client, admin_token):
+def test_admin_user_update_preserves_executor_access(client, admin_token):
     company = client.post(
         "/admin/companies",
         headers={"X-Admin-Token": admin_token},
@@ -1456,11 +1437,7 @@ def test_admin_user_update_preserves_master_scope(client, admin_token):
             "login": "scope.editable.master",
             "password": "strong-password",
             "company_id": company["id"],
-            "master_profile": {
-                "company_id": company["id"],
-                "active": True,
-                "scope": "own_company",
-            },
+            "executor_access": {"company_ids": [company["id"]], "all_companies": False},
         },
     )
     assert created.status_code == 200
@@ -1479,19 +1456,16 @@ def test_admin_user_update_preserves_master_scope(client, admin_token):
             "company_memberships": [
                 {"company_id": company["id"], "role": "manager", "active": True}
             ],
-            "master_profile": {
-                "company_id": company["id"],
-                "active": True,
-                "scope": "all_companies",
-            },
+            "executor_access": {"company_ids": [], "all_companies": True},
         },
     )
 
     assert updated.status_code == 200
-    assert updated.json()["master_profile"]["scope"] == "all_companies"
+    assert updated.json()["executor_access"] == {"all_companies": True, "company_ids": []}
+    assert "master" + "_profile" not in updated.json()
 
 
-def test_company_master_profile_can_use_only_own_company_keys(client, admin_token):
+def test_company_executor_access_exposes_own_plugin_keys(client, admin_token):
     own = client.post(
         "/admin/companies",
         headers={"X-Admin-Token": admin_token},
@@ -1502,7 +1476,7 @@ def test_company_master_profile_can_use_only_own_company_keys(client, admin_toke
         headers={"X-Admin-Token": admin_token},
         json={"name": "CompanyMasterOther"},
     ).json()
-    client.post(
+    user = client.post(
         "/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
@@ -1510,22 +1484,18 @@ def test_company_master_profile_can_use_only_own_company_keys(client, admin_toke
             "login": "company.master",
             "password": "strong-password",
             "company_id": own["id"],
-            "master_profile": {
-                "company_id": own["id"],
-                "active": True,
-                "scope": "own_company",
-            },
+            "executor_access": {"company_ids": [own["id"]], "all_companies": False},
         },
     )
     client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "own-company-token", "company_id": own["id"]},
+        json={"label": "own-company-token", "company_id": own["id"], "user_id": user.json()["id"]},
     )
     client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "other-company-token", "company_id": other["id"]},
+        json={"label": "other-company-token", "company_id": other["id"], "user_id": user.json()["id"]},
     )
 
     master_client = client.__class__(client.app)
@@ -1536,7 +1506,8 @@ def test_company_master_profile_can_use_only_own_company_keys(client, admin_toke
     response = master_client.get("/auth/plugin-keys")
 
     assert response.status_code == 200
-    assert [row["label"] for row in response.json()["keys"]] == ["own-company-token"]
+    assert {row["label"] for row in response.json()["keys"]} == {"own-company-token", "other-company-token"}
+    assert all(row["executor_company_ids"] == [own["id"]] for row in response.json()["keys"])
 
 
 def test_company_tariff_is_returned_for_keys_without_specific_tariff(client, admin_token):

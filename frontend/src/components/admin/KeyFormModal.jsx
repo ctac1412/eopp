@@ -11,7 +11,6 @@ export function KeyFormModal({
   onClose,
   onResetUsage,
   onDeleteKey,
-  companies = [],
   users = [],
 }) {
   const handleSubmit = (event) => {
@@ -83,31 +82,16 @@ export function KeyFormModal({
         ) : null}
 
         <label className="form-label mb-0">
-          Компания
-          <SelectInput
-            value={form.companyId || ""}
-            onChange={(value) => setForm((prev) => ({ ...prev, companyId: value || "" }))}
-            options={[
-              { value: "", label: "Без компании" },
-              ...companies.map((company) => ({ value: String(company.id), label: company.name })),
-            ]}
-            allowClear={false}
-          />
-        </label>
-
-        <label className="form-label mb-0">
           Пользователь
           <SelectInput
             value={form.userId || ""}
             onChange={(value) => setForm((prev) => ({ ...prev, userId: value || "" }))}
-            options={[
-              { value: "", label: "Без пользователя" },
-              ...users.map((user) => ({
+            options={users.map((user) => ({
                 value: String(user.id),
                 label: `${user.name || user.login || `#${user.id}`}${user.company_name ? ` · ${user.company_name}` : ""}`,
-              })),
-            ]}
+              }))}
             allowClear={false}
+            placeholder="Выберите владельца ключа"
           />
         </label>
 

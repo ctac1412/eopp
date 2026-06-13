@@ -1,6 +1,12 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
-import { Button, StatusTag } from "../ui";
+import { StatusTag } from "../ui";
+import {
+  CaptchaClickSurface,
+  CaptchaIconStrip,
+  CaptchaProgressDots,
+} from "./CaptchaClickSurface";
+import { CaptchaPanelHeader } from "./CaptchaPanelHeader";
 
 function isSequentialEnabled() {
   try {
@@ -16,35 +22,35 @@ function IconClickCaptcha({ entry }) {
   const isDistributed = !!entry.distribution;
 
   if (isDistributed) {
-    return <DistributedIconClick entry={entry} apiKey={apiKey} superKioskMode={superKioskMode} />;
+    return (
+      <DistributedIconClick
+        entry={entry}
+        apiKey={apiKey}
+        superKioskMode={superKioskMode}
+      />
+    );
   }
 
-  return <NormalIconClick entry={entry} apiKey={apiKey} superKioskMode={superKioskMode} />;
+  return (
+    <NormalIconClick
+      entry={entry}
+      apiKey={apiKey}
+      superKioskMode={superKioskMode}
+    />
+  );
 }
 
 function NormalIconClick({ entry, apiKey, superKioskMode }) {
   const [markers, setMarkers] = useState([]);
-  const imgRef = useRef(null);
-  const [naturalSize, setNaturalSize] = useState(null);
-  const [sequential, setSequential] = useState(() => isSequentialEnabled());
+  const [sequential] = useState(() => isSequentialEnabled());
 
   const mainImage = entry.images?.["0"] || "";
   const iconsImage = entry.iconsImage || "";
 
-  const handleImageLoad = (e) => {
-    setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight });
-  };
-
-  const handleClick = (e) => {
+  const handleClick = (coords) => {
     if (entry.solved || markers.length >= 5) return;
 
-    const rect = imgRef.current.getBoundingClientRect();
-    const scaleX = naturalSize.w / rect.width;
-    const scaleY = naturalSize.h / rect.height;
-    const x = Math.round((e.clientX - rect.left) * scaleX);
-    const y = Math.round((e.clientY - rect.top) * scaleY);
-
-    const newMarkers = [...markers, { x, y }];
+    const newMarkers = [...markers, coords];
     setMarkers(newMarkers);
 
     if (newMarkers.length >= 5) {
@@ -67,7 +73,10 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
 
     if (data.already_solved) {
       useCaptchaStore.getState().markSolved(entry.id);
-      useCaptchaStore.getState().addLog(`Капча ${entry.id} уже решена другим киоском`, "info");
+      useCaptchaStore.getState().addLog(
+        `Капча ${entry.id} уже решена другим киоском`,
+        "info",
+      );
       return;
     }
 
@@ -81,23 +90,29 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
     );
   };
 
-  const resetMarkers = () => setMarkers([]);
-
   return (
     <div className="captcha-panel">
-      <Header entry={entry} superKioskMode={superKioskMode} status={entry.solved ? "Решено" : `${markers.length}/5`} markersCount={markers.length} onReset={resetMarkers} />
+      <CaptchaPanelHeader
+        title={`Капча ${entry.id}`}
+        statusLabel={entry.solved ? "Решено" : `${markers.length}/5`}
+        statusStatus={entry.solved ? "confirmed" : "neutral"}
+        createdAt={entry.createdAt}
+        timeout={entry.timeout}
+      />
       <div className="captcha-panel__body captcha-panel__body--column">
-        <ClickArea
+        <CaptchaClickSurface
           image={mainImage}
           markers={markers}
-          naturalSize={naturalSize}
-          solved={entry.solved}
-          imgRef={imgRef}
-          onLoad={handleImageLoad}
-          onClick={handleClick}
+          disabled={entry.solved}
+          className="captcha-click-area"
+          imageClassName="captcha-click-area__image"
+          onCoordinateClick={handleClick}
         />
         {iconsImage && (
-          <IconsStrip iconsImage={iconsImage} currentPosition={sequential ? markers.length : -1} />
+          <IconsStrip
+            iconsImage={iconsImage}
+            currentPosition={sequential ? markers.length : -1}
+          />
         )}
       </div>
     </div>
@@ -117,8 +132,6 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
   const [markers, setMarkers] = useState([]);
   const [complete, setComplete] = useState(false);
   const [answering, setAnswering] = useState(false);
-  const imgRef = useRef(null);
-  const [naturalSize, setNaturalSize] = useState(null);
 
   const liveAnswered = entry._distAnsweredPositions || answeredPositions;
 
@@ -130,7 +143,7 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
       .map((pos) => ({
         x: coords[pos].x,
         y: coords[pos].y,
-        label: parseInt(pos) + 1,
+        label: parseInt(pos, 10) + 1,
       }));
   }, [entry._distAllCoords, operatorId]);
 
@@ -141,14 +154,8 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
     ? (connectedOps > 0 ? `Мастер (+${connectedOps})` : "Мастер")
     : `Оператор #${operatorId}`;
 
-  const handleClick = async (e) => {
+  const handleClick = async ({ x, y }) => {
     if (entry.solved || complete || answering) return;
-
-    const rect = imgRef.current.getBoundingClientRect();
-    const scaleX = naturalSize.w / rect.width;
-    const scaleY = naturalSize.h / rect.height;
-    const x = Math.round((e.clientX - rect.left) * scaleX);
-    const y = Math.round((e.clientY - rect.top) * scaleY);
 
     setAnswering(true);
     try {
@@ -200,14 +207,14 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
     }
   };
 
-  const handleImageLoad = (e) => {
-    setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight });
-  };
-
   if (complete || entry.solved) {
     return (
       <div className="captcha-panel">
-        <Header entry={entry} superKioskMode={superKioskMode} status="Решено" role={role} />
+        <CaptchaPanelHeader
+          title={`Капча ${entry.id}`}
+          statusLabel="Решено"
+          statusStatus="confirmed"
+        />
         <div className="captcha-panel__body">
           <StatusTag
             status="confirmed"
@@ -221,68 +228,29 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
 
   return (
     <div className="captcha-panel">
-      <Header entry={entry} superKioskMode={superKioskMode} status={`${solvedCount}/5 решено`} role={role} />
+      <CaptchaPanelHeader
+        title={`Капча ${entry.id}`}
+        statusLabel={`${solvedCount}/5 решено`}
+        createdAt={entry.createdAt}
+        timeout={entry.timeout}
+      />
       <div className="captcha-panel__body captcha-panel__body--column">
         {currentImage && (
-          <ClickArea
+          <CaptchaClickSurface
             image={currentImage}
             markers={allMarkers}
-            naturalSize={naturalSize}
-            solved={answering}
-            imgRef={imgRef}
-            onLoad={handleImageLoad}
-            onClick={handleClick}
+            disabled={answering}
+            className="captcha-click-area"
+            imageClassName="captcha-click-area__image"
+            onCoordinateClick={handleClick}
           />
         )}
-        {allIcons.length > 0 && (
-          <div style={{
-            display: "flex", gap: 6, justifyContent: "center", alignItems: "center",
-            marginTop: 4, padding: "8px 6px",
-            background: "#0d1117", borderRadius: 8, border: "1px solid #21262d",
-          }}>
-            {allIcons.map((ic) => {
-              const isCurrent = ic.position === currentPosition;
-              const isAnswered = (entry._distAnsweredPositions || answeredPositions).includes(ic.position);
-              return (
-                <div
-                  key={ic.position}
-                  style={{
-                    position: "relative",
-                    width: isCurrent ? 52 : 36,
-                    height: isCurrent ? 52 : 36,
-                    borderRadius: 6,
-                    border: isCurrent ? "2px solid #58a6ff" : "1px solid #30363d",
-                    opacity: isAnswered && !isCurrent ? 0.35 : isCurrent ? 1 : 0.55,
-                    background: isAnswered ? "#1a3320" : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  {ic.icon && (
-                    <img
-                      src={"data:image/png;base64," + ic.icon}
-                      alt={`#${ic.position + 1}`}
-                      style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: 4 }}
-                      draggable={false}
-                    />
-                  )}
-                  {isAnswered && (
-                    <div style={{
-                      position: "absolute", top: -6, right: -6,
-                      width: 16, height: 16, borderRadius: "50%",
-                      background: "#3fb950", display: "flex",
-                      alignItems: "center", justifyContent: "center",
-                      fontSize: 10, color: "#fff", fontWeight: "bold",
-                      border: "1.5px solid #0d1117",
-                    }}>✓</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
+        <CaptchaIconStrip
+          icons={allIcons}
+          assigned={assigned}
+          currentPosition={currentPosition}
+          answeredPositions={liveAnswered}
+        />
         {!allIcons.length && currentIcon && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "0.75rem", color: "#8b949e", marginBottom: 4 }}>
@@ -301,122 +269,12 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
             ? "Отправка..."
             : `Кликните на иконку #${currentPosition != null ? currentPosition + 1 : "?"} (${role})`}
         </div>
-        <div style={{ display: "flex", gap: "4px" }}>
-          {Array.from({ length: 5 }, (_, i) => (
-            <div
-              key={i}
-              style={{
-                width: "12px",
-                height: "12px",
-                borderRadius: "50%",
-                background: liveAnswered.includes(i)
-                  ? "#198754"
-                  : assigned.includes(i)
-                    ? i === currentPosition ? "#0d6efd" : "#6c757d"
-                    : "#343a40",
-              }}
-              title={assigned.includes(i) ? `${role}: ик${i + 1}` : `Аутсорс: ик${i + 1}`}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Header({ entry, superKioskMode, status, role, markersCount, onReset }) {
-  return (
-    <div className="section-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div className="d-flex align-items-center gap-2">
-        <span className="fw-semibold" style={{ fontSize: "0.9rem" }}>
-          Капча {entry.id}
-        </span>
-        <StatusTag color="purple" label="клик-капча" style={{ marginInlineEnd: 0 }} />
-        {role && (
-          <StatusTag color="cyan" label={role} style={{ marginInlineEnd: 0 }} />
-        )}
-        {superKioskMode && entry.ownerLabel && (
-          <StatusTag color="blue" label={`для: ${entry.ownerLabel}`} style={{ marginInlineEnd: 0 }} />
-        )}
-      </div>
-      <div className="d-flex align-items-center gap-2">
-        {markersCount > 0 && status !== "Решено" && (
-          <Button size="small" onClick={onReset}>
-            Сбросить
-          </Button>
-        )}
-        <StatusTag
-          status={status === "Решено" ? "confirmed" : "neutral"}
-          label={status}
-          style={{ marginInlineEnd: 0 }}
+        <CaptchaProgressDots
+          assigned={assigned}
+          answeredPositions={liveAnswered}
+          currentPosition={currentPosition}
         />
       </div>
-    </div>
-  );
-}
-
-function ClickArea({ image, markers, naturalSize, solved, imgRef, onLoad, onClick }) {
-  return (
-    <div style={{
-      position: "relative",
-      display: "inline-block",
-      cursor: solved ? "default" : "crosshair",
-      maxWidth: "100%",
-    }}>
-      {image && (
-        <img
-          ref={imgRef}
-          src={"data:image/png;base64," + image}
-          alt="Капча"
-          onLoad={onLoad}
-          onClick={onClick}
-          style={{
-            width: "100%",
-            maxWidth: "800px",
-            maxHeight: "75vh",
-            objectFit: "contain",
-            borderRadius: "8px",
-            border: "2px solid var(--border)",
-            opacity: solved ? 0.5 : 1,
-            display: "block",
-          }}
-          draggable={false}
-        />
-      )}
-      {naturalSize && markers.map((m, i) => {
-        const colors = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
-        const label = m.label != null ? m.label : i + 1;
-        const colorIdx = (m.label != null ? m.label - 1 : i) % colors.length;
-        return (
-          <div
-            key={i}
-            style={{
-              position: "absolute",
-              left: `${((m.x / naturalSize.w) * 100).toFixed(2)}%`,
-              top: `${((m.y / naturalSize.h) * 100).toFixed(2)}%`,
-              transform: "translate(-50%, -50%)",
-              pointerEvents: "none",
-            }}
-          >
-            <div style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "50%",
-              background: colors[colorIdx],
-              border: "3px solid #fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-              fontSize: "16px",
-              fontWeight: "bold",
-              boxShadow: "0 0 12px rgba(0,0,0,0.6)",
-            }}>
-              {label}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -427,7 +285,7 @@ function IconsStrip({ iconsImage, currentPosition }) {
     <div style={{ textAlign: "center", position: "relative", display: "inline-block" }}>
       <div style={{ fontSize: "0.8rem", fontWeight: "500", color: "#c9d1d9", marginBottom: "6px" }}>
         {sequential
-          ? `Иконка ${currentPosition + 1} из 5 — кликните на картинке`
+          ? `Иконка ${currentPosition + 1} из 5 - кликните на картинке`
           : "Порядок иконок (кликайте слева направо)"}
       </div>
       <div style={{ position: "relative", display: "inline-block" }}>

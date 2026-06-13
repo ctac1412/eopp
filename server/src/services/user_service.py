@@ -18,9 +18,11 @@ def create_user(body) -> tuple[int, dict]:
             active=body.active,
             company_id=body.company_id,
             company_memberships=body.company_memberships,
-            master_profile=body.master_profile,
             operator_profile=body.operator_profile,
             finance_profile=body.finance_profile,
+            finance_access=body.finance_access,
+            operator_access=body.operator_access,
+            executor_access=body.executor_access,
         )
     except ValueError:
         return 400, {"error": "Unknown role"}
@@ -49,9 +51,11 @@ def update_user(user_id: int, body) -> tuple[int, dict]:
             active=body.active,
             company_id=company_id,
             company_memberships=body.company_memberships,
-            master_profile=body.master_profile,
             operator_profile=body.operator_profile,
             finance_profile=body.finance_profile,
+            finance_access=body.finance_access,
+            operator_access=body.operator_access,
+            executor_access=body.executor_access,
         )
     except ValueError:
         return 400, {"error": "Unknown role"}

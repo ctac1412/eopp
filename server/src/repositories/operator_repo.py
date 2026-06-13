@@ -45,8 +45,24 @@ def _profile_company_ids(profile: OperatorProfile | None, fallback_company_id: i
     return _normalize_company_ids(None, fallback_company_id)
 
 
+def _operator_access_scope(op: Operator) -> dict:
+    """Return read-only operator company scope from user access assignments."""
+    if not op.profile or op.profile.user_id is None:
+        return {"all_companies": False, "company_ids": _profile_company_ids(op.profile, op.company_id)}
+    from src.repositories import user_company_access_repo
+
+    payload = user_company_access_repo.user_access_payload("operator", int(op.profile.user_id))
+    company_ids = _normalize_company_ids(payload.get("company_ids"), op.company_id)
+    return {
+        "all_companies": payload.get("all_companies") is True,
+        "company_ids": company_ids,
+    }
+
+
 def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None) -> dict:
     company_ids = _profile_company_ids(op.profile, op.company_id)
+    access_scope = _operator_access_scope(op)
+    operator_company_ids = access_scope["company_ids"]
     names = company_names or {}
     data = {
         "id": op.id,
@@ -63,6 +79,11 @@ def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None)
         "company_id": op.company_id,
         "company_ids": company_ids,
         "company_names": [names.get(company_id) for company_id in company_ids if names.get(company_id)],
+        "operator_all_companies": access_scope["all_companies"],
+        "operator_company_ids": operator_company_ids,
+        "operator_company_names": [
+            names.get(company_id) for company_id in operator_company_ids if names.get(company_id)
+        ],
     }
     if op.profile:
         data["profile_id"] = op.profile.id
@@ -117,6 +138,13 @@ def create_operator(nickname: str, company_id: int | None = None) -> dict:
             op.profile = profile
         session.commit()
         session.refresh(op)
+        if company_id is not None and op.profile:
+            from src.repositories import user_company_access_repo
+
+            user_company_access_repo.set_user_access(
+                op.profile.user_id,
+                {"operator": {"company_ids": [int(company_id)], "all_companies": False}},
+            )
         return _operator_to_dict(op)
 
 
@@ -133,6 +161,7 @@ def list_operators(company_id: int | None = None) -> list[dict]:
         all_company_ids: set[int] = set()
         for op in ops:
             all_company_ids.update(_profile_company_ids(op.profile, op.company_id))
+            all_company_ids.update(_operator_access_scope(op)["company_ids"])
         company_names = {
             row.id: row.name
             for row in session.query(Company).filter(Company.id.in_(all_company_ids)).all()
@@ -140,7 +169,13 @@ def list_operators(company_id: int | None = None) -> list[dict]:
         rows = []
         for op in ops:
             op_company_ids = _profile_company_ids(op.profile, op.company_id)
-            if company_id is not None and int(company_id) not in op_company_ids:
+            access_scope = _operator_access_scope(op)
+            access_company_ids = access_scope["company_ids"]
+            if (
+                company_id is not None
+                and not access_scope["all_companies"]
+                and int(company_id) not in access_company_ids
+            ):
                 continue
             primary_company_name = op.company.name if op.company else None
             rows.append(
@@ -272,7 +307,9 @@ def operator_allows_company(operator_id: int, company_id: int | None) -> bool:
     op = get_operator_by_id(operator_id)
     if not op:
         return False
-    company_ids = op.get("company_ids") or []
+    if op.get("operator_all_companies") is True:
+        return True
+    company_ids = op.get("operator_company_ids") or []
     return int(company_id) in [int(cid) for cid in company_ids]
 
 

@@ -33,11 +33,14 @@ import {
   UserStatsModal,
   CaptchasTab,
   AITab,
+  OperationsDashboardTab,
   OperatorsTab,
+  PluginChannelTab,
   PrepaidPackagesTab,
   TrainingAdminTab,
   CompaniesTab,
 } from "./components/admin";
+import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./components/admin/userCompanyAccess";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
 import { ADMIN_TABS } from "./features/admin/shared/tabs";
 import { Button } from "./ui";
@@ -52,8 +55,8 @@ const ROLE_LABELS = {
 const DEFAULT_ROLE_SECTIONS = {
   super_admin: ADMIN_TABS.map((tab) => tab.id),
   administrator: ADMIN_TABS.filter((tab) => tab.id !== "users").map((tab) => tab.id),
-  manager: ["reports", "companies", "captchas", "invoices", "prepaid", "expenses", "payouts"],
-  operator: ["operators", "streams"],
+  manager: ["reports", "companies", "channels", "captchas", "invoices", "prepaid", "expenses", "payouts"],
+  operator: ["operations", "operators", "streams"],
 };
 
 function AdminPage() {
@@ -64,6 +67,9 @@ function AdminPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [adminRole, setAdminRole] = useState(
     () => localStorage.getItem("admin_role") || null,
+  );
+  const [adminSystemRole, setAdminSystemRole] = useState(
+    () => localStorage.getItem("admin_system_role") || "",
   );
   const [adminSections, setAdminSections] = useState(() => {
     try {
@@ -90,6 +96,8 @@ function AdminPage() {
     const allowed = new Set(sections);
     return ADMIN_TABS.filter((tab) => allowed.has(tab.id));
   }, [adminRole, adminSections]);
+  const canUseGlobalUserCompanyAccess =
+    !!adminSystemRole || adminRole === "super_admin" || adminRole === "system_admin";
   const [captchaSubtab, setCaptchaSubtab] = useState("operations");
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +105,7 @@ function AdminPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(null);
   const [newKey, setNewKey] = useState(null);
-  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, companyId: "", userId: "" });
+  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, userId: "" });
   const [editForm, setEditForm] = useState({
     label: "",
     maxUses: "",
@@ -108,7 +116,6 @@ function AdminPage() {
     priceReschedule: "",
     priceCreatePeak: "",
     priceCustomSlots: "",
-    companyId: "",
     userId: "",
   });
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -157,11 +164,9 @@ function AdminPage() {
     systemRole: "",
     active: true,
     companyId: "",
-    masterEnabled: false,
-    masterScope: "own_company",
-    operatorEnabled: false,
-    operatorCompanyIds: [],
-    financeEnabled: false,
+    financeAccess: emptyAccess(),
+    operatorAccess: emptyAccess(),
+    executorAccess: emptyAccess(),
   });
   const [showUserModal, setShowUserModal] = useState(false);
   const [showUserStats, setShowUserStats] = useState(false);
@@ -474,14 +479,17 @@ function AdminPage() {
       })
       .then((data) => {
         const role = data.role || "manager";
+        const systemRole = data.user?.system_role || "";
         const sections = Array.isArray(data.sections) ? data.sections : DEFAULT_ROLE_SECTIONS[role] || [];
         const permissions = Array.isArray(data.permissions) ? data.permissions : [];
         localStorage.setItem("admin_session_active", "1");
         localStorage.setItem("admin_role", role);
+        localStorage.setItem("admin_system_role", systemRole);
         localStorage.setItem("admin_sections", JSON.stringify(sections));
         localStorage.setItem("admin_permissions", JSON.stringify(permissions));
         setAdminToken("session");
         setAdminRole(role);
+        setAdminSystemRole(systemRole);
         setAdminSections(sections);
         setAdminPermissions(permissions);
         fetchKeys("session");
@@ -489,10 +497,12 @@ function AdminPage() {
       .catch(() => {
         localStorage.removeItem("admin_session_active");
         localStorage.removeItem("admin_role");
+        localStorage.removeItem("admin_system_role");
         localStorage.removeItem("admin_sections");
         localStorage.removeItem("admin_permissions");
         setAdminToken(null);
         setAdminRole(null);
+        setAdminSystemRole("");
         setAdminSections([]);
         setAdminPermissions([]);
         setLoading(false);
@@ -555,10 +565,12 @@ function AdminPage() {
     fetch("/auth/logout", { method: "POST" }).catch(() => {});
     localStorage.removeItem("admin_session_active");
     localStorage.removeItem("admin_role");
+    localStorage.removeItem("admin_system_role");
     localStorage.removeItem("admin_sections");
     localStorage.removeItem("admin_permissions");
     setAdminToken(null);
     setAdminRole(null);
+    setAdminSystemRole("");
     setAdminSections([]);
     setAdminPermissions([]);
     setKeys([]);
@@ -570,6 +582,9 @@ function AdminPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
+      if (!createForm.userId) {
+        throw new Error("Выберите пользователя-владельца ключа");
+      }
       const body = { label: createForm.label };
       if (createForm.maxUses) {
         body.max_uses = parseInt(createForm.maxUses, 10);
@@ -577,12 +592,7 @@ function AdminPage() {
       if (createForm.isExternal) {
         body.is_external = true;
       }
-      if (createForm.companyId) {
-        body.company_id = parseInt(createForm.companyId, 10);
-      }
-      if (createForm.userId) {
-        body.user_id = parseInt(createForm.userId, 10);
-      }
+      body.user_id = parseInt(createForm.userId, 10);
       const res = await fetch("/api-keys", {
         method: "POST",
         headers: adminHeaders(adminToken),
@@ -591,7 +601,7 @@ function AdminPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setNewKey(data);
-      setCreateForm({ label: "", maxUses: "", isExternal: false, companyId: "", userId: "" });
+      setCreateForm({ label: "", maxUses: "", isExternal: false, userId: "" });
       setShowCreate(false);
       fetchKeys(adminToken);
     } catch (err) {
@@ -612,15 +622,8 @@ function AdminPage() {
       if (editForm.comment !== "") {
         body.comment = editForm.comment;
       }
-      if (editForm.companyId) {
-        body.company_id = parseInt(editForm.companyId, 10);
-      } else {
-        body.company_id = null;
-      }
       if (editForm.userId) {
         body.user_id = parseInt(editForm.userId, 10);
-      } else {
-        body.user_id = null;
       }
       const res = await fetch(`/api-keys/${showEdit}`, {
         method: "PUT",
@@ -715,7 +718,6 @@ function AdminPage() {
         tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
       priceCustomSlots:
         tariff && tariff.price_custom_slots != null ? String(tariff.price_custom_slots) : "",
-      companyId: keyObj.company_id != null ? String(keyObj.company_id) : "",
       userId: keyObj.user_id != null ? String(keyObj.user_id) : "",
     });
     setShowEdit(keyObj.id);
@@ -1032,33 +1034,12 @@ function AdminPage() {
         system_role: userForm.systemRole || null,
         active: userForm.active !== false,
         company_id: companyId,
+        finance_access: accessPayloadFromForm(userForm.financeAccess),
+        operator_access: accessPayloadFromForm(userForm.operatorAccess),
+        executor_access: accessPayloadFromForm(userForm.executorAccess),
       };
       if (companyId) {
-        const operatorCompanyIds = Array.from(
-          new Set([
-            companyId,
-            ...(Array.isArray(userForm.operatorCompanyIds)
-              ? userForm.operatorCompanyIds.map(Number).filter(Boolean)
-              : []),
-          ]),
-        );
         body.company_memberships = [{ company_id: companyId, role: userForm.role || "manager", active: true }];
-        if (userForm.masterEnabled) {
-          body.master_profile = {
-            company_id: companyId,
-            active: true,
-            scope: userForm.masterScope || "own_company",
-          };
-        }
-        if (userForm.operatorEnabled) {
-          body.operator_profile = {
-            company_id: companyId,
-            company_ids: operatorCompanyIds,
-            active: true,
-            nickname: userForm.name,
-          };
-        }
-        if (userForm.financeEnabled) body.finance_profile = { company_id: companyId, active: true };
       }
       const res = await fetch("/admin/users", {
         method: "POST",
@@ -1066,7 +1047,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", masterEnabled: false, masterScope: "own_company", operatorEnabled: false, operatorCompanyIds: [], financeEnabled: false });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
       fetchFinanceParticipants(adminToken);
@@ -1087,29 +1068,12 @@ function AdminPage() {
         system_role: userForm.systemRole || null,
         active: userForm.active !== false,
         company_id: companyId,
+        finance_access: accessPayloadFromForm(userForm.financeAccess),
+        operator_access: accessPayloadFromForm(userForm.operatorAccess),
+        executor_access: accessPayloadFromForm(userForm.executorAccess),
       };
       if (companyId) {
-        const operatorCompanyIds = Array.from(
-          new Set([
-            companyId,
-            ...(Array.isArray(userForm.operatorCompanyIds)
-              ? userForm.operatorCompanyIds.map(Number).filter(Boolean)
-              : []),
-          ]),
-        );
         body.company_memberships = [{ company_id: companyId, role: userForm.role || "manager", active: true }];
-        body.master_profile = {
-          company_id: companyId,
-          active: !!userForm.masterEnabled,
-          scope: userForm.masterScope || "own_company",
-        };
-        body.operator_profile = {
-          company_id: companyId,
-          company_ids: operatorCompanyIds,
-          active: !!userForm.operatorEnabled,
-          nickname: userForm.name,
-        };
-        body.finance_profile = { company_id: companyId, active: !!userForm.financeEnabled };
       }
       if (userForm.password) {
         body.password = userForm.password;
@@ -1120,7 +1084,7 @@ function AdminPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", masterEnabled: false, masterScope: "own_company", operatorEnabled: false, operatorCompanyIds: [], financeEnabled: false });
+      setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
       setShowUserModal(false);
       fetchUsers(adminToken);
       fetchFinanceParticipants(adminToken);
@@ -1159,6 +1123,24 @@ function AdminPage() {
       setUserStatsLoading(false);
     }
   };
+
+  const openEditUser = useCallback((u) => {
+    setUserForm({
+      id: u.id,
+      name: u.name || "",
+      login: u.login || "",
+      password: "",
+      role: u.role || "manager",
+      systemRole: u.system_role || "",
+      active: u.active !== false,
+      companyId: u.company_id ? String(u.company_id) : "",
+      financeAccess: normalizeAccess(u.finance_access),
+      operatorAccess: normalizeAccess(u.operator_access),
+      executorAccess: normalizeAccess(u.executor_access),
+    });
+    fetchCompanies(adminToken);
+    setShowUserModal(true);
+  }, [adminToken, fetchCompanies]);
 
   const handleDeleteExpense = async (id) => {
     try {
@@ -1416,8 +1398,16 @@ function AdminPage() {
         <CompaniesTab adminToken={adminToken} onError={setError} />
       )}
 
+      {activeTab === "operations" && (
+        <OperationsDashboardTab adminToken={adminToken} onError={setError} />
+      )}
+
       {activeTab === "operators" && (
         <OperatorsTab adminToken={adminToken} onError={setError} />
+      )}
+
+      {activeTab === "channels" && (
+        <PluginChannelTab adminToken={adminToken} onError={setError} />
       )}
 
       {activeTab === "invoices" && (
@@ -1462,7 +1452,7 @@ function AdminPage() {
           payouts={payouts}
           onRefresh={() => fetchPayouts(adminToken)}
           onCreate={() => {
-            const payoutUsers = financeParticipants.length ? financeParticipants : users;
+            const payoutUsers = financeParticipants;
             const n = payoutUsers.length || 1;
             const base = Math.floor(100 / n);
             const remainder = 100 - base * n;
@@ -1495,31 +1485,11 @@ function AdminPage() {
         <UsersTab
           users={users}
           onCreate={() => {
-            setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", masterEnabled: false, masterScope: "own_company", operatorEnabled: false, operatorCompanyIds: [], financeEnabled: false });
+            setUserForm({ id: null, name: "", login: "", password: "", role: "manager", systemRole: "", active: true, companyId: "", financeAccess: emptyAccess(), operatorAccess: emptyAccess(), executorAccess: emptyAccess() });
             fetchCompanies(adminToken);
             setShowUserModal(true);
           }}
-          onEdit={(u) => {
-            setUserForm({
-              id: u.id,
-              name: u.name || "",
-              login: u.login || "",
-              password: "",
-              role: u.role || "manager",
-              systemRole: u.system_role || "",
-              active: u.active !== false,
-              companyId: u.company_id ? String(u.company_id) : "",
-              masterEnabled: u.master_profile?.active === true,
-              masterScope: u.master_profile?.scope || "own_company",
-              operatorEnabled: u.operator_profile?.active === true,
-              operatorCompanyIds: Array.isArray(u.operator_profile?.company_ids)
-                ? u.operator_profile.company_ids.map(String)
-                : (u.operator_profile?.company_id ? [String(u.operator_profile.company_id)] : []),
-              financeEnabled: u.finance_profile?.active === true,
-            });
-            fetchCompanies(adminToken);
-            setShowUserModal(true);
-          }}
+          onEdit={openEditUser}
           onDelete={handleDeleteUser}
           onStats={handleOpenUserStats}
         />
@@ -1559,8 +1529,7 @@ function AdminPage() {
         setForm={setCreateForm}
         onSubmit={handleCreate}
         onClose={() => setShowCreate(false)}
-        companies={companies}
-        users={users.filter((user) => user.master_profile?.active)}
+        users={users}
       />
 
       <KeyFormModal
@@ -1572,8 +1541,7 @@ function AdminPage() {
         onClose={() => setShowEdit(null)}
         onResetUsage={() => { if (showEdit) handleResetUsage(showEdit); }}
         onDeleteKey={() => { if (showEdit) { setShowEdit(null); setConfirmDelete(showEdit); } }}
-        companies={companies}
-        users={users.filter((user) => user.master_profile?.active)}
+        users={users}
       />
 
       <DeleteConfirmModal
@@ -1607,7 +1575,7 @@ function AdminPage() {
         onSubmit={payoutForm.id ? handleUpdatePayout : handleCreatePayout}
         onClose={() => setShowPayoutModal(false)}
         preview={payoutPreview}
-        users={users}
+        users={financeParticipants}
         availableInvoices={availableInvoices}
         availableExpenses={availableExpenses}
         onPreview={fetchPayoutPreview}
@@ -1621,6 +1589,7 @@ function AdminPage() {
         onSubmit={userForm.id ? handleUpdateUser : handleCreateUser}
         onClose={() => setShowUserModal(false)}
         companies={companies}
+        canUseGlobalAccess={canUseGlobalUserCompanyAccess}
       />
 
       <UserStatsModal

@@ -2,7 +2,7 @@ import secrets
 from datetime import UTC, datetime
 
 from src.db.usage_log import calc_debt
-from src.entities import ApiKey, get_session
+from src.entities import ApiKey, Company, get_session
 
 
 def create_key(
@@ -25,11 +25,32 @@ def create_key(
         session.flush()
         session.refresh(key)
         session.commit()
-        if user_id is not None and company_id is not None:
-            from src.repositories import user_repo
-
-            user_repo.ensure_master_profile_for_user(user_id, company_id)
         return key
+
+
+def _executor_access(user_id: int | None) -> dict:
+    if user_id is None:
+        return {"all_companies": False, "company_ids": []}
+    from src.repositories import user_company_access_repo
+
+    return user_company_access_repo.user_access_payload("executor", user_id)
+
+
+def _executor_company_names(company_ids: list[int]) -> list[str]:
+    if not company_ids:
+        return []
+    with get_session() as session:
+        rows = (
+            session.query(Company)
+            .filter(Company.id.in_([int(company_id) for company_id in company_ids]))
+            .order_by(Company.name)
+            .all()
+        )
+        return [row.name for row in rows]
+
+
+def _is_executor(access: dict) -> bool:
+    return bool(access.get("all_companies") or access.get("company_ids"))
 
 
 def list_keys(company_id: int | None = None) -> list[dict]:
@@ -41,7 +62,9 @@ def list_keys(company_id: int | None = None) -> list[dict]:
             .options(joinedload(ApiKey.tariff), joinedload(ApiKey.company), joinedload(ApiKey.user))
         )
         if company_id is not None:
-            query = query.filter(ApiKey.company_id == company_id)
+            from src.entities import User
+
+            query = query.join(User, User.id == ApiKey.user_id).filter(User.company_id == company_id)
         keys = query.order_by(ApiKey.created_at.desc()).all()
         result = []
         for k in keys:
@@ -62,6 +85,12 @@ def list_keys(company_id: int | None = None) -> list[dict]:
                 "user_id": k.user_id,
                 "user_name": k.user.name if k.user else None,
             }
+            executor_access = _executor_access(k.user_id)
+            d["is_master_key"] = _is_executor(executor_access)
+            d["executor_all_companies"] = executor_access["all_companies"]
+            d["executor_company_ids"] = executor_access["company_ids"]
+            d["executor_company_names"] = _executor_company_names(executor_access["company_ids"])
+            d["user_role"] = k.user.role if k.user else None
             if k.tariff:
                 d["tariff"] = {
                     "price_create": k.tariff.price_create,
@@ -89,35 +118,23 @@ def list_plugin_keys_for_user(user_id: int, company_id: int | None = None, *, in
     """Return active plugin tokens available to one authenticated site user."""
     from sqlalchemy.orm import joinedload
 
-    from src.entities import MasterProfile
-
     with get_session() as session:
-        profile = (
-            session.query(MasterProfile)
-            .filter(MasterProfile.user_id == user_id, MasterProfile.active.is_(True))
-            .first()
-        )
-        if not profile:
-            return []
         query = (
             session.query(ApiKey)
             .options(joinedload(ApiKey.company), joinedload(ApiKey.user))
-            .filter(ApiKey.active.is_(True))
+            .filter(ApiKey.active.is_(True), ApiKey.user_id == user_id)
         )
-        if profile.scope == "all_companies":
-            pass
-        else:
-            query = query.filter(ApiKey.company_id == profile.company_id)
         keys = query.order_by(ApiKey.user_id.desc(), ApiKey.created_at.desc()).all()
+        executor_access = _executor_access(user_id)
         return [
             {
                 "id": key.id,
                 "key": key.key,
                 "label": key.label,
-                "company_id": key.company_id,
-                "company_name": key.company.name if key.company else None,
                 "user_id": key.user_id,
                 "user_name": key.user.name if key.user else None,
+                "executor_company_ids": executor_access["company_ids"],
+                "executor_all_companies": executor_access["all_companies"],
                 "is_super_kiosk": key.is_super_kiosk,
             }
             for key in keys
@@ -145,15 +162,30 @@ def list_keys_for_operator(
             if not allowed_master_keys:
                 return []
             query = query.filter(ApiKey.id.in_(allowed_master_keys))
-        if company_ids is not None:
-            if not company_ids:
-                return []
-            query = query.filter(ApiKey.company_id.in_([int(company_id) for company_id in company_ids]))
         keys = query.all()
-        return [
-            {"id": k.id, "label": k.label, "active": k.active, "key": k.key, "company_id": k.company_id}
-            for k in keys
-        ]
+        result = []
+        operator_company_ids = {int(company_id) for company_id in (company_ids or [])}
+        for key in keys:
+            access = _executor_access(key.user_id)
+            if not _is_executor(access):
+                continue
+            if company_ids is not None and not access["all_companies"]:
+                executor_company_ids = {int(company_id) for company_id in access["company_ids"]}
+                if not operator_company_ids or not executor_company_ids.intersection(operator_company_ids):
+                    continue
+            result.append(
+                {
+                    "id": key.id,
+                    "label": key.label,
+                    "active": key.active,
+                    "key": key.key,
+                    "company_id": key.company_id,
+                    "executor_company_ids": access["company_ids"],
+                    "executor_all_companies": access["all_companies"],
+                    "executor_company_names": _executor_company_names(access["company_ids"]),
+                }
+            )
+        return result
 
 
 def get_key_by_id(key_id: int) -> ApiKey | None:
@@ -176,10 +208,6 @@ def update_key(key_id: int, **kwargs) -> ApiKey | None:
                 setattr(key, attr, value)
         session.commit()
         session.refresh(key)
-        if key.user_id is not None and key.company_id is not None:
-            from src.repositories import user_repo
-
-            user_repo.ensure_master_profile_for_user(key.user_id, key.company_id)
         return key
 
 
@@ -211,15 +239,11 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access
             changes["is_external"] = (str(key.is_external), str(body.is_external))
             key.is_external = body.is_external
         if body.company_id is not None and body.company_id != key.company_id:
-            changes["company_id"] = (str(key.company_id), str(body.company_id))
-            key.company_id = body.company_id
+            changes["company_id"] = (str(key.company_id), "None")
+            key.company_id = None
         if body.user_id is not None and body.user_id != key.user_id:
             changes["user_id"] = (str(key.user_id), str(body.user_id))
             key.user_id = body.user_id
-            if body.user_id is not None and key.company_id is not None:
-                from src.repositories import user_repo
-
-                user_repo.ensure_master_profile_for_user(body.user_id, key.company_id)
         session.commit()
         session.refresh(key)
 
@@ -299,11 +323,15 @@ def validate_api_key(api_key: str) -> dict:
     remaining = None
     if record.max_uses is not None:
         remaining = record.max_uses - record.usage_count
+    executor_access = _executor_access(record.user_id)
     return {
         "valid": True,
         "label": record.label,
         "remaining": remaining,
         "max_uses": record.max_uses,
+        "user_id": record.user_id,
+        "executor_company_ids": executor_access["company_ids"],
+        "executor_all_companies": executor_access["all_companies"],
     }
 
 

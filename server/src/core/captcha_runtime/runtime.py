@@ -298,6 +298,55 @@ class CaptchaRuntime:
         histogram_observe("captcha_solve_duration_ms", (time.perf_counter() - request_start) * 1000, mode="submit")
         return 200, result
 
+    async def cancel_captcha(self, request: Any) -> tuple[int, dict[str, Any]]:
+        """Cancel a pending captcha session and notify SSE clients immediately."""
+
+        body = _to_payload(request)
+        captcha_id = body.get("captcha_id")
+        usage_log_id = body.get("usage_log_id")
+        session = self.sessions.get(captcha_id) if captcha_id else None
+        if session is None and usage_log_id is not None:
+            session = self.sessions.get_by_usage_log_id(int(usage_log_id))
+        if session is None:
+            return 404, {"error": "Captcha not found or already finished"}
+
+        api_key = body.get("api_key")
+        if api_key and self.dependencies.get_key_record is not None:
+            key_record = self.dependencies.get_key_record(api_key)
+            if not key_record:
+                return 403, {"error": "Invalid API key"}
+            solver_id = key_record["id"]
+            if solver_id != session.api_key_id and not key_record.get("is_super_kiosk", False):
+                return 403, {"error": "API key does not own this captcha"}
+
+        owner_label = self.dependencies.get_owner_label(session.api_key_id)
+        session.result = {
+            "status": "cancelled",
+            "error": "captcha_cancelled",
+            "usage_log_id": session.usage_log_id,
+            "captcha_id": session.captcha_id,
+        }
+        message = {
+            "type": "captcha_timeout",
+            "captcha_id": session.captcha_id,
+            "owner_label": owner_label,
+            "owner_api_key_id": session.api_key_id,
+            "reason": "cancelled",
+            "owner_notified": True,
+        }
+        self.dependencies.push_sse(message, api_key_id=session.api_key_id)
+        if self.dependencies.on_timeout is not None:
+            maybe = self.dependencies.on_timeout(
+                session.captcha_id,
+                session.api_key_id,
+                session.usage_log_id,
+                message,
+            )
+            if inspect.isawaitable(maybe):
+                await maybe
+        session.event.set()
+        return 200, {"ok": True, "captcha_id": session.captcha_id, "status": "cancelled"}
+
     def _top3(self, data: dict[str, Any], captcha_id: str) -> tuple[list[str], bool]:
         """Return solver hints when sync metadata is enabled, otherwise defer."""
 
@@ -380,6 +429,7 @@ class CaptchaRuntime:
             "captcha_id": session.captcha_id,
             "owner_label": owner_label,
             "owner_api_key_id": session.api_key_id,
+            "owner_notified": True,
         }
         self.dependencies.push_sse(message, api_key_id=session.api_key_id)
         if self.dependencies.on_timeout is not None:

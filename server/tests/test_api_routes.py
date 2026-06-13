@@ -759,7 +759,7 @@ class TestCaptchaRecords:
         assert "api_key_id" not in response.text
         assert "key_label" not in response.text
 
-    def test_public_captcha_replay_sends_selected_without_token(self, client, api_key, monkeypatch):
+    def test_public_captcha_replay_sends_selected_without_token(self, client, monkeypatch):
         from src.db import create_key, log_usage
         from src.db.connection import get_connection
         from src.services import captcha_service
@@ -786,6 +786,19 @@ class TestCaptchaRecords:
         assert response.status_code == 200
         assert response.json() == {"sent": 1}
         assert called == [(["foreign-captcha"],)]
+
+    def test_public_captcha_replay_reports_no_replayable_payloads(self, client, monkeypatch):
+        from src.services import captcha_service
+
+        monkeypatch.setattr(captcha_service, "replay_captchas", lambda *args, **kwargs: 0)
+
+        response = client.post(
+            "/public/captchas/send-selected",
+            json={"captcha_ids": ["missing-payload-captcha"]},
+        )
+
+        assert response.status_code == 400
+        assert response.json() == {"error": "No replayable captcha payloads"}
 
     def test_captcha_records_accept_v2_marker_after_start_line(self, api_key):
         from src.db import log_usage
@@ -1048,6 +1061,33 @@ class TestFrontend:
         """doc"""
         response = client.get("/test-injector/reschedule")
         assert response.status_code == 200
+
+    def test_test_channel_existing_card_contains_snapshot_hints(self, client):
+        response = client.get("/test-channel/card/existing")
+
+        assert response.status_code == 200
+        html = response.text
+        assert "EOPP Channel Test Card" in html
+        assert "Existing Carrier" in html
+        assert "reservation-card-existing" in html
+        assert "data-eopp-user" in html
+
+    def test_test_channel_new_company_contains_auto_create_case(self, client):
+        response = client.get("/test-channel/card/new-company")
+
+        assert response.status_code == 200
+        html = response.text
+        assert "New Auto Channel Company" in html
+        assert "reservation-card-new-company" in html
+
+    def test_test_channel_root_contains_no_reservation_id(self, client):
+        response = client.get("/test-channel/root")
+
+        assert response.status_code == 200
+        html = response.text
+        assert "EOPP Channel Test Root" in html
+        assert "data-route-kind=\"eopp_root\"" in html
+        assert "reservation-card-existing" not in html
 
 
 # === Captcha Tests ===

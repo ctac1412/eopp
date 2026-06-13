@@ -30,6 +30,8 @@ async def send_public_selected_captchas(body: SendSelectedCaptchasBody):
     sent = captcha_service.replay_captchas(captcha_ids)
     if sent is None:
         return JSONResponse(status_code=400, content={"error": "No active SSE connections"})
+    if sent == 0:
+        return JSONResponse(status_code=400, content={"error": "No replayable captcha payloads"})
     return JSONResponse(content={"sent": sent})
 
 

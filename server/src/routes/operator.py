@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from src.repositories import api_key_repo, operator_repo, user_repo
 from src.policies.access_policy import token_from_request
 from src.sse.manager import operator_api_key_id, registry as realtime_registry
+from src.modules.operator_distribution.service import distribute_active_operators
 
 logger = logging.getLogger("eopp.operator")
 
@@ -96,10 +97,27 @@ def _check_link_allowed(op: dict, master_key_id: int) -> str | None:
     allowed = op.get("allowed_master_keys")
     if allowed is not None and master_key_id not in allowed:
         return "Master key not in operator's allowed_master_keys"
-    company_ids = op.get("company_ids") or []
-    if company_ids and master.company_id is not None and int(master.company_id) not in [int(cid) for cid in company_ids]:
-        return "Master key company is not in operator's company scope"
-    return None
+    operator_user_id = op.get("user_id")
+    if operator_user_id is None:
+        return "Operator is not bound to a user"
+    if master.user_id is None:
+        return "Master key is not bound to a user"
+
+    from src.repositories import user_company_access_repo
+
+    operator_access = user_company_access_repo.user_access_payload("operator", int(operator_user_id))
+    executor_access = user_company_access_repo.user_access_payload("executor", int(master.user_id))
+    operator_company_ids = set(operator_access["company_ids"])
+    executor_company_ids = set(executor_access["company_ids"])
+    if operator_access["all_companies"] and executor_access["all_companies"]:
+        return None
+    if operator_access["all_companies"] and executor_company_ids:
+        return None
+    if executor_access["all_companies"] and operator_company_ids:
+        return None
+    if operator_company_ids & executor_company_ids:
+        return None
+    return "Operator company scope does not overlap executor key scope"
 
 
 def _tenant_company_id(request: Request) -> int | None:
@@ -120,34 +138,14 @@ def _operator_out_of_scope(operator_id: int, company_id: int | None) -> bool:
 
 @router.post("/operators/{uuid}/link")
 async def operator_link(uuid: str, request: Request):
-    from src.sse.manager import push_sse
-
     op = operator_repo.get_operator_by_uuid(uuid)
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})
-    raw = await request.body()
-    body = _json.loads(raw) if raw else {}
-    master_id = body.get("master_id")
-    if master_id:
-        master = api_key_repo.get_key_by_id(master_id)
-    else:
-        master_key = body.get("master_key", "")
-        master = api_key_repo.get_key_record(master_key)
-    if not master:
-        return JSONResponse(status_code=403, content={"error": "Invalid master key"})
-
-    err = _check_link_allowed(op, master.id)
-    if err:
-        logger.warning(
-            "operator_link_blocked op_id=%s uuid=%s master_id=%s reason=%s",
-            op["id"], uuid, master.id, err,
-        )
-        return JSONResponse(status_code=403, content={"error": err})
-
-    link_id, _ = operator_repo.link_operator_to_master(op["id"], master.id)
-    realtime_registry.set_operator_masters(op["id"], operator_repo.get_operator_masters(op["id"]))
-    logger.info("operator_link op_id=%s uuid=%s master_id=%s", op["id"], uuid, master.id)
-    return JSONResponse(content={"ok": True, "operator_id": op["id"]})
+    logger.info("operator_self_link_blocked op_id=%s uuid=%s", op["id"], uuid)
+    return JSONResponse(
+        status_code=403,
+        content={"error": "Operator master assignment is managed by admin"},
+    )
 
 
 @router.post("/operators/{uuid}/unlink")
@@ -358,8 +356,11 @@ async def operator_masters(uuid: str):
     allowed = op.get("allowed_master_keys")
     keys = api_key_repo.list_keys_for_operator(
         allowed_master_keys=allowed,
-        company_ids=op.get("company_ids"),
+        company_ids=None if op.get("operator_all_companies") else op.get("operator_company_ids"),
     )
+    assigned_master_ids = set(operator_repo.get_operator_masters(op["id"]))
+    for key in keys:
+        key["assigned"] = key.get("id") in assigned_master_ids
     return JSONResponse(content=keys)
 
 
@@ -496,9 +497,22 @@ async def admin_relink_operator(operator_id: int, request: Request):
     link_id, _ = operator_repo.link_operator_to_master(operator_id, master_key_id)
     realtime_registry.set_operator_masters(operator_id, operator_repo.get_operator_masters(operator_id))
 
+    try:
+        await _rebuild_slot_order(master_key_id)
+        await _push_slot_update(master_key_id)
+    except Exception as exc:
+        logger.error("admin_relink_slot_rebuild_error op_id=%s master_id=%s %s", operator_id, master_key_id, exc)
+
+    master = api_key_repo.get_key_by_id(master_key_id)
+
     # Push SSE to operator
     push_sse(
-        {"type": "master_reassigned", "master_key_id": master_key_id},
+        {
+            "type": "master_reassigned",
+            "master_key_id": master_key_id,
+            "master_label": getattr(master, "label", None) if master else None,
+            "master_online": realtime_registry.has_connection(master_key_id),
+        },
         api_key_id=operator_api_key_id(operator_id),
     )
 
@@ -524,6 +538,56 @@ async def admin_active_links(request: Request):
     if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return JSONResponse(content=operator_repo.get_active_links(_tenant_company_id(request)))
+
+
+@router.post("/admin/operator-distribution/active/round-robin")
+async def admin_distribute_active_operators(request: Request):
+    from src.policies.access_policy import is_admin_token
+    from src.sse.manager import push_sse
+
+    if not is_admin_token(token_from_request(request)):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    result = distribute_active_operators(company_id=_tenant_company_id(request))
+    if result["applied_count"] == 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                **result,
+                "error": "Нет активных операторов или доступных online-мастеров",
+            },
+        )
+
+    affected_masters = {int(item["master_key_id"]) for item in result["assignments"]}
+    for assignment in result["assignments"]:
+        operator_id = int(assignment["operator_id"])
+        master_key_id = int(assignment["master_key_id"])
+        realtime_registry.set_operator_masters(operator_id, operator_repo.get_operator_masters(operator_id))
+        master = api_key_repo.get_key_by_id(master_key_id)
+        push_sse(
+            {
+                "type": "master_reassigned",
+                "master_key_id": master_key_id,
+                "master_label": getattr(master, "label", None) if master else None,
+                "master_online": realtime_registry.has_connection(master_key_id),
+            },
+            api_key_id=operator_api_key_id(operator_id),
+        )
+
+    for master_key_id in affected_masters:
+        try:
+            await _rebuild_slot_order(master_key_id)
+            await _push_slot_update(master_key_id)
+        except Exception as exc:
+            logger.error("admin_distribute_active_slot_rebuild_error master_id=%s %s", master_key_id, exc)
+
+    logger.info(
+        "admin_distribute_active_operators strategy=%s applied=%s skipped=%s",
+        result["strategy"],
+        result["applied_count"],
+        len(result["skipped"]),
+    )
+    return JSONResponse(content=result)
 
 
 @router.get("/admin/distribution-answers")

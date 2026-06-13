@@ -31,24 +31,6 @@ class CompanyMembership(Base):
     company: Mapped[Company] = relationship(back_populates="memberships")
 
 
-class MasterProfile(Base):
-    """Functional profile marking a user as a master who may use plugin keys."""
-
-    __tablename__ = "master_profiles"
-    __table_args__ = (UniqueConstraint("user_id", name="uq_master_profile_user"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
-    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
-    scope: Mapped[str] = mapped_column(String, nullable=False, default="own_company")
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-    updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    user: Mapped[User] = relationship(back_populates="master_profile")
-    company: Mapped[Company] = relationship(back_populates="master_profiles")
-
-
 class OperatorProfile(Base):
     """Functional profile linking a login user to the legacy operator runtime row."""
 
@@ -84,3 +66,54 @@ class FinanceParticipantProfile(Base):
 
     user: Mapped[User] = relationship(back_populates="finance_profile")
     company: Mapped[Company] = relationship(back_populates="finance_profiles")
+
+
+class UserFinanceCompany(Base):
+    """Company assignment that makes a user selectable in finance flows.
+
+    ``company_id`` set to ``NULL`` means all current and future companies.
+    """
+
+    __tablename__ = "user_finance_companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="finance_company_access")
+    company: Mapped[Company | None] = relationship(back_populates="finance_user_access")
+
+
+class UserOperatorCompany(Base):
+    """Company assignment that allows a user's operator runtime in a company."""
+
+    __tablename__ = "user_operator_companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="operator_company_access")
+    company: Mapped[Company | None] = relationship(back_populates="operator_user_access")
+
+
+class UserExecutorCompany(Base):
+    """Company assignment that allows a user-owned plugin/API key in a company."""
+
+    __tablename__ = "user_executor_companies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("companies.id"), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="executor_company_access")
+    company: Mapped[Company | None] = relationship(back_populates="executor_user_access")

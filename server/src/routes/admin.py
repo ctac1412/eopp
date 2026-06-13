@@ -30,6 +30,7 @@ from src.models import (
     CreatePrepaidPackageBody,
     CreateUserBody,
     GenerateInvoiceBody,
+    CompanyAccessBody,
     OpenInvoiceBody,
     PreviewPayoutBody,
     SendSelectedCaptchasBody,
@@ -45,6 +46,7 @@ from src.models import (
     UpdatePrepaidPackageBody,
     UpdateUsageLogBody,
     UpdateUserBody,
+    UserCompanyAccessBody,
 )
 from src.modules.access.permissions import Permission, serialize_roles
 from src.modules.access.service import AccessService
@@ -55,7 +57,7 @@ from src.policies.access_policy import (
     requires_admin,
     token_from_request,
 )
-from src.repositories import api_key_repo, company_repo, usage_log_repo, user_repo
+from src.repositories import api_key_repo, company_repo, usage_log_repo, user_company_access_repo, user_repo
 from src.routes.auth import login_response
 
 logger = logging.getLogger("eopp.admin")
@@ -153,7 +155,7 @@ def _company_ids_from_user_body(body) -> set[int]:
     for membership in getattr(body, "company_memberships", None) or []:
         if membership.get("company_id") is not None:
             ids.add(int(membership["company_id"]))
-    for attr in ("master_profile", "operator_profile", "finance_profile"):
+    for attr in ("operator_profile", "finance_profile"):
         profile = getattr(body, attr, None) or {}
         if profile.get("company_id") is not None:
             ids.add(int(profile["company_id"]))
@@ -173,9 +175,45 @@ def _guard_tenant_user_body(request: Request, body, *, default_company: bool = F
     company_ids = _company_ids_from_user_body(body)
     if any(company_id != tenant_company_id for company_id in company_ids):
         return _forbid_company_scope()
-    master_profile = getattr(body, "master_profile", None) or {}
-    if master_profile.get("scope") == "all_companies":
+    return None
+
+
+def _guard_tenant_access_payload(
+    request: Request,
+    user_id: int,
+    payload: dict,
+) -> JSONResponse | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is None:
+        return None
+    target_guard = _guard_tenant_user_target(request, user_id)
+    if target_guard:
+        return target_guard
+    for assignment in payload.values():
+        if not isinstance(assignment, dict):
+            continue
+        if assignment.get("all_companies"):
+            return _forbid_company_scope()
+        for company_id in assignment.get("company_ids") or []:
+            if int(company_id) != tenant_company_id:
+                return _forbid_company_scope()
+    return None
+
+
+def _guard_tenant_company_users(
+    request: Request,
+    company_id: int,
+    user_ids: list[int],
+) -> JSONResponse | None:
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and int(company_id) != tenant_company_id:
         return _forbid_company_scope()
+    if tenant_company_id is None:
+        return None
+    for user_id in user_ids:
+        user = user_repo.get_user(int(user_id))
+        if user and user.get("company_id") != tenant_company_id:
+            return _forbid_company_scope()
     return None
 
 
@@ -229,7 +267,12 @@ def _guard_tenant_api_key_target(request: Request, api_key_id: int | None) -> JS
     key = api_key_repo.get_key_by_id(int(api_key_id))
     if key is None:
         return None
-    if key.company_id != tenant_company_id:
+    if key.user_id is None:
+        if key.company_id == tenant_company_id:
+            return None
+        return _forbid_company_scope()
+    user = user_repo.get_user(int(key.user_id))
+    if not user or user.get("company_id") != tenant_company_id:
         return _forbid_company_scope()
     return None
 
@@ -828,6 +871,49 @@ async def list_admin_finance_participants(request: Request, company_id: int | No
     if tenant_company_id is not None and company_id is not None and int(company_id) != tenant_company_id:
         return JSONResponse(status_code=403, content={"error": "Forbidden: company scope required"})
     return _json_result(billing_service.list_finance_participants(company_id or tenant_company_id))
+
+
+@router.get("/user-company-access")
+async def get_admin_user_company_access(user_id: int, request: Request):
+    target_guard = _guard_tenant_user_target(request, user_id)
+    if target_guard:
+        return target_guard
+    access = user_company_access_repo.get_user_access(user_id)
+    if access is None:
+        return JSONResponse(status_code=404, content={"error": "User not found"})
+    return JSONResponse(content=access)
+
+
+@router.put("/user-company-access/{user_id}")
+async def update_admin_user_company_access(user_id: int, body: UserCompanyAccessBody, request: Request):
+    payload = body.model_dump(exclude_none=True)
+    scope_guard = _guard_tenant_access_payload(request, user_id, payload)
+    if scope_guard:
+        return scope_guard
+    access = user_company_access_repo.set_user_access(user_id, payload)
+    if access is None:
+        return JSONResponse(status_code=404, content={"error": "User not found"})
+    return JSONResponse(content=access)
+
+
+@router.get("/company-access")
+async def get_admin_company_access(company_id: int, request: Request):
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and int(company_id) != tenant_company_id:
+        return _forbid_company_scope()
+    return JSONResponse(content=user_company_access_repo.get_company_access(company_id))
+
+
+@router.put("/company-access/{company_id}")
+async def update_admin_company_access(company_id: int, body: CompanyAccessBody, request: Request):
+    payload = body.model_dump(exclude_none=True)
+    all_user_ids: list[int] = []
+    for value in payload.values():
+        all_user_ids.extend(int(user_id) for user_id in value)
+    scope_guard = _guard_tenant_company_users(request, company_id, all_user_ids)
+    if scope_guard:
+        return scope_guard
+    return JSONResponse(content=user_company_access_repo.set_company_access(company_id, payload))
 
 
 @router.post("/users")

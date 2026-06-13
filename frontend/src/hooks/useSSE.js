@@ -172,9 +172,17 @@ function useSSE(enabled = true) {
         }
 
         if (msg.type === "captcha_timeout") {
+          const existed = useCaptchaStore.getState().queue.some((captcha) => captcha.id === msg.captcha_id);
           removeCaptcha(msg.captcha_id);
           sounded.delete(msg.captcha_id);
-          addLog(`Капча ${msg.captcha_id} — таймаут`, "error");
+          if (existed) {
+            addLog(
+              msg.reason === "cancelled"
+                ? `Капча ${msg.captcha_id} — отменена пользователем`
+                : `Капча ${msg.captcha_id} — таймаут`,
+              "error",
+            );
+          }
         }
 
         if (msg.type === "distribution_progress") {

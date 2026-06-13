@@ -3,8 +3,10 @@ from src.entities.admin_session import AdminSession
 from src.entities.access_profile import (
     CompanyMembership,
     FinanceParticipantProfile,
-    MasterProfile,
     OperatorProfile,
+    UserExecutorCompany,
+    UserFinanceCompany,
+    UserOperatorCompany,
 )
 from src.entities.base import Base, get_engine, get_session, get_session_factory, set_db_path
 from src.entities.billing import CompanyAlias, CompanyBillingSetting
@@ -17,6 +19,13 @@ from src.entities.expense import Expense
 from src.entities.invoice import Invoice, InvoiceItem
 from src.entities.payout import Payout, PayoutExpense, PayoutInvoice, PayoutShare
 from src.entities.prepaid import PrepaidDeduction, PrepaidPackage
+from src.entities.plugin_channel import (
+    ConnectedPlugin,
+    PluginChannelCommand,
+    PluginChannelEvent,
+    PluginChannelSession,
+    PluginChannelSnapshot,
+)
 from src.entities.tariff import CompanyTariff, Tariff
 from src.entities.usage_log import UsageLog
 from src.entities.user import User
@@ -30,9 +39,11 @@ __all__ = [
     "ApiKey",
     "AdminSession",
     "CompanyMembership",
-    "MasterProfile",
     "OperatorProfile",
     "FinanceParticipantProfile",
+    "UserFinanceCompany",
+    "UserOperatorCompany",
+    "UserExecutorCompany",
     "Tariff",
     "CompanyTariff",
     "UsageLog",
@@ -52,6 +63,11 @@ __all__ = [
     "PayoutExpense",
     "PrepaidPackage",
     "PrepaidDeduction",
+    "ConnectedPlugin",
+    "PluginChannelSession",
+    "PluginChannelSnapshot",
+    "PluginChannelCommand",
+    "PluginChannelEvent",
     "Company",
     "CompanyBillingSetting",
     "CompanyAlias",

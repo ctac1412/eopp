@@ -35,6 +35,98 @@ function clip(value, length = 120) {
   return value.length > length ? `${value.slice(0, length)}...` : value;
 }
 
+function CompanyAccessRoleSection({ kind, label, users, selectedIds, onDrop, onToggle }) {
+  return (
+    <section
+      className="user-access-block mb-2"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => onDrop(kind, event)}
+    >
+      <div className="user-access-block__head">
+        <span className="fw-semibold">{label}</span>
+      </div>
+      <div className="operator-master-tags user-access-block__source">
+        {users.map((user) => {
+          const selected = selectedIds.has(Number(user.id));
+          return (
+            <button
+              type="button"
+              key={user.id}
+              className={`operator-master-tag access-tag ${
+                selected ? "access-tag--selected" : "access-tag--available"
+              }`}
+              onClick={() => onToggle(kind, user.id)}
+            >
+              <span
+                className="access-tag__drag-icon"
+                draggable
+                onClick={(event) => event.stopPropagation()}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", String(user.id))}
+                title="Перетащить"
+              />
+              <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CompanyAccessRoleSectionV2({ kind, label, users, selectedIds, onDrop, onToggle }) {
+  const selectedUsers = users.filter((user) => selectedIds.has(Number(user.id)));
+  const availableUsers = users.filter((user) => !selectedIds.has(Number(user.id)));
+
+  return (
+    <section className="user-access-block mb-2">
+      <div className="user-access-block__head">
+        <span className="fw-semibold">{label}</span>
+      </div>
+      <div className="user-access-block__label">Доступные</div>
+      <div className="operator-master-tags user-access-block__source">
+        {availableUsers.map((user) => (
+          <button
+            type="button"
+            key={user.id}
+            className="operator-master-tag access-tag access-tag--available"
+            onClick={() => onToggle(kind, user.id)}
+          >
+            <span
+              className="access-tag__drag-icon"
+              draggable
+              onClick={(event) => event.stopPropagation()}
+              onDragStart={(event) => event.dataTransfer.setData("text/plain", String(user.id))}
+              title="Перетащить"
+            />
+            <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
+          </button>
+        ))}
+        {availableUsers.length === 0 && <span className="text-muted">Все пользователи добавлены</span>}
+      </div>
+      <div className="user-access-block__label">Добавленные</div>
+      <div
+        className="user-access-block__drop"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => onDrop(kind, event)}
+      >
+        {selectedUsers.map((user) => (
+          <button
+            type="button"
+            key={user.id}
+            className="operator-master-tag access-tag access-tag--selected"
+            onClick={() => onToggle(kind, user.id)}
+          >
+            <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
+          </button>
+        ))}
+        {selectedUsers.length === 0 && (
+          <span className="text-muted">Перетащите сюда или кликните красный тег</span>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function CompaniesTab({ adminToken, onError }) {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +143,10 @@ export function CompaniesTab({ adminToken, onError }) {
   const [tariffSaving, setTariffSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [accessCompany, setAccessCompany] = useState(null);
+  const [accessUsers, setAccessUsers] = useState([]);
+  const [accessDraft, setAccessDraft] = useState({ finance: [], operator: [], executor: [] });
+  const [accessSaving, setAccessSaving] = useState(false);
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -238,6 +334,80 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   };
 
+  const openAccess = async (company) => {
+    setAccessCompany(company);
+    setAccessDraft({ finance: [], operator: [], executor: [] });
+    try {
+      const [usersRes, accessRes] = await Promise.all([
+        fetch("/admin/users", { headers: adminHeadersJson(adminToken) }),
+        fetch(`/admin/company-access?company_id=${company.id}`, { headers: adminHeadersJson(adminToken) }),
+      ]);
+      if (!usersRes.ok || !accessRes.ok) throw new Error(`HTTP ${usersRes.status}/${accessRes.status}`);
+      const usersData = await usersRes.json();
+      const accessData = await accessRes.json();
+      setAccessUsers(Array.isArray(usersData) ? usersData : []);
+      setAccessDraft({
+        finance: accessData.finance?.user_ids || [],
+        operator: accessData.operator?.user_ids || [],
+        executor: accessData.executor?.user_ids || [],
+      });
+    } catch (err) {
+      onError?.(`Access load failed: ${err.message}`);
+    }
+  };
+
+  const dropAccessUser = (kind, event) => {
+    event.preventDefault();
+    const userId = Number(event.dataTransfer.getData("text/plain"));
+    if (!userId) return;
+    addAccessUser(kind, userId);
+  };
+
+  const addAccessUser = (kind, userId) => {
+    setAccessDraft((prev) => ({
+      ...prev,
+      [kind]: Array.from(new Set([...(prev[kind] || []), userId])),
+    }));
+  };
+
+  const removeAccessUser = (kind, userId) => {
+    setAccessDraft((prev) => ({
+      ...prev,
+      [kind]: (prev[kind] || []).filter((id) => Number(id) !== Number(userId)),
+    }));
+  };
+
+  const toggleAccessUser = (kind, userId) => {
+    const selected = (accessDraft[kind] || []).some((id) => Number(id) === Number(userId));
+    if (selected) {
+      removeAccessUser(kind, userId);
+    } else {
+      addAccessUser(kind, userId);
+    }
+  };
+
+  const saveAccess = async () => {
+    if (!accessCompany) return;
+    setAccessSaving(true);
+    try {
+      const res = await fetch(`/admin/company-access/${accessCompany.id}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          finance_user_ids: accessDraft.finance || [],
+          operator_user_ids: accessDraft.operator || [],
+          executor_user_ids: accessDraft.executor || [],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAccessCompany(null);
+    } catch (err) {
+      onError?.(`Access save failed: ${err.message}`);
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
   const columns = [
     {
       title: "ID",
@@ -278,7 +448,7 @@ export function CompaniesTab({ adminToken, onError }) {
     {
       title: "Создана",
       dataIndex: "created_at",
-      width: 150,
+      width: 210,
       render: formatDate,
     },
     {
@@ -287,6 +457,7 @@ export function CompaniesTab({ adminToken, onError }) {
       align: "right",
       render: (_, company) => (
         <Space size={4}>
+          <Button size="small" onClick={() => openAccess(company)}>Access</Button>
           <Button size="small" onClick={() => openTariff(company)}>Tariff</Button>
           <Button size="small" onClick={() => openEdit(company)}>Изм.</Button>
           <Button size="small" variant="danger" onClick={() => deleteCompany(company)}>Удал.</Button>
@@ -424,6 +595,39 @@ export function CompaniesTab({ adminToken, onError }) {
               />
             </label>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        title={accessCompany ? `Access: ${accessCompany.name}` : "Access"}
+        open={!!accessCompany}
+        onOk={saveAccess}
+        onCancel={() => setAccessCompany(null)}
+        okText="Save"
+        cancelText="Cancel"
+        confirmLoading={accessSaving}
+        width={820}
+        destroyOnHidden
+      >
+        <div className="company-access-modal">
+          {[
+            ["finance", "Финансы"],
+            ["operator", "Операторы"],
+            ["executor", "Исполнители"],
+          ].map(([kind, label]) => {
+            const selectedIds = new Set((accessDraft[kind] || []).map(Number));
+            return (
+              <CompanyAccessRoleSectionV2
+                key={kind}
+                kind={kind}
+                label={label}
+                users={accessUsers}
+                selectedIds={selectedIds}
+                onDrop={dropAccessUser}
+                onToggle={toggleAccessUser}
+              />
+            );
+          })}
         </div>
       </Modal>
     </div>

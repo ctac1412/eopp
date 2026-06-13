@@ -11,8 +11,10 @@ if TYPE_CHECKING:
     from src.entities.access_profile import (
         CompanyMembership,
         FinanceParticipantProfile,
-        MasterProfile,
         OperatorProfile,
+        UserExecutorCompany,
+        UserFinanceCompany,
+        UserOperatorCompany,
     )
     from src.entities.api_key import ApiKey
     from src.entities.company import Company
@@ -40,14 +42,20 @@ class User(Base):
     company_memberships: Mapped[list[CompanyMembership]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    master_profile: Mapped[MasterProfile | None] = relationship(
-        back_populates="user", cascade="all, delete-orphan", uselist=False
-    )
     operator_profile: Mapped[OperatorProfile | None] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
     )
     finance_profile: Mapped[FinanceParticipantProfile | None] = relationship(
         back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+    finance_company_access: Mapped[list[UserFinanceCompany]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    operator_company_access: Mapped[list[UserOperatorCompany]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    executor_company_access: Mapped[list[UserExecutorCompany]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
     api_keys: Mapped[list[ApiKey]] = relationship(back_populates="user")
     expenses: Mapped[list[Expense]] = relationship(back_populates="user")

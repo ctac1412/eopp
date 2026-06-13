@@ -172,9 +172,11 @@ class CreateUserBody(BaseModel):
     active: bool = True
     company_id: int | None = None
     company_memberships: list[dict] | None = None
-    master_profile: dict | None = None
     operator_profile: dict | None = None
     finance_profile: dict | None = None
+    finance_access: dict | None = None
+    operator_access: dict | None = None
+    executor_access: dict | None = None
 
 
 class UpdateUserBody(BaseModel):
@@ -186,9 +188,28 @@ class UpdateUserBody(BaseModel):
     active: bool | None = None
     company_id: int | None = None
     company_memberships: list[dict] | None = None
-    master_profile: dict | None = None
     operator_profile: dict | None = None
     finance_profile: dict | None = None
+    finance_access: dict | None = None
+    operator_access: dict | None = None
+    executor_access: dict | None = None
+
+
+class AccessAssignmentBody(BaseModel):
+    company_ids: list[int] = []
+    all_companies: bool = False
+
+
+class UserCompanyAccessBody(BaseModel):
+    finance: AccessAssignmentBody | None = None
+    operator: AccessAssignmentBody | None = None
+    executor: AccessAssignmentBody | None = None
+
+
+class CompanyAccessBody(BaseModel):
+    finance_user_ids: list[int] | None = None
+    operator_user_ids: list[int] | None = None
+    executor_user_ids: list[int] | None = None
 
 
 class CreateExpenseBody(BaseModel):

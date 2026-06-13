@@ -97,7 +97,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
           disabled={captchas.length === 0}
         />
       ),
-      width: 48,
+      width: 36,
       align: "center",
       render: (_, captcha) => (
         <Checkbox
@@ -120,12 +120,12 @@ export function PublicCaptchasTab({ onReplaySent }) {
     {
       title: "Статус",
       dataIndex: "status",
-      width: 140,
+      width: 72,
       align: "center",
       render: (status) => (
         <StatusTag
           status={getStatusTagStatus(status)}
-          label={statusLabel[status] || status}
+          label={status === "passed" ? "OK" : status === "failed" ? "ERR" : status}
         />
       ),
     },
@@ -174,8 +174,9 @@ export function PublicCaptchasTab({ onReplaySent }) {
         columns={columns}
         loading={loading}
         emptyText="Нет капч"
-        pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 30, 50] }}
-        scroll={{ x: 520 }}
+        pagination={{ pageSize: 15, showSizeChanger: false }}
+        scroll={false}
+        tableLayout="fixed"
       />
     </div>
   );
