@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, DatePicker, Segmented, Space, Typography } from "antd";
 
 import { listCompanies, listFinanceParticipants } from "./financeApi.js";
+import { FinanceEntriesView } from "./FinanceEntriesView.jsx";
 
 const { RangePicker } = DatePicker;
 
@@ -28,6 +29,7 @@ export function FinanceTab({ adminToken, onError }) {
   const [companies, setCompanies] = useState([]);
   const [participants, setParticipants] = useState([]);
   const [dateRange, setDateRange] = useState(null);
+  const [ledgerFilters, setLedgerFilters] = useState({});
 
   const refresh = useCallback(() => {
     setRefreshKey((key) => key + 1);
@@ -93,7 +95,13 @@ export function FinanceTab({ adminToken, onError }) {
         {referenceError && <Alert type="error" showIcon message={referenceError} />}
       </div>
 
-      {activeView === "ledger" && <FinancePlaceholder title="Проводки" {...sharedProps} />}
+      {activeView === "ledger" && (
+        <FinanceEntriesView
+          {...sharedProps}
+          initialFilters={ledgerFilters}
+          onFiltersChange={setLedgerFilters}
+        />
+      )}
       {activeView === "lots" && <FinancePlaceholder title="Лоты прибыли" {...sharedProps} />}
       {activeView === "report" && <FinancePlaceholder title="Сводка" {...sharedProps} />}
     </div>
