@@ -9,3 +9,8 @@ test("operations dashboard exposes admin broadcast chat controls", () => {
   assert.match(source, /adminRequest\("\/admin\/chat\/broadcast"/);
   assert.match(source, /adminBroadcastMessage/);
 });
+
+test("admin broadcast sends a JSON request through the shared client contract", () => {
+  assert.match(source, /json:\s*{\s*message:\s*text,/);
+  assert.doesNotMatch(source, /body:\s*JSON\.stringify\(\s*{\s*message:\s*text,/);
+});

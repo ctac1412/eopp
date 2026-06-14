@@ -13,8 +13,12 @@ test("captcha review modal renders operator click markers", () => {
 });
 
 test("journal details and operator logs can open captcha review", () => {
+  const fieldSource = detailsSource.match(/function Field[\s\S]*?function CaptchaStatus/)?.[0] ?? "";
+
+  assert.doesNotMatch(fieldSource, /CaptchaReviewModal/);
   assert.match(detailsSource, /operator_names/);
   assert.match(detailsSource, /setReviewCaptcha\(row\)/);
+  assert.match(detailsSource, /<CaptchaReviewModal\s+captcha=\{reviewCaptcha\}/);
   assert.match(operatorsSource, /activeTab === "dashboard" \? renderDashboard\(\) : renderSettings\(\)/);
   assert.match(operatorsSource, /const groupedAnswers = useMemo/);
   assert.match(operatorsSource, /data=\{groupedAnswers\}/);

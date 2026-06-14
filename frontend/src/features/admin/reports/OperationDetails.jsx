@@ -26,11 +26,6 @@ function Field({ label, value, mono = false }) {
     <div className="operation-details__field">
       <span>{label}</span>
       <strong className={mono ? "font-monospace" : ""}>{value || "—"}</strong>
-      <CaptchaReviewModal
-        captcha={reviewCaptcha}
-        open={!!reviewCaptcha}
-        onClose={() => setReviewCaptcha(null)}
-      />
     </div>
   );
 }
@@ -178,6 +173,12 @@ export function OperationDetails({
           )) : <div className="text-muted">Нет логов</div>}
         </div>
       </section>
+
+      <CaptchaReviewModal
+        captcha={reviewCaptcha}
+        open={!!reviewCaptcha}
+        onClose={() => setReviewCaptcha(null)}
+      />
     </div>
   );
 }

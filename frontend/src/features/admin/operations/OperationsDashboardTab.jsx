@@ -479,11 +479,10 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     try {
       const response = await adminRequest("/admin/chat/broadcast", {
         method: "POST",
-        headers: adminHeadersJson(adminToken),
-        body: JSON.stringify({
+        json: {
           message: text,
           sender_label: "Администратор",
-        }),
+        },
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
