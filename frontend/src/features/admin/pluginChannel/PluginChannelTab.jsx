@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Card, Space } from "antd";
 import { Button, DataTable, MetricsStrip, StatusTag, Toolbar } from "../../../ui";
-import { adminHeaders, adminHeadersJson } from "../shared/adminClient";
+import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient";
 
 function formatDate(iso) {
   if (!iso) return "-";
@@ -61,7 +61,7 @@ export function PluginChannelTab({ adminToken, onError }) {
     if (!adminToken) return;
     setLoading(true);
     try {
-      const response = await fetch("/admin/plugin-channel/sessions", {
+      const response = await adminRequest("/admin/plugin-channel/sessions", {
         headers: adminHeadersJson(adminToken),
       });
       const data = await response.json().catch(() => ({}));
@@ -110,7 +110,7 @@ export function PluginChannelTab({ adminToken, onError }) {
   const claimSession = useCallback(
     (session) =>
       runAction(session, "claim", () =>
-        fetch(`/admin/plugin-channel/sessions/${session.id}/claim`, {
+        adminRequest(`/admin/plugin-channel/sessions/${session.id}/claim`, {
           method: "POST",
           headers: adminHeaders(adminToken),
         }),
@@ -121,7 +121,7 @@ export function PluginChannelTab({ adminToken, onError }) {
   const refreshSnapshot = useCallback(
     (session) =>
       runAction(session, "refresh", () =>
-        fetch(`/admin/plugin-channel/sessions/${session.id}/commands`, {
+        adminRequest(`/admin/plugin-channel/sessions/${session.id}/commands`, {
           method: "POST",
           headers: adminHeaders(adminToken),
           body: JSON.stringify({ type: "refresh_snapshot", payload: {} }),
@@ -133,7 +133,7 @@ export function PluginChannelTab({ adminToken, onError }) {
   const closeSession = useCallback(
     (session) =>
       runAction(session, "close", () =>
-        fetch(`/admin/plugin-channel/sessions/${session.id}/close`, {
+        adminRequest(`/admin/plugin-channel/sessions/${session.id}/close`, {
           method: "POST",
           headers: adminHeaders(adminToken),
         }),

@@ -1,3 +1,4 @@
+import { captchaService } from "./api/captchaService";
 import React, { useEffect, useMemo, useState } from "react";
 import useCaptchaStore from "../../../store/useCaptchaStore";
 import { StatusTag } from "../../../ui";
@@ -59,7 +60,7 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
   };
 
   const submitAnswer = async (coords) => {
-    const res = await fetch("/solve", {
+    const res = await captchaService.request("/solve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -159,7 +160,7 @@ function DistributedIconClick({ entry, apiKey, superKioskMode }) {
 
     setAnswering(true);
     try {
-      const res = await fetch("/distribution/answer", {
+      const res = await captchaService.request("/distribution/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

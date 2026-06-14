@@ -1,3 +1,4 @@
+import { historyService } from "./api/historyService";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Alert, Pagination, Spin } from "antd";
 import { HistoryTable } from "./HistoryTable";
@@ -24,7 +25,7 @@ function UsageHistory({ apiKey }) {
       return;
     }
     try {
-      const resp = await fetch(`/usage-log?api_key=${encodeURIComponent(apiKey)}`);
+      const resp = await historyService.request(`/usage-log?api_key=${encodeURIComponent(apiKey)}`);
       if (!resp.ok) {
         setError(resp.status === 403 ? "Неверный API-ключ" : "Не удалось загрузить историю");
         return;

@@ -1,3 +1,4 @@
+import { captchaService } from "./api/captchaService";
 import React from "react";
 import useCaptchaStore from "../../../store/useCaptchaStore";
 import { StatusTag } from "../../../ui";
@@ -13,7 +14,7 @@ function CaptchaCard({ entry, index }) {
   const handleClick = async () => {
     setSelectedCard(entry.id, index);
 
-    const res = await fetch("/solve", {
+    const res = await captchaService.request("/solve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

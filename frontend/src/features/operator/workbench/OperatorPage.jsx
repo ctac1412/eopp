@@ -1,3 +1,4 @@
+import { operatorWorkbenchService } from "./api/operatorWorkbenchService";
 ﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -338,7 +339,7 @@ export function OperatorPage() {
   }, [uuid, disconnect, addLog, updateActiveRef]);
 
   useEffect(() => {
-    fetch(`/operators/${uuid}/masters`)
+    operatorWorkbenchService.request(`/operators/${uuid}/masters`)
       .then((r) => r.json())
       .then((list) => {
         const active = list.filter((k) => k.active);
@@ -387,7 +388,7 @@ export function OperatorPage() {
 
   const handleReadyClick = () => {
     if (masterId) {
-      fetch("/chat/send", {
+      operatorWorkbenchService.request("/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -415,7 +416,7 @@ export function OperatorPage() {
     if (!active || active.complete || active.waiting || answering) return;
     setAnswering(true);
     try {
-      const r = await fetch("/distribution/answer", {
+      const r = await operatorWorkbenchService.request("/distribution/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -532,7 +533,7 @@ export function OperatorPage() {
               handleReconnect={handleReconnect}
               handleDisconnect={() => {
                 if (masterId) {
-                  fetch("/chat/send", {
+                  operatorWorkbenchService.request("/chat/send", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({

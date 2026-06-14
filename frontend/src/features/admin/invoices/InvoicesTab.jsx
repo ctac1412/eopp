@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Card, Modal, Space } from "antd";
 import { formatMoney } from "../../../utils/format";
@@ -91,7 +92,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/admin/invoices", { headers: adminHeadersJson(adminToken) });
+      const res = await adminRequest("/admin/invoices", { headers: adminHeadersJson(adminToken) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setInvoices(Array.isArray(data) ? data : []);
@@ -107,8 +108,8 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const fetchCompanySettings = useCallback(async () => {
     try {
       const [settingsRes, aliasesRes] = await Promise.all([
-        fetch("/admin/company-billing-settings", { headers: adminHeadersJson(adminToken) }),
-        fetch("/admin/company-aliases", { headers: adminHeadersJson(adminToken) }),
+        adminRequest("/admin/company-billing-settings", { headers: adminHeadersJson(adminToken) }),
+        adminRequest("/admin/company-aliases", { headers: adminHeadersJson(adminToken) }),
       ]);
       if (settingsRes.ok) {
         const data = await settingsRes.json();
@@ -139,7 +140,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const togglePaid = async (invoice) => {
     const newPaid = !invoice.paid;
     try {
-      const res = await fetch(`/admin/invoices/${invoice.id}`, {
+      const res = await adminRequest(`/admin/invoices/${invoice.id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ paid: newPaid }),
@@ -162,7 +163,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
       cancelText: "Отмена",
       onOk: async () => {
         try {
-          const res = await fetch(`/admin/invoices/${invoice.id}`, {
+          const res = await adminRequest(`/admin/invoices/${invoice.id}`, {
             method: "DELETE",
             headers: adminHeaders(adminToken),
           });
@@ -187,7 +188,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const openAutoInvoice = async () => {
     if (!autoCompany.trim()) return;
     try {
-      const res = await fetch("/admin/auto-invoices/open", {
+      const res = await adminRequest("/admin/auto-invoices/open", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ company: autoCompany.trim() }),
@@ -204,7 +205,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const issueAutoInvoice = async () => {
     if (!autoCompany.trim()) return;
     try {
-      const res = await fetch("/admin/open-invoices/issue", {
+      const res = await adminRequest("/admin/open-invoices/issue", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ company: autoCompany.trim(), comment: autoIssueComment }),
@@ -221,7 +222,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
 
   const setAutoReopen = async (company, enabled) => {
     try {
-      const res = await fetch(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
+      const res = await adminRequest(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ auto_invoice_reopen: enabled }),
@@ -238,7 +239,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const saveAlias = async (event) => {
     event.preventDefault();
     try {
-      const res = await fetch("/admin/company-aliases", {
+      const res = await adminRequest("/admin/company-aliases", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(aliasForm),
@@ -255,7 +256,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
 
   const deleteAlias = async (alias) => {
     try {
-      const res = await fetch(`/admin/company-aliases/${encodeURIComponent(alias)}`, {
+      const res = await adminRequest(`/admin/company-aliases/${encodeURIComponent(alias)}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });

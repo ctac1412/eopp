@@ -1,3 +1,4 @@
+import { authService } from "./api/authService";
 import React, { useState } from "react";
 import { Alert } from "antd";
 import useCaptchaStore from "../../store/useCaptchaStore";
@@ -22,11 +23,7 @@ function AuthWizard() {
     setLoading(true);
     setError("");
     try {
-      const loginResp = await fetch("/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login: trimmedLogin, password }),
-      });
+      const loginResp = await authService.login({ login: trimmedLogin, password });
       const loginData = await loginResp.json();
       if (!loginResp.ok) {
         setError(loginData.error || "Неверные данные входа");
@@ -38,7 +35,7 @@ function AuthWizard() {
       localStorage.setItem("admin_sections", JSON.stringify(loginData.sections || []));
       localStorage.setItem("admin_permissions", JSON.stringify(loginData.permissions || []));
 
-      const keysResp = await fetch("/auth/plugin-keys");
+      const keysResp = await authService.pluginKeys();
       const keysData = await keysResp.json();
       if (!keysResp.ok) {
         setError(keysData.error || "Не удалось загрузить ключи пользователя");

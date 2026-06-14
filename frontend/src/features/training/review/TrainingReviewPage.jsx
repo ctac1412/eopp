@@ -1,3 +1,4 @@
+import { trainingService } from "../api/trainingService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Card, Spin } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
@@ -33,7 +34,7 @@ export default function TrainingReviewPage() {
   const imgContainerRef = useRef(null);
 
   useEffect(() => {
-    fetch(`${API}/training/run/${runId}/results`)
+    trainingService.request(`/training/run/${runId}/results`)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -48,7 +49,7 @@ export default function TrainingReviewPage() {
     setCaptchaData(null);
     setImgSize(null);
 
-    fetch(`${API}/training/captcha/${encodeURIComponent(result.captcha_id)}`)
+    trainingService.request(`/training/captcha/${encodeURIComponent(result.captcha_id)}`)
       .then(r => r.json())
       .then(d => { setCaptchaData(d); setImgLoading(false); })
       .catch(() => setImgLoading(false));

@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Checkbox, Input, Modal, Pagination } from "antd";
 import {
@@ -92,7 +93,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     setRecomputeLoading(true);
     setRecomputeResult(null);
     try {
-      const res = await fetch(
+      const res = await adminRequest(
         `/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/recompute`,
         { method: "POST", headers: adminHeaders(adminToken) }
       );
@@ -112,7 +113,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       prev.map((f) => (f.captcha_id === captchaId ? { ...f, classification } : f))
     );
     try {
-      const res = await fetch(
+      const res = await adminRequest(
         `/admin/captcha-files/${encodeURIComponent(captchaId)}/classification`,
         { method: "PUT", headers: adminHeaders(adminToken), body: JSON.stringify({ classification }) }
       );
@@ -125,7 +126,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const fetchCaptchas = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/admin/captchas", {
+      const res = await adminRequest("/admin/captchas", {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -143,7 +144,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const fetchCaptchaFiles = useCallback(async () => {
     setFilesLoading(true);
     try {
-      const res = await fetch("/admin/captcha-files", {
+      const res = await adminRequest("/admin/captcha-files", {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -161,7 +162,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/admin/captcha-files/sync", {
+      const res = await adminRequest("/admin/captcha-files/sync", {
         method: "POST",
         headers: adminHeadersJson(adminToken),
       });
@@ -227,7 +228,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     if (selectedFileIds.size === 0 || !courseName.trim()) return;
     setCourseCreating(true);
     try {
-      const res = await fetch("/admin/courses", {
+      const res = await adminRequest("/admin/courses", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({
@@ -256,7 +257,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     if (selected.size === 0) return;
     setSending(true);
     try {
-      const res = await fetch("/admin/captchas/send-selected", {
+      const res = await adminRequest("/admin/captchas/send-selected", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({
@@ -284,7 +285,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     setLabelSelectedIndex(null);
     setRecomputeResult(null);
     try {
-      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(captchaId)}`, {
+      const res = await adminRequest(`/admin/captcha-label/${encodeURIComponent(captchaId)}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) {
@@ -306,7 +307,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     if (!labelingCaptcha || labelSelectedIndex == null) return;
     setLabelSaving(true);
     try {
-      const res = await fetch("/admin/captcha-label/save", {
+      const res = await adminRequest("/admin/captcha-label/save", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({
@@ -1353,7 +1354,7 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
     if (pointsCount < 5) return;
     setSaving(true);
     try {
-      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-coordinates`, {
+      const res = await adminRequest(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-coordinates`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ coordinates: points.slice(0, 5) }),
@@ -1373,7 +1374,7 @@ function IconClickLabelView({ labelingCaptcha, adminToken, onError, onSaved }) {
   const handleSaveBoxes = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-boxes`, {
+      const res = await adminRequest(`/admin/captcha-label/${encodeURIComponent(labelingCaptcha.captcha_id)}/save-boxes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ boxes }),

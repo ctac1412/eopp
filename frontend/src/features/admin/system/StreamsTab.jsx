@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Space } from "antd";
 import {
@@ -211,7 +212,7 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
     setClearLoading(true);
     setClearResult(null);
     try {
-      const res = await fetch("/admin/slots-group/clear", {
+      const res = await adminRequest("/admin/slots-group/clear", {
         method: "POST",
         headers: {},
       });

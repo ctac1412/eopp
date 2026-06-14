@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, Modal, Space } from "antd";
 import {
@@ -54,8 +55,8 @@ export function TrainingAdminTab({ adminToken, onError }) {
     setLoading(true);
     try {
       const [cRes, rRes] = await Promise.all([
-        fetch("/admin/courses", { headers: adminHeaders(adminToken) }),
-        fetch("/admin/training/runs", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/courses", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/training/runs", { headers: adminHeaders(adminToken) }),
       ]);
       if (cRes.ok) setCourses(await cRes.json());
       if (rRes.ok) setRuns(await rRes.json());
@@ -79,7 +80,7 @@ export function TrainingAdminTab({ adminToken, onError }) {
       cancelText: "Отмена",
       onOk: async () => {
         try {
-          const res = await fetch(`/admin/courses/${courseId}`, {
+          const res = await adminRequest(`/admin/courses/${courseId}`, {
             method: "DELETE",
             headers: adminHeaders(adminToken),
           });

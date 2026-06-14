@@ -11,7 +11,7 @@ import {
   getFutureScheduledEvents,
 } from "../../captcha/solving/scheduledEventsState";
 import { buildOperationsScheduledSummary } from "./operationsScheduledSummary";
-import { adminHeaders, adminHeadersJson } from "../shared/adminClient";
+import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient";
 import { isAllAccessibleMasters, normalizeAllowedMasters } from "../operators/operatorAssignments";
 
 function keyLabel(key) {
@@ -119,11 +119,11 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const loadAll = useCallback(async () => {
     try {
       const [operatorsRes, linksRes, keysRes, streamsRes, scheduledRes] = await Promise.all([
-        fetch("/admin/operators", { headers: adminHeaders(adminToken) }),
-        fetch("/admin/operator-links", { headers: adminHeaders(adminToken) }),
-        fetch("/api-keys", { headers: adminHeaders(adminToken) }),
-        fetch("/admin/streams", { headers: adminHeaders(adminToken) }),
-        fetch("/admin/scheduled-events", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/operators", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/operator-links", { headers: adminHeaders(adminToken) }),
+        adminRequest("/api-keys", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/streams", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/scheduled-events", { headers: adminHeaders(adminToken) }),
       ]);
       const [operatorsData, linksData, keysData, streamsData, scheduledData] = await Promise.all([
         operatorsRes.json(),
@@ -406,7 +406,7 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     }
     setSavingMasterId(Number(masterId));
     try {
-      await Promise.all(allowed.map((op) => fetch(`/admin/operators/${op.id}/link`, {
+      await Promise.all(allowed.map((op) => adminRequest(`/admin/operators/${op.id}/link`, {
         method: "PUT",
         headers: adminHeadersJson(adminToken),
         body: JSON.stringify({ master_key_id: Number(masterId) }),
@@ -429,7 +429,7 @@ export function OperationsDashboardTab({ adminToken, onError }) {
       await Promise.all(targets.map((op) => {
         const link = activeLinkByOperatorId.get(Number(op.id));
         if (!link) return Promise.resolve();
-        return fetch(`/operators/${op.uuid}/unlink`, {
+        return adminRequest(`/operators/${op.uuid}/unlink`, {
           method: "POST",
           headers: adminHeadersJson(adminToken),
           body: JSON.stringify({ master_id: link.master_key_id }),
@@ -454,7 +454,7 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const distributeActiveOperators = async () => {
     setDistributingActive(true);
     try {
-      const response = await fetch("/admin/operator-distribution/active/round-robin", {
+      const response = await adminRequest("/admin/operator-distribution/active/round-robin", {
         method: "POST",
         headers: adminHeaders(adminToken),
       });
@@ -477,7 +477,7 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     setAdminBroadcastSending(true);
     setAdminBroadcastStatus("");
     try {
-      const response = await fetch("/admin/chat/broadcast", {
+      const response = await adminRequest("/admin/chat/broadcast", {
         method: "POST",
         headers: adminHeadersJson(adminToken),
         body: JSON.stringify({

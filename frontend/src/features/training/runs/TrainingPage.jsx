@@ -1,3 +1,4 @@
+import { trainingService } from "../api/trainingService";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -49,7 +50,7 @@ export default function TrainingPage() {
     const opUuid = searchParams.get("op");
 
     if (opUuid) {
-      fetch(`${API}/training/resolve-operator?uuid=${encodeURIComponent(opUuid)}`)
+      trainingService.request(`/training/resolve-operator?uuid=${encodeURIComponent(opUuid)}`)
         .then((response) => response.json())
         .then((data) => {
           if (data.operator_id) {
@@ -62,7 +63,7 @@ export default function TrainingPage() {
     } else {
       const apiKey = loadApiKey();
       if (apiKey) {
-        fetch(`${API}/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+        trainingService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
           .then((response) => response.json())
           .then((data) => {
             if (data.valid && data.api_key_id) {
@@ -80,7 +81,7 @@ export default function TrainingPage() {
 
   useEffect(() => {
     setCoursesLoading(true);
-    fetch(`${API}/training/courses`)
+    trainingService.request(`/training/courses`)
       .then((response) => response.json())
       .then((data) => setCourses(Array.isArray(data) ? data : []))
       .catch(() => setCourses([]))
@@ -93,7 +94,7 @@ export default function TrainingPage() {
     const params = new URLSearchParams();
     params.set("participant_type", participantType);
     params.set("participant_id", participantId);
-    fetch(`${API}/training/runs?${params}`)
+    trainingService.request(`/training/runs?${params}`)
       .then((response) => response.json())
       .then((data) => setRuns(Array.isArray(data) ? data : []))
       .catch(() => setRuns([]))
@@ -114,7 +115,7 @@ export default function TrainingPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/training/start`, {
+      const res = await trainingService.request(`/training/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

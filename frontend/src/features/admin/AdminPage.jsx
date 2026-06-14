@@ -42,7 +42,7 @@ import {
   FinanceTab,
 } from "./adminComponents";
 import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./users/userCompanyAccess";
-import { adminHeaders, adminHeadersJson } from "./shared/adminClient";
+import { adminHeaders, adminHeadersJson, adminRequest } from "./shared/adminClient";
 import { ADMIN_TABS } from "./shared/tabs";
 import { Button } from "../../ui";
 
@@ -197,7 +197,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/api-keys", { headers: adminHeadersJson(t) });
+        const res = await adminRequest("/api-keys", { headers: adminHeadersJson(t) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         setKeys(Array.isArray(data) ? data : data.keys || []);
@@ -216,7 +216,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/expenses", {
+        const res = await adminRequest("/admin/expenses", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -236,7 +236,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/users", {
+        const res = await adminRequest("/admin/users", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -254,7 +254,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/finance-participants", {
+        const res = await adminRequest("/admin/finance-participants", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -272,7 +272,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/companies", {
+        const res = await adminRequest("/admin/companies", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -290,7 +290,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/payouts", {
+        const res = await adminRequest("/admin/payouts", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -308,7 +308,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/prepaid-packages", {
+        const res = await adminRequest("/admin/prepaid-packages", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -326,7 +326,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/prepaid-deductions", {
+        const res = await adminRequest("/admin/prepaid-deductions", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -345,7 +345,7 @@ function AdminPage() {
       if (!t) return;
       setPayoutPreviewLoading(true);
       try {
-        const res = await fetch("/admin/payouts/preview", {
+        const res = await adminRequest("/admin/payouts/preview", {
           method: "POST",
           headers: adminHeaders(t),
           body: JSON.stringify({ invoice_ids: invoiceIds || [], expense_ids: expenseIds || [], user_splits: splits || [] }),
@@ -367,7 +367,7 @@ function AdminPage() {
       const t = token || adminToken;
       if (!t) return;
       try {
-        const res = await fetch("/admin/payouts/available", {
+        const res = await adminRequest("/admin/payouts/available", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) return;
@@ -388,8 +388,8 @@ function AdminPage() {
       if (!t) return;
       try {
         const [invRes, expRes] = await Promise.all([
-          fetch("/admin/invoices", { headers: adminHeadersJson(t) }),
-          fetch("/admin/expenses", { headers: adminHeadersJson(t) }),
+          adminRequest("/admin/invoices", { headers: adminHeadersJson(t) }),
+          adminRequest("/admin/expenses", { headers: adminHeadersJson(t) }),
         ]);
         if (invRes.ok) {
           const invData = await invRes.json();
@@ -413,7 +413,7 @@ function AdminPage() {
       if (!t) return;
       setStreamsLoading(true);
       try {
-        const res = await fetch("/admin/streams", {
+        const res = await adminRequest("/admin/streams", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -434,7 +434,7 @@ function AdminPage() {
       if (!t) return;
       setTestStatsLoading(true);
       try {
-        const res = await fetch("/admin/test-stats", {
+        const res = await adminRequest("/admin/test-stats", {
           headers: adminHeadersJson(t),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -456,7 +456,7 @@ function AdminPage() {
       setBenchmarkRunning(true);
       setBenchmarkLoading(true);
       try {
-        const res = await fetch("/admin/benchmark", {
+        const res = await adminRequest("/admin/benchmark", {
           method: "POST",
           headers: adminHeaders(t),
         });
@@ -474,7 +474,7 @@ function AdminPage() {
   );
 
   useEffect(() => {
-    fetch("/auth/me")
+    adminRequest("/auth/me")
       .then((res) => {
         if (!res.ok) throw new Error("Unauthorized");
         return res.json();
@@ -564,7 +564,7 @@ function AdminPage() {
   }, [adminToken, activeTab, fetchAvailableResources]);
 
   const handleLogout = () => {
-    fetch("/auth/logout", { method: "POST" }).catch(() => {});
+    adminRequest("/auth/logout", { method: "POST" }).catch(() => {});
     localStorage.removeItem("admin_session_active");
     localStorage.removeItem("admin_role");
     localStorage.removeItem("admin_system_role");
@@ -595,7 +595,7 @@ function AdminPage() {
         body.is_external = true;
       }
       body.user_id = parseInt(createForm.userId, 10);
-      const res = await fetch("/api-keys", {
+      const res = await adminRequest("/api-keys", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -627,7 +627,7 @@ function AdminPage() {
       if (editForm.userId) {
         body.user_id = parseInt(editForm.userId, 10);
       }
-      const res = await fetch(`/api-keys/${showEdit}`, {
+      const res = await adminRequest(`/api-keys/${showEdit}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -651,7 +651,7 @@ function AdminPage() {
           editForm.priceCreatePeak !== "" ? parseInt(editForm.priceCreatePeak, 10) : null;
         tariffBody.price_custom_slots =
           editForm.priceCustomSlots !== "" ? parseInt(editForm.priceCustomSlots, 10) : null;
-        await fetch(`/admin/tariffs/${showEdit}`, {
+        await adminRequest(`/admin/tariffs/${showEdit}`, {
           method: "PUT",
           headers: adminHeaders(adminToken),
           body: JSON.stringify(tariffBody),
@@ -667,7 +667,7 @@ function AdminPage() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`/api-keys/${id}`, {
+      const res = await adminRequest(`/api-keys/${id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -681,7 +681,7 @@ function AdminPage() {
 
   const handleResetUsage = async (id) => {
     try {
-      const res = await fetch(`/api-keys/${id}/reset-usage`, {
+      const res = await adminRequest(`/api-keys/${id}/reset-usage`, {
         method: "POST",
         headers: adminHeadersJson(adminToken),
       });
@@ -694,7 +694,7 @@ function AdminPage() {
 
   const handleToggleActive = async (keyObj) => {
     try {
-      const res = await fetch(`/api-keys/${keyObj.id}`, {
+      const res = await adminRequest(`/api-keys/${keyObj.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ active: !keyObj.active }),
@@ -734,7 +734,7 @@ function AdminPage() {
     }
     setHistoryLoading((p) => ({ ...p, [keyId]: true }));
     try {
-      const res = await fetch(
+      const res = await adminRequest(
         `/usage-log?api_key_id=${keyId}&hide_test=${hideTest}`,
         {
           headers: adminHeadersJson(adminToken),
@@ -768,7 +768,7 @@ function AdminPage() {
 
   const handleDeleteUsage = async (keyId, usageId) => {
     try {
-      const res = await fetch(`/usage-log/${usageId}`, {
+      const res = await adminRequest(`/usage-log/${usageId}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -798,7 +798,7 @@ function AdminPage() {
       if (expenseForm.created_at) {
         body.created_at = expenseForm.created_at;
       }
-      const res = await fetch("/admin/expenses", {
+      const res = await adminRequest("/admin/expenses", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -825,7 +825,7 @@ function AdminPage() {
       if (expenseForm.created_at) {
         body.created_at = expenseForm.created_at;
       }
-      const res = await fetch(`/admin/expenses/${expenseForm.id}`, {
+      const res = await adminRequest(`/admin/expenses/${expenseForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -851,7 +851,7 @@ function AdminPage() {
         expense_ids: payoutForm.expense_ids || [],
         user_splits: splits,
       };
-      const res = await fetch("/admin/payouts", {
+      const res = await adminRequest("/admin/payouts", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -872,7 +872,7 @@ function AdminPage() {
     if (!payoutForm.id) return;
     try {
       // Обновляем имя
-      const nameRes = await fetch(`/admin/payouts/${payoutForm.id}`, {
+      const nameRes = await adminRequest(`/admin/payouts/${payoutForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ name: payoutForm.name }),
@@ -883,7 +883,7 @@ function AdminPage() {
       const splits = (payoutForm.splits || [])
         .filter((s) => s.user_id != null)
         .map((s) => ({ user_id: s.user_id, split_pct: Number(s.split_pct) || 0 }));
-      const recalcRes = await fetch(`/admin/payouts/${payoutForm.id}/recalculate`, {
+      const recalcRes = await adminRequest(`/admin/payouts/${payoutForm.id}/recalculate`, {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({
@@ -907,7 +907,7 @@ function AdminPage() {
 
   const handleDeletePayout = async (id) => {
     try {
-      const res = await fetch(`/admin/payouts/${id}`, {
+      const res = await adminRequest(`/admin/payouts/${id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -920,7 +920,7 @@ function AdminPage() {
 
   const handleCreatePrepaidPackage = async (payload) => {
     try {
-      const res = await fetch("/admin/prepaid-packages", {
+      const res = await adminRequest("/admin/prepaid-packages", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(payload),
@@ -934,7 +934,7 @@ function AdminPage() {
 
   const handleUpdatePrepaidPackage = async (id, payload) => {
     try {
-      const res = await fetch(`/admin/prepaid-packages/${id}`, {
+      const res = await adminRequest(`/admin/prepaid-packages/${id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(payload),
@@ -948,7 +948,7 @@ function AdminPage() {
 
   const handleDeletePrepaidPackage = async (id) => {
     try {
-      const res = await fetch(`/admin/prepaid-packages/${id}`, {
+      const res = await adminRequest(`/admin/prepaid-packages/${id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -961,7 +961,7 @@ function AdminPage() {
 
   const handleTopUpPrepaidPackage = async (id, amount) => {
     try {
-      const res = await fetch(`/admin/prepaid-packages/${id}/top-up`, {
+      const res = await adminRequest(`/admin/prepaid-packages/${id}/top-up`, {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ amount }),
@@ -981,7 +981,7 @@ function AdminPage() {
 
   const handleSetPayoutStatus = async (id, status) => {
     try {
-      const res = await fetch(`/admin/payouts/${id}`, {
+      const res = await adminRequest(`/admin/payouts/${id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ status }),
@@ -1006,7 +1006,7 @@ function AdminPage() {
         split_pct: Number(sh.split_pct) || 0,
       }));
 
-      const res = await fetch(`/admin/payouts/${id}/recalculate`, {
+      const res = await adminRequest(`/admin/payouts/${id}/recalculate`, {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({
@@ -1044,7 +1044,7 @@ function AdminPage() {
       if (companyId) {
         body.company_memberships = [{ company_id: companyId, role: userForm.role || "manager", active: true }];
       }
-      const res = await fetch("/admin/users", {
+      const res = await adminRequest("/admin/users", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -1082,7 +1082,7 @@ function AdminPage() {
       if (userForm.password) {
         body.password = userForm.password;
       }
-      const res = await fetch(`/admin/users/${userForm.id}`, {
+      const res = await adminRequest(`/admin/users/${userForm.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -1099,7 +1099,7 @@ function AdminPage() {
 
   const handleDeleteUser = async (id) => {
     try {
-      const res = await fetch(`/admin/users/${id}`, {
+      const res = await adminRequest(`/admin/users/${id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -1115,7 +1115,7 @@ function AdminPage() {
     setUserStats(null);
     setUserStatsLoading(true);
     try {
-      const res = await fetch(`/admin/users/${user.id}/stats`, {
+      const res = await adminRequest(`/admin/users/${user.id}/stats`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1149,7 +1149,7 @@ function AdminPage() {
 
   const handleDeleteExpense = async (id) => {
     try {
-      const res = await fetch(`/admin/expenses/${id}`, {
+      const res = await adminRequest(`/admin/expenses/${id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -1187,7 +1187,7 @@ function AdminPage() {
       if (usageLogEditForm.paid !== "") {
         body.paid = usageLogEditForm.paid === "true";
       }
-      const res = await fetch(`/admin/usage-log/${showUsageLogEdit.id}`, {
+      const res = await adminRequest(`/admin/usage-log/${showUsageLogEdit.id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -1215,7 +1215,7 @@ function AdminPage() {
 
   const handleInlinePriceChange = async (logId, newPrice) => {
     try {
-      const res = await fetch(`/admin/usage-log/${logId}`, {
+      const res = await adminRequest(`/admin/usage-log/${logId}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ price: newPrice }),
@@ -1249,7 +1249,7 @@ function AdminPage() {
 
     const nextPaid = entry.paid === true ? false : entry.paid === false ? null : true;
     try {
-      const res = await fetch(`/admin/usage-log/${logId}`, {
+      const res = await adminRequest(`/admin/usage-log/${logId}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({ paid: nextPaid }),

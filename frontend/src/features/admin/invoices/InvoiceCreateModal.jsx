@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
@@ -78,7 +79,7 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
           sort_order: index,
         })),
       };
-      const res = await fetch("/admin/invoices", {
+      const res = await adminRequest("/admin/invoices", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),

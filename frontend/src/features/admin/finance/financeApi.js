@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import { adminHeaders, adminHeadersJson } from "../shared/adminClient.js";
 
 function cleanFilters(filters = {}) {
@@ -21,14 +22,14 @@ async function parseJsonResponse(response) {
 }
 
 async function getJson(adminToken, path, filters) {
-  const response = await fetch(buildAdminUrl(path, filters), {
+  const response = await adminRequest(buildAdminUrl(path, filters), {
     headers: adminHeadersJson(adminToken),
   });
   return parseJsonResponse(response);
 }
 
 async function sendJson(adminToken, path, method, payload) {
-  const response = await fetch(path, {
+  const response = await adminRequest(path, {
     method,
     headers: adminHeaders(adminToken),
     body: JSON.stringify(payload),
@@ -49,7 +50,7 @@ export function updateFinanceEntry(adminToken, id, payload) {
 }
 
 export async function deleteFinanceEntry(adminToken, id) {
-  const response = await fetch(`/admin/finance-entries/${id}`, {
+  const response = await adminRequest(`/admin/finance-entries/${id}`, {
     method: "DELETE",
     headers: adminHeadersJson(adminToken),
   });

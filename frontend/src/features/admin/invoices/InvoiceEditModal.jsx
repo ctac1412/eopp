@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
@@ -47,7 +48,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
     setScreenMode(false);
     setPrintMode(false);
     setLogsLoading(true);
-    fetch(`/usage-log?invoice_id=${invoice.id}`)
+    adminRequest(`/usage-log?invoice_id=${invoice.id}`)
       .then((response) => response.json())
       .then((data) => setUsageLogs(Array.isArray(data) ? data : []))
       .catch(() => setUsageLogs([]))
@@ -85,7 +86,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/admin/invoices/${invoice.id}`, {
+      const res = await adminRequest(`/admin/invoices/${invoice.id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({

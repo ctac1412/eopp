@@ -8,7 +8,7 @@ import {
   TextInput,
   Toolbar,
 } from "../../../ui";
-import { adminHeaders, adminHeadersJson } from "../shared/adminClient";
+import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient";
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -152,7 +152,7 @@ export function CompaniesTab({ adminToken, onError }) {
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/admin/companies", {
+      const res = await adminRequest("/admin/companies", {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -229,7 +229,7 @@ export function CompaniesTab({ adminToken, onError }) {
     try {
       const url = editingId ? `/admin/companies/${editingId}` : "/admin/companies";
       const method = editingId ? "PUT" : "POST";
-      const res = await fetch(url, {
+      const res = await adminRequest(url, {
         method,
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -255,7 +255,7 @@ export function CompaniesTab({ adminToken, onError }) {
       cancelText: "Отмена",
       onOk: async () => {
         try {
-          const res = await fetch(`/admin/companies/${company.id}`, {
+          const res = await adminRequest(`/admin/companies/${company.id}`, {
             method: "DELETE",
             headers: adminHeadersJson(adminToken),
           });
@@ -278,7 +278,7 @@ export function CompaniesTab({ adminToken, onError }) {
       executor_amount: "",
     });
     try {
-      const res = await fetch(`/admin/company-tariffs/${company.id}`, {
+      const res = await adminRequest(`/admin/company-tariffs/${company.id}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (res.status === 404) return;
@@ -307,7 +307,7 @@ export function CompaniesTab({ adminToken, onError }) {
         price_custom_slots: tariffForm.price_custom_slots === "" ? null : Number(tariffForm.price_custom_slots),
         executor_amount: Number(tariffForm.executor_amount) || 0,
       };
-      const res = await fetch(`/admin/company-tariffs/${tariffCompany.id}`, {
+      const res = await adminRequest(`/admin/company-tariffs/${tariffCompany.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -325,7 +325,7 @@ export function CompaniesTab({ adminToken, onError }) {
     if (!tariffCompany) return;
     setTariffSaving(true);
     try {
-      const res = await fetch(`/admin/company-tariffs/${tariffCompany.id}`, {
+      const res = await adminRequest(`/admin/company-tariffs/${tariffCompany.id}`, {
         method: "DELETE",
         headers: adminHeadersJson(adminToken),
       });
@@ -343,8 +343,8 @@ export function CompaniesTab({ adminToken, onError }) {
     setAccessDraft({ finance: [], operator: [], executor: [] });
     try {
       const [usersRes, accessRes] = await Promise.all([
-        fetch("/admin/users", { headers: adminHeadersJson(adminToken) }),
-        fetch(`/admin/company-access?company_id=${company.id}`, { headers: adminHeadersJson(adminToken) }),
+        adminRequest("/admin/users", { headers: adminHeadersJson(adminToken) }),
+        adminRequest(`/admin/company-access?company_id=${company.id}`, { headers: adminHeadersJson(adminToken) }),
       ]);
       if (!usersRes.ok || !accessRes.ok) throw new Error(`HTTP ${usersRes.status}/${accessRes.status}`);
       const usersData = await usersRes.json();
@@ -394,7 +394,7 @@ export function CompaniesTab({ adminToken, onError }) {
     if (!accessCompany) return;
     setAccessSaving(true);
     try {
-      const res = await fetch(`/admin/company-access/${accessCompany.id}`, {
+      const res = await adminRequest(`/admin/company-access/${accessCompany.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
         body: JSON.stringify({

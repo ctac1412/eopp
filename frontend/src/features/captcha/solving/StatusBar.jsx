@@ -1,3 +1,4 @@
+import { captchaService } from "./api/captchaService";
 import React, { useState, useEffect, useRef } from "react";
 import { formatMoney } from "../../../utils/format";
 import useCaptchaStore from "../../../store/useCaptchaStore";
@@ -73,7 +74,7 @@ function StatusBar() {
       return;
     }
     setIsAdmin(localStorage.getItem("admin_session_active") === "1");
-    fetch(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+    captchaService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
       .then((r) => r.json())
       .then((data) => {
         setApiLabel(data.label || null);
@@ -105,7 +106,7 @@ function StatusBar() {
 
   useEffect(() => {
     if (showSettings && courses.length === 0) {
-      fetch("/training/courses")
+      captchaService.request("/training/courses")
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then(setCourses)
         .catch((err) => console.warn("Failed to load courses:", err));
@@ -142,7 +143,7 @@ function StatusBar() {
       if (testNoTimeout) body.test_no_timeout = true;
       if (autoSolveRucaptcha) body.auto_solve_rucaptcha = true;
       if (count > 1) body.count = count;
-      await fetch("/trigger-test", {
+      await captchaService.request("/trigger-test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -153,7 +154,7 @@ function StatusBar() {
   };
 
   const handleClearKey = () => {
-    fetch("/auth/logout", { method: "POST" }).catch(() => {});
+    captchaService.request("/auth/logout", { method: "POST" }).catch(() => {});
     localStorage.removeItem("admin_session_active");
     localStorage.removeItem("admin_role");
     localStorage.removeItem("admin_sections");

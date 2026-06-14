@@ -1,3 +1,4 @@
+import { publicCaptchasService } from "./api/publicCaptchasService";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Checkbox } from "antd";
 import { Button, DataTable, StatusTag, Toolbar } from "../../../ui";
@@ -24,7 +25,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/public/captchas");
+      const res = await publicCaptchasService.request("/public/captchas");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCaptchas(Array.isArray(data) ? data : []);
@@ -68,7 +69,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
     setSending(true);
     setError("");
     try {
-      const res = await fetch("/public/captchas/send-selected", {
+      const res = await publicCaptchasService.request("/public/captchas/send-selected", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ captcha_ids: selectedCaptchas }),

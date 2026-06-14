@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Checkbox, Space, Spin } from "antd";
 import {
@@ -56,7 +57,7 @@ export function AITab({ adminToken }) {
   const [search, setSearch] = useState("");
 
   const fetchModels = () => {
-    fetch("/admin/ai/models", { headers: adminHeaders(adminToken) })
+    adminRequest("/admin/ai/models", { headers: adminHeaders(adminToken) })
       .then((r) => r.json())
       .then((data) => {
         setModels(Array.isArray(data) ? data : []);
@@ -68,7 +69,7 @@ export function AITab({ adminToken }) {
   };
 
   const fetchRuns = () => {
-    fetch("/admin/ai/runs", { headers: adminHeaders(adminToken) })
+    adminRequest("/admin/ai/runs", { headers: adminHeaders(adminToken) })
       .then((r) => r.json())
       .then((data) => setRuns(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -90,7 +91,7 @@ export function AITab({ adminToken }) {
         payload.model_name = name;
         payload.model_version = parseInt(ver, 10);
       }
-      const res = await fetch("/admin/ai/classify", {
+      const res = await adminRequest("/admin/ai/classify", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(payload),

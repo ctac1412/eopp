@@ -1,3 +1,4 @@
+import { trainingService } from "../api/trainingService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Card, Progress, Spin } from "antd";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,7 +36,7 @@ export default function TrainingRunPage() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/training/run/${runId}/status`);
+      const res = await trainingService.request(`/training/run/${runId}/status`);
       const data = await res.json();
       setStatus(data);
       return data;
@@ -47,7 +48,7 @@ export default function TrainingRunPage() {
 
   const loadNext = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/training/run/${runId}/next`);
+      const res = await trainingService.request(`/training/run/${runId}/next`);
       const data = await res.json();
       if (data.done) {
         setDone(true);
@@ -69,7 +70,7 @@ export default function TrainingRunPage() {
 
   const completeRun = async () => {
     try {
-      await fetch(`${API}/training/run/${runId}/complete`, { method: "POST" });
+      await trainingService.request(`/training/run/${runId}/complete`, { method: "POST" });
     } catch (e) {}
     loadStatus();
   };
@@ -106,7 +107,7 @@ export default function TrainingRunPage() {
     setSelectedVariant(variantIndex);
 
     try {
-      const res = await fetch(`${API}/training/run/${runId}/answer`, {
+      const res = await trainingService.request(`/training/run/${runId}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,7 +166,7 @@ export default function TrainingRunPage() {
 
   const submitIconAnswer = async (answers, totalDuration) => {
     try {
-      const res = await fetch(`${API}/training/run/${runId}/answer`, {
+      const res = await trainingService.request(`/training/run/${runId}/answer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -467,7 +468,7 @@ export default function TrainingRunPage() {
           size="small"
           variant="danger"
           onClick={async () => {
-            await fetch(`${API}/training/run/${runId}/cancel`, { method: "POST" });
+            await trainingService.request(`/training/run/${runId}/cancel`, { method: "POST" });
             navigate("/training");
           }}
         >

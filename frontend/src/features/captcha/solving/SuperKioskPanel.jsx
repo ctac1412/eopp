@@ -1,3 +1,4 @@
+import { captchaService } from "./api/captchaService";
 import React, { useState, useEffect } from "react";
 import { Card, Checkbox } from "antd";
 import useCaptchaStore from "../../../store/useCaptchaStore";
@@ -14,7 +15,7 @@ function SuperKioskPanel() {
 
   useEffect(() => {
     if (!apiKey) return;
-    fetch(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+    captchaService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.api_key_id) {
@@ -30,7 +31,7 @@ function SuperKioskPanel() {
       setLoading(false);
       return;
     }
-    fetch("/api-keys")
+    captchaService.request("/api-keys")
       .then((r) => r.json())
       .then((data) => {
         const filtered = (Array.isArray(data) ? data : []).filter(

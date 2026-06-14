@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Card, Descriptions, Space } from "antd";
 import {
@@ -95,7 +96,7 @@ export function BackendLogsTab({ adminToken, onError }) {
   const [limit, setLimit] = useState(100);
 
   const fetchHealth = useCallback(async () => {
-    const res = await fetch("/health");
+    const res = await adminRequest("/health");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || data.detail || `health HTTP ${res.status}`);
     return data;
@@ -106,7 +107,7 @@ export function BackendLogsTab({ adminToken, onError }) {
     const params = new URLSearchParams({ limit: String(limit) });
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (jobNameFilter.trim()) params.set("job_name", jobNameFilter.trim());
-    const res = await fetch(`/admin/jobs?${params.toString()}`, {
+    const res = await adminRequest(`/admin/jobs?${params.toString()}`, {
       headers: adminHeadersJson(adminToken),
     });
     const data = await res.json().catch(() => ({}));
@@ -116,7 +117,7 @@ export function BackendLogsTab({ adminToken, onError }) {
 
   const fetchLogs = useCallback(async () => {
     if (!adminToken) return null;
-    const res = await fetch("/admin/backend-logs?lines=300", {
+    const res = await adminRequest("/admin/backend-logs?lines=300", {
       headers: adminHeadersJson(adminToken),
     });
     const data = await res.json().catch(() => ({}));
@@ -175,7 +176,7 @@ export function BackendLogsTab({ adminToken, onError }) {
     setRunLoading(true);
     setRunResult(null);
     try {
-      const res = await fetch("/admin/jobs/run", {
+      const res = await adminRequest("/admin/jobs/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ max_jobs: 50, max_attempts: 3, retry_delay_seconds: 30 }),

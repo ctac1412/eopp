@@ -1,3 +1,4 @@
+import { trainingService } from "../api/trainingService";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Spin } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
@@ -34,7 +35,7 @@ export default function TrainingResultsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API}/training/run/${runId}/results`)
+    trainingService.request(`/training/run/${runId}/results`)
       .then((response) => response.json())
       .then((nextData) => {
         setData(nextData);

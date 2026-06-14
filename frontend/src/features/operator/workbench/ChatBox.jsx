@@ -1,3 +1,4 @@
+import { operatorWorkbenchService } from "./api/operatorWorkbenchService";
 import React, { useEffect, useRef, useState } from "react";
 import useCaptchaStore from "../../../store/useCaptchaStore";
 import { Button, TextInput } from "../../../ui";
@@ -27,7 +28,7 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
     if (!text || !ownRole || !masterKeyId) return;
     setInput("");
     try {
-      await fetch("/chat/send", {
+      await operatorWorkbenchService.request("/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,3 +1,4 @@
+import { adminRequest } from "../shared/adminClient";
 ﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Spin } from "antd";
 import { useSearchParams } from "react-router-dom";
@@ -193,7 +194,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/usage-log?hide_test=${hideTest}`, {
+      const res = await adminRequest(`/usage-log?hide_test=${hideTest}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -218,7 +219,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
     setCaptchaLoading((prev) => ({ ...prev, [record.id]: true }));
     setCaptchaErrors((prev) => ({ ...prev, [record.id]: null }));
     try {
-      const res = await fetch(`/captchas?usage_log_id=${record.id}`, {
+      const res = await adminRequest(`/captchas?usage_log_id=${record.id}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -253,7 +254,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
       if (editForm.paid !== "") {
         body.paid = editForm.paid === "true";
       }
-      const res = await fetch(`/admin/usage-log/${showEditModal.id}`, {
+      const res = await adminRequest(`/admin/usage-log/${showEditModal.id}`, {
         method: "PATCH",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),
@@ -288,7 +289,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
         tax_amount: invoiceData.taxAmount,
         total_amount: invoiceData.totalAmount,
       };
-      const res = await fetch("/admin/generate-invoice", {
+      const res = await adminRequest("/admin/generate-invoice", {
         method: "POST",
         headers: adminHeaders(adminToken),
         body: JSON.stringify(body),

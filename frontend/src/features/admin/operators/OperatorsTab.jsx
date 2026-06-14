@@ -12,7 +12,7 @@ import {
   TextInput,
   Toolbar,
 } from "../../../ui";
-import { adminHeaders, adminHeadersJson } from "../shared/adminClient";
+import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient";
 import { CaptchaReviewModal } from "../captchas/CaptchaReviewModal";
 import {
   isAllAccessibleMasters,
@@ -100,7 +100,7 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const loadOperators = useCallback(async () => {
     try {
-      const res = await fetch("/admin/operators", { headers: adminHeaders(adminToken) });
+      const res = await adminRequest("/admin/operators", { headers: adminHeaders(adminToken) });
       const data = await res.json();
       const rows = Array.isArray(data) ? data : [];
       setOperators(rows);
@@ -115,7 +115,7 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const loadLinks = useCallback(async () => {
     try {
-      const res = await fetch("/admin/operator-links", { headers: adminHeaders(adminToken) });
+      const res = await adminRequest("/admin/operator-links", { headers: adminHeaders(adminToken) });
       const data = await res.json();
       setLinks(Array.isArray(data) ? data : []);
     } catch {
@@ -125,7 +125,7 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const loadAnswers = useCallback(async (page = 1) => {
     try {
-      const res = await fetch(`/admin/distribution-answers?page=${page}&per_page=${PER_PAGE}`, {
+      const res = await adminRequest(`/admin/distribution-answers?page=${page}&per_page=${PER_PAGE}`, {
         headers: adminHeaders(adminToken),
       });
       const data = await res.json();
@@ -140,7 +140,7 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const loadKeys = useCallback(async () => {
     try {
-      const res = await fetch("/api-keys", { headers: adminHeaders(adminToken) });
+      const res = await adminRequest("/api-keys", { headers: adminHeaders(adminToken) });
       const data = await res.json();
       setAllKeys(Array.isArray(data) ? data : data.keys || []);
     } catch {
@@ -150,7 +150,7 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const loadCompanies = useCallback(async () => {
     try {
-      const res = await fetch("/admin/companies", { headers: adminHeaders(adminToken) });
+      const res = await adminRequest("/admin/companies", { headers: adminHeaders(adminToken) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCompanies(Array.isArray(data) ? data : []);
@@ -288,7 +288,7 @@ export function OperatorsTab({ adminToken, onError }) {
       cancelText: "Отмена",
       onOk: async () => {
         try {
-          const res = await fetch(`/admin/operators/${id}`, {
+          const res = await adminRequest(`/admin/operators/${id}`, {
             method: "DELETE",
             headers: adminHeaders(adminToken),
           });
@@ -314,7 +314,7 @@ export function OperatorsTab({ adminToken, onError }) {
           editForm.allowed_master_keys,
         ),
       };
-      const res = await fetch(`/admin/operators/${selectedOperator.id}`, {
+      const res = await adminRequest(`/admin/operators/${selectedOperator.id}`, {
         method: "PUT",
         headers: adminHeadersJson(adminToken),
         body: JSON.stringify(body),
@@ -362,7 +362,7 @@ export function OperatorsTab({ adminToken, onError }) {
     try {
       if (!masterKeyId) {
         if (current) {
-          const res = await fetch(`/operators/${op.uuid}/unlink`, {
+          const res = await adminRequest(`/operators/${op.uuid}/unlink`, {
             method: "POST",
             headers: adminHeadersJson(adminToken),
             body: JSON.stringify({ master_id: current.master_key_id }),
@@ -370,7 +370,7 @@ export function OperatorsTab({ adminToken, onError }) {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
         }
       } else {
-        const res = await fetch(`/admin/operators/${op.id}/link`, {
+        const res = await adminRequest(`/admin/operators/${op.id}/link`, {
           method: "PUT",
           headers: adminHeadersJson(adminToken),
           body: JSON.stringify({ master_key_id: Number(masterKeyId) }),
