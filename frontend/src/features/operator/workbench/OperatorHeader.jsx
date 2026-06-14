@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import Clock from "../../captcha/solving/Clock";
 import { Button } from "../../../ui";
 
@@ -23,9 +23,9 @@ export default function OperatorHeader({
 
   return (
     <div data-eopp-component="OperatorHeader" className="op-header">
-      {/* в”Ђв”Ђ Р»РµРІР°СЏ С‡Р°СЃС‚СЊ в”Ђв”Ђ */}
+      {/* Main status area */}
       <div className="op-header__main">
-        {/* С‚РѕС‡РєР° РјР°СЃС‚РµСЂР° */}
+        {/* Master connection dot */}
         <span
           style={{
             width: 8,
@@ -40,7 +40,7 @@ export default function OperatorHeader({
           title={masterOnline ? "Мастер онлайн" : "Мастер офлайн"}
         />
 
-        {/* РЅРёРєРЅРµР№Рј + СЃС‚Р°С‚СѓСЃ РєР°РїС‡Рё */}
+        {/* Nickname and captcha status */}
         <span className="op-header__nickname fw-semibold">
           {operatorNickname ? `${operatorNickname} - ` : ""}
           {hasActive
@@ -54,14 +54,14 @@ export default function OperatorHeader({
                   : "Ожидание назначения мастера"}
         </span>
 
-        {/* Р±РµР№РґР¶ РѕС‡РµСЂРµРґРё */}
+        {/* Queue badge */}
         {queueLen > 1 && (
           <span className="op-header__queue-badge">
             +{queueLen - 1}
           </span>
         )}
 
-        {/* Р±РµР№РґР¶ fellow operators */}
+        {/* Fellow operators badge */}
         {fellowOperators.length > 0 && (
           <span
             className="op-header__fellow-badge"
@@ -73,7 +73,7 @@ export default function OperatorHeader({
           </span>
         )}
 
-        {/* Р±РµР№РґР¶ СЂРµР¶РёРјР° РёРєРѕРЅРѕРє */}
+        {/* Icon display mode badge */}
         {iconDisplayMode && (
           <span
             className={`op-header__mode-badge ${iconDisplayMode === "own_only" ? "is-own" : "is-all"}`}
@@ -84,7 +84,7 @@ export default function OperatorHeader({
           </span>
         )}
 
-        {/* СЃСЃС‹Р»РєР° РЅР° С‚СЂРµРЅРёСЂРѕРІРєСѓ */}
+        {/* Training link */}
         <a
           href={`/training?op=${encodeURIComponent(uuid)}`}
           className="op-header__training-link"
@@ -95,7 +95,7 @@ export default function OperatorHeader({
         <Clock />
       </div>
 
-      {/* в”Ђв”Ђ РїСЂР°РІР°СЏ С‡Р°СЃС‚СЊ в”Ђв”Ђ */}
+      {/* Controls area */}
       <div className="op-header__controls">
         <span
           data-eopp-component="OperatorAssignedMaster"
@@ -106,7 +106,7 @@ export default function OperatorHeader({
         </span>
 
 
-        {/* Р±РµР№РґР¶ solvedCount / assigned */}
+        {/* Progress badge */}
         <span
           className={`op-header__progress-badge ${active?.complete ? "is-complete" : active?.waiting ? "is-waiting" : ""}`}
         >
@@ -119,7 +119,7 @@ export default function OperatorHeader({
                 : "-"}
         </span>
 
-        {/* РєРЅРѕРїРєР° РїРµСЂРµРїРѕРґРєР»СЋС‡РµРЅРёСЏ */}
+        {/* Reconnect button */}
         <Button
           data-eopp-component="OperatorReconnectButton"
           className="op-header__action-btn"
@@ -130,7 +130,7 @@ export default function OperatorHeader({
           ↻
         </Button>
 
-        {/* РєРЅРѕРїРєР° РѕС‚РєР»СЋС‡РµРЅРёСЏ */}
+        {/* Disconnect button */}
         <Button
           data-eopp-component="OperatorDisconnectButton"
           className="op-header__action-btn"

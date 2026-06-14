@@ -1,5 +1,5 @@
 import { adminRequest } from "../shared/adminClient";
-﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Spin } from "antd";
 import { useSearchParams } from "react-router-dom";
 import { formatMoney } from "../../../utils/format";

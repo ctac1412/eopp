@@ -8,8 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
+    "check:text": "node scripts/check-text-integrity.mjs",
     "test": "node --test \"src/**/*.test.mjs\"",
-    "check": "npm run lint && npm run test && npm run build",
+    "check": "npm run lint && npm run check:text && npm run test && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

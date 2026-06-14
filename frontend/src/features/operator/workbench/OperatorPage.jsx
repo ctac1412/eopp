@@ -1,5 +1,5 @@
 import { operatorWorkbenchService } from "./api/operatorWorkbenchService";
-﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
 import OperatorHeader from "./OperatorHeader";
