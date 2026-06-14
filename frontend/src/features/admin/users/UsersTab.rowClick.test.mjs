@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const usersTabPath = new URL("./UsersTab.jsx", import.meta.url);
-const adminPagePath = new URL("../../AdminPage.jsx", import.meta.url);
+const adminPagePath = new URL("../AdminPage.jsx", import.meta.url);
 
 test("users table opens edit on row click without modal navigation", async () => {
   const usersTab = await readFile(usersTabPath, "utf8");

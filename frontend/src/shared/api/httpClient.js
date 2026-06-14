@@ -1,5 +1,5 @@
-import { ApiError } from "./apiError";
-import { API_BASE_URL } from "./endpoints";
+import { ApiError } from "./apiError.js";
+import { API_BASE_URL } from "./endpoints.js";
 
 function buildUrl(path, query) {
   const url = path.startsWith("http") ? new URL(path) : new URL(`${API_BASE_URL}${path}`, window.location.origin);

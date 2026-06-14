@@ -1,5 +1,4 @@
-import { adminRequest } from "../shared/adminClient";
-import { adminHeaders, adminHeadersJson } from "../shared/adminClient.js";
+import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient.js";
 
 function cleanFilters(filters = {}) {
   return Object.fromEntries(

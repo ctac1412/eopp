@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const modalSource = readFileSync(new URL("./CaptchaReviewModal.jsx", import.meta.url), "utf8");
-const operatorsSource = readFileSync(new URL("./OperatorsTab.jsx", import.meta.url), "utf8");
+const operatorsSource = readFileSync(new URL("../operators/OperatorsTab.jsx", import.meta.url), "utf8");
 const detailsSource = readFileSync(new URL("../reports/OperationDetails.jsx", import.meta.url), "utf8");
 
 test("captcha review modal renders operator click markers", () => {

@@ -6,6 +6,6 @@ const source = readFileSync(new URL("./OperationsDashboardTab.jsx", import.meta.
 
 test("operations dashboard exposes admin broadcast chat controls", () => {
   assert.match(source, /data-eopp-component="OpsAdminBroadcast"/);
-  assert.match(source, /fetch\("\/admin\/chat\/broadcast"/);
+  assert.match(source, /adminRequest\("\/admin\/chat\/broadcast"/);
   assert.match(source, /adminBroadcastMessage/);
 });

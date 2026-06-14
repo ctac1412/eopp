@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const gridSource = readFileSync(new URL("./CaptchaGrid.jsx", import.meta.url), "utf8");
-const componentCss = readFileSync(new URL("../styles/03-components.css", import.meta.url), "utf8");
+const componentCss = readFileSync(new URL("../../../styles/03-components.css", import.meta.url), "utf8");
 
 test("idle captcha body leaves status text to the grid header", () => {
   assert.doesNotMatch(gridSource, /IdleBody\(\{\s*solvedCount\s*\}\)/);

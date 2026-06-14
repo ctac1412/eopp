@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const adminPagePath = new URL("../../AdminPage.jsx", import.meta.url);
+const adminPagePath = new URL("../AdminPage.jsx", import.meta.url);
 const userModalPath = new URL("./UserModal.jsx", import.meta.url);
 
 test("user form uses executor access instead of legacy profile", async () => {

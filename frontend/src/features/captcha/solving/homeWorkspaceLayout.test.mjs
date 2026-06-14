@@ -4,10 +4,10 @@ import test from "node:test";
 
 const homeSource = readFileSync(new URL("./HomePage.jsx", import.meta.url), "utf8");
 const tabSource = readFileSync(new URL("./CaptchaTab.jsx", import.meta.url), "utf8");
-const pageCss = readFileSync(new URL("../styles/05-pages.css", import.meta.url), "utf8");
+const pageCss = readFileSync(new URL("../../../styles/05-pages.css", import.meta.url), "utf8");
 
 test("home workspace owns logs as a separate bottom area", () => {
-  assert.match(homeSource, /import LogViewer from "\.\.\/components\/LogViewer"/);
+  assert.match(homeSource, /import LogViewer from "\.\/LogViewer"/);
   assert.match(homeSource, /home-workspace__logs/);
   assert.doesNotMatch(tabSource, /LogViewer/);
 });

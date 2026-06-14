@@ -5,7 +5,7 @@ import test from "node:test";
 const pageSource = readFileSync(new URL("./OperatorPage.jsx", import.meta.url), "utf8");
 const areaSource = readFileSync(new URL("./CaptchaArea.jsx", import.meta.url), "utf8");
 const sidebarSource = readFileSync(new URL("./OperatorSidebar.jsx", import.meta.url), "utf8");
-const operatorCss = readFileSync(new URL("../styles/04-operator.css", import.meta.url), "utf8");
+const operatorCss = readFileSync(new URL("../../../styles/04-operator.css", import.meta.url), "utf8");
 const workbenchCss = readFileSync(new URL("../../../ui/styles/layout.css", import.meta.url), "utf8");
 
 test("operator page delegates queue transitions to operator queue helpers", () => {

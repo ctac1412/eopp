@@ -1,1 +1,1 @@
-export { adminHeaders, adminHeadersJson, adminRequest } from "../api/adminService";
+export { adminHeaders, adminHeadersJson, adminRequest } from "../api/adminService.js";

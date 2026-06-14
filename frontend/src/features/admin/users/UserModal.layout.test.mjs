@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const userModalPath = new URL("./UserModal.jsx", import.meta.url);
-const stylesPath = new URL("../../styles/05-pages.css", import.meta.url);
+const stylesPath = new URL("../../../styles/05-pages.css", import.meta.url);
 
 test("user modal uses a three-quarter page layout", async () => {
   const userModal = await readFile(userModalPath, "utf8");
