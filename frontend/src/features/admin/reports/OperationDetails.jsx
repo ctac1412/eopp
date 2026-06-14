@@ -1,7 +1,7 @@
 import React from "react";
 import { formatMoney } from "../../../utils/format";
 import { Button, DataTable, StatusTag } from "../../../ui";
-import { CaptchaReviewModal } from "../../../components/admin/CaptchaReviewModal";
+import { CaptchaReviewModal } from "../captchas/CaptchaReviewModal";
 import {
   getCompanyFull,
   getErrorInfo,
