@@ -360,18 +360,18 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   };
 
-  const dropAccessUser = (kind, event) => {
-    event.preventDefault();
-    const userId = Number(event.dataTransfer.getData("text/plain"));
-    if (!userId) return;
-    addAccessUser(kind, userId);
-  };
-
   const addAccessUser = (kind, userId) => {
     setAccessDraft((prev) => ({
       ...prev,
       [kind]: Array.from(new Set([...(prev[kind] || []), userId])),
     }));
+  };
+
+  const dropAccessUser = (kind, event) => {
+    event.preventDefault();
+    const userId = Number(event.dataTransfer.getData("text/plain"));
+    if (!userId) return;
+    addAccessUser(kind, userId);
   };
 
   const removeAccessUser = (kind, userId) => {

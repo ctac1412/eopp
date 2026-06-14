@@ -48,17 +48,6 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
   const mainImage = entry.images?.["0"] || "";
   const iconsImage = entry.iconsImage || "";
 
-  const handleClick = (coords) => {
-    if (entry.solved || markers.length >= 5) return;
-
-    const newMarkers = [...markers, coords];
-    setMarkers(newMarkers);
-
-    if (newMarkers.length >= 5) {
-      submitAnswer(newMarkers);
-    }
-  };
-
   const submitAnswer = async (coords) => {
     const res = await captchaService.request("/solve", {
       method: "POST",
@@ -89,6 +78,17 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
       `Решено [${solverInfo}]: ${entry.id} → ${JSON.stringify(coords)} (${data.resultFile})`,
       "success",
     );
+  };
+
+  const handleClick = (coords) => {
+    if (entry.solved || markers.length >= 5) return;
+
+    const newMarkers = [...markers, coords];
+    setMarkers(newMarkers);
+
+    if (newMarkers.length >= 5) {
+      submitAnswer(newMarkers);
+    }
   };
 
   return (

@@ -182,48 +182,6 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     fetchCaptchaFiles();
   }, [fetchCaptchaFiles, fetchCaptchas]);
 
-  const toggleSelect = (id) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    setSelected((prev) => {
-      const allVisibleSelected = pagedCaptchas.every((captcha) => prev.has(captcha.id));
-      if (allVisibleSelected) {
-        const next = new Set(prev);
-        pagedCaptchas.forEach((captcha) => next.delete(captcha.id));
-        return next;
-      }
-      return new Set([...prev, ...pagedCaptchas.map((captcha) => captcha.id)]);
-    });
-  };
-
-  const toggleFileSelect = (id) => {
-    setSelectedFileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleFileSelectAll = () => {
-    setSelectedFileIds((prev) => {
-      const allSelected = pagedCaptchaFiles.every((f) => prev.has(f.id));
-      if (allSelected) {
-        const next = new Set(prev);
-        pagedCaptchaFiles.forEach((f) => next.delete(f.id));
-        return next;
-      }
-      return new Set([...prev, ...pagedCaptchaFiles.map((f) => f.id)]);
-    });
-  };
-
   const handleCreateCourse = async () => {
     if (selectedFileIds.size === 0 || !courseName.trim()) return;
     setCourseCreating(true);
@@ -581,6 +539,48 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   useEffect(() => {
     if (filesPage > filesPageCount) setFilesPage(filesPageCount);
   }, [filesPage, filesPageCount]);
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => {
+      const allVisibleSelected = pagedCaptchas.every((captcha) => prev.has(captcha.id));
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        pagedCaptchas.forEach((captcha) => next.delete(captcha.id));
+        return next;
+      }
+      return new Set([...prev, ...pagedCaptchas.map((captcha) => captcha.id)]);
+    });
+  };
+
+  const toggleFileSelect = (id) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFileSelectAll = () => {
+    setSelectedFileIds((prev) => {
+      const allSelected = pagedCaptchaFiles.every((f) => prev.has(f.id));
+      if (allSelected) {
+        const next = new Set(prev);
+        pagedCaptchaFiles.forEach((f) => next.delete(f.id));
+        return next;
+      }
+      return new Set([...prev, ...pagedCaptchaFiles.map((f) => f.id)]);
+    });
+  };
 
   const operationMetricItems = [
     { key: "total", label: "Всего", value: metrics.total, tone: "neutral" },

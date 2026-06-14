@@ -83,6 +83,11 @@ export function OperatorPage() {
     operatorIdRef.current = entry ? entry.operatorId : 0;
   }, []);
 
+  const setActiveIndex = useCallback((idx) => {
+    activeIndexRef.current = idx;
+    setActiveIndexRaw(idx);
+  }, []);
+
   const disconnect = useCallback(() => {
     if (esRef.current) {
       esRef.current.close();
@@ -136,11 +141,6 @@ export function OperatorPage() {
     const mode = iconDisplayMode === "own_only" ? "Только свои" : "Свои+чужие";
     document.title = `${operatorNickname || "Оператор"} - ${mode}`;
   }, [iconDisplayMode, operatorNickname]);
-
-  const setActiveIndex = useCallback((idx) => {
-    activeIndexRef.current = idx;
-    setActiveIndexRaw(idx);
-  }, []);
 
   const connectViaId = useCallback(async () => {
     disconnect();

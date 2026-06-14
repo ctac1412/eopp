@@ -46,6 +46,13 @@ export default function TrainingRunPage() {
     }
   }, [runId]);
 
+  const completeRun = async () => {
+    try {
+      await trainingService.request(`/training/run/${runId}/complete`, { method: "POST" });
+    } catch (e) {}
+    loadStatus();
+  };
+
   const loadNext = useCallback(async () => {
     try {
       const res = await trainingService.request(`/training/run/${runId}/next`);
@@ -67,13 +74,6 @@ export default function TrainingRunPage() {
       setError("Ошибка загрузки капчи");
     }
   }, [runId]);
-
-  const completeRun = async () => {
-    try {
-      await trainingService.request(`/training/run/${runId}/complete`, { method: "POST" });
-    } catch (e) {}
-    loadStatus();
-  };
 
   // Initial load
   useEffect(() => {
@@ -164,7 +164,7 @@ export default function TrainingRunPage() {
     setNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight });
   };
 
-  const submitIconAnswer = async (answers, totalDuration) => {
+  async function submitIconAnswer(answers, totalDuration) {
     try {
       const res = await trainingService.request(`/training/run/${runId}/answer`, {
         method: "POST",
@@ -184,7 +184,7 @@ export default function TrainingRunPage() {
     } catch (e) {
       setError("Ошибка сохранения ответа");
     }
-  };
+  }
 
   // Move to next after feedback
   useEffect(() => {
