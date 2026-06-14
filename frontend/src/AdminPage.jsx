@@ -39,6 +39,7 @@ import {
   PrepaidPackagesTab,
   TrainingAdminTab,
   CompaniesTab,
+  FinanceTab,
 } from "./components/admin";
 import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./components/admin/userCompanyAccess";
 import { adminHeaders, adminHeadersJson } from "./features/admin/shared/adminClient";
@@ -55,7 +56,7 @@ const ROLE_LABELS = {
 const DEFAULT_ROLE_SECTIONS = {
   super_admin: ADMIN_TABS.map((tab) => tab.id),
   administrator: ADMIN_TABS.filter((tab) => tab.id !== "users").map((tab) => tab.id),
-  manager: ["reports", "companies", "channels", "captchas", "invoices", "prepaid", "expenses", "payouts"],
+  manager: ["reports", "companies", "channels", "captchas", "invoices", "prepaid", "expenses", "finance", "payouts"],
   operator: ["operations", "operators", "streams"],
 };
 
@@ -1449,6 +1450,10 @@ function AdminPage() {
           onEdit={(e) => { setExpenseForm({ id: e.id, amount: String(e.amount), reason: e.reason, user_id: e.user_id, comment: e.comment || "", created_at: e.created_at }); setShowExpenseModal(true); }}
           onDelete={handleDeleteExpense}
         />
+      )}
+
+      {activeTab === "finance" && (
+        <FinanceTab adminToken={adminToken} onError={(msg) => setError(msg)} />
       )}
 
       {activeTab === "payouts" && (

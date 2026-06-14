@@ -21,3 +21,4 @@ export { PrepaidPackagesTab } from "./PrepaidPackagesTab";
 export { TrainingAdminTab } from "./TrainingAdminTab";
 export { CompaniesTab } from "./CompaniesTab";
 export { PluginChannelTab } from "./PluginChannelTab";
+export { FinanceTab } from "../../features/admin/finance";
