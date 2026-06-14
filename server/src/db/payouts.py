@@ -38,6 +38,162 @@ def _link_expense(payout_id: int, expense_id: int, amount: float) -> int:
     return conn_id
 
 
+def _lock_finance_entries_for_payout(payout_id: int, invoice_ids: list[int]) -> None:
+    if not invoice_ids:
+        return
+
+    placeholders = ",".join("?" * len(invoice_ids))
+    conn = get_connection()
+    now = datetime.now(UTC).isoformat()
+    try:
+        row = conn.execute(
+            f"""
+            SELECT id, payout_id
+            FROM finance_entries
+            WHERE invoice_id IN ({placeholders})
+              AND payout_id IS NOT NULL
+              AND payout_id != ?
+            LIMIT 1
+            """,
+            [*invoice_ids, payout_id],
+        ).fetchone()
+        if row:
+            raise ValueError(
+                f"finance entry {row['id']} is already linked to payout {row['payout_id']}"
+            )
+
+        conn.execute(
+            f"""
+            UPDATE finance_entries
+            SET payout_id = ?,
+                edit_state = 'locked',
+                updated_at = ?
+            WHERE invoice_id IN ({placeholders})
+              AND payout_id IS NULL
+            """,
+            [payout_id, now, *invoice_ids],
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _create_director_profit_entries_for_payout(
+    payout_id: int,
+    invoice_ids: list[int],
+    user_splits: list[dict],
+) -> None:
+    if not invoice_ids or not user_splits:
+        return
+
+    placeholders = ",".join("?" * len(invoice_ids))
+    conn = get_connection()
+    try:
+        split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
+        director_ids = _director_user_ids(conn, split_user_ids)
+        director_splits = [
+            {"user_id": int(us["user_id"]), "split_pct": float(us["split_pct"])}
+            for us in user_splits
+            if us.get("user_id") is not None and int(us["user_id"]) in director_ids
+        ]
+        total_split_pct = sum(us["split_pct"] for us in director_splits)
+        if total_split_pct <= 0:
+            return
+
+        lots = conn.execute(
+            f"""
+            SELECT
+                pl.id,
+                pl.company_id,
+                pl.usage_log_id,
+                pl.invoice_id,
+                pl.gross_amount + COALESCE(SUM(fe.amount), 0) AS available
+            FROM profit_lots pl
+            LEFT JOIN finance_entries fe ON fe.profit_lot_id = pl.id
+            WHERE pl.invoice_id IN ({placeholders})
+            GROUP BY pl.id
+            ORDER BY pl.created_at ASC, pl.id ASC
+            """,
+            invoice_ids,
+        ).fetchall()
+        now = datetime.now(UTC).isoformat()
+        for lot in lots:
+            available = round(float(lot["available"] or 0), 2)
+            if available <= 0:
+                continue
+            allocated = 0.0
+            for idx, split in enumerate(director_splits):
+                if idx == len(director_splits) - 1:
+                    share = round(available - allocated, 2)
+                else:
+                    share = round(available * split["split_pct"] / total_split_pct, 2)
+                    allocated = round(allocated + share, 2)
+                if share <= 0:
+                    continue
+                source_key = f"payout:{payout_id}:profit_lot:{lot['id']}:director:{split['user_id']}"
+                conn.execute(
+                    """
+                    INSERT INTO finance_entries (
+                        company_id, usage_log_id, invoice_id, payout_id, profit_lot_id,
+                        user_id, kind, amount, edit_state, source, source_key, comment,
+                        created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'director_profit', ?, 'locked', 'system', ?, '', ?, ?)
+                    ON CONFLICT(source_key) DO UPDATE SET
+                        amount = excluded.amount,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        lot["company_id"],
+                        lot["usage_log_id"],
+                        lot["invoice_id"],
+                        payout_id,
+                        lot["id"],
+                        split["user_id"],
+                        -share,
+                        source_key,
+                        now,
+                        now,
+                    ),
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _release_finance_entries_for_pending_payout(payout_id: int) -> None:
+    conn = get_connection()
+    now = datetime.now(UTC).isoformat()
+    try:
+        conn.execute(
+            "DELETE FROM finance_entries WHERE payout_id = ? AND kind = 'director_profit'",
+            (payout_id,),
+        )
+        conn.execute(
+            """
+            UPDATE finance_entries
+            SET payout_id = NULL,
+                edit_state = 'open',
+                updated_at = ?
+            WHERE payout_id = ?
+              AND edit_state = 'locked'
+            """,
+            (now, payout_id),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def _unlink_invoices(payout_id: int) -> None:
     conn = get_connection()
     conn.execute("DELETE FROM payout_invoices WHERE payout_id = ?", (payout_id,))
@@ -165,6 +321,175 @@ def _executor_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, di
     return payouts
 
 
+def _ledger_payout_for_invoices(
+    conn,
+    invoice_ids: list[int],
+    user_splits: list[dict],
+) -> dict | None:
+    if not invoice_ids:
+        return None
+    placeholders = ",".join("?" * len(invoice_ids))
+    entry_rows = conn.execute(
+        f"""
+        SELECT *
+        FROM finance_entries
+        WHERE invoice_id IN ({placeholders})
+          AND kind IN (
+              'customer_income',
+              'executor_salary',
+              'operator_salary',
+              'invoice_commission',
+              'invoice_tax',
+              'expense_repayment',
+              'director_profit'
+          )
+        ORDER BY id
+        """,
+        invoice_ids,
+    ).fetchall()
+    if not entry_rows:
+        return None
+
+    invoice_rows = conn.execute(
+        f"SELECT id, COALESCE(debt_amount, 0) AS debt_amount FROM invoices WHERE id IN ({placeholders})",
+        invoice_ids,
+    ).fetchall()
+    invoice_amounts = {int(row["id"]): float(row["debt_amount"] or 0) for row in invoice_rows}
+    invoices_total = sum(invoice_amounts.values())
+
+    user_commission: dict[int, float] = {}
+    user_tax: dict[int, float] = {}
+    operator_payouts: dict[int, dict] = {}
+    executor_payouts: dict[int, dict] = {}
+    user_expenses_comp: dict[int, float] = {}
+    for row in entry_rows:
+        uid = row["user_id"]
+        if uid is None:
+            continue
+        uid = int(uid)
+        amount = abs(float(row["amount"] or 0))
+        if row["kind"] == "invoice_commission":
+            user_commission[uid] = user_commission.get(uid, 0.0) + amount
+        elif row["kind"] == "invoice_tax":
+            user_tax[uid] = user_tax.get(uid, 0.0) + amount
+        elif row["kind"] == "operator_salary":
+            item = operator_payouts.setdefault(uid, {"operator_icons": 0, "operator_amount": 0.0})
+            item["operator_icons"] += 1
+            item["operator_amount"] += amount
+        elif row["kind"] == "executor_salary":
+            item = executor_payouts.setdefault(uid, {"executor_count": 0, "executor_amount": 0.0})
+            item["executor_count"] += 1
+            item["executor_amount"] += amount
+        elif row["kind"] == "expense_repayment":
+            user_expenses_comp[uid] = user_expenses_comp.get(uid, 0.0) + amount
+
+    lot_rows = conn.execute(
+        f"""
+        SELECT
+            pl.*,
+            pl.gross_amount + COALESCE(SUM(fe.amount), 0) AS available
+        FROM profit_lots pl
+        LEFT JOIN finance_entries fe ON fe.profit_lot_id = pl.id
+        WHERE pl.invoice_id IN ({placeholders})
+        GROUP BY pl.id
+        ORDER BY pl.created_at ASC, pl.id ASC
+        """,
+        invoice_ids,
+    ).fetchall()
+    net = sum(max(float(row["available"] or 0), 0.0) for row in lot_rows)
+    total_compensated = sum(
+        abs(float(row["amount"] or 0)) for row in entry_rows if row["kind"] == "expense_repayment"
+    )
+
+    split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
+    director_ids = _director_user_ids(conn, split_user_ids)
+    director_splits = [us for us in user_splits if int(us["user_id"]) in director_ids]
+    total_split_pct = sum(us["split_pct"] for us in director_splits) or 0.0
+    profit_shares: dict[int, float] = {}
+    normalized_split_pct: dict[int, float] = {}
+    for us in director_splits:
+        user_id = int(us["user_id"])
+        pct = us["split_pct"]
+        normalized_split_pct[user_id] = round(pct * 100 / total_split_pct, 2) if total_split_pct else 0.0
+        profit_shares[user_id] = round(net * pct / total_split_pct, 2) if net > 0 and total_split_pct else 0.0
+
+    payout_shares = []
+    payout_user_ids = set()
+    for us in user_splits:
+        uid = int(us["user_id"])
+        payout_user_ids.add(uid)
+        operator_item = operator_payouts.get(uid, {})
+        executor_item = executor_payouts.get(uid, {})
+        total = (
+            profit_shares.get(uid, 0.0)
+            + user_commission.get(uid, 0.0)
+            + user_tax.get(uid, 0.0)
+            + user_expenses_comp.get(uid, 0.0)
+            + operator_item.get("operator_amount", 0.0)
+            + executor_item.get("executor_amount", 0.0)
+        )
+        payout_shares.append(
+            {
+                "user_id": uid,
+                "split_pct": normalized_split_pct.get(uid, 0.0),
+                "commission_amount": user_commission.get(uid, 0.0),
+                "tax_amount": user_tax.get(uid, 0.0),
+                "expenses_compensation": user_expenses_comp.get(uid, 0.0),
+                "operator_icons": operator_item.get("operator_icons", 0),
+                "operator_amount": operator_item.get("operator_amount", 0.0),
+                "executor_count": executor_item.get("executor_count", 0),
+                "executor_amount": executor_item.get("executor_amount", 0.0),
+                "profit_share": profit_shares.get(uid, 0.0),
+                "total": total,
+            }
+        )
+
+    side_user_ids = set(user_commission) | set(user_tax) | set(user_expenses_comp) | set(operator_payouts) | set(executor_payouts)
+    for uid in sorted(side_user_ids):
+        if uid in payout_user_ids:
+            continue
+        operator_item = operator_payouts.get(uid, {})
+        executor_item = executor_payouts.get(uid, {})
+        total = (
+            user_commission.get(uid, 0.0)
+            + user_tax.get(uid, 0.0)
+            + user_expenses_comp.get(uid, 0.0)
+            + operator_item.get("operator_amount", 0.0)
+            + executor_item.get("executor_amount", 0.0)
+        )
+        payout_shares.append(
+            {
+                "user_id": uid,
+                "split_pct": 0.0,
+                "commission_amount": user_commission.get(uid, 0.0),
+                "tax_amount": user_tax.get(uid, 0.0),
+                "expenses_compensation": user_expenses_comp.get(uid, 0.0),
+                "operator_icons": operator_item.get("operator_icons", 0),
+                "operator_amount": operator_item.get("operator_amount", 0.0),
+                "executor_count": executor_item.get("executor_count", 0),
+                "executor_amount": executor_item.get("executor_amount", 0.0),
+                "profit_share": 0.0,
+                "total": total,
+            }
+        )
+
+    total_operator_amount = sum(item["operator_amount"] for item in operator_payouts.values())
+    total_executor_amount = sum(item["executor_amount"] for item in executor_payouts.values())
+    return {
+        "invoices_total": invoices_total,
+        "total_commission": sum(user_commission.values()),
+        "total_tax": sum(user_tax.values()),
+        "total_operator_amount": total_operator_amount,
+        "total_executor_amount": total_executor_amount,
+        "expenses_total": total_compensated,
+        "compensated_total": total_compensated,
+        "net": net,
+        "invoice_links": [{"invoice_id": iid} for iid in invoice_ids],
+        "expense_links": [],
+        "payout_shares": payout_shares,
+    }
+
+
 def calculate_payout(
     invoice_ids: list[int],
     expense_ids: list[int],
@@ -182,6 +507,10 @@ def calculate_payout(
     6. total = profit_share + expenses_compensation + commission_amount + tax_amount
     """
     conn = get_connection()
+    ledger_calc = _ledger_payout_for_invoices(conn, invoice_ids, user_splits)
+    if ledger_calc is not None:
+        conn.close()
+        return ledger_calc
 
     # 1. Получаем суммы инвойсов (debt_amount = базовая прибыль)
     invoices_total = 0.0
@@ -542,6 +871,9 @@ def create_payout_with_calculation(
     for link in calc["expense_links"]:
         _link_expense(payout_id, link["expense_id"], link["amount"])
 
+    _create_director_profit_entries_for_payout(payout_id, invoice_ids, user_splits)
+    _lock_finance_entries_for_payout(payout_id, invoice_ids)
+
     return get_payout_by_id(payout_id)
 
 
@@ -665,6 +997,16 @@ def set_payout_status(payout_id: int, status: str) -> dict | None:
         "UPDATE payouts SET status = ?, completed_at = ? WHERE id = ?",
         (status, now if status == "completed" else None, payout_id),
     )
+    if status == "completed":
+        conn.execute(
+            """
+            UPDATE finance_entries
+            SET edit_state = 'paid',
+                updated_at = ?
+            WHERE payout_id = ?
+            """,
+            (now, payout_id),
+        )
     conn.commit()
     conn.close()
     return get_payout_by_id(payout_id)
@@ -702,6 +1044,7 @@ def recalculate_payout(
         conn.close()
         return None
 
+    _release_finance_entries_for_pending_payout(payout_id)
     _unlink_invoices(payout_id)
     _unlink_expenses(payout_id)
     _delete_shares(payout_id)
@@ -737,6 +1080,9 @@ def recalculate_payout(
 
     for link in calc["expense_links"]:
         _link_expense(payout_id, link["expense_id"], link["amount"])
+
+    _create_director_profit_entries_for_payout(payout_id, invoice_ids, user_splits)
+    _lock_finance_entries_for_payout(payout_id, invoice_ids)
 
     conn.commit()
     conn.close()

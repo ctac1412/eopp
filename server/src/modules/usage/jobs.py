@@ -61,8 +61,9 @@ def confirm_billing(payload: dict[str, Any]) -> None:
     """Calculate confirmed usage price and apply prepaid/invoice side effects."""
 
     from src.db.invoices import link_usage_to_open_invoice
+    from src.db.finance import create_usage_finance_entries
     from src.db.prepaid import deduct_prepaid_for_usage_tx
-    from src.db.tariffs import get_tariff
+    from src.db.tariffs import get_effective_tariff
     from src.db.usage_log import _calculate_usage_price
 
     usage_log_id = int(payload["usage_log_id"])
@@ -83,7 +84,7 @@ def confirm_billing(payload: dict[str, Any]) -> None:
             return
         config_json = json.loads(row["config_json"]) if row["config_json"] else None
         mode = config_json.get("mode", "create") if config_json else "create"
-        tariff = get_tariff(row["api_key_id"])
+        tariff = get_effective_tariff(row["api_key_id"])
         price = 0
         company = row["company"]
         if tariff:
@@ -94,6 +95,7 @@ def confirm_billing(payload: dict[str, Any]) -> None:
                 bool(row["has_custom_slots"]),
             )
         conn.execute("UPDATE usage_log SET price = ? WHERE id = ?", (price, usage_log_id))
+        create_usage_finance_entries(conn, usage_log_id, price)
         deducted = deduct_prepaid_for_usage_tx(conn, row["api_key_id"], usage_log_id, price)
         conn.commit()
     except Exception:

@@ -25,6 +25,7 @@ from src.models import (
     CompanyBillingSettingBody,
     CompanyBody,
     CreateExpenseBody,
+    FinanceEntryBody,
     CreateInvoiceBody,
     CreatePayoutBody,
     CreatePrepaidPackageBody,
@@ -41,6 +42,7 @@ from src.models import (
     UpdateApiKeyBody,
     UpdateCompanyBody,
     UpdateExpenseBody,
+    UpdateFinanceEntryBody,
     UpdateInvoiceBody,
     UpdatePayoutBody,
     UpdatePrepaidPackageBody,
@@ -421,6 +423,18 @@ async def admin_daily_report_text(day: str | None = None):
     )
 
 
+@router.get("/finance-report")
+async def admin_finance_report(start: str | None = None, end: str | None = None):
+    try:
+        report = reporting_service.build_finance_report(start=start, end=end)
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid date format, expected ISO date or datetime"},
+        )
+    return JSONResponse(content=report)
+
+
 @router.post("/telegram/preview")
 async def admin_telegram_preview(body: TelegramPreviewBody):
     return JSONResponse(content=reporting_service.telegram_command_preview(body.command))
@@ -768,6 +782,41 @@ async def update_admin_expense(id: int, body: UpdateExpenseBody):
 @router.delete("/expenses/{id}")
 async def delete_admin_expense(id: int):
     return _json_result(billing_service.delete_expense(id))
+
+
+@router.get("/finance-entries")
+async def list_admin_finance_entries(
+    company_id: int | None = None,
+    usage_log_id: int | None = None,
+    invoice_id: int | None = None,
+    payout_id: int | None = None,
+    kind: str | None = None,
+    edit_state: str | None = None,
+):
+    filters = {
+        "company_id": company_id,
+        "usage_log_id": usage_log_id,
+        "invoice_id": invoice_id,
+        "payout_id": payout_id,
+        "kind": kind,
+        "edit_state": edit_state,
+    }
+    return _json_result(billing_service.list_finance_entries(filters))
+
+
+@router.post("/finance-entries")
+async def create_admin_finance_entry(body: FinanceEntryBody):
+    return _json_result(billing_service.create_finance_entry(body))
+
+
+@router.put("/finance-entries/{id}")
+async def update_admin_finance_entry(id: int, body: UpdateFinanceEntryBody):
+    return _json_result(billing_service.update_finance_entry(id, body))
+
+
+@router.delete("/finance-entries/{id}")
+async def delete_admin_finance_entry(id: int):
+    return _json_result(billing_service.delete_finance_entry(id))
 
 
 @router.get("/payouts")

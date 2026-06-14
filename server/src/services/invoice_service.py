@@ -30,6 +30,9 @@ def _updated_invoice_totals(body, items_total: int) -> tuple[int, int, int, int]
 
 
 def generate_invoice(body) -> tuple[int, dict]:
+    from src.db.connection import get_connection
+    from src.db.finance import link_usage_entries_to_invoice
+
     usage_logs = [
         log for log_id in body.usage_log_ids if (log := usage_log_repo.get_usage_log(log_id))
     ]
@@ -43,22 +46,47 @@ def generate_invoice(body) -> tuple[int, dict]:
     invoice_number = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     invoice_id = None
 
+    conn = get_connection()
     try:
-        invoice_id = invoice_repo.create_invoice_record(
-            invoice_number=invoice_number,
-            pdf_path="",
-            comment=body.comment,
-            percent_rate=body.percent_rate,
-            tax_rate=body.tax_rate,
-            debt_amount=debt_amount,
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            """
+            INSERT INTO invoices (
+                invoice_number, is_open, comment, percent_rate, tax_rate,
+                debt_amount, percent_amount, tax_amount, total_amount, pdf_path, paid
+            ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, '', 0)
+            """,
+            (
+                invoice_number,
+                body.comment,
+                body.percent_rate,
+                body.tax_rate,
+                debt_amount,
+                percent_amount,
+                tax_amount,
+                total_amount,
+            ),
+        )
+        invoice_id = int(cur.lastrowid)
+        placeholders = ",".join("?" * len(body.usage_log_ids))
+        conn.execute(
+            f"UPDATE usage_log SET invoice_id = ?, paid = 0 WHERE id IN ({placeholders})",
+            [invoice_id, *body.usage_log_ids],
+        )
+        link_usage_entries_to_invoice(
+            conn,
+            invoice_id,
+            body.usage_log_ids,
             percent_amount=percent_amount,
             tax_amount=tax_amount,
-            total_amount=total_amount,
-            paid=False,
         )
-        usage_log_repo.link_usage_logs_to_invoice(invoice_id, body.usage_log_ids)
+        conn.commit()
     except Exception as exc:
+        conn.execute("ROLLBACK")
         logging.warning("Failed to save invoice to DB: %s", exc)
+        return 400, {"error": str(exc)}
+    finally:
+        conn.close()
 
     return 200, {
         "ok": True,

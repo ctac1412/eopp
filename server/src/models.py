@@ -230,10 +230,38 @@ class UpdateExpenseBody(BaseModel):
     created_at: str | None = None
 
 
+class FinanceEntryBody(BaseModel):
+    company_id: int | None = None
+    usage_log_id: int | None = None
+    invoice_id: int | None = None
+    payout_id: int | None = None
+    expense_id: int | None = None
+    profit_lot_id: int | None = None
+    distribution_answer_id: int | None = None
+    user_id: int | None = None
+    kind: str = "manual_adjustment"
+    amount: int
+    comment: str = ""
+
+
+class UpdateFinanceEntryBody(BaseModel):
+    company_id: int | None = None
+    usage_log_id: int | None = None
+    invoice_id: int | None = None
+    expense_id: int | None = None
+    profit_lot_id: int | None = None
+    distribution_answer_id: int | None = None
+    user_id: int | None = None
+    kind: str | None = None
+    amount: int | None = None
+    comment: str | None = None
+
+
 class CreatePayoutBody(BaseModel):
     name: str
     invoice_ids: list[int] = []
     expense_ids: list[int] = []
+    expense_repayments: list[dict] = []
     user_splits: list[dict] = []
     # user_splits = [{"user_id": int, "split_pct": float}, ...]
 
@@ -241,6 +269,7 @@ class CreatePayoutBody(BaseModel):
 class PreviewPayoutBody(BaseModel):
     invoice_ids: list[int] = []
     expense_ids: list[int] = []
+    expense_repayments: list[dict] = []
     user_splits: list[dict] = []
 
 

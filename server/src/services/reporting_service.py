@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from zoneinfo._common import ZoneInfoNotFoundError
 
+from src.db.connection import get_connection
 from src.repositories import usage_log_repo
 
 try:
@@ -22,6 +23,17 @@ PAYMENT_LABELS = {
     "unpaid": "Не оплачено",
     "no_price": "Без цены",
 }
+
+FINANCE_REPORT_KINDS = (
+    "customer_income",
+    "executor_salary",
+    "operator_salary",
+    "invoice_commission",
+    "invoice_tax",
+    "expense_repayment",
+    "director_profit",
+    "manual_adjustment",
+)
 
 
 def _msk_day_bounds(day: date) -> tuple[datetime, datetime]:
@@ -122,6 +134,98 @@ def build_daily_report(day: date | None = None) -> dict:
         "operations": _operation_totals(rows),
         "payments": _payment_totals(rows),
         "companies": _company_totals(rows),
+    }
+
+
+def _report_bound(value: date | datetime | str | None, *, end: bool = False) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, date):
+        dt = datetime(value.year, value.month, value.day, tzinfo=UTC)
+        if end:
+            dt = dt + timedelta(days=1)
+    else:
+        parsed = _parse_iso(value)
+        if parsed is None:
+            parsed_date = date.fromisoformat(value)
+            dt = datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=UTC)
+            if end:
+                dt = dt + timedelta(days=1)
+        else:
+            dt = parsed
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat()
+
+
+def build_finance_report(
+    start: date | datetime | str | None = None,
+    end: date | datetime | str | None = None,
+) -> dict:
+    start_iso = _report_bound(start)
+    end_iso = _report_bound(end, end=True)
+    filters = []
+    params: list = []
+    if start_iso:
+        filters.append("fe.created_at >= ?")
+        params.append(start_iso)
+    if end_iso:
+        filters.append("fe.created_at < ?")
+        params.append(end_iso)
+    where = f"WHERE {' AND '.join(filters)}" if filters else ""
+
+    conn = get_connection()
+    entry_rows = conn.execute(
+        f"""
+        SELECT fe.kind, fe.amount, fe.user_id, u.name AS user_name
+        FROM finance_entries fe
+        LEFT JOIN users u ON u.id = fe.user_id
+        {where}
+        """,
+        params,
+    ).fetchall()
+    lot_rows = conn.execute(
+        f"""
+        SELECT
+            pl.gross_amount,
+            pl.gross_amount + COALESCE(SUM(fe.amount), 0) AS available
+        FROM profit_lots pl
+        LEFT JOIN finance_entries fe ON fe.profit_lot_id = pl.id
+        {"WHERE pl.created_at >= ?" if start_iso else ""}
+        {"AND pl.created_at < ?" if start_iso and end_iso else "WHERE pl.created_at < ?" if end_iso else ""}
+        GROUP BY pl.id
+        """,
+        [p for p in (start_iso, end_iso) if p],
+    ).fetchall()
+    conn.close()
+
+    totals = {kind: 0.0 for kind in FINANCE_REPORT_KINDS}
+    users: dict[str, dict] = {}
+    for row in entry_rows:
+        kind = row["kind"]
+        amount = float(row["amount"] or 0)
+        report_amount = amount if kind in ("customer_income", "manual_adjustment") else abs(amount)
+        if kind not in totals:
+            totals[kind] = 0.0
+        totals[kind] += report_amount
+        if row["user_id"] is None:
+            continue
+        user_key = str(row["user_id"])
+        item = users.setdefault(
+            user_key,
+            {"user_id": row["user_id"], "user_name": row["user_name"], **{k: 0.0 for k in FINANCE_REPORT_KINDS}},
+        )
+        item[kind] = item.get(kind, 0.0) + report_amount
+
+    totals["profit_lots_gross"] = sum(float(row["gross_amount"] or 0) for row in lot_rows)
+    totals["net_profit_remaining"] = sum(float(row["available"] or 0) for row in lot_rows)
+    return {
+        "start": start_iso,
+        "end": end_iso,
+        "totals": totals,
+        "users": users,
     }
 
 

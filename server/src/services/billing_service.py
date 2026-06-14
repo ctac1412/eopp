@@ -60,6 +60,36 @@ from src.services.user_service import (
 )
 
 
+def list_finance_entries(filters: dict | None = None) -> tuple[int, list[dict]]:
+    from src.db.finance import list_finance_entries as db_list_finance_entries
+
+    return 200, db_list_finance_entries(filters)
+
+
+def create_finance_entry(body) -> tuple[int, dict]:
+    from src.db.finance import create_manual_entry
+
+    return 200, create_manual_entry(body.model_dump())
+
+
+def update_finance_entry(entry_id: int, body) -> tuple[int, dict]:
+    from src.db.finance import update_finance_entry as db_update_finance_entry
+
+    payload = {key: value for key, value in body.model_dump().items() if value is not None}
+    entry = db_update_finance_entry(entry_id, payload)
+    if not entry:
+        return 404, {"error": "Finance entry not found or locked"}
+    return 200, entry
+
+
+def delete_finance_entry(entry_id: int) -> tuple[int, dict]:
+    from src.db.finance import delete_finance_entry as db_delete_finance_entry
+
+    if not db_delete_finance_entry(entry_id):
+        return 404, {"error": "Finance entry not found or locked"}
+    return 200, {"ok": True}
+
+
 def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access_decision=None) -> tuple[int, dict]:
     """Update an API key and audit security-sensitive changes when available."""
     key = api_key_repo.update_api_key(api_key_id, body, admin_id=admin_id, access_decision=access_decision)
@@ -90,6 +120,7 @@ __all__ = [
     "create_user",
     "delete_company_alias",
     "delete_expense",
+    "delete_finance_entry",
     "delete_invoice",
     "delete_payout",
     "delete_prepaid_package",
@@ -97,6 +128,7 @@ __all__ = [
     "delete_company_tariff",
     "delete_user",
     "ensure_open_invoice",
+    "create_finance_entry",
     "generate_invoice",
     "get_tariff",
     "get_company_tariff",
@@ -105,6 +137,7 @@ __all__ = [
     "list_company_aliases",
     "list_company_billing_settings",
     "list_expenses",
+    "list_finance_entries",
     "list_finance_participants",
     "list_invoices",
     "list_payouts",
@@ -117,6 +150,7 @@ __all__ = [
     "top_up_prepaid_package",
     "update_company_billing_settings",
     "update_expense",
+    "update_finance_entry",
     "update_invoice",
     "update_payout",
     "update_prepaid_package",

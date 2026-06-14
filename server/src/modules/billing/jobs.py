@@ -24,18 +24,23 @@ def _defer_job(name: str, payload: dict[str, Any]) -> None:
 def calculate_usage_price(payload: dict[str, Any]) -> None:
     """Calculate and store usage price, then request prepaid deduction."""
 
+    from src.db.finance import create_usage_finance_entries
     from src.db.tariffs import get_effective_tariff
     from src.db.usage_log import _calculate_usage_price
 
     usage_log_id = int(payload["usage_log_id"])
     conn = get_connection()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
         if row is None:
+            conn.execute("ROLLBACK")
             raise ValueError(f"usage_log {usage_log_id} not found")
         if row["status"] != "confirmed":
+            conn.execute("ROLLBACK")
             return
         if bool(row["is_test"]) if row["is_test"] is not None else False:
+            conn.execute("ROLLBACK")
             return
 
         config_json = json.loads(row["config_json"]) if row["config_json"] else None
@@ -50,7 +55,14 @@ def calculate_usage_price(payload: dict[str, Any]) -> None:
                 bool(row["has_custom_slots"]),
             )
         conn.execute("UPDATE usage_log SET price = ? WHERE id = ?", (price, usage_log_id))
+        create_usage_finance_entries(conn, usage_log_id, price)
         conn.commit()
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
     finally:
         conn.close()
 
@@ -78,13 +90,17 @@ def deduct_prepaid(payload: dict[str, Any]) -> None:
         if bool(row["is_test"]) if row["is_test"] is not None else False:
             conn.execute("ROLLBACK")
             return
-        price = int(row["price"] or 0)
+        from src.db.finance import usage_income_amount
+
+        price = usage_income_amount(conn, usage_log_id)
+        if price is None:
+            price = int(row["price"] or 0)
         company = row["company"]
         deducted = deduct_prepaid_for_usage_tx(
             conn,
             int(row["api_key_id"]),
             usage_log_id,
-            price,
+            int(price),
         )
         conn.commit()
     except Exception:

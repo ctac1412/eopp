@@ -711,6 +711,22 @@ Important rules:
 - For SQLite destructive or irreversible migrations, assume rollback means DB
   restore from backup unless a downgrade has been tested on production-copy
   data.
+- DB schema changes must include an Alembic revision in the active tree
+  `server/migrations/versions`. Do not insert new revisions behind an already
+  deployed/stamped head; create a new repair/expand revision after the current
+  head so existing SQLite files can advance.
+- After adding or changing ORM columns/tables, run:
+  - `make schema-check`
+  - `make schema-check-db`
+  These compare the migrated SQLite schema with SQLAlchemy entity metadata and
+  catch drift such as `alembic_version` at head while a physical column is
+  missing.
+- Local production-style starts (`make run-prod`, `make run-prod-start`) must
+  go through `make prepare-prod-db`, which runs schema-check, applies
+  migrations, then checks the actual local SQLite file before FastAPI starts.
+- If an existing DB is already stamped at head but lacks a column, fix it with
+  an idempotent repair migration (`ALTER TABLE ... ADD COLUMN` guarded by
+  `PRAGMA table_info`) instead of editing old migration history.
 - Run this focused check after touching delivery scripts or runbook:
   - `uv run pytest server/tests/test_deploy_scripts.py`
 

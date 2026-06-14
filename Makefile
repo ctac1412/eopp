@@ -1,9 +1,9 @@
 # === Server ===
 
-run-prod: build-frontend build-extension
+run-prod: build-frontend build-extension prepare-prod-db
 	uv run python server/manage.py --host 0.0.0.0 --no-ssl --data-dir server/data --port 8766
 
-run-prod-start: build-frontend build-extension
+run-prod-start: build-frontend build-extension prepare-prod-db
 	@powershell -Command "$$root = (Get-Location).Path; $$pidFile = Join-Path $$root '.run-prod.pid'; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$listener.OwningProcess | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod already running, PID=' + $$listener.OwningProcess); exit 0 }; Start-Process -FilePath 'uv' -ArgumentList 'run','python','server/manage.py','--host','0.0.0.0','--no-ssl','--data-dir','server/data','--port','8766' -WorkingDirectory $$root -WindowStyle Hidden; $$serverPid = $$null; for ($$i = 0; $$i -lt 20; $$i++) { Start-Sleep -Milliseconds 250; $$listener = Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if ($$listener) { $$serverPid = $$listener.OwningProcess; break } }; if (!$$serverPid) { Write-Error 'run-prod failed to start (port 8766 not listening)'; exit 1 }; $$serverPid | Set-Content -Path $$pidFile -Encoding ascii; Write-Host ('run-prod started, PID=' + $$serverPid + ', pidfile=' + $$pidFile)"
 
 run-prod-stop:
@@ -130,7 +130,18 @@ deploy-ssl:
 # === Migrations ===
 
 migrate:
-	cd server && uv run python -m alembic upgrade head
+	cd server && uv run python -m alembic upgrade heads
+
+prepare-prod-db:
+	$(MAKE) schema-check
+	$(MAKE) migrate
+	$(MAKE) schema-check-db
+
+schema-check:
+	cd server && uv run python scripts/check_migration_schema.py
+
+schema-check-db:
+	cd server && uv run python scripts/check_migration_schema.py --db "$(if $(DB),$(DB),data/api_keys.db)"
 
 migrate-status:
 	cd server && uv run python -m alembic current
