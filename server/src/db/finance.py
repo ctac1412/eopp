@@ -461,6 +461,62 @@ def list_finance_entries(filters: dict | None = None) -> list[dict]:
         conn.close()
 
 
+def list_profit_lots(filters: dict | None = None) -> list[dict]:
+    filters = filters or {}
+    conditions = []
+    params = []
+    for key in ("company_id", "usage_log_id", "invoice_id"):
+        value = filters.get(key)
+        if value is not None:
+            conditions.append(f"pl.{key} = ?")
+            params.append(value)
+    allocated_expr = "COALESCE(linked.allocated_amount, 0)"
+    remaining_expr = f"pl.gross_amount - {allocated_expr}"
+    status = filters.get("status")
+    if status == "open":
+        conditions.append(f"{remaining_expr} > 0")
+    elif status == "allocated":
+        conditions.append(f"{remaining_expr} <= 0")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT
+                pl.id,
+                pl.company_id,
+                pl.usage_log_id,
+                pl.invoice_id,
+                pl.gross_amount,
+                pl.created_at,
+                pl.updated_at,
+                {allocated_expr} AS allocated_amount,
+                {remaining_expr} AS remaining_amount,
+                COALESCE(linked.linked_entries_count, 0) AS linked_entries_count,
+                i.invoice_number,
+                COALESCE(c.name, i.company) AS company_name
+            FROM profit_lots pl
+            LEFT JOIN invoices i ON i.id = pl.invoice_id
+            LEFT JOIN companies c ON c.id = pl.company_id
+            LEFT JOIN (
+                SELECT
+                    profit_lot_id,
+                    SUM(ABS(amount)) AS allocated_amount,
+                    COUNT(*) AS linked_entries_count
+                FROM finance_entries
+                WHERE profit_lot_id IS NOT NULL
+                GROUP BY profit_lot_id
+            ) linked ON linked.profit_lot_id = pl.id
+            {where}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            """,
+            params,
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def create_manual_entry(payload: dict) -> dict:
     conn = get_connection()
     try:

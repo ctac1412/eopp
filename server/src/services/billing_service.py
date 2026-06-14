@@ -66,6 +66,12 @@ def list_finance_entries(filters: dict | None = None) -> tuple[int, list[dict]]:
     return 200, db_list_finance_entries(filters)
 
 
+def list_profit_lots(filters: dict | None = None) -> tuple[int, list[dict]]:
+    from src.db.finance import list_profit_lots as db_list_profit_lots
+
+    return 200, db_list_profit_lots(filters)
+
+
 def create_finance_entry(body) -> tuple[int, dict]:
     from src.db.finance import create_manual_entry
 
@@ -128,6 +134,7 @@ __all__ = [
     "delete_company_tariff",
     "delete_user",
     "ensure_open_invoice",
+    "list_profit_lots",
     "create_finance_entry",
     "generate_invoice",
     "get_tariff",

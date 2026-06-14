@@ -804,6 +804,25 @@ async def list_admin_finance_entries(
     return _json_result(billing_service.list_finance_entries(filters))
 
 
+@router.get("/profit-lots")
+async def list_admin_profit_lots(
+    company_id: int | None = None,
+    usage_log_id: int | None = None,
+    invoice_id: int | None = None,
+    status: str | None = None,
+):
+    return _json_result(
+        billing_service.list_profit_lots(
+            {
+                "company_id": company_id,
+                "usage_log_id": usage_log_id,
+                "invoice_id": invoice_id,
+                "status": status,
+            }
+        )
+    )
+
+
 @router.post("/finance-entries")
 async def create_admin_finance_entry(body: FinanceEntryBody):
     return _json_result(billing_service.create_finance_entry(body))
