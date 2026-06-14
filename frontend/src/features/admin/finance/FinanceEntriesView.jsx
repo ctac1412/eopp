@@ -119,8 +119,14 @@ export function FinanceEntriesView({
   );
 
   const visibleEntries = useMemo(
-    () => enrichedEntries.filter((entry) => matchesFinanceSearch(entry, filters.search)),
-    [enrichedEntries, filters.search],
+    () =>
+      enrichedEntries.filter((entry) => {
+        if (filters.profit_lot_id && String(entry.profit_lot_id || "") !== String(filters.profit_lot_id)) {
+          return false;
+        }
+        return matchesFinanceSearch(entry, filters.search);
+      }),
+    [enrichedEntries, filters.profit_lot_id, filters.search],
   );
 
   const openCreate = () => {

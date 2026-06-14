@@ -3,6 +3,7 @@ import { Alert, Button, DatePicker, Segmented, Space, Typography } from "antd";
 
 import { listCompanies, listFinanceParticipants } from "./financeApi.js";
 import { FinanceEntriesView } from "./FinanceEntriesView.jsx";
+import { ProfitLotsView } from "./ProfitLotsView.jsx";
 
 const { RangePicker } = DatePicker;
 
@@ -102,7 +103,12 @@ export function FinanceTab({ adminToken, onError }) {
           onFiltersChange={setLedgerFilters}
         />
       )}
-      {activeView === "lots" && <FinancePlaceholder title="Лоты прибыли" {...sharedProps} />}
+      {activeView === "lots" && (
+        <ProfitLotsView
+          {...sharedProps}
+          onLedgerFilters={setLedgerFilters}
+        />
+      )}
       {activeView === "report" && <FinancePlaceholder title="Сводка" {...sharedProps} />}
     </div>
   );
