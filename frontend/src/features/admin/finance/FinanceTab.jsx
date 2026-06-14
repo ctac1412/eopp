@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Button, DatePicker, Segmented, Space, Typography } from "antd";
+import { Alert, Button, DatePicker, Segmented, Space } from "antd";
 
 import { listCompanies, listFinanceParticipants } from "./financeApi.js";
 import { FinanceEntriesView } from "./FinanceEntriesView.jsx";
+import { FinanceReportView } from "./FinanceReportView.jsx";
 import { ProfitLotsView } from "./ProfitLotsView.jsx";
 
 const { RangePicker } = DatePicker;
@@ -12,15 +13,6 @@ const VIEW_OPTIONS = [
   { label: "Лоты прибыли", value: "lots" },
   { label: "Сводка", value: "report" },
 ];
-
-function FinancePlaceholder({ title }) {
-  return (
-    <div className="admin-section">
-      <Typography.Title level={5}>{title}</Typography.Title>
-      <Typography.Text type="secondary">Раздел загружается в следующем шаге.</Typography.Text>
-    </div>
-  );
-}
 
 export function FinanceTab({ adminToken, onError }) {
   const [activeView, setActiveView] = useState("ledger");
@@ -109,7 +101,13 @@ export function FinanceTab({ adminToken, onError }) {
           onLedgerFilters={setLedgerFilters}
         />
       )}
-      {activeView === "report" && <FinancePlaceholder title="Сводка" {...sharedProps} />}
+      {activeView === "report" && (
+        <FinanceReportView
+          {...sharedProps}
+          onLedgerFilters={setLedgerFilters}
+          onLotsView={() => setActiveView("lots")}
+        />
+      )}
     </div>
   );
 }
