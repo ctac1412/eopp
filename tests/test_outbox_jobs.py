@@ -104,6 +104,17 @@ def test_worker_marks_successful_job_done_once(isolated_api_db):
     assert row["status"] == "done"
 
 
+def test_default_registry_keeps_legacy_aliases_on_current_modules(isolated_api_db):
+    from src.modules.billing.jobs import calculate_usage_price
+    from src.modules.crm.jobs import enrich_usage
+    from src.platform.jobs.worker import default_registry
+
+    registry = default_registry()
+
+    assert registry.get("usage_enrich") is enrich_usage
+    assert registry.get("billing_confirm") is calculate_usage_price
+
+
 def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api_key, active_sse):
     monkeypatch.setenv("PEAK_FAST_MODE", "1")
 
@@ -132,3 +143,148 @@ def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api
 
     assert confirm_response.status_code == 200
     assert confirm_response.json() == {"ok": True}
+
+
+def test_confirm_usage_defers_telegram_even_when_sync_flag_enabled(
+    monkeypatch, client, api_key, active_sse
+):
+    from src.db.connection import get_connection
+
+    monkeypatch.delenv("PEAK_FAST_MODE", raising=False)
+    monkeypatch.delenv("EOPP_PEAK_FAST_MODE", raising=False)
+    monkeypatch.setenv("EOPP_USAGE_SYNC_BILLING_ENABLED", "1")
+
+    register_response = client.post(
+        "/register-usage",
+        json={
+            "api_key": api_key,
+            "reservation_id": "reservation-telegram-deferred",
+            "captcha_id": "captcha-telegram-deferred",
+            "config_json": {"mode": "create"},
+        },
+    )
+    assert register_response.status_code == 200
+    usage_log_id = register_response.json()["usage_log_id"]
+
+    monkeypatch.setattr(
+        "src.services.telegram_service.notify_confirmed_usage",
+        lambda usage: (_ for _ in ()).throw(RuntimeError("telegram should be deferred")),
+    )
+
+    confirm_response = client.post(
+        "/confirm-usage",
+        json={"api_key": api_key, "usage_log_id": usage_log_id, "slot_date": "2026-06-15"},
+    )
+
+    assert confirm_response.status_code == 200
+    assert confirm_response.json() == {"ok": True}
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT job_name, payload_json FROM background_jobs WHERE job_name = 'telegram_confirmed_usage'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert json.loads(row["payload_json"]) == {"usage_log_id": usage_log_id}
+
+
+def test_fail_usage_defers_captcha_record_parsing(monkeypatch, client, api_key, active_sse):
+    from src.db.connection import get_connection
+
+    register_response = client.post(
+        "/register-usage",
+        json={
+            "api_key": api_key,
+            "reservation_id": "reservation-failed-captcha",
+            "captcha_id": "captcha-failed",
+            "config_json": {"mode": "create", "captcha_source": "eopp"},
+        },
+    )
+    assert register_response.status_code == 200
+    usage_log_id = register_response.json()["usage_log_id"]
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("captcha parser should be deferred")
+
+    monkeypatch.setattr("src.db.captchas.create_captcha_records", explode)
+
+    fail_response = client.post(
+        "/fail-usage",
+        json={
+            "api_key": api_key,
+            "usage_log_id": usage_log_id,
+            "error_message": "captcha failed",
+            "error_stage": "captcha",
+            "slot_date": "2026-06-15",
+            "logs": [
+                "15:17:15.5 <log-version>v2</log-version>",
+                '{"event":"stage_end","stage":"solving","status":"error","endpoint":"solve-captcha","captcha_id":"48fef3307bde851f","error":"timeout"}',
+            ],
+        },
+    )
+
+    assert fail_response.status_code == 200
+    assert fail_response.json() == {"ok": True}
+
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT job_name, payload_json FROM background_jobs WHERE job_name = 'captcha_records'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert json.loads(row["payload_json"]) == {
+        "usage_log_id": usage_log_id,
+        "status": "failed",
+    }
+
+
+def test_confirm_usage_sync_flags_are_compatibility_only(monkeypatch, isolated_api_db):
+    from src.db import create_key, log_usage
+    from src.db.connection import get_connection
+    from src.db.usage_log import confirm_usage
+
+    key = create_key(label="confirm-sync-compat")
+    usage_log_id = log_usage(key["key"], "reservation-sync-compat", "captcha-sync-compat")
+
+    import src.modules.usage.jobs as usage_jobs
+
+    assert not hasattr(usage_jobs, "confirm_billing")
+    monkeypatch.setattr(
+        "src.modules.billing.jobs.calculate_usage_price",
+        lambda payload: (_ for _ in ()).throw(RuntimeError("billing should be deferred")),
+    )
+    monkeypatch.setattr(
+        "src.db.captchas.create_captcha_records",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("captcha parsing should be deferred")),
+    )
+
+    assert (
+        confirm_usage(
+            usage_log_id,
+            logs=[
+                "15:17:15.5 <log-version>v2</log-version>",
+                '{"event":"stage_end","stage":"solving","status":"error","endpoint":"solve-captcha","captcha_id":"48fef3307bde851f","error":"timeout"}',
+            ],
+            sync_billing=True,
+            sync_captcha_records=True,
+        )
+        is True
+    )
+
+    conn = get_connection()
+    try:
+        jobs = [
+            (row["job_name"], json.loads(row["payload_json"]))
+            for row in conn.execute("SELECT job_name, payload_json FROM background_jobs ORDER BY id")
+        ]
+    finally:
+        conn.close()
+
+    assert ("billing.calculate_usage_price", {"usage_log_id": usage_log_id}) in jobs
+    assert ("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"}) in jobs

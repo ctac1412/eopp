@@ -13,7 +13,9 @@ test("user modal uses a three-quarter page layout", async () => {
   assert.match(userModal, /className="users-modal users-modal--three-quarter"/);
   assert.match(userModal, /className="users-modal-form__fields"/);
   assert.match(userModal, /className="users-modal-form__access"/);
-  assert.match(userModal, /import \{ Modal, Switch \} from "antd";/);
+  assert.match(userModal, /import \{[^}]*Modal[^}]*Switch[^}]*\} from "antd";/);
+  assert.match(userModal, /function AccessBlock\(/);
+  assert.doesNotMatch(userModal, /AccessBlockV2/);
   assert.match(userModal, /Director/);
   assert.match(userModal, /isDirector/);
   assert.doesNotMatch(userModal, /users-modal-nav/);

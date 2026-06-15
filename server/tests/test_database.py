@@ -85,6 +85,17 @@ def attach_key_to_company_tariff(
     return company_id
 
 
+def drain_background_jobs(max_rounds: int = 10) -> None:
+    from src.platform.jobs.worker import default_registry, run_due_jobs
+
+    registry = default_registry()
+    for _ in range(max_rounds):
+        result = run_due_jobs(registry=registry, max_jobs=50, max_attempts=1)
+        if result.processed == 0:
+            return
+    raise AssertionError("background jobs did not drain")
+
+
 class TestAPIKeysDB:
     """CRUD Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘ РЎРѓ API Р С”Р В»РЎР‹РЎвЂЎР В°Р СР С‘."""
 
@@ -213,20 +224,16 @@ class TestUsageLog:
         log_id = log_usage(key["key"], "res-conf", "capt-conf")
         assert confirm_usage(log_id) is True
 
-    def test_confirm_usage_indexes_captchas_from_stored_logs(self, monkeypatch):
-        import src.db.captchas as captchas_db
+    def test_confirm_usage_enqueues_captcha_records_from_stored_logs(self, monkeypatch):
         from src.db import confirm_usage, create_key, log_usage
+        from src.db.connection import get_connection
 
-        captured = {}
-
-        def fake_create_captcha_records(usage_log_id, captcha_id, indexed_logs, overall_status):
-            captured["usage_log_id"] = usage_log_id
-            captured["captcha_id"] = captcha_id
-            captured["logs"] = indexed_logs
-            captured["overall_status"] = overall_status
-            return [1]
-
-        monkeypatch.setattr(captchas_db, "create_captcha_records", fake_create_captcha_records)
+        monkeypatch.setattr(
+            "src.db.captchas.create_captcha_records",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                RuntimeError("captcha records should be deferred")
+            ),
+        )
 
         logs = [
             "15:17:15.5 <log-version>v2</log-version>",
@@ -237,11 +244,18 @@ class TestUsageLog:
 
         assert confirm_usage(log_id, logs=logs) is True
 
-        assert captured["usage_log_id"] == log_id
-        assert captured["captcha_id"] == "unknown"
-        assert captured["logs"] == logs
-        assert captured["logs"] is not logs
-        assert captured["overall_status"] == "confirmed"
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT job_name, payload_json FROM background_jobs WHERE job_name = 'captcha_records'"
+        ).fetchone()
+        conn.close()
+        assert row is not None
+        import json as _json
+
+        assert _json.loads(row["payload_json"]) == {
+            "usage_log_id": log_id,
+            "status": "confirmed",
+        }
 
     def test_confirm_usage_with_price(self):
         """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ РЎРѓ РЎвЂ Р ВµР Р…Р С•Р в„– Р С‘Р В· РЎвЂљР В°РЎР‚Р С‘РЎвЂћР В°."""
@@ -316,6 +330,7 @@ class TestUsageLog:
         assert open_invoice is not None
 
         assert confirm_usage(log_id) is True
+        drain_background_jobs()
         log = get_usage_log_entry(log_id)
         assert log["invoice_id"] is not None
         open_invoice = get_open_invoice(company)
@@ -454,6 +469,7 @@ class TestOpenInvoices:
                 },
             )
             confirm_usage(log_id)
+        drain_background_jobs()
 
         ensure_open_invoice(company)
         old_open = get_open_invoice(company)
@@ -491,6 +507,7 @@ class TestPrepaidPackages:
             config_json={"mode": "create"},
         )
         confirm_usage(log_id)
+        drain_background_jobs()
 
         log = get_usage_log_entry(log_id)
         packages = list_prepaid_packages()

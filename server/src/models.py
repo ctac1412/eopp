@@ -7,7 +7,7 @@ Pydantic-модели для валидации запросов API:
 - ConfirmUsageBody, FailUsageBody - логирование использования
 - MockConfigBody - настройка мок-ответов
 
-Используются в routes.py для валидации входящих данных.
+Используются в `server/src/routes/*` для валидации входящих данных.
 """
 
 from typing import Any

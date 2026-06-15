@@ -7,7 +7,6 @@ from src.platform.observability.metrics import latency_timer
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
 from src.repositories import company_repo
-from src.services import telegram_service
 from src.sse import lock, sse_queues
 
 
@@ -118,16 +117,7 @@ def confirm_usage(body) -> tuple[int, dict]:
         return 429, {"error": "Maximum uses exceeded"}
     if not ok:
         return 404, {"error": "Usage log entry not found"}
-    if sync_billing:
-        try:
-            telegram_service.notify_confirmed_usage(usage_log_repo.get_usage_log(body.usage_log_id))
-        except Exception as exc:
-            _defer_job(
-                "telegram_confirmed_usage",
-                {"usage_log_id": body.usage_log_id, "error": str(exc)},
-            )
-    else:
-        _defer_job("telegram_confirmed_usage", {"usage_log_id": body.usage_log_id})
+    _defer_job("telegram_confirmed_usage", {"usage_log_id": body.usage_log_id})
     return 200, {"ok": True}
 
 

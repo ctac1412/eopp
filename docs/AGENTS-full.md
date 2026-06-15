@@ -71,8 +71,8 @@
 |------|-----------|
 | `server/manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
 | `server/src/app.py` | FastAPI-приложение: создание app, lifespan, CORS, middleware |
-| `server/src/routes.py` | Точка входа: регистрирует все роутеры из `server/src/routes/` |
-| `server/src/routes/*.py` | Роутеры по модулям: `captcha.py`, `sse.py`, `api_keys.py`, `usage.py`, `slots.py`, `mock.py`, `admin.py`, `plugins.py`, `frontend.py` |
+| `server/src/routes/__init__.py` | Route package entry point: registers core routers, optional module manifests, test pages, and frontend routes. |
+| `server/src/routes/*.py` | Module routers: `captcha.py`, `sse.py`, `api_keys.py`, `usage.py`, `slots.py`, `mock.py`, `admin.py`, `admin_jobs.py`, `auth.py`, `captchas.py`, `operator.py`, `distribution.py`, `plugin_channel.py`, `plugin_files.py`, `scheduled.py`, `chat.py`, `frontend.py`, `health.py`. |
 | `server/src/models.py` | Pydantic-модели для валидации запросов |
 | `server/src/constants.py` | Константы: порты, пути, токены, настройки |
 | `server/src/utils.py` | Утилиты: хеширование, сборка изображений, SSE push, тесты, benchmark |
@@ -248,7 +248,7 @@ Vite + React 18 + React Router + Zustand.
 |------|-----------|
 | `server/manage.py` | CLI-входная точка сервера (typer), автогенерация self-signed SSL, запуск uvicorn |
 | `server/src/app.py` | FastAPI-приложение: роуты, SSE, обработка капч, serve фронтенда |
-| `server/src/routes.py` | Все роуты: капчи, SSE, API ключи, usage log, mock EOPP, slots groups (1219 строк) |
+| `server/src/routes/__init__.py` | Registers all route modules from `server/src/routes/`: captcha, SSE, auth, API keys, usage, slots, captchas, operators, plugins, admin, jobs, test pages, and frontend serving. |
 | `server/src/utils.py` | Утилиты: хеширование капч, сборка изображений, SSE push, загрузка тестов, benchmark |
 | `server/captcha_solver.py` | Алгоритм решения капчи (discontinuity, SSIM, coherence, Sobel) |
 | `extension/manifest.json` | Manifest V3, permissions, content script match |
@@ -475,10 +475,12 @@ their semantics:
   metadata, top3, and classifier hint work in `/solve-captcha`.
 - `EOPP_USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED=0` keeps `/register-usage` to a
   minimal pending row and defers company/FIO/vehicle/custom-slot enrichment.
-- `EOPP_USAGE_SYNC_BILLING_ENABLED=0` keeps `/confirm-usage` to atomic confirm
-  state and usage_count updates, deferring tariff/prepaid/invoice/telegram.
-- `EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED=0` defers captcha-record parsing from
-  confirmed usage logs.
+- `EOPP_USAGE_SYNC_BILLING_ENABLED` and
+  `EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED` are compatibility flags accepted by
+  older adapters. Current `/confirm-usage` always keeps the HTTP path to atomic
+  confirm state plus best-effort durable enqueues for
+  `billing.calculate_usage_price`, `captcha_records`, and
+  `telegram_confirmed_usage`.
 
 Documentation expectations for this area:
 
@@ -521,8 +523,10 @@ completion:
 
 ## Phase 5 RBAC And Audit Rules
 
-Phase 5 centralizes admin/security authorization and audit while preserving
-legacy `X-Admin-Token` and admin API-key compatibility.
+Phase 5 centralizes admin/security authorization and audit around password
+sessions. `X-Admin-Token` remains the HTTP header name used by backend tests
+and older internal clients, but its value must be a session token, not an API
+key.
 
 Important files:
 - Core contract: `server/src/core/contracts/permissions.py`
@@ -541,9 +545,9 @@ Important rules:
 - Do not scatter role checks through route functions. Add or change HTTP
   permissions in `src.policies.access_policy`; route code may only reuse the
   middleware `AccessDecision` for audit context.
-- Keep existing admin keys working. Active API keys with `is_admin=1` are valid
-  admin tokens; a missing `admin_role` is treated as `super_admin` because older
-  releases allowed all admin keys to mutate admin resources.
+- API keys are not admin bearer tokens. The old admin API key is retained only
+  as the bootstrap password for the migrated `admin` user; successful login
+  issues the `eopp_admin_session` cookie/session token used for RBAC.
 - Security/admin audit is synchronous for access-sensitive changes:
   `admin.login.succeeded`, `admin.login.failed`, `api_key.changed`, and
   `role.changed`.
@@ -569,9 +573,10 @@ Important files:
   and `server/src/db/usage_log.py`
 
 Important rules:
-- `/solve-captcha`, `/solve`, `/register-usage`, and `/confirm-usage` must not
-  import or synchronously call tariffs, prepaid, invoice linking, company alias
-  parsing, or company creation.
+- `/solve-captcha`, `/solve`, `/register-usage`, `/confirm-usage`, and
+  `/fail-usage` must not import or synchronously call tariffs, prepaid, invoice
+  linking, company alias parsing, company creation, captcha-record parsing, or
+  Telegram notifications.
 - Usage registration writes only the minimal pending row and best-effort
   enqueues `crm.enrich_usage`.
 - Usage confirmation only atomically updates status, confirmed_at, slot_date,
@@ -579,6 +584,8 @@ Important rules:
   `billing.calculate_usage_price`; that job chains to
   `billing.deduct_prepaid`, then `billing.link_open_invoice` if unpaid company
   debt remains.
+- Usage failure only stores the failed state. When EOPP captcha logs should be
+  indexed, it best-effort enqueues `captcha_records` with `status='failed'`.
 - Billing and CRM handlers must be idempotent. Re-running
   `billing.deduct_prepaid` must not double-deduct because
   `deduct_prepaid_for_usage_tx()` checks existing deductions.

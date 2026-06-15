@@ -57,14 +57,6 @@ export function adminTabPath(tab, search = "") {
   return `/admin/${tab.path}${suffix}`;
 }
 
-export function buildLegacyAdminTabRedirect(search = "") {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const tabId = params.get("tab");
-  const tab = ADMIN_TABS.find((item) => item.id === tabId || item.path === tabId) || ADMIN_TABS[0];
-  params.delete("tab");
-  return adminTabPath(tab, params.toString());
-}
-
 export function resolveAdminTabRoute({ tabId, visibleTabs, search = "" }) {
   const fallback = visibleTabs[0] || ADMIN_TABS[0];
   const tab = ADMIN_TABS.find((item) => item.id === tabId || item.path === tabId);

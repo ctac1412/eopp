@@ -74,7 +74,7 @@ telegram, training routes, or plugin routes.
 | Modules | `server/src/modules/*` | side features and optional manifests | billing/training manifest; jobs for billing/CRM/archive/usage |
 | Routes/adapters | `server/src/routes/*` | HTTP shell, dependency injection, legacy compatibility | core routes are thinner; admin remains large |
 | Repositories/db | `server/src/repositories/*`, `server/src/db/*` | persistence and older DB helpers | mixed SQLAlchemy and raw sqlite legacy |
-| Migrations | `server/migrations/versions/*` | active Alembic tree | duplicate older roots exist outside active tree |
+| Migrations | `server/migrations/versions/*` | active Alembic tree | root `server/alembic.ini` points at this tree |
 | Realtime | `server/src/core/realtime`, `server/src/sse` | bounded queues and compatibility globals | nonblocking fanout implemented |
 | RBAC/audit | `modules/access`, `modules/audit`, `policies/access_policy.py` | admin authorization and audit | centralized enough for Phase 5 |
 | Billing/CRM | `modules/billing`, `modules/crm` | deferred side effects | split model exists; aliases remain |
@@ -86,9 +86,9 @@ telegram, training routes, or plugin routes.
 
 CodeGraph surfaced these main frontend entry points:
 
-- `frontend/src/AdminPage.jsx` - large admin shell that still owns many tab states and fetch
-  flows. It uses `frontend/src/features/admin/shared/adminClient.js` for legacy
-  `X-Admin-Token` headers and `frontend/src/features/admin/shared/tabs.js` for tab routing.
+- `frontend/src/AdminPage.jsx` - admin shell that owns auth/session restore,
+  RBAC-derived navigation, layout, and tab routing through
+  `frontend/src/features/admin/shared/tabs.js`.
 - `frontend/src/components/admin/OperatorsTab.jsx` - admin operator/link/distribution answer
   management. It reads `/admin/operators`, `/admin/operator-links`,
   `/admin/distribution-answers`, `/api-keys`, and `/admin/companies`.
@@ -126,7 +126,7 @@ history interleave; the owner should confirm this is desired.
 | Slow operator does not block others | Pass in focused tests | `tests/test_realtime_fanout.py` passed |
 | Billing/CRM/archive jobs idempotent | Mostly pass | job idempotency keys exist; prepaid deduction relies on unique `usage_log_id` |
 | Training jobs idempotent | Unknown | training manifest exists, no audited job handler found |
-| Peak fast mode disables heavy sync work | Partial | archive/metadata/billing flags work; `/fail-usage` still sync-indexes records |
+| Peak fast mode disables heavy sync work | Pass with worker debt | archive/metadata/billing/captcha-record side work is deferred; monitor worker retry/dead-letter queues |
 | Deploy creates release manifest and backup | Pass by static tests | `server/tests/test_deploy_scripts.py` passed |
 | Rollback selects release manifest | Pass by static tests | no `docker images | head -1`; selected/previous release manifest |
 | Full state promotion has backup/diff/restore | Mostly pass | diff is printed; no persisted diff bundle observed |

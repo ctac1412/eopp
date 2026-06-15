@@ -4,7 +4,6 @@ import test from "node:test";
 
 import {
   ADMIN_TABS,
-  buildLegacyAdminTabRedirect,
   resolveAdminTabRoute,
 } from "./tabs.js";
 
@@ -26,11 +25,9 @@ test("admin tabs expose route metadata", () => {
   }
 });
 
-test("legacy query tab redirects to route path and preserves other params", () => {
-  assert.equal(
-    buildLegacyAdminTabRedirect("?tab=invoices&invoice_id=123"),
-    "/admin/invoices?invoice_id=123",
-  );
+test("admin shell no longer supports legacy tab query routing", () => {
+  assert.doesNotMatch(adminPageSource, /buildLegacyAdminTabRedirect/);
+  assert.doesNotMatch(adminPageSource, /location\.search\.includes\("tab="/);
 });
 
 test("reports tab does not write legacy tab query param", () => {

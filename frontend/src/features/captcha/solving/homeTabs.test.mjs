@@ -3,8 +3,7 @@ import test from "node:test";
 
 import { normalizeHomeSideTab } from "./homeTabs.js";
 
-test("home side tab defaults legacy queue tab to chat", () => {
-  assert.equal(normalizeHomeSideTab("captchas"), "chat");
+test("home side tab defaults unknown values to chat", () => {
   assert.equal(normalizeHomeSideTab(null), "chat");
   assert.equal(normalizeHomeSideTab("unknown"), "chat");
 });

@@ -1325,6 +1325,16 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
         debt_amount=2000,
         total_amount=2000,
     )
+    assert client.patch(
+        f"/admin/invoices/{own_invoice_id}",
+        headers={"X-Admin-Token": admin_token},
+        json={"paid": True},
+    ).status_code == 200
+    assert client.patch(
+        f"/admin/invoices/{other_invoice_id}",
+        headers={"X-Admin-Token": admin_token},
+        json={"paid": True},
+    ).status_code == 200
     own_expense = client.post(
         "/admin/expenses",
         headers={"X-Admin-Token": admin_token},
@@ -1344,8 +1354,9 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
             "expense_ids": [own_expense["id"]],
             "user_splits": [{"user_id": own_admin["id"], "split_pct": 100}],
         },
-    ).json()
-    client.post(
+    )
+    assert own_payout.status_code == 200
+    other_payout = client.post(
         "/admin/payouts",
         headers={"X-Admin-Token": admin_token},
         json={
@@ -1355,6 +1366,7 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
             "user_splits": [{"user_id": other_user["id"], "split_pct": 100}],
         },
     )
+    assert other_payout.status_code == 200
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
@@ -1371,7 +1383,7 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
     assert payouts.status_code == 200
     assert [row["invoice_number"] for row in invoices.json()] == ["INV-OWN-FINANCE"]
     assert [row["id"] for row in expenses.json()["expenses"]] == [own_expense["id"]]
-    assert [row["id"] for row in payouts.json()] == [own_payout["id"]]
+    assert [row["id"] for row in payouts.json()] == [own_payout.json()["id"]]
 
 
 def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
@@ -1403,11 +1415,12 @@ def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
         headers={"X-Admin-Token": admin_token},
         json={"label": "alpha-master-token", "company_id": alpha["id"], "user_id": user.json()["id"]},
     )
-    client.post(
+    duplicate_key = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "beta-master-token", "company_id": beta["id"], "user_id": user.json()["id"]},
     )
+    assert duplicate_key.status_code == 400
 
     master_client = client.__class__(client.app)
     assert master_client.post(
@@ -1417,10 +1430,8 @@ def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
     response = master_client.get("/auth/plugin-keys")
 
     assert response.status_code == 200
-    assert {row["label"] for row in response.json()["keys"]} >= {
-        "alpha-master-token",
-        "beta-master-token",
-    }
+    assert {row["label"] for row in response.json()["keys"]} == {"alpha-master-token"}
+    assert all(row["executor_all_companies"] is True for row in response.json()["keys"])
 
 
 def test_admin_user_update_preserves_executor_access(client, admin_token):
@@ -1506,7 +1517,7 @@ def test_company_executor_access_exposes_own_plugin_keys(client, admin_token):
     response = master_client.get("/auth/plugin-keys")
 
     assert response.status_code == 200
-    assert {row["label"] for row in response.json()["keys"]} == {"own-company-token", "other-company-token"}
+    assert {row["label"] for row in response.json()["keys"]} == {"own-company-token"}
     assert all(row["executor_company_ids"] == [own["id"]] for row in response.json()["keys"])
 
 
@@ -1542,6 +1553,8 @@ def test_company_tariff_is_returned_for_keys_without_specific_tariff(client, adm
         "price_reschedule": 222,
         "price_create_peak": 333,
         "price_custom_slots": 444,
+        "operator_amount": 0,
+        "executor_amount": 0,
         "source": "company",
         "company_id": company["id"],
     }

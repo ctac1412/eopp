@@ -19,14 +19,9 @@ import {
   getEoppTransportType,
 } from "./eopp-contract";
 
-type LegacyCaptchaResponse = {
-  token?: string;
-  variants?: Array<{ tiles: string[] }>;
-  puzzle?: CaptchaResponse["puzzle"];
-};
-
 type EoppCaptchaResponseV2 = {
   token?: string;
+  puzzle?: CaptchaResponse["puzzle"];
   front?: {
     tiles?: CaptchaResponse["puzzle"]["tiles"];
     variantsCapture?: string[][];
@@ -37,7 +32,7 @@ type EoppCaptchaResponseV2 = {
 };
 
 function normalizeCaptchaResponse(raw: unknown): CaptchaResponse {
-  const response = raw as LegacyCaptchaResponse & EoppCaptchaResponseV2;
+  const response = raw as EoppCaptchaResponseV2;
 
   if (response.front?.type === 1 && response.front?.imageBase64) {
     return {
@@ -65,16 +60,6 @@ function normalizeCaptchaResponse(raw: unknown): CaptchaResponse {
     return {
       token: response.token || "",
       puzzle: response.puzzle,
-    };
-  }
-
-  if (response.variants) {
-    return {
-      token: response.token || "",
-      puzzle: {
-        tiles: [],
-        variantsCapture: response.variants.map((variant) => variant.tiles),
-      },
     };
   }
 

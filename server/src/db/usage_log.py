@@ -320,21 +320,11 @@ def confirm_usage(
     )
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
     conn.commit()
-    if sync_billing:
-        from src.modules.usage.jobs import confirm_billing
-
-        confirm_billing({"usage_log_id": usage_log_id})
-    else:
-        _defer_job("billing.calculate_usage_price", {"usage_log_id": usage_log_id})
+    _defer_job("billing.calculate_usage_price", {"usage_log_id": usage_log_id})
 
     stored_logs = _read_usage_logs(conn, usage_log_id)
     if stored_logs and _should_index_captchas(config_json):
-        if sync_captcha_records:
-            from src.db.captchas import create_captcha_records
-
-            create_captcha_records(usage_log_id, "unknown", stored_logs, "confirmed")
-        else:
-            _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"})
+        _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"})
 
     conn.close()
     return True
@@ -362,9 +352,7 @@ def fail_usage(
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
     stored_logs = _read_usage_logs(conn, usage_log_id)
     if stored_logs and _should_index_captchas(config_json):
-        from src.db.captchas import create_captcha_records
-
-        create_captcha_records(usage_log_id, "unknown", stored_logs, "failed")
+        _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "failed"})
 
     conn.close()
     return True

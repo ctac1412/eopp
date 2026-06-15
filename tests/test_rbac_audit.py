@@ -54,6 +54,11 @@ def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
             "role": "manager",
         },
     )
+    company = client.post(
+        "/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "RBAC Tariff Denied Co"},
+    ).json()
     client.post(
         "/admin/logout",
     )
@@ -61,7 +66,7 @@ def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
 
     view = client.get("/admin/invoices")
     edit = client.put(
-        "/admin/tariffs/1",
+        f"/admin/company-tariffs/{company['id']}",
         json={"price_create": 100, "price_reschedule": 50},
     )
 
@@ -140,14 +145,14 @@ def test_tariff_change_emits_business_audit_outbox_event(client, admin_token):
     """Finance mutations are recorded as best-effort business audit outbox events."""
     from src.platform.outbox.publisher import queued_events
 
-    created = client.post(
-        "/api-keys",
+    company = client.post(
+        "/admin/companies",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "tariff_audit_target"},
+        json={"name": "Tariff Audit Co"},
     ).json()
 
     response = client.put(
-        f"/admin/tariffs/{created['id']}",
+        f"/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={"price_create": 100, "price_reschedule": 50},
     )
@@ -156,7 +161,7 @@ def test_tariff_change_emits_business_audit_outbox_event(client, admin_token):
     assert any(
         event.event_type == "audit.business"
         and event.payload["action"] == "tariff.changed"
-        and event.payload["target_id"] == created["id"]
+        and event.payload["target_id"] == company["id"]
         for event in queued_events()
     )
 
@@ -172,6 +177,18 @@ def test_invoice_and_payout_actions_emit_business_audit_events(client, admin_tok
     )
     assert invoice.status_code == 200
     invoice_id = invoice.json()["id"]
+    paid = client.patch(
+        f"/admin/invoices/{invoice_id}",
+        headers={"X-Admin-Token": admin_token},
+        json={"paid": True},
+    )
+    assert paid.status_code == 200
+    participant = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "RBAC Audit Payee", "login": "rbac.audit.payee", "password": "strong-password"},
+    )
+    assert participant.status_code == 200
     payout = client.post(
         "/admin/payouts",
         headers={"X-Admin-Token": admin_token},
@@ -179,7 +196,7 @@ def test_invoice_and_payout_actions_emit_business_audit_events(client, admin_tok
             "name": "RBAC audit payout",
             "invoice_ids": [invoice_id],
             "expense_ids": [],
-            "user_splits": [{"user_id": 1, "split_pct": 100}],
+            "user_splits": [{"user_id": participant.json()["id"], "split_pct": 100}],
         },
     )
 

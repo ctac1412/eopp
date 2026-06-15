@@ -34,64 +34,6 @@ const ACCESS_BLOCKS = [
 
 function AccessBlock({ title, value, onChange, companies, canUseGlobalAccess }) {
   const access = normalizeAccess(value);
-  const onDrop = (event) => {
-    event.preventDefault();
-    onChange(upsertAccessCompany(access, event.dataTransfer.getData("text/plain")));
-  };
-  const onCompanyClick = (companyId) => {
-    onChange(toggleAccessCompany(access, companyId));
-  };
-
-  return (
-    <div className="user-access-block">
-      <div className="user-access-block__head">
-        <span className="fw-semibold">{title}</span>
-        {canUseGlobalAccess && (
-          <button
-            type="button"
-            className={`operator-master-tag access-tag ${
-              access.allCompanies ? "access-tag--selected" : "access-tag--available"
-            }`}
-            onClick={() => onChange(toggleAccessAll(access, !access.allCompanies))}
-          >
-            <span className="access-tag__text">Все</span>
-          </button>
-        )}
-      </div>
-      <div
-        className="operator-master-tags user-access-block__source"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={onDrop}
-      >
-        {companies.map((company) => {
-          const selected = isAccessCompanySelected(access, company.id);
-          return (
-            <button
-              type="button"
-              key={company.id}
-              className={`operator-master-tag access-tag ${
-                selected ? "access-tag--selected" : "access-tag--available"
-              }`}
-              onClick={() => onCompanyClick(company.id)}
-            >
-              <span
-                className="access-tag__drag-icon"
-                draggable
-                onClick={(event) => event.stopPropagation()}
-                onDragStart={(event) => event.dataTransfer.setData("text/plain", String(company.id))}
-                title="Перетащить"
-              />
-              <span className="access-tag__text">{company.name}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function AccessBlockV2({ title, value, onChange, companies, canUseGlobalAccess }) {
-  const access = normalizeAccess(value);
   const selectedCompanies = companies.filter((company) => isAccessCompanySelected(access, company.id));
   const availableCompanies = companies.filter((company) => !isAccessCompanySelected(access, company.id));
   const onDrop = (event) => {
@@ -392,7 +334,7 @@ export function UserModal({
             onDelete={onDeleteApiKey}
           />
           {ACCESS_BLOCKS.map(([field, title]) => (
-            <AccessBlockV2
+            <AccessBlock
               key={field}
               title={title}
               value={form[field] || emptyAccess()}

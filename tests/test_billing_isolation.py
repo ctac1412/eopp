@@ -50,7 +50,7 @@ def test_broken_tariff_does_not_break_captcha_solve(client, api_key, monkeypatch
     )
     monkeypatch.setattr(captcha_file_service, "ensure_analysis_metadata", lambda data: False)
     monkeypatch.setattr(
-        "src.db.tariffs.get_tariff",
+        "src.db.tariffs.get_effective_tariff",
         lambda api_key_id: (_ for _ in ()).throw(RuntimeError("tariffs are down")),
     )
 

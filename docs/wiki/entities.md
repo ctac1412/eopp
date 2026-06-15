@@ -31,7 +31,7 @@ erDiagram
 - Changed by: admin API-key routes.
 - Read by: captcha validation, usage registration/confirmation, RBAC, admin UI, realtime labels.
 - Lifecycle: active key -> usage_count increments on confirmed usage -> may become inactive or limit-exceeded.
-- Source of truth: `key`, `active`, `usage_count`, `max_uses`, `is_admin`, `admin_role`, `is_super_kiosk`, `company_id`.
+- Source of truth: `key`, `active`, `usage_count`, `max_uses`, `is_admin`, `is_super_kiosk`, `company_id`, `user_id`.
 - Computable later: debt, remaining uses, labels for display.
 - Peak invariant: validation must be fast; billing/company lookups must not block captcha display.
 
@@ -49,7 +49,7 @@ erDiagram
 ### CaptchaRecord
 
 - Purpose: normalized history of captchas found in usage logs.
-- Created by: `captcha_records` job or legacy direct parser.
+- Created by: the durable `captcha_records` job and explicit admin repair/backfill actions.
 - Changed by: parser/upsert logic.
 - Read by: admin captcha history and training views.
 - Lifecycle: parsed from confirmed/failed logs -> used for reporting/training.
@@ -164,11 +164,11 @@ erDiagram
 
 ### User / Role / Permission
 
-- Purpose: `User` currently supports finance attribution; admin roles live on `ApiKey.admin_role`.
+- Purpose: `User` owns password-session identity, admin/RBAC role, company access, and finance attribution.
 - Created/changed by: admin user/API-key routes.
 - Read by: invoices, payouts, RBAC.
 - Lifecycle: user row for finance attribution; admin key role maps to permission set.
-- Source of truth: `ApiKey.admin_role` for RBAC, `modules/access/permissions.py` for grants.
+- Source of truth: `User.role` / `User.system_role` for RBAC, `modules/access/permissions.py` for grants.
 - Computable later: effective permissions and actor labels.
 - Peak invariant: core may only see primitive `AccessDecision`, not RBAC tables.
 
@@ -179,7 +179,7 @@ Use this checklist with the product owner before deleting or migrating legacy pa
 | Entity | Question to confirm expected behavior |
 |---|---|
 | ApiKey | Should `usage_count` increment only after `/confirm-usage`, never after captcha solve or failed usage? |
-| ApiKey | Should old admin API keys without `admin_role` continue to behave as `super_admin` forever, or only during migration? |
+| ApiKey | Should the migrated admin API key remain accepted as the bootstrap password, or should operators rotate it to an explicit technical user password? |
 | UsageLog | Is it acceptable that `company`, `fio`, `vehicle_number`, `is_test`, `price`, and `invoice_id` are filled later by jobs? |
 | UsageLog | Should failed attempts remain billable/visible in reports, or only confirmed attempts? |
 | CaptchaRecord | Can failed usage captcha parsing be delayed by background jobs, or must failed records appear immediately? |

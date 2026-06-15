@@ -18,7 +18,7 @@ test("companies tab exposes editable default tariff and apply-default action", (
   assert.match(companiesSource, /default-company-tariff/);
   assert.match(companiesSource, /apply-default/);
   assert.match(companiesSource, /Дефолтный тариф/);
-  assert.match(companiesSource, /Применить дефолт/);
+  assert.match(companiesSource, /applyDefaultTariff/);
   assert.match(companiesSource, /defaultTariffForm/);
 });
 

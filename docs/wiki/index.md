@@ -19,40 +19,37 @@ This wiki captures the final audit of the protected-core architecture work from
   - `782d9d1 chore: capture current architecture and deployment work`
   - `e90a36f docs: audit report + action plan; extension: constants and store updates`
   - `18cf7c7 feat: operators UX overhaul + company entity + chat + scheduled events`
-- CodeGraph status: 497 indexed files, 7279 symbols, 7632 edges.
+- CodeGraph status: 698 indexed files, 9873 nodes, 12932 edges.
 - Import boundary check: `uv run lint-imports` kept the protected-core contract.
-- Focused test run: 41 passed, 2 failed. Failures are in `tests/test_core_smoke.py` via
-  `server/tests/test_core_smoke.py`; pending session appears around 5.6s while the smoke wait
-  is 2s, which is a hot-path latency/test-fragility risk.
+- Focused backend regression run: 50 passed.
+- Frontend contract run: `npm test` passed 74 tests; `npm run build` passed.
 
 ## Phase Coverage Snapshot
 
 | Phase | Status | Evidence | Gaps |
 |---|---|---|---|
 | 0 Baseline/import safety | Mostly implemented | `.importlinter`, root test wrappers | smoke test latency failures |
-| 1 Peak fast mode | Implemented with caveats | flags in `src.constants`, deferred archive/metadata/billing | `/fail-usage` still sync-parses captcha records |
+| 1 Peak fast mode | Implemented with caveats | flags in `src.constants`, deferred archive/metadata/billing/captcha-record parsing | worker monitoring remains operational debt |
 | 2 Protected core runtime | Implemented | `src.core.captcha_runtime`, thin `/solve-captcha` and `/solve` handlers | adapter still owns distribution bridge |
 | 3 Jobs/outbox | Implemented | `background_jobs`, `outbox_events`, worker retry/dead-letter | outbox has no external dispatcher yet |
 | 4 Realtime | Implemented | `RealtimeRegistry`, `RealtimeFanout`, bounded queues | legacy globals remain compatibility views |
-| 5 RBAC/audit | Implemented | `AccessDecision`, access policy, audit repository/service | old audit helper has unreachable code |
-| 6 Billing/CRM isolation | Implemented with caveats | billing/CRM jobs and aliases | `modules/usage/jobs.py` duplicates old combined logic |
+| 5 RBAC/audit | Implemented | `AccessDecision`, access policy, audit repository/service | legacy wrapper names remain for compatibility |
+| 6 Billing/CRM isolation | Implemented with caveats | billing/CRM jobs and aliases | old job aliases remain until a planned blocking release |
 | 7 Module registry | Implemented | `ModuleManifest`, `register_modules`, `/health/modules` | only billing/training manifests are present |
 | 8 Observability/load | Partial | metrics and peak tests exist | no real load proof included in audit run |
 | 9 Delivery | Mostly implemented | release scripts, manifest, backup, rollback scripts | deploy symlink switches before migration/health |
 
 ## Findings To Review First
 
-1. `server/src/db/usage_log.py` still synchronously calls `create_captcha_records()` from
-   `fail_usage()`. This violates the rule that `/fail-usage` must not wait for side jobs.
-2. `/solve-captcha` smoke flow does not put a session into pending within 2s in the focused
+1. `/solve-captcha` smoke flow does not put a session into pending within 2s in the focused
    tests; diagnostic polling saw pending appear at about 5.6s. This threatens the 300 ms
    display-dispatch target.
-3. `server/src/modules/usage/jobs.py` contains old combined CRM/billing job handlers while
-   `modules/crm/jobs.py` and `modules/billing/jobs.py` now own the split model.
-4. `server/src/db/audit_log.py` has dead code after early returns.
-5. `AGENTS.md` still documents removed/old `server/src/routes.py` behavior.
-6. Generated `__pycache__` and `.pyc` files are present in the worktree directories; they are
-   ignored by `.gitignore` but should not be staged.
+2. Worker retry/dead-letter monitoring remains operational debt now that usage side work is
+   fully deferred.
+3. Route documentation now points at `server/src/routes/__init__.py` and the route package.
+4. Generated `__pycache__` and `.pyc` files were removed from the audited source/test trees.
+5. Unused `server/src/domain/*/__init__.py` re-export shells were removed; the README files
+   remain as change-map documentation.
 
 ## Final Audit Verdict
 
@@ -60,11 +57,11 @@ This wiki captures the final audit of the protected-core architecture work from
 |---|---|---|
 | Protected core dependency boundary | Pass | Import-linter keeps `server.src.core` from importing side modules and forbidden finance/admin/plugin dependencies. |
 | Captcha runtime extraction | Pass with adapter debt | `/solve-captcha` and `/solve` delegate to `CaptchaRuntime`; icon-click distribution remains adapter wiring. |
-| Peak-path side-work isolation | Partial | Archive, metadata, CRM, and billing are deferrable; `/fail-usage` still does synchronous captcha-record parsing. |
+| Peak-path side-work isolation | Pass with worker debt | Archive, metadata, CRM, billing, failed captcha-record parsing, and Telegram notifications are deferrable; worker retry/dead-letter operations still need routine monitoring. |
 | Realtime fanout | Pass | `RealtimeRegistry` + `RealtimeFanout` use bounded queues and nonblocking writes; legacy globals remain compatibility views. |
 | Durable jobs/outbox | Pass with maturity gap | Queue, retry, dead-letter, and lifecycle outbox events exist; no external outbox dispatcher is audited yet. |
-| RBAC/audit | Pass with cleanup debt | Access policy and `AuditService` centralize decisions; legacy audit helper contains unreachable old code. |
-| Billing/CRM isolation | Pass with alias debt | Split billing/CRM jobs exist and old job names are aliased; `modules/usage/jobs.py` still contains duplicate old handlers. |
+| RBAC/audit | Pass | Access policy and `AuditService` centralize decisions; audit helper wrappers delegate to the repository without the old unreachable SQL path. |
+| Billing/CRM isolation | Pass with alias debt | Split billing/CRM jobs exist and old job names are aliased from their owning modules; duplicate old handlers were removed from `modules/usage/jobs.py`. |
 | Module registry | Pass for pilot modules | Optional manifests load defensively; only billing/training are represented as manifests now. |
 | Deployment/rollback | Mostly pass | Release manifests, backups, restore, and release-targeted rollback exist; candidate symlink switches before migration/health. |
 | Frontend/admin product readiness | Needs product confirmation | Admin views must tolerate async-enriched rows and pending billing fields. |
@@ -74,16 +71,14 @@ This wiki captures the final audit of the protected-core architecture work from
 
 | Priority | Item | Type | Requires owner answer? |
 |---|---|---|---|
-| P0 | Profile `/solve-captcha` before pending insertion; smoke diagnostics saw about 5.6s before pending. | performance/architecture | no |
-| P0 | Decide and implement `/fail-usage` deferred captcha-record parsing. | architecture/product | yes |
-| P1 | Remove unreachable code in `server/src/db/audit_log.py`. | technical cleanup | no |
-| P1 | Update stale `AGENTS.md` references to old `server/src/routes.py`. | documentation cleanup | no |
+| P0 | Profile `/solve-captcha` before pending insertion; older smoke diagnostics saw about 5.6s before pending. | performance/architecture | no |
+| P0 | Monitor durable worker retries/dead letters for deferred usage side work. | operations | no |
 | P1 | Persist release diff artifacts instead of printing diff only. | delivery hardening | no |
 | P1 | Adjust plugin-only release flow so backend/server is not touched when backend did not change. | delivery/product | decision made |
-| P2 | Split `modules/usage/jobs.py` into focused notification/captcha-record modules. | architecture cleanup | partially |
+| P2 | Split the remaining notification/captcha-record registrations out of `modules/usage/jobs.py` when a clearer owner module exists. | architecture cleanup | partially |
 | P2 | Remove `usage_enrich` and `billing_confirm` aliases in a planned blocking release after stopping workers/processes and handling old queued rows. | operations | decision made |
 | P2 | Make `Operator.online` a volatile realtime concept and reduce/remove DB-source-of-truth coupling. | product/architecture | decision made |
-| P3 | Audit duplicate migration roots and offline lab scripts before moving or archiving them. | repository hygiene | no, but high caution |
+| P3 | Audit offline lab scripts before moving or archiving them. | repository hygiene | no, but high caution |
 
 ## Requirement Completion Audit
 
@@ -92,14 +87,14 @@ This wiki captures the final audit of the protected-core architecture work from
 | Assess git state, branch, commits | `git status --short --branch`, `git branch --show-current`, `git log -n 12` were inspected | Complete |
 | Identify implemented phases | Phase coverage table above, layer review in `architecture.md` | Complete |
 | Map current layers/modules | CodeGraph status plus `architecture.md` layer table | Complete |
-| Find legacy/dead/duplicating code | `legacy-cleanup.md` candidate matrix | Complete for audit; deletion pending approval |
+| Find legacy/dead/duplicating code | `legacy-cleanup.md` candidate matrix plus cleaned-code entries | In progress; backend/frontend cleanup batches completed |
 | Show candidate usage/imports/endpoints/jobs/risk/action | `legacy-cleanup.md` has structural and literal evidence columns | Complete for initial candidate list |
 | Verify non-negotiable rules | `architecture.md` rule table plus test/import evidence | Complete with open findings |
 | Create required wiki pages | six files under `docs/wiki/` | Complete |
 | Include required Mermaid diagrams | `architecture.md`, `entities.md`, `flows.md`, `deployment.md` | Complete |
 | Entity walkthrough | `entities.md` covers requested entities and invariants | Complete as documentation |
 | Interactive entity/product validation | Questions below are waiting for owner answers | Pending user confirmation |
-| Avoid deleting code before approval | No source deletion performed | Complete |
+| Remove low-risk dead code only with evidence | Dead re-export shells, unreachable code, duplicate handlers, and stale frontend compatibility paths were removed after usage checks | Complete for cleaned items |
 
 ## Interactive Review Queue
 
@@ -122,29 +117,23 @@ Please confirm these business expectations before cleanup or migrations:
 | Operator online source of truth | realtime cleanup and DB writes | Decided: volatile realtime registry is the source of truth | Remove/reduce persisted `online` coupling |
 | Legacy job aliases retention | removal of `usage_enrich` / `billing_confirm` duplicates | Decided: incompatible blocking release is allowed after stopping workers/processes and handling old queued rows | Delete duplicate handlers in a planned major/blocking release |
 | Plugin-only release identity | delivery history and rollback semantics | Decided: plugin-only release should be separate and should not touch backend/server if backend did not change | Refactor plugin release flow away from server-risking release switch |
-| Admin role compatibility window | RBAC hardening | Missing `admin_role` remains `super_admin` | Add migration/expiry policy for old admin keys |
+| Admin bootstrap password window | RBAC hardening | Old admin API key is accepted only as the migrated `admin` user's password; API keys are not bearer admin tokens | Add rotation/expiry policy for the bootstrap password |
 | Tariff timing for unpriced rows | billing reconciliation semantics | Billing jobs price using current tariff at job execution time | Add tariff snapshot if historical pricing is required |
 
 ## Cleanup Actions That Do Not Need Business Approval
 
 These are low-risk technical hygiene items, but still should be reviewed before deleting files:
 
-- Remove unreachable code after `return` in `server/src/db/audit_log.py` while keeping wrapper
-  functions.
-- Update stale `AGENTS.md` references from `server/src/routes.py` to the route package.
-- Remove generated `__pycache__` and `.pyc` files from the workspace if any are accidentally
-  tracked or staged.
 - Add persisted release diff artifacts to deploy scripts without changing deploy semantics.
 
 ## Cleanup Actions That Need Approval First
 
-- Moving lab scripts or duplicate migration roots.
-- Removing legacy job handler code or old job aliases outside a planned blocking release.
+- Moving lab scripts.
+- Removing old job aliases outside a planned blocking release.
 - Changing plugin-only release behavior in a way that risks backend/server when backend did not change.
 
 ## Approved Design Decisions Pending Implementation
 
-- Change `/fail-usage` from immediate captcha record creation to deferred worker parsing.
 - Allow `UsageLog.price` to remain empty until billing jobs calculate it.
 - Treat operator online/offline presence as volatile realtime state, not DB source of truth.
 - Allow a planned blocking/non-backward-compatible release for old job alias removal, including

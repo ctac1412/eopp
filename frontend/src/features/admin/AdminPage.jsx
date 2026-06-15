@@ -15,7 +15,6 @@ import { adminRequest } from "./shared/adminClient";
 import {
   ADMIN_TABS,
   adminTabPath,
-  buildLegacyAdminTabRedirect,
   resolveAdminTabRoute,
 } from "./shared/tabs";
 
@@ -127,10 +126,6 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
 
   if (!adminToken) {
     return <Navigate to="/" replace />;
-  }
-
-  if (location.search.includes("tab=")) {
-    return <Navigate to={buildLegacyAdminTabRedirect(location.search)} replace />;
   }
 
   const fallbackPath = adminTabPath(visibleTabs[0] || ADMIN_TABS[0], location.search);

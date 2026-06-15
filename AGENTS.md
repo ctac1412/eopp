@@ -77,8 +77,10 @@ Preserve these semantics:
 - `EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED=0`
 - `EOPP_CAPTCHA_SYNC_SOLVER_METADATA_ENABLED=0`
 - `EOPP_USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED=0`
-- `EOPP_USAGE_SYNC_BILLING_ENABLED=0`
-- `EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED=0`
+- `EOPP_USAGE_SYNC_BILLING_ENABLED` and
+  `EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED` are compatibility inputs; current
+  usage confirmation still defers billing, captcha-record parsing, and Telegram
+  notification through durable jobs.
 
 ## Local Noise
 

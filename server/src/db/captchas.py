@@ -425,7 +425,6 @@ def create_captcha_records(
     icon_coords = extract_icon_coordinates_from_logs(logs)
     if not passed and not invalid and not unsolved and not solve_errors:
         return []
-        return []
 
     conn = get_connection()
     _ensure_duration_ms_column(conn)
