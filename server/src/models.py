@@ -138,6 +138,7 @@ class CreateInvoiceBody(BaseModel):
     items: list[dict] = []
     commission_user_id: int | None = None
     tax_user_id: int | None = None
+    tax_commission_mode: str = "added"
 
 
 class GenerateInvoiceBody(BaseModel):
@@ -149,6 +150,8 @@ class GenerateInvoiceBody(BaseModel):
     percent_amount: int = 0
     tax_amount: int = 0
     total_amount: int = 0
+    commission_user_id: int | None = None
+    tax_user_id: int | None = None
 
 
 class UpdateInvoiceBody(BaseModel):
@@ -163,6 +166,7 @@ class UpdateInvoiceBody(BaseModel):
     items: list[dict] | None = None
     commission_user_id: int | None = None
     tax_user_id: int | None = None
+    tax_commission_mode: str | None = None
 
 
 class CreateUserBody(BaseModel):
@@ -289,6 +293,7 @@ class OpenInvoiceBody(BaseModel):
 
 class CompanyBillingSettingBody(BaseModel):
     auto_invoice_reopen: bool = False
+    tax_commission_mode: str = "added"
 
 
 class CompanyAliasBody(BaseModel):

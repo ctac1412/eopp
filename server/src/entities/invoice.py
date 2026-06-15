@@ -30,6 +30,7 @@ class Invoice(Base):
     pdf_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     paid: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tax_commission_mode: Mapped[str | None] = mapped_column(String, nullable=True, default="added")
     commission_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True
     )

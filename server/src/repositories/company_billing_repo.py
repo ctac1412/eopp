@@ -2,6 +2,12 @@ from datetime import UTC, datetime
 
 from src.entities import CompanyAlias, CompanyBillingSetting, get_session
 
+TAX_COMMISSION_MODES = {"added", "included"}
+
+
+def normalize_tax_commission_mode(mode: str | None) -> str:
+    return mode if mode in TAX_COMMISSION_MODES else "added"
+
 
 def list_company_billing_settings() -> list[CompanyBillingSetting]:
     with get_session() as session:
@@ -12,22 +18,35 @@ def get_company_billing_settings(company: str) -> CompanyBillingSetting:
     with get_session() as session:
         setting = session.get(CompanyBillingSetting, company)
         if setting:
+            setting.tax_commission_mode = normalize_tax_commission_mode(
+                getattr(setting, "tax_commission_mode", None)
+            )
             return setting
-        return CompanyBillingSetting(company=company, auto_invoice_reopen=False, updated_at=None)
+        return CompanyBillingSetting(
+            company=company,
+            auto_invoice_reopen=False,
+            tax_commission_mode="added",
+            updated_at=None,
+        )
 
 
 def upsert_company_billing_settings(
-    company: str, auto_invoice_reopen: bool
+    company: str, auto_invoice_reopen: bool, tax_commission_mode: str | None = None
 ) -> CompanyBillingSetting:
     now = datetime.now(UTC).isoformat()
+    mode = normalize_tax_commission_mode(tax_commission_mode)
     with get_session() as session:
         setting = session.get(CompanyBillingSetting, company)
         if setting:
             setting.auto_invoice_reopen = auto_invoice_reopen
+            setting.tax_commission_mode = mode
             setting.updated_at = now
         else:
             setting = CompanyBillingSetting(
-                company=company, auto_invoice_reopen=auto_invoice_reopen, updated_at=now
+                company=company,
+                auto_invoice_reopen=auto_invoice_reopen,
+                tax_commission_mode=mode,
+                updated_at=now,
             )
             session.add(setting)
         session.commit()

@@ -887,6 +887,8 @@ def test_invoice_links_all_usage_entries_and_creates_profit_lot(isolated_api_db)
             percent_amount=150,
             tax_amount=120,
             total_amount=3000,
+            commission_user_id=executor_user_id,
+            tax_user_id=operator_user_id,
         )
     )
 
@@ -904,6 +906,312 @@ def test_invoice_links_all_usage_entries_and_creates_profit_lot(isolated_api_db)
 
     assert linked["cnt"] == 5
     assert lot["gross_amount"] == 2080
+
+
+def test_added_invoice_records_positive_commission_and_tax_entries(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.models import GenerateInvoiceBody
+    from src.services.invoice_service import generate_invoice
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Added Mode Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    users = {}
+    for name in ["Commission", "Tax"]:
+        conn.execute(
+            "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, 'manager', 1, 0, ?)",
+            (name, _now()),
+        )
+        users[name] = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("added-mode-key", "Added", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, 'res-added-mode', 'confirmed', ?, ?, 2730, ?, 'Added Mode Co', 0)
+        """,
+        (api_key_id, _now(), _now(), company_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, usage_log_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 2730, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, usage_log_id, f"usage:{usage_log_id}:income", _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    status, invoice = generate_invoice(
+        GenerateInvoiceBody(
+            usage_log_ids=[usage_log_id],
+            percent_rate=5,
+            tax_rate=4,
+            debt_amount=2730,
+            percent_amount=150,
+            tax_amount=120,
+            total_amount=3000,
+            commission_user_id=users["Commission"],
+            tax_user_id=users["Tax"],
+        )
+    )
+
+    assert status == 200
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT kind, amount, user_id
+        FROM finance_entries
+        WHERE invoice_id = ? AND kind IN ('invoice_commission', 'invoice_tax')
+        ORDER BY kind
+        """,
+        (invoice["invoice_id"],),
+    ).fetchall()
+    conn.close()
+
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in rows] == [
+        ("invoice_commission", 150, users["Commission"]),
+        ("invoice_tax", 120, users["Tax"]),
+    ]
+
+
+def test_included_invoice_deducts_commission_and_tax_from_profit_lot(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.models import GenerateInvoiceBody
+    from src.services.invoice_service import generate_invoice
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Included Mode Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO company_billing_settings
+            (company, auto_invoice_reopen, tax_commission_mode, updated_at)
+        VALUES ('Included Mode Co', 0, 'included', ?)
+        """,
+        (_now(),),
+    )
+    users = {}
+    for name in ["Commission", "Tax"]:
+        conn.execute(
+            "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, 'manager', 1, 0, ?)",
+            (name, _now()),
+        )
+        users[name] = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("included-mode-key", "Included", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, 'res-included-mode', 'confirmed', ?, ?, 3000, ?, 'Included Mode Co', 0)
+        """,
+        (api_key_id, _now(), _now(), company_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    for kind, amount, suffix in [
+        ("customer_income", 3000, "income"),
+        ("executor_salary", -200, "executor"),
+        ("operator_salary", -100, "operator"),
+    ]:
+        conn.execute(
+            """
+            INSERT INTO finance_entries
+                (company_id, usage_log_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'open', 'test', ?, ?, ?)
+            """,
+            (company_id, usage_log_id, kind, amount, f"usage:{usage_log_id}:{suffix}", _now(), _now()),
+        )
+    conn.commit()
+    conn.close()
+
+    status, invoice = generate_invoice(
+        GenerateInvoiceBody(
+            usage_log_ids=[usage_log_id],
+            percent_rate=5,
+            tax_rate=6,
+            debt_amount=3000,
+            total_amount=3000,
+            commission_user_id=users["Commission"],
+            tax_user_id=users["Tax"],
+        )
+    )
+
+    assert status == 200
+    conn = get_connection()
+    saved = conn.execute(
+        """
+        SELECT debt_amount, percent_amount, tax_amount, total_amount, tax_commission_mode
+        FROM invoices
+        WHERE id = ?
+        """,
+        (invoice["invoice_id"],),
+    ).fetchone()
+    entries = conn.execute(
+        """
+        SELECT kind, amount, user_id
+        FROM finance_entries
+        WHERE invoice_id = ? AND kind IN ('invoice_commission', 'invoice_tax')
+        ORDER BY kind
+        """,
+        (invoice["invoice_id"],),
+    ).fetchall()
+    lot = conn.execute(
+        "SELECT gross_amount FROM profit_lots WHERE usage_log_id = ? AND invoice_id = ?",
+        (usage_log_id, invoice["invoice_id"]),
+    ).fetchone()
+    conn.close()
+
+    assert dict(saved) == {
+        "debt_amount": 3000,
+        "percent_amount": 150,
+        "tax_amount": 180,
+        "total_amount": 3000,
+        "tax_commission_mode": "included",
+    }
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in entries] == [
+        ("invoice_commission", -150, users["Commission"]),
+        ("invoice_tax", -180, users["Tax"]),
+    ]
+    assert lot["gross_amount"] == 2370
+
+
+def test_closed_open_invoice_keeps_tax_commission_mode_snapshot(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.invoices import ensure_open_invoice, get_invoice, issue_open_invoice
+    from src.repositories.company_billing_repo import upsert_company_billing_settings
+
+    upsert_company_billing_settings("Snapshot Co", auto_invoice_reopen=False, tax_commission_mode="included")
+    open_invoice = ensure_open_invoice("Snapshot Co")
+
+    upsert_company_billing_settings("Snapshot Co", auto_invoice_reopen=False, tax_commission_mode="added")
+    issued = issue_open_invoice("Snapshot Co")
+    upsert_company_billing_settings("Snapshot Co", auto_invoice_reopen=False, tax_commission_mode="included")
+    closed_again = get_invoice(issued["closed_invoice"]["id"])
+
+    assert open_invoice["tax_commission_mode"] == "included"
+    assert issued["closed_invoice"]["tax_commission_mode"] == "added"
+    assert closed_again["tax_commission_mode"] == "added"
+
+    conn = get_connection()
+    stored = conn.execute(
+        "SELECT tax_commission_mode FROM invoices WHERE id = ?",
+        (issued["closed_invoice"]["id"],),
+    ).fetchone()
+    conn.close()
+    assert stored["tax_commission_mode"] == "added"
+
+
+def test_generated_invoice_saves_commission_and_tax_recipients(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.models import GenerateInvoiceBody
+    from src.services.invoice_service import generate_invoice
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Invoice Recipients Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("invoice-rec-key", "Invoice Rec", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 3000, ?, ?, 0)
+        """,
+        (api_key_id, "res-invoice-rec", _now(), _now(), company_id, "Invoice Recipients Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Commission User", "manager", 1, 0, _now()),
+    )
+    commission_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Tax User", "manager", 1, 0, _now()),
+    )
+    tax_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, invoice = generate_invoice(
+        GenerateInvoiceBody(
+            usage_log_ids=[usage_log_id],
+            percent_rate=5,
+            tax_rate=6,
+            debt_amount=3000,
+            percent_amount=169,
+            tax_amount=202,
+            total_amount=3371,
+            commission_user_id=commission_user_id,
+            tax_user_id=tax_user_id,
+        )
+    )
+
+    assert status == 200
+    conn = get_connection()
+    saved = conn.execute(
+        "SELECT commission_user_id, tax_user_id FROM invoices WHERE id = ?",
+        (invoice["invoice_id"],),
+    ).fetchone()
+    conn.close()
+
+    assert saved["commission_user_id"] == commission_user_id
+    assert saved["tax_user_id"] == tax_user_id
+
+
+def test_generated_invoice_requires_recipients_for_commission_and_tax(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.models import GenerateInvoiceBody
+    from src.services.invoice_service import generate_invoice
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Invoice Required Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("invoice-req-key", "Invoice Req", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 3000, ?, ?, 0)
+        """,
+        (api_key_id, "res-invoice-req", _now(), _now(), company_id, "Invoice Required Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, body = generate_invoice(
+        GenerateInvoiceBody(
+            usage_log_ids=[usage_log_id],
+            percent_rate=5,
+            tax_rate=6,
+            debt_amount=3000,
+            percent_amount=169,
+            tax_amount=202,
+            total_amount=3371,
+        )
+    )
+
+    assert status == 400
+    assert "commission_user_id" in body["error"]
+    assert "tax_user_id" in body["error"]
 
 
 def test_expense_repayment_uses_profit_lot_without_remaining_mutation(isolated_api_db):

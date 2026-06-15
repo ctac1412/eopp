@@ -1710,12 +1710,21 @@
   gap: 0.5rem;
 }
 
+.invoice-modal__section--compact {
+  gap: 0.65rem;
+}
+
 .invoice-modal__section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   font-weight: 600;
+}
+
+.invoice-modal__section-title .text-muted {
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .invoice-modal__table {
@@ -1734,8 +1743,19 @@
   grid-template-columns: minmax(180px, 1fr) minmax(180px, 220px) minmax(180px, 220px);
 }
 
+.invoice-modal__form-grid--single {
+  grid-template-columns: minmax(180px, 320px);
+}
+
 .invoice-modal__form-grid--four {
   grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.invoice-modal__recipients-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .invoice-modal__summary {
@@ -1760,6 +1780,14 @@
 .invoice-modal__inline-total {
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+.invoice-modal__field-error {
+  display: block;
+  margin-top: 0.25rem;
+  color: #f87171;
+  font-size: 0.72rem;
+  line-height: 1.25;
 }
 
 .invoice-modal__comment {
@@ -1921,7 +1949,8 @@
 @media (max-width: 900px) {
   .invoice-modal__grid,
   .invoice-modal__form-grid,
-  .invoice-modal__form-grid--four {
+  .invoice-modal__form-grid--four,
+  .invoice-modal__recipients-grid {
     grid-template-columns: 1fr;
   }
 }

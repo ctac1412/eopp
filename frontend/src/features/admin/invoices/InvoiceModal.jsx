@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
-import { Button, DataTable, TextInput } from "../../../ui";
+import { Button, DataTable } from "../../../ui";
+import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 const DEFAULT_COMMISSION_RATE = 5;
 const DEFAULT_TAX_RATE = 6;
@@ -14,10 +15,12 @@ function getOperationLabel(log) {
   return log.op_type === "reschedule" ? "Перенос" : "Создание";
 }
 
-export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
+export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, users = [] }) {
   const [debtAmount, setDebtAmount] = useState(0);
   const [percentRate, setPercentRate] = useState(DEFAULT_COMMISSION_RATE);
   const [taxRate, setTaxRate] = useState(DEFAULT_TAX_RATE);
+  const [commissionUserId, setCommissionUserId] = useState(null);
+  const [taxUserId, setTaxUserId] = useState(null);
   const [comment, setComment] = useState("");
 
   useEffect(() => {
@@ -29,6 +32,8 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
     if (show) {
       setPercentRate(DEFAULT_COMMISSION_RATE);
       setTaxRate(DEFAULT_TAX_RATE);
+      setCommissionUserId(null);
+      setTaxUserId(null);
       setComment("");
     }
   }, [show]);
@@ -38,6 +43,13 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
   const totalAmount = divisor > 0 ? Math.round(debtAmount / divisor) : 0;
   const percentAmount = Math.round(totalAmount * percentRate / 100);
   const taxAmount = Math.round(totalAmount * taxRate / 100);
+  const recipientErrors = hasInvoiceRecipientErrors({
+    commissionAmount: percentAmount,
+    taxAmount,
+    commissionUserId,
+    taxUserId,
+  });
+  const hasRecipientErrors = recipientErrors.commission || recipientErrors.tax;
 
   const columns = [
     { title: "#", width: 44, render: (_, __, index) => index + 1 },
@@ -66,6 +78,8 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
       percentAmount,
       taxAmount,
       totalAmount,
+      commissionUserId,
+      taxUserId,
       comment,
       logs: selectedLogs,
     });
@@ -88,7 +102,7 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
           size="small"
           variant="primary"
           onClick={handleGenerate}
-          disabled={selectedLogs.length === 0 || totalAmount <= 0}
+          disabled={selectedLogs.length === 0 || totalAmount <= 0 || hasRecipientErrors}
         >
           Сформировать счет
         </Button>,
@@ -110,7 +124,9 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
           />
         </section>
 
-        <section className="invoice-modal__grid">
+        <section className="invoice-modal__section invoice-modal__section--compact">
+          <div className="invoice-modal__section-title">Суммы</div>
+          <div className="invoice-modal__grid">
           <div className="invoice-modal__summary">
             <span className="text-muted">Сумма долга</span>
             <strong>{formatMoney(debtAmount)}</strong>
@@ -147,7 +163,18 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose }) {
             <span>Итого</span>
             <strong>{formatMoney(totalAmount)}</strong>
           </div>
+          </div>
         </section>
+
+        <InvoiceRecipientFields
+          users={users}
+          commissionAmount={percentAmount}
+          taxAmount={taxAmount}
+          commissionUserId={commissionUserId}
+          taxUserId={taxUserId}
+          onCommissionChange={setCommissionUserId}
+          onTaxChange={setTaxUserId}
+        />
 
         <label className="form-label small mb-0 invoice-modal__comment">
           Комментарий

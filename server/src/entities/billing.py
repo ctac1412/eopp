@@ -11,6 +11,7 @@ class CompanyBillingSetting(Base):
 
     company: Mapped[str] = mapped_column(String, primary_key=True)
     auto_invoice_reopen: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    tax_commission_mode: Mapped[str] = mapped_column(String, nullable=False, default="added")
     updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 

@@ -288,6 +288,9 @@ def link_usage_entries_to_invoice(
     *,
     percent_amount: int = 0,
     tax_amount: int = 0,
+    tax_commission_mode: str = "added",
+    commission_user_id: int | None = None,
+    tax_user_id: int | None = None,
 ) -> None:
     if not usage_log_ids:
         return
@@ -317,21 +320,24 @@ def link_usage_entries_to_invoice(
         [invoice_id, _now(), *usage_log_ids, *INVOICE_USAGE_KINDS],
     )
 
+    charge_sign = -1 if tax_commission_mode == "included" else 1
     _create_invoice_charge_entries(
         conn,
         invoice_id,
         usage_log_ids,
         "invoice_commission",
-        -int(percent_amount or 0),
+        charge_sign * int(percent_amount or 0),
         "commission",
+        commission_user_id,
     )
     _create_invoice_charge_entries(
         conn,
         invoice_id,
         usage_log_ids,
         "invoice_tax",
-        -int(tax_amount or 0),
+        charge_sign * int(tax_amount or 0),
         "tax",
+        tax_user_id,
     )
     rebuild_profit_lots(conn, invoice_id, usage_log_ids)
 
@@ -343,6 +349,7 @@ def _create_invoice_charge_entries(
     kind: str,
     total_amount: int,
     key_suffix: str,
+    user_id: int | None = None,
 ) -> None:
     if not usage_log_ids:
         return
@@ -359,6 +366,7 @@ def _create_invoice_charge_entries(
             company_id=usage["company_id"] if usage else None,
             usage_log_id=usage_log_id,
             invoice_id=invoice_id,
+            user_id=user_id,
             source_key=f"invoice:{invoice_id}:{key_suffix}:usage:{usage_log_id}",
             comment=f"Invoice {key_suffix}",
         )
@@ -388,21 +396,36 @@ def rebuild_profit_lots(conn, invoice_id: int, usage_log_ids: list[int] | None =
         ).fetchone()
         if payout:
             continue
+        invoice = conn.execute(
+            "SELECT tax_commission_mode FROM invoices WHERE id = ?",
+            (invoice_id,),
+        ).fetchone()
+        tax_commission_mode = invoice["tax_commission_mode"] if invoice else "added"
+        charge_profit_sql = (
+            "amount"
+            if tax_commission_mode == "included"
+            else "0"
+        )
         row = conn.execute(
             """
             SELECT
                 COALESCE(SUM(CASE WHEN kind = 'customer_income' THEN amount ELSE 0 END), 0) AS income,
-                COALESCE(SUM(CASE WHEN kind IN ('executor_salary', 'operator_salary') THEN amount ELSE 0 END), 0) AS salaries
+                COALESCE(SUM(CASE WHEN kind IN ('executor_salary', 'operator_salary') THEN amount ELSE 0 END), 0) AS salaries,
+                COALESCE(SUM(CASE WHEN kind IN ('invoice_commission', 'invoice_tax') THEN {charge_profit_sql} ELSE 0 END), 0) AS invoice_charges
             FROM finance_entries
             WHERE usage_log_id = ? AND invoice_id = ?
-            """,
+            """.format(charge_profit_sql=charge_profit_sql),
             (usage_log_id, invoice_id),
         ).fetchone()
         usage = conn.execute(
             "SELECT company_id FROM usage_log WHERE id = ?",
             (usage_log_id,),
         ).fetchone()
-        gross_amount = int((row["income"] or 0) + (row["salaries"] or 0))
+        gross_amount = int(
+            (row["income"] or 0)
+            + (row["salaries"] or 0)
+            + (row["invoice_charges"] or 0)
+        )
         now = _now()
         conn.execute(
             """

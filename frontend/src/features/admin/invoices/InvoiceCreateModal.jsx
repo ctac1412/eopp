@@ -2,7 +2,8 @@ import { adminRequest } from "../shared/adminClient";
 import React, { useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
-import { Button, DataTable, SelectInput, TextInput } from "../../../ui";
+import { Button, DataTable, TextInput } from "../../../ui";
+import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 function adminHeaders() {
   return { "Content-Type": "application/json" };
@@ -19,11 +20,6 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
   const [taxUserId, setTaxUserId] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const userOptions = [
-    { value: "", label: "Не указан" },
-    ...users.map((user) => ({ value: user.id, label: user.name })),
-  ];
 
   const addItem = () => {
     setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
@@ -57,9 +53,16 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
   const calcTotal = divisor > 0 ? Math.round(itemsTotal / divisor) : 0;
   const calcPercent = Math.round(calcTotal * percentRate / 100);
   const calcTax = Math.round(calcTotal * taxRate / 100);
+  const recipientErrors = hasInvoiceRecipientErrors({
+    commissionAmount: calcPercent,
+    taxAmount: calcTax,
+    commissionUserId,
+    taxUserId,
+  });
+  const hasRecipientErrors = recipientErrors.commission || recipientErrors.tax;
 
   const handleSubmit = async () => {
-    if (items.length === 0 || itemsTotal <= 0) return;
+    if (items.length === 0 || itemsTotal <= 0 || hasRecipientErrors) return;
     setLoading(true);
     try {
       const body = {
@@ -159,14 +162,16 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
           variant="primary"
           loading={loading}
           onClick={handleSubmit}
-          disabled={items.length === 0 || itemsTotal <= 0}
+          disabled={items.length === 0 || itemsTotal <= 0 || hasRecipientErrors}
         >
           Создать
         </Button>,
       ]}
     >
       <div className="invoice-modal">
-        <div className="invoice-modal__form-grid">
+        <section className="invoice-modal__section invoice-modal__section--compact">
+          <div className="invoice-modal__section-title">Основное</div>
+          <div className="invoice-modal__form-grid invoice-modal__form-grid--single">
           <label className="form-label small mb-0">
             Номер счета
             <TextInput
@@ -175,25 +180,8 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
               placeholder="Авто, если пусто"
             />
           </label>
-          <label className="form-label small mb-0">
-            Комиссию получает
-            <SelectInput
-              value={commissionUserId ?? ""}
-              onChange={(value) => setCommissionUserId(value ? Number(value) : null)}
-              options={userOptions}
-              allowClear={false}
-            />
-          </label>
-          <label className="form-label small mb-0">
-            Налог платит
-            <SelectInput
-              value={taxUserId ?? ""}
-              onChange={(value) => setTaxUserId(value ? Number(value) : null)}
-              options={userOptions}
-              allowClear={false}
-            />
-          </label>
-        </div>
+          </div>
+        </section>
 
         <section className="invoice-modal__section">
           <div className="invoice-modal__section-title">
@@ -213,7 +201,9 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
           />
         </section>
 
-        <section className="invoice-modal__grid">
+        <section className="invoice-modal__section invoice-modal__section--compact">
+          <div className="invoice-modal__section-title">Суммы</div>
+          <div className="invoice-modal__grid">
           <div className="invoice-modal__summary">
             <span className="text-muted">Сумма строк</span>
             <strong>{formatMoney(itemsTotal)}</strong>
@@ -250,7 +240,18 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
             <span>Итого</span>
             <strong>{formatMoney(calcTotal)}</strong>
           </div>
+          </div>
         </section>
+
+        <InvoiceRecipientFields
+          users={users}
+          commissionAmount={calcPercent}
+          taxAmount={calcTax}
+          commissionUserId={commissionUserId}
+          taxUserId={taxUserId}
+          onCommissionChange={setCommissionUserId}
+          onTaxChange={setTaxUserId}
+        />
 
         <label className="form-label small mb-0 invoice-modal__comment">
           Комментарий

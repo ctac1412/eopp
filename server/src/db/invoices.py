@@ -12,6 +12,7 @@ Table: invoices
   total_amount INTEGER
   pdf_path TEXT
   paid INTEGER
+  tax_commission_mode TEXT
   created_at TEXT (ISO)
 """
 
@@ -20,9 +21,26 @@ from datetime import UTC, datetime
 from src.db.connection import get_connection
 from src.db.connection import row_to_dict as _row_to_dict
 
+TAX_COMMISSION_ADDED = "added"
+TAX_COMMISSION_INCLUDED = "included"
+TAX_COMMISSION_MODES = {TAX_COMMISSION_ADDED, TAX_COMMISSION_INCLUDED}
+
 
 class InvoiceDeleteConflict(Exception):
     """Raised when an invoice is protected by payout or locked finance history."""
+
+
+def normalize_tax_commission_mode(mode: str | None) -> str:
+    return mode if mode in TAX_COMMISSION_MODES else TAX_COMMISSION_ADDED
+
+
+def _company_tax_commission_mode(company: str | None) -> str:
+    if not company:
+        return TAX_COMMISSION_ADDED
+    from src.repositories import company_billing_repo
+
+    settings = company_billing_repo.get_company_billing_settings(company)
+    return normalize_tax_commission_mode(getattr(settings, "tax_commission_mode", None))
 
 
 def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
@@ -117,7 +135,11 @@ def _apply_profit_calculations(invoices: list[dict]) -> list[dict]:
         inv["executor_count"] = int(side.get("executor_count", 0))
         inv["executor_amount"] = executor_amount
         inv["side_payout_amount"] = side_total
-        inv["profit_amount"] = float(inv.get("debt_amount") or 0) - side_total
+        mode = normalize_tax_commission_mode(inv.get("tax_commission_mode"))
+        deductions = 0.0
+        if mode == TAX_COMMISSION_INCLUDED:
+            deductions = float(inv.get("percent_amount") or 0) + float(inv.get("tax_amount") or 0)
+        inv["profit_amount"] = float(inv.get("debt_amount") or 0) - deductions - side_total
     return invoices
 
 
@@ -136,6 +158,7 @@ def insert_invoice(
     paid: bool = False,
     commission_user_id: int | None = None,
     tax_user_id: int | None = None,
+    tax_commission_mode: str | None = None,
 ) -> int:
     """Insert a new invoice record and return its id."""
     conn = get_connection()
@@ -144,8 +167,8 @@ def insert_invoice(
         INSERT INTO invoices (
             invoice_number, company, is_open, comment, percent_rate, tax_rate,
             debt_amount, percent_amount, tax_amount, total_amount, pdf_path, paid,
-            commission_user_id, tax_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            commission_user_id, tax_user_id, tax_commission_mode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             invoice_number,
@@ -162,6 +185,7 @@ def insert_invoice(
             1 if paid else 0,
             commission_user_id,
             tax_user_id,
+            normalize_tax_commission_mode(tax_commission_mode),
         ),
     )
     invoice_id = cur.lastrowid
@@ -185,6 +209,7 @@ def insert_invoice_with_items(
     items: list[dict] | None = None,
     commission_user_id: int | None = None,
     tax_user_id: int | None = None,
+    tax_commission_mode: str | None = None,
 ) -> dict:
     """Insert a new invoice with optional line items. Returns the invoice dict with items."""
     from src.db.invoice_items import add_item
@@ -195,8 +220,8 @@ def insert_invoice_with_items(
         INSERT INTO invoices (
             invoice_number, company, is_open, comment, percent_rate, tax_rate,
             debt_amount, percent_amount, tax_amount, total_amount, pdf_path, paid,
-            commission_user_id, tax_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            commission_user_id, tax_user_id, tax_commission_mode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             invoice_number,
@@ -213,6 +238,7 @@ def insert_invoice_with_items(
             1 if paid else 0,
             commission_user_id,
             tax_user_id,
+            normalize_tax_commission_mode(tax_commission_mode),
         ),
     )
     invoice_id = cur.lastrowid
@@ -243,6 +269,9 @@ def get_invoice(invoice_id: int) -> dict | None:
     result = _row_to_dict(row)
     result["paid"] = bool(result["paid"]) if result["paid"] is not None else False
     result["is_open"] = bool(result["is_open"]) if result.get("is_open") is not None else False
+    result["tax_commission_mode"] = normalize_tax_commission_mode(
+        result.get("tax_commission_mode")
+    )
     return _apply_profit_calculations([result])[0]
 
 
@@ -268,6 +297,9 @@ def get_open_invoice(company: str) -> dict | None:
     result = _row_to_dict(row)
     result["paid"] = bool(result["paid"]) if result["paid"] is not None else False
     result["is_open"] = bool(result["is_open"]) if result.get("is_open") is not None else False
+    result["tax_commission_mode"] = normalize_tax_commission_mode(
+        result.get("tax_commission_mode")
+    )
     return result
 
 
@@ -281,6 +313,7 @@ def ensure_open_invoice(company: str) -> dict:
         is_open=True,
         comment=f"Open invoice for {company}",
         paid=False,
+        tax_commission_mode=_company_tax_commission_mode(company),
     )
     return get_invoice(invoice_id)
 
@@ -328,12 +361,18 @@ def issue_open_invoice(company: str, comment: str = "", reopen: bool = False) ->
     updated = recalculate_invoice_totals(open_invoice["id"])
     if not updated:
         return None
+    mode = _company_tax_commission_mode(company)
     conn = get_connection()
     conn.execute(
-        "UPDATE invoices SET is_open = 0, invoice_number = ?, comment = ? WHERE id = ?",
+        """
+        UPDATE invoices
+           SET is_open = 0, invoice_number = ?, comment = ?, tax_commission_mode = ?
+         WHERE id = ?
+        """,
         (
             _issued_invoice_number(company),
             comment or updated.get("comment") or "",
+            mode,
             updated["id"],
         ),
     )
@@ -361,6 +400,7 @@ def list_invoices(limit: int = 100, company: str | None = None) -> list[dict]:
         d = _row_to_dict(row)
         d["paid"] = bool(d["paid"]) if d["paid"] is not None else False
         d["is_open"] = bool(d["is_open"]) if d.get("is_open") is not None else False
+        d["tax_commission_mode"] = normalize_tax_commission_mode(d.get("tax_commission_mode"))
         result.append(d)
     _apply_profit_calculations(result)
 
@@ -421,6 +461,7 @@ def update_invoice(
     tax_user_id: int | None = None,
     company: str | None = None,
     is_open: bool | None = None,
+    tax_commission_mode: str | None = None,
 ) -> dict | None:
     """Update invoice fields. Returns updated invoice or None."""
     conn = get_connection()
@@ -443,11 +484,14 @@ def update_invoice(
     tax_user_id = tax_user_id if tax_user_id is not None else current.get("tax_user_id")
     company = company if company is not None else current.get("company")
     is_open = is_open if is_open is not None else current.get("is_open")
+    tax_commission_mode = normalize_tax_commission_mode(
+        tax_commission_mode if tax_commission_mode is not None else current.get("tax_commission_mode")
+    )
 
     conn.execute(
         """UPDATE invoices SET company = ?, is_open = ?, comment = ?, percent_rate = ?, tax_rate = ?,
            debt_amount = ?, percent_amount = ?, tax_amount = ?, total_amount = ?,
-           commission_user_id = ?, tax_user_id = ?
+           commission_user_id = ?, tax_user_id = ?, tax_commission_mode = ?
            WHERE id = ?""",
         (
             company,
@@ -461,6 +505,7 @@ def update_invoice(
             total_amount,
             commission_user_id,
             tax_user_id,
+            tax_commission_mode,
             invoice_id,
         ),
     )

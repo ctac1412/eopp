@@ -658,6 +658,28 @@ class TestAdmin:
         assert data["new_open_invoice"]["is_open"] is True
         assert data["new_open_invoice"]["id"] != data["closed_invoice"]["id"]
 
+    def test_company_billing_settings_accept_tax_commission_mode(self, client, admin_token):
+        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
+        assert login.status_code == 200
+
+        old_payload = client.put(
+            "/admin/company-billing-settings/Mode API Co",
+            headers={"X-Admin-Token": admin_token},
+            json={"auto_invoice_reopen": True},
+        )
+        assert old_payload.status_code == 200
+        assert old_payload.json()["auto_invoice_reopen"] is True
+        assert old_payload.json()["tax_commission_mode"] == "added"
+
+        response = client.put(
+            "/admin/company-billing-settings/Mode API Co",
+            headers={"X-Admin-Token": admin_token},
+            json={"auto_invoice_reopen": False, "tax_commission_mode": "included"},
+        )
+        assert response.status_code == 200
+        assert response.json()["auto_invoice_reopen"] is False
+        assert response.json()["tax_commission_mode"] == "included"
+
     def test_admin_streams(self, client, admin_token):
         """doc"""
         response = client.get("/admin/streams", headers={"X-Admin-Token": admin_token})

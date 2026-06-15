@@ -70,6 +70,11 @@ function MoneyCell({ value, tone = "" }) {
   return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value || 0)}</span>;
 }
 
+const taxCommissionModeOptions = [
+  { value: "added", label: "Сверху" },
+  { value: "included", label: "Включено" },
+];
+
 export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const [invoices, setInvoices] = useState([]);
   const [companySettings, setCompanySettings] = useState([]);
@@ -222,10 +227,34 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
 
   const setAutoReopen = async (company, enabled) => {
     try {
+      const current = companySettings.find((setting) => setting.company === company);
       const res = await adminRequest(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
-        body: JSON.stringify({ auto_invoice_reopen: enabled }),
+        body: JSON.stringify({
+          auto_invoice_reopen: enabled,
+          tax_commission_mode: current?.tax_commission_mode || "added",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      await fetchCompanySettings();
+    } catch (err) {
+      setError(err.message);
+      onError?.(err.message);
+    }
+  };
+
+  const setTaxCommissionMode = async (company, mode) => {
+    try {
+      const current = companySettings.find((setting) => setting.company === company);
+      const res = await adminRequest(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({
+          auto_invoice_reopen: !!current?.auto_invoice_reopen,
+          tax_commission_mode: mode || "added",
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -291,11 +320,18 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     companySettings.forEach((setting) => {
       const current = rows.get(setting.company) || { company: setting.company, activeInvoice: null, closedCount: 0 };
       current.auto_invoice_reopen = !!setting.auto_invoice_reopen;
+      current.tax_commission_mode = setting.tax_commission_mode || "added";
       rows.set(setting.company, current);
     });
     companyAliases.forEach((alias) => {
       if (!rows.has(alias.company)) {
-        rows.set(alias.company, { company: alias.company, activeInvoice: null, closedCount: 0, auto_invoice_reopen: false });
+        rows.set(alias.company, {
+          company: alias.company,
+          activeInvoice: null,
+          closedCount: 0,
+          auto_invoice_reopen: false,
+          tax_commission_mode: "added",
+        });
       }
     });
     return [...rows.values()].sort((a, b) => a.company.localeCompare(b.company, "ru"));
@@ -349,6 +385,20 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     { title: "Компания", dataIndex: "company", ellipsis: true, render: (value) => <span title={value}>{value}</span> },
     { title: "Открытый", dataIndex: "activeInvoice", width: 92, align: "center", render: (invoice) => (invoice ? `#${invoice.id}` : "—") },
     { title: "Долг", dataIndex: "activeInvoice", width: 110, align: "right", render: (invoice) => <MoneyCell value={invoice?.debt_amount || 0} /> },
+    {
+      title: "Режим",
+      dataIndex: "tax_commission_mode",
+      width: 132,
+      render: (mode, row) => (
+        <SelectInput
+          size="small"
+          value={mode || "added"}
+          options={taxCommissionModeOptions}
+          allowClear={false}
+          onChange={(value) => setTaxCommissionMode(row.company, value)}
+        />
+      ),
+    },
     {
       title: "Авто",
       dataIndex: "auto_invoice_reopen",

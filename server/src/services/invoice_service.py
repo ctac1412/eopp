@@ -2,14 +2,32 @@
 
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 
 from src.db.invoices import InvoiceDeleteConflict
 from src.repositories import company_repo, invoice_repo, usage_log_repo
+from src.repositories import company_billing_repo
 
 
-def _invoice_totals(body) -> tuple[int, int, int, int]:
+def _normalize_tax_commission_mode(mode: str | None) -> str:
+    return company_billing_repo.normalize_tax_commission_mode(mode)
+
+
+def _company_tax_commission_mode(company: str | None) -> str:
+    if not company:
+        return "added"
+    settings = company_billing_repo.get_company_billing_settings(company)
+    return _normalize_tax_commission_mode(getattr(settings, "tax_commission_mode", None))
+
+
+def _invoice_totals(body, tax_commission_mode: str = "added") -> tuple[int, int, int, int]:
     items_total = sum(item.get("amount", 0) for item in (body.items or []))
     debt = body.debt_amount or items_total
+    if tax_commission_mode == "included":
+        total = body.total_amount or debt
+        percent = round(total * body.percent_rate / 100)
+        tax = round(total * body.tax_rate / 100)
+        return total, percent, tax, total
     combined_rate = body.percent_rate + body.tax_rate
     divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
     total = round(debt / divisor) if divisor > 0 else debt
@@ -18,15 +36,55 @@ def _invoice_totals(body) -> tuple[int, int, int, int]:
     return debt, percent, tax, total
 
 
-def _updated_invoice_totals(body, items_total: int) -> tuple[int, int, int, int]:
+def _updated_invoice_totals(
+    body, items_total: int, tax_commission_mode: str = "added"
+) -> tuple[int, int, int, int]:
     debt = body.debt_amount if body.debt_amount is not None else items_total
     percent_rate = body.percent_rate if body.percent_rate is not None else 0
     tax_rate = body.tax_rate if body.tax_rate is not None else 0
+    if tax_commission_mode == "included":
+        total = body.total_amount if body.total_amount is not None else debt
+        percent = round(total * percent_rate / 100)
+        tax = round(total * tax_rate / 100)
+        return total, percent, tax, total
     combined_rate = percent_rate + tax_rate
     divisor = 1 - combined_rate / 100 if combined_rate < 100 else 0
     total = round(debt / divisor) if divisor > 0 else debt
     percent = round(total * percent_rate / 100)
     tax = round(total * tax_rate / 100)
+    return debt, percent, tax, total
+
+
+def _recipient_validation_error(body) -> str | None:
+    missing = []
+    if (body.percent_amount or 0) > 0 and not body.commission_user_id:
+        missing.append("commission_user_id")
+    if (body.tax_amount or 0) > 0 and not body.tax_user_id:
+        missing.append("tax_user_id")
+    if missing:
+        return f"Required recipient fields missing: {', '.join(missing)}"
+    return None
+
+
+def _generated_invoice_company(usage_logs: list[dict]) -> str | None:
+    for log in usage_logs:
+        company = log.get("company_name") or log.get("company")
+        if company:
+            return company
+    return None
+
+
+def _generated_invoice_totals(body, usage_logs: list[dict], mode: str) -> tuple[int, int, int, int]:
+    usage_total = sum(int(log.get("price") or 0) for log in usage_logs)
+    if mode == "included":
+        total = body.total_amount or body.debt_amount or usage_total
+        percent = body.percent_amount or round(total * body.percent_rate / 100)
+        tax = body.tax_amount or round(total * body.tax_rate / 100)
+        return total, percent, tax, total
+    debt = body.debt_amount or usage_total
+    percent = body.percent_amount or 0
+    tax = body.tax_amount or 0
+    total = body.total_amount or (debt + percent + tax)
     return debt, percent, tax, total
 
 
@@ -40,10 +98,19 @@ def generate_invoice(body) -> tuple[int, dict]:
     if not usage_logs:
         return 400, {"error": "No valid usage logs provided"}
 
-    debt_amount = body.debt_amount or 0
-    percent_amount = body.percent_amount or 0
-    tax_amount = body.tax_amount or 0
-    total_amount = body.total_amount or (debt_amount + percent_amount + tax_amount)
+    company = _generated_invoice_company(usage_logs)
+    tax_commission_mode = _company_tax_commission_mode(company)
+    debt_amount, percent_amount, tax_amount, total_amount = _generated_invoice_totals(
+        body, usage_logs, tax_commission_mode
+    )
+    validation_body = SimpleNamespace(
+        percent_amount=percent_amount,
+        tax_amount=tax_amount,
+        commission_user_id=body.commission_user_id,
+        tax_user_id=body.tax_user_id,
+    )
+    if error := _recipient_validation_error(validation_body):
+        return 400, {"error": error}
     invoice_number = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     invoice_id = None
 
@@ -53,12 +120,14 @@ def generate_invoice(body) -> tuple[int, dict]:
         cur = conn.execute(
             """
             INSERT INTO invoices (
-                invoice_number, is_open, comment, percent_rate, tax_rate,
-                debt_amount, percent_amount, tax_amount, total_amount, pdf_path, paid
-            ) VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, '', 0)
+                invoice_number, company, is_open, comment, percent_rate, tax_rate,
+                debt_amount, percent_amount, tax_amount, total_amount, pdf_path, paid,
+                commission_user_id, tax_user_id, tax_commission_mode
+            ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, '', 0, ?, ?, ?)
             """,
             (
                 invoice_number,
+                company,
                 body.comment,
                 body.percent_rate,
                 body.tax_rate,
@@ -66,6 +135,9 @@ def generate_invoice(body) -> tuple[int, dict]:
                 percent_amount,
                 tax_amount,
                 total_amount,
+                body.commission_user_id,
+                body.tax_user_id,
+                tax_commission_mode,
             ),
         )
         invoice_id = int(cur.lastrowid)
@@ -80,6 +152,9 @@ def generate_invoice(body) -> tuple[int, dict]:
             body.usage_log_ids,
             percent_amount=percent_amount,
             tax_amount=tax_amount,
+            tax_commission_mode=tax_commission_mode,
+            commission_user_id=body.commission_user_id,
+            tax_user_id=body.tax_user_id,
         )
         conn.commit()
     except Exception as exc:
@@ -115,7 +190,12 @@ def list_invoices(company_id: int | None = None) -> tuple[int, list[dict]]:
 
 
 def create_invoice(body) -> tuple[int, dict]:
-    debt, calc_percent, calc_tax, calc_total = _invoice_totals(body)
+    tax_commission_mode = _normalize_tax_commission_mode(body.tax_commission_mode)
+    debt, calc_percent, calc_tax, calc_total = _invoice_totals(body, tax_commission_mode)
+    body.percent_amount = body.percent_amount or calc_percent
+    body.tax_amount = body.tax_amount or calc_tax
+    if error := _recipient_validation_error(body):
+        return 400, {"error": error}
     invoice_number = body.invoice_number or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     return 200, invoice_repo.create_invoice_with_items(
         invoice_number=invoice_number,
@@ -123,13 +203,14 @@ def create_invoice(body) -> tuple[int, dict]:
         percent_rate=body.percent_rate,
         tax_rate=body.tax_rate,
         debt_amount=debt,
-        percent_amount=body.percent_amount or calc_percent,
-        tax_amount=body.tax_amount or calc_tax,
+        percent_amount=body.percent_amount,
+        tax_amount=body.tax_amount,
         total_amount=body.total_amount or calc_total,
         paid=False,
         items=body.items,
         commission_user_id=body.commission_user_id,
         tax_user_id=body.tax_user_id,
+        tax_commission_mode=tax_commission_mode,
     )
 
 
@@ -142,18 +223,31 @@ def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
 
     if body.items is not None:
         items_total = sum(item.get("amount", 0) for item in body.items)
-        debt, calc_percent, calc_tax, calc_total = _updated_invoice_totals(body, items_total)
+        current = invoice_repo.get_invoice(invoice_id)
+        if not current:
+            return 404, {"error": "Invoice not found"}
+        tax_commission_mode = _normalize_tax_commission_mode(
+            body.tax_commission_mode or current.get("tax_commission_mode")
+        )
+        debt, calc_percent, calc_tax, calc_total = _updated_invoice_totals(
+            body, items_total, tax_commission_mode
+        )
+        body.percent_amount = body.percent_amount or calc_percent
+        body.tax_amount = body.tax_amount or calc_tax
+        if error := _recipient_validation_error(body):
+            return 400, {"error": error}
         result = invoice_repo.update_invoice(
             invoice_id,
             comment=body.comment,
             percent_rate=body.percent_rate,
             tax_rate=body.tax_rate,
             debt_amount=debt,
-            percent_amount=body.percent_amount or calc_percent,
-            tax_amount=body.tax_amount or calc_tax,
+            percent_amount=body.percent_amount,
+            tax_amount=body.tax_amount,
             total_amount=body.total_amount or calc_total,
             commission_user_id=body.commission_user_id,
             tax_user_id=body.tax_user_id,
+            tax_commission_mode=tax_commission_mode,
         )
         if not result:
             return 404, {"error": "Invoice not found"}
@@ -172,6 +266,7 @@ def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
         total_amount=body.total_amount,
         commission_user_id=body.commission_user_id,
         tax_user_id=body.tax_user_id,
+        tax_commission_mode=body.tax_commission_mode,
     )
     if not result:
         return 404, {"error": "Invoice not found"}

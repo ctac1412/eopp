@@ -99,7 +99,7 @@ function replaceUrlParam(key, value) {
   window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
 }
 
-export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
+export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = [] }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -330,6 +330,8 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
         percent_amount: invoiceData.percentAmount,
         tax_amount: invoiceData.taxAmount,
         total_amount: invoiceData.totalAmount,
+        commission_user_id: invoiceData.commissionUserId,
+        tax_user_id: invoiceData.taxUserId,
       };
       const res = await adminRequest("/admin/generate-invoice", {
         method: "POST",
@@ -892,8 +894,8 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
         selectedLogs={invoiceSelectedLogs}
         onGenerate={handleGenerateInvoice}
         onClose={() => setShowInvoiceModal(false)}
+        users={users}
       />
     </div>
   );
 }
-

@@ -11,8 +11,14 @@ def list_company_billing_settings() -> tuple[int, list[dict]]:
 def update_company_billing_settings(company: str, body) -> tuple[int, dict]:
     if not company:
         return 400, {"error": "company required"}
+    if body.tax_commission_mode not in company_repo.TAX_COMMISSION_MODES:
+        return 400, {"error": "Invalid tax_commission_mode"}
     return 200, entity_to_dict(
-        company_repo.upsert_company_billing_settings(company, body.auto_invoice_reopen)
+        company_repo.upsert_company_billing_settings(
+            company,
+            body.auto_invoice_reopen,
+            body.tax_commission_mode,
+        )
     )
 
 

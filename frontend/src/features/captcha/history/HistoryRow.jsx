@@ -75,11 +75,11 @@ const COLUMN_CONFIGS = {
 
 const PRESETS = {
   user: {
-    columns: ["id", "type", "time", "status", "custom_slots", "slot", "resid", "captcha", "paid", "error", "actions"],
+    columns: ["id", "type", "time", "status", "custom_slots", "slot", "resid", "captcha", "paid", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: false, showDelete: false, showCheckbox: false },
   },
   admin: {
-    columns: ["checkbox", "id", "type", "time", "status", "slot", "fio", "custom_slots", "test", "price", "paid", "error", "actions"],
+    columns: ["checkbox", "id", "type", "time", "status", "slot", "fio", "custom_slots", "test", "price", "paid", "actions"],
     actions: { showLogs: true, showConfig: true, showEdit: true, showDelete: true, showCheckbox: true },
   },
 };

@@ -2,7 +2,8 @@ import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
-import { Button, DataTable, SelectInput, TextInput } from "../../../ui";
+import { Button, DataTable, TextInput } from "../../../ui";
+import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 function adminHeaders() {
   return { "Content-Type": "application/json" };
@@ -58,17 +59,25 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   if (!invoice) return null;
 
   const itemsTotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const editDebt = form.debt_amount || itemsTotal;
+  const editCombinedRate = (form.percent_rate || 0) + (form.tax_rate || 0);
+  const editDivisor = editCombinedRate < 100 ? 1 - editCombinedRate / 100 : 0;
+  const editTotal = editDivisor > 0 ? Math.round(editDebt / editDivisor) : 0;
+  const editPercent = Math.round(editTotal * (form.percent_rate || 0) / 100);
+  const editTax = Math.round(editTotal * (form.tax_rate || 0) / 100);
+  const recipientErrors = hasInvoiceRecipientErrors({
+    commissionAmount: editPercent,
+    taxAmount: editTax,
+    commissionUserId: form.commission_user_id,
+    taxUserId: form.tax_user_id,
+  });
+  const hasRecipientErrors = recipientErrors.commission || recipientErrors.tax;
   const printRate = form.percent_rate || invoice.percent_rate || 0;
   const printTaxRate = form.tax_rate || invoice.tax_rate || 0;
-  const printPercent = form.percent_amount || invoice.percent_amount || Math.round(itemsTotal * printRate / 100);
-  const printTax = form.tax_amount || invoice.tax_amount || Math.round(itemsTotal * printTaxRate / 100);
-  const printDebt = form.debt_amount || invoice.debt_amount || 0;
-  const printFinal = form.total_amount || invoice.total_amount || (itemsTotal + printPercent + printTax);
-
-  const userOptions = [
-    { value: "", label: "Не указан" },
-    ...users.map((user) => ({ value: user.id, label: user.name })),
-  ];
+  const printPercent = editPercent || invoice.percent_amount || Math.round(itemsTotal * printRate / 100);
+  const printTax = editTax || invoice.tax_amount || Math.round(itemsTotal * printTaxRate / 100);
+  const printDebt = editDebt || invoice.debt_amount || 0;
+  const printFinal = editTotal || invoice.total_amount || (itemsTotal + printPercent + printTax);
 
   const addItem = () => setItems((prev) => [...prev, { description: "", amount: 0, sort_order: prev.length }]);
   const removeItem = (index) => setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
@@ -84,6 +93,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   };
 
   const handleSubmit = async () => {
+    if (hasRecipientErrors) return;
     setLoading(true);
     try {
       const res = await adminRequest(`/admin/invoices/${invoice.id}`, {
@@ -93,10 +103,10 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
           comment: form.comment,
           percent_rate: form.percent_rate,
           tax_rate: form.tax_rate,
-          debt_amount: form.debt_amount,
-          percent_amount: form.percent_amount,
-          tax_amount: form.tax_amount,
-          total_amount: form.total_amount,
+          debt_amount: editDebt,
+          percent_amount: editPercent,
+          tax_amount: editTax,
+          total_amount: editTotal,
           commission_user_id: form.commission_user_id,
           tax_user_id: form.tax_user_id,
           items: items.map((item, index) => ({
@@ -235,7 +245,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                 <Button key="cancel" size="small" onClick={onClose}>
                   Отмена
                 </Button>,
-                <Button key="submit" size="small" variant="primary" loading={loading} onClick={handleSubmit}>
+                <Button key="submit" size="small" variant="primary" loading={loading} onClick={handleSubmit} disabled={hasRecipientErrors}>
                   Сохранить
                 </Button>,
               ]
@@ -288,7 +298,9 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                 />
               </section>
 
-              <div className="invoice-modal__form-grid invoice-modal__form-grid--four">
+              <section className="invoice-modal__section invoice-modal__section--compact">
+                <div className="invoice-modal__section-title">Суммы</div>
+                <div className="invoice-modal__grid">
                 <label className="form-label small mb-0">
                   Сумма долга
                   <InputNumber
@@ -297,18 +309,6 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                     min={0}
                     value={form.debt_amount}
                     onChange={(value) => updateForm("debt_amount", Number(value) || 0)}
-                    addonAfter="₽"
-                    className="invoice-modal__amount-input"
-                  />
-                </label>
-                <label className="form-label small mb-0">
-                  Итого
-                  <InputNumber
-                    data-eopp-component="InvoiceEditTotalAmount"
-                    size="small"
-                    min={0}
-                    value={form.total_amount}
-                    onChange={(value) => updateForm("total_amount", Number(value) || 0)}
                     addonAfter="₽"
                     className="invoice-modal__amount-input"
                   />
@@ -326,7 +326,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                     className="invoice-modal__number"
                   />
                 </label>
-                <label className="form-label small mb-0">
+                  <label className="form-label small mb-0">
                   Налог, %
                   <InputNumber
                     data-eopp-component="InvoiceEditTaxRate"
@@ -339,25 +339,22 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                     className="invoice-modal__number"
                   />
                 </label>
-                <label className="form-label small mb-0">
-                  Комиссию получает
-                  <SelectInput
-                    value={form.commission_user_id ?? ""}
-                    onChange={(value) => updateForm("commission_user_id", value ? Number(value) : null)}
-                    options={userOptions}
-                    allowClear={false}
-                  />
-                </label>
-                <label className="form-label small mb-0">
-                  Налог платит
-                  <SelectInput
-                    value={form.tax_user_id ?? ""}
-                    onChange={(value) => updateForm("tax_user_id", value ? Number(value) : null)}
-                    options={userOptions}
-                    allowClear={false}
-                  />
-                </label>
-              </div>
+                  <div className="invoice-modal__summary invoice-modal__summary--total">
+                    <span>Итого</span>
+                    <strong>{formatMoney(editTotal)}</strong>
+                  </div>
+                </div>
+              </section>
+
+              <InvoiceRecipientFields
+                users={users}
+                commissionAmount={editPercent}
+                taxAmount={editTax}
+                commissionUserId={form.commission_user_id}
+                taxUserId={form.tax_user_id}
+                onCommissionChange={(value) => updateForm("commission_user_id", value)}
+                onTaxChange={(value) => updateForm("tax_user_id", value)}
+              />
 
               <label className="form-label small mb-0 invoice-modal__comment">
                 Комментарий

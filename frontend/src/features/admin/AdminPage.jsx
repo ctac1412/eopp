@@ -551,7 +551,7 @@ function AdminPage() {
   }, [adminToken, activeTab, fetchUsers]);
 
   useEffect(() => {
-    if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices")) {
+    if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices" || activeTab === "reports")) {
       fetchUsers(adminToken);
       fetchFinanceParticipants(adminToken);
     }
@@ -1355,6 +1355,7 @@ function AdminPage() {
           adminToken={adminToken}
           onError={(msg) => setError(msg)}
           onInvoiceGenerated={handleManualInvoiceCreated}
+          users={financeParticipants}
         />
       )}
 
@@ -1612,5 +1613,4 @@ function AdminPage() {
 }
 
 export default AdminPage;
-
 
