@@ -379,6 +379,7 @@ class UpdateOperatorBody(BaseModel):
     nickname: str | None = None
     icon_display_mode: str | None = None
     icon_rate: int | None = None
+    billing_mode: str | None = None
     allowed_master_keys: list[int] | None = None
     company_id: int | None = None
 

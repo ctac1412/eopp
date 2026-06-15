@@ -249,7 +249,10 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
         SELECT
             da.id AS distribution_answer_id,
             op.user_id,
-            COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) AS amount
+            CASE
+                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+            END AS amount
         FROM distribution_answers da
         JOIN usage_log ul ON ul.id = da.usage_log_id
         JOIN successful_captchas sc ON sc.captcha_id = da.captcha_id
@@ -258,7 +261,11 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
         LEFT JOIN usage_executor ue ON 1 = 1
         WHERE da.usage_log_id = ?
-          AND COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) > 0
+          AND COALESCE(o.billing_mode, 'company') != 'free'
+          AND CASE
+                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+              END > 0
           AND (ue.user_id IS NULL OR op.user_id != ue.user_id)
         ORDER BY da.id
         """,

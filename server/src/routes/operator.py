@@ -445,6 +445,11 @@ async def admin_update_operator(operator_id: int, request: Request):
         kwargs["icon_display_mode"] = body["icon_display_mode"]
     if "icon_rate" in body:
         kwargs["icon_rate"] = max(0, int(body.get("icon_rate") or 0))
+    if "billing_mode" in body:
+        billing_mode = str(body.get("billing_mode") or "company")
+        if billing_mode not in {"company", "custom", "free"}:
+            return JSONResponse(status_code=400, content={"error": "Invalid operator billing_mode"})
+        kwargs["billing_mode"] = billing_mode
     if "allowed_master_keys" in body:
         val = body["allowed_master_keys"]
         kwargs["allowed_master_keys"] = _json.dumps(val) if val is not None else None

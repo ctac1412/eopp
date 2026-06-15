@@ -25,6 +25,12 @@ const ICON_DISPLAY_MODES = [
   { value: "own_only", label: "Только свои" },
 ];
 
+const OPERATOR_BILLING_MODES = [
+  { value: "company", label: "По компании" },
+  { value: "custom", label: "Индивидуальный" },
+  { value: "free", label: "Бесплатный" },
+];
+
 const PAGE_TABS = [
   { value: "dashboard", label: "Активный дэшборд" },
   { value: "settings", label: "Настройки" },
@@ -90,6 +96,7 @@ export function OperatorsTab({ adminToken, onError }) {
   const [editForm, setEditForm] = useState({
     nickname: "",
     icon_display_mode: "own_then_foreign",
+    billing_mode: "company",
     icon_rate: 0,
     masterAccessMode: "all",
     allowed_master_keys: [],
@@ -269,6 +276,7 @@ export function OperatorsTab({ adminToken, onError }) {
     setEditForm({
       nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
@@ -308,12 +316,15 @@ export function OperatorsTab({ adminToken, onError }) {
       const body = {
         nickname: editForm.nickname,
         icon_display_mode: editForm.icon_display_mode,
-        icon_rate: Math.max(0, Number(editForm.icon_rate) || 0),
+        billing_mode: editForm.billing_mode || "company",
         allowed_master_keys: serializeAllowedMasters(
           editForm.masterAccessMode,
           editForm.allowed_master_keys,
         ),
       };
+      if (body.billing_mode === "custom") {
+        body.icon_rate = Math.max(0, Number(editForm.icon_rate) || 0);
+      }
       const res = await adminRequest(`/admin/operators/${selectedOperator.id}`, {
         method: "PUT",
         headers: adminHeadersJson(adminToken),
@@ -334,6 +345,7 @@ export function OperatorsTab({ adminToken, onError }) {
     setEditForm({
       nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
+      billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
@@ -440,6 +452,12 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const getIconModeLabel = (mode) => ICON_DISPLAY_MODES.find((item) => item.value === mode)?.label || mode || "—";
 
+  const getBillingModeLabel = (op) => {
+    if (op.billing_mode === "free") return "Бесплатно";
+    if (op.billing_mode === "custom") return `${Number(op.icon_rate || 0).toLocaleString("ru-RU")} ₽`;
+    return "Компания";
+  };
+
   const reviewFromAnswer = (answer) => ({
     captcha_id: answer.captcha_id,
     operator_answers: answer.operator_answers || [answer],
@@ -471,7 +489,7 @@ export function OperatorsTab({ adminToken, onError }) {
     { title: "Компании", dataIndex: "company_names", width: 180, render: renderCompanyScope },
     { title: "Мастера", dataIndex: "allowed_master_keys", width: 170, render: renderAllowedMasters },
     { title: "Иконки", dataIndex: "icon_display_mode", width: 128, render: getIconModeLabel },
-    { title: "Тариф", dataIndex: "icon_rate", width: 90, align: "right", render: (value) => `${Number(value || 0).toLocaleString("ru-RU")} ₽` },
+    { title: "Тариф", dataIndex: "billing_mode", width: 104, align: "right", render: (_, op) => getBillingModeLabel(op) },
     {
       title: "Ссылка",
       dataIndex: "uuid",
@@ -758,15 +776,26 @@ export function OperatorsTab({ adminToken, onError }) {
                     />
                   </label>
                   <label className="form-label small mb-0">
-                    Тариф за иконку
-                    <TextInput
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={editForm.icon_rate}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, icon_rate: event.target.value }))}
+                    Тариф оператора
+                    <SelectInput
+                      value={editForm.billing_mode}
+                      onChange={(value) => setEditForm((prev) => ({ ...prev, billing_mode: value || "company" }))}
+                      options={OPERATOR_BILLING_MODES}
+                      allowClear={false}
                     />
                   </label>
+                  {editForm.billing_mode === "custom" && (
+                    <label className="form-label small mb-0">
+                      Сумма за иконку
+                      <TextInput
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editForm.icon_rate}
+                        onChange={(event) => setEditForm((prev) => ({ ...prev, icon_rate: event.target.value }))}
+                      />
+                    </label>
+                  )}
                   <label className="form-label small mb-0">
                     Текущий master key
                     <SelectInput

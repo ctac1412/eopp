@@ -21,6 +21,10 @@ from src.db.connection import get_connection
 from src.db.connection import row_to_dict as _row_to_dict
 
 
+class InvoiceDeleteConflict(Exception):
+    """Raised when an invoice is protected by payout or locked finance history."""
+
+
 def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
     if not invoice_ids:
         return {}
@@ -486,19 +490,67 @@ def set_invoice_paid(invoice_id: int, paid: bool) -> dict | None:
 
 
 def delete_invoice(invoice_id: int) -> bool:
-    """Delete an invoice and unlink associated usage logs."""
+    """Delete an invoice and disposable children without erasing payout history."""
     conn = get_connection()
-    row = conn.execute("SELECT id FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
-    if not row:
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT id FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return False
+
+        payout_link = conn.execute(
+            "SELECT 1 FROM payout_invoices WHERE invoice_id = ? LIMIT 1",
+            (invoice_id,),
+        ).fetchone()
+        if payout_link:
+            conn.execute("ROLLBACK")
+            raise InvoiceDeleteConflict
+
+        protected_finance = conn.execute(
+            """
+            SELECT 1
+            FROM finance_entries fe
+            WHERE (
+                fe.invoice_id = ?
+                OR fe.profit_lot_id IN (
+                    SELECT id FROM profit_lots WHERE invoice_id = ?
+                )
+            )
+              AND (
+                fe.payout_id IS NOT NULL
+                OR fe.edit_state IN ('locked', 'paid')
+            )
+            LIMIT 1
+            """,
+            (invoice_id, invoice_id),
+        ).fetchone()
+        if protected_finance:
+            conn.execute("ROLLBACK")
+            raise InvoiceDeleteConflict
+
+        conn.execute(
+            """
+            DELETE FROM finance_entries
+            WHERE invoice_id = ?
+               OR profit_lot_id IN (
+                   SELECT id FROM profit_lots WHERE invoice_id = ?
+               )
+            """,
+            (invoice_id, invoice_id),
+        )
+        conn.execute("DELETE FROM profit_lots WHERE invoice_id = ?", (invoice_id,))
+        conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        conn.execute(
+            "UPDATE usage_log SET paid = 0, invoice_id = NULL WHERE invoice_id = ?",
+            (invoice_id,),
+        )
+        conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
+        conn.commit()
+        return True
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
         conn.close()
-        return False
-
-    # Unlink usage logs
-    conn.execute(
-        "UPDATE usage_log SET paid = 0, invoice_id = NULL WHERE invoice_id = ?", (invoice_id,)
-    )
-
-    conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
-    conn.commit()
-    conn.close()
-    return True

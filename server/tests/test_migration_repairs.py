@@ -140,6 +140,48 @@ def test_schema_checker_reports_model_columns_missing_from_existing_db(tmp_path)
     )
 
 
+def test_operator_billing_mode_migration_backfills_from_icon_rate(tmp_path, monkeypatch):
+    db_path = tmp_path / "api_keys.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE operators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL,
+                nickname TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                icon_rate INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO operators (uuid, nickname, created_at, icon_rate) VALUES (?, ?, ?, ?)",
+            ("company-mode", "Company", "2026-01-01T00:00:00+00:00", 0),
+        )
+        conn.execute(
+            "INSERT INTO operators (uuid, nickname, created_at, icon_rate) VALUES (?, ?, ?, ?)",
+            ("custom-mode", "Custom", "2026-01-01T00:00:00+00:00", 75),
+        )
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES ('o8p9q0r1s2t3')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("EOPP_DB_PATH", str(db_path).replace("\\", "/"))
+    cfg = Config(str(SERVER_DIR / "alembic.ini"))
+    command.upgrade(cfg, "heads")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT uuid, billing_mode FROM operators ORDER BY uuid").fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("company-mode", "company"), ("custom-mode", "custom")]
+
+
 def test_schema_checker_accepts_fresh_database_after_all_migrations():
     assert find_schema_drift() == []
 

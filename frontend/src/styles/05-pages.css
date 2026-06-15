@@ -768,6 +768,32 @@
   min-width: 30px !important;
 }
 
+.reports-table-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.reports-date-group > td {
+  padding: 4px 8px !important;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface)) !important;
+}
+
+.reports-date-group .ant-checkbox-wrapper {
+  display: none;
+}
+
+.reports-date-group__label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .reports-cell-token {
   max-width: 52px;
 }
@@ -799,7 +825,7 @@
 
 .reports-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr);
+  grid-template-columns: minmax(0, 55fr) minmax(360px, 45fr);
   gap: 0.75rem;
   align-items: start;
 }
@@ -1060,10 +1086,11 @@
   min-width: 0;
   display: grid;
   gap: 0.4rem;
-  padding: 0.5rem;
+  padding: 0.55rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 92%, var(--surface-muted));
+  background: var(--surface);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 .operation-details__panel h3 {
@@ -1087,10 +1114,69 @@
   font-size: 0.66rem;
 }
 
+.operation-details__finance-summary {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.operation-details__finance-total,
+.operation-details__finance-payouts {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+}
+
+.operation-details__finance-total > span,
+.operation-details__finance-payouts > span {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.operation-details__finance-total > strong {
+  color: var(--bs-heading-color);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.operation-details__finance-payouts > div {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.operation-details__finance-payouts strong {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.12rem 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--bs-heading-color);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operation-details__finance-payouts em {
+  color: var(--text-muted);
+  font-style: normal;
+}
+
 .operation-details__panel--primary {
   gap: 0.34rem;
-  padding: 0.45rem 0.5rem;
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  padding: 0.5rem 0.55rem;
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .operation-details__price {

@@ -60,6 +60,32 @@ function getFinanceUser(row) {
   return row.user_name || row.user || row.name || (row.user_id ? `#${row.user_id}` : "-");
 }
 
+function OperationTypeTag({ record }) {
+  const opType = getOpType(record);
+  const status = record.op_type === "create" ? "create" : record.op_type === "reschedule" ? "reschedule" : "neutral";
+  return <StatusTag status={status} label={opType} />;
+}
+
+function getFinanceSummary(entries) {
+  const payoutsByUser = new Map();
+  const total = entries.reduce((acc, row) => acc + Number(row.amount || 0), 0);
+  entries.forEach((row) => {
+    const amount = Number(row.amount || 0);
+    if (!row.user_id || amount >= 0) return;
+    const key = String(row.user_id);
+    const current = payoutsByUser.get(key) || {
+      user: getFinanceUser(row),
+      amount: 0,
+    };
+    current.amount += Math.abs(amount);
+    payoutsByUser.set(key, current);
+  });
+  return {
+    total,
+    payouts: [...payoutsByUser.values()].sort((a, b) => b.amount - a.amount),
+  };
+}
+
 export function OperationDetails({
   record,
   captchaRecords,
@@ -74,6 +100,7 @@ export function OperationDetails({
   const logs = Array.isArray(record.logs) ? record.logs : [];
   const errorInfo = getErrorInfo(record);
   const captchaOperators = getCaptchaOperators(captchaRecords);
+  const financeSummary = getFinanceSummary(financeEntries);
 
   const captchaColumns = [
     {
@@ -173,8 +200,14 @@ export function OperationDetails({
         <div className="operation-details__fields operation-details__fields--billing">
           <Field label="Свои" value={record.has_custom_slots ? "Да" : "-"} />
           <Field label="Счет" value={record.invoice_id ? `#${record.invoice_id}` : "-"} />
-          <Field label="Тип" value={getOpType(record)} />
-          <Field label="Статус" value={getStatusLabel(record.status)} />
+          <div className="operation-details__field">
+            <span>Тип</span>
+            <OperationTypeTag record={record} />
+          </div>
+          <div className="operation-details__field">
+            <span>Статус</span>
+            <StatusTag status={record.status} label={getStatusLabel(record.status)} />
+          </div>
           <Field label="Исполнитель" value={getExecutorLabel(record)} />
           <Field label="Операторы капчи" value={captchaOperators} />
         </div>
@@ -209,6 +242,22 @@ export function OperationDetails({
           >
             Обновить
           </Button>
+        </div>
+        <div className="operation-details__finance-summary">
+          <div className="operation-details__finance-total">
+            <span>Итого</span>
+            <strong>{formatMoney(financeSummary.total)}</strong>
+          </div>
+          <div className="operation-details__finance-payouts">
+            <span>К выплате</span>
+            <div>
+              {financeSummary.payouts.length ? financeSummary.payouts.map((item) => (
+                <strong key={item.user} title={`${item.user}: ${formatMoney(item.amount)}`}>
+                  {item.user} {formatMoney(item.amount)}
+                </strong>
+              )) : <em>-</em>}
+            </div>
+          </div>
         </div>
         <DataTable
           className="operation-details__table operation-details__table--finance"

@@ -1,6 +1,6 @@
 import { adminRequest } from "../shared/adminClient";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Card, Spin } from "antd";
+import { Card, Pagination, Spin } from "antd";
 import { useSearchParams } from "react-router-dom";
 import { formatMoney } from "../../../utils/format";
 import { UsageLogEditModal } from "../invoices/UsageLogEditModal";
@@ -37,14 +37,22 @@ function adminHeadersJson() {
 }
 
 function formatDate(iso) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
   return d.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+}
+
+function formatTime(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return d.toLocaleTimeString("ru-RU", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -71,8 +79,8 @@ function getUrlPositiveInt(searchParams, key, fallback) {
 }
 
 function getUrlPageSize(searchParams) {
-  const value = getUrlPositiveInt(searchParams, "page_size", 10);
-  return USAGE_PAGE_SIZE_OPTIONS.includes(value) ? value : 10;
+  const value = getUrlPositiveInt(searchParams, "page_size", 25);
+  return USAGE_PAGE_SIZE_OPTIONS.includes(value) ? value : 25;
 }
 
 function toLocalDateKey(value) {
@@ -488,12 +496,28 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
     ellipsis: true,
   });
 
+  const usagePageRecords = filteredRecords.slice(usagePageStart, usagePageStart + usagePageSize);
+  const groupedUsageRows = [];
+  let lastDateKey = null;
+  usagePageRecords.forEach((record, index) => {
+    const dateKey = toLocalDateKey(record.created_at) || "unknown";
+    if (dateKey !== lastDateKey) {
+      groupedUsageRows.push({
+        __group: true,
+        id: `date-group:${dateKey}:${record.id}`,
+        dateKey,
+        label: formatDate(record.created_at),
+      });
+      lastDateKey = dateKey;
+    }
+    groupedUsageRows.push({ ...record, __rowNumber: usagePageStart + index + 1 });
+  });
 
-  const recordsColumns = [
+  const baseRecordsColumns = [
     {
       title: "#",
       ...compactColumn(30),
-      render: (_, __, idx) => usagePageStart + idx + 1,
+      render: (_, record) => record.__rowNumber,
     },
     {
       title: "ID",
@@ -502,11 +526,11 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
       render: (value) => <span className="small text-muted">{value}</span>,
     },
     {
-      title: "Дата",
+      title: "Время",
       dataIndex: "created_at",
-      ...compactColumn(106),
+      ...compactColumn(72),
       align: "center",
-      render: (value) => <span className="small text-nowrap">{formatDate(value)}</span>,
+      render: (value) => <span className="small text-nowrap">{formatTime(value)}</span>,
     },
     {
       title: "Цена",
@@ -568,6 +592,20 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
       },
     },
   ];
+  const recordsColumns = baseRecordsColumns.map((column, index) => ({
+    ...column,
+    render: (value, record, rowIndex) => {
+      if (record.__group) {
+        return index === 0
+          ? {
+              children: <span className="reports-date-group__label">{record.label}</span>,
+              props: { colSpan: baseRecordsColumns.length },
+            }
+          : { children: null, props: { colSpan: 0 } };
+      }
+      return column.render ? column.render(value, record, rowIndex) : value;
+    },
+  }));
   return (
     <div data-eopp-component="ReportsTab" className="reports-page">
       <Toolbar
@@ -736,29 +774,30 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
             </div>
           }
         >
+          <div className="reports-table-pagination">
+            <Pagination
+              current={usagePage}
+              pageSize={usagePageSize}
+              total={filteredRecords.length}
+              showSizeChanger
+              pageSizeOptions={USAGE_PAGE_SIZE_OPTIONS}
+              showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+              locale={{ items_per_page: "" }}
+              size="small"
+              onChange={(page, pageSize) => {
+                setUsagePage(page);
+                setUsagePageSize(pageSize);
+              }}
+            />
+          </div>
           <DataTable
             className="reports-log-table"
             rowKey="id"
-            data={filteredRecords}
+            data={groupedUsageRows}
             columns={recordsColumns}
             scroll={false}
             emptyText="Нет записей"
-            pagination={{
-              current: usagePage,
-              pageSize: usagePageSize,
-              total: filteredRecords.length,
-              showSizeChanger: true,
-              pageSizeOptions: USAGE_PAGE_SIZE_OPTIONS,
-              showTotal: (total, range) => `${range[0]}-${range[1]} из ${total}`,
-              locale: { items_per_page: "" },
-              position: ["topRight"],
-              size: "small",
-              className: "reports-usage-log-pagination",
-              onChange: (page, pageSize) => {
-                setUsagePage(page);
-                setUsagePageSize(pageSize);
-              },
-            }}
+            pagination={false}
             rowSelection={{
               selectedRowKeys: selectedLogIds,
               preserveSelectedRowKeys: true,
@@ -767,14 +806,20 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
                 setSelectedLogIds(keys.filter((id) => selectableIds.has(id)));
               },
               getCheckboxProps: (record) => ({
-                disabled: !isBillableRecord(record),
+                disabled: record.__group || !isBillableRecord(record),
               }),
             }}
             rowClassName={(record) => (
-              expandedRecordId === record.id ? "reports-log-row reports-log-row--selected" : "reports-log-row"
+              record.__group
+                ? "reports-date-group"
+                : expandedRecordId === record.id
+                  ? "reports-log-row reports-log-row--selected"
+                  : "reports-log-row"
             )}
             onRow={(record) => ({
-              onClick: () => selectDetails(record),
+              onClick: () => {
+                if (!record.__group) selectDetails(record);
+              },
             })}
           />
         </Card>
