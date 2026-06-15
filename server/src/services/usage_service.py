@@ -6,6 +6,7 @@ from src.platform.jobs.queue import enqueue_deferred_job
 from src.platform.observability.metrics import latency_timer
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
+from src.repositories import company_repo
 from src.services import telegram_service
 from src.sse import lock, sse_queues
 
@@ -28,6 +29,13 @@ def _parse_config_json(usage_log: UsageLog) -> dict | None:
         return None
 
 
+def _company_name_for_record(record: UsageLog) -> str | None:
+    if record.company_rel:
+        return record.company_rel.name
+    company = company_repo.find_company_by_name_or_alias(record.company)
+    return company.name if company else None
+
+
 def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
     logs_raw = record.logs
     logs = json.loads(logs_raw) if logs_raw else None
@@ -48,6 +56,8 @@ def _usage_to_dict(record: UsageLog, label: str | None = None) -> dict:
         "paid": bool(record.paid) if record.paid is not None else None,
         "op_type": record.op_type,
         "company": record.company,
+        "company_id": record.company_id,
+        "company_name": _company_name_for_record(record),
         "fio": record.fio,
         "vehicle_number": record.vehicle_number,
         "is_test": bool(record.is_test) if record.is_test is not None else False,

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 
 def _now() -> str:
@@ -46,8 +47,8 @@ def test_billing_job_creates_idempotent_finance_entries(isolated_api_db, monkeyp
         (company_id, 2730, 700, 500, _now(), _now()),
     )
     conn.execute(
-        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
-        ("ledger-key", "Ledger", _now(), company_id),
+        "INSERT INTO api_keys (key, label, user_id, created_at, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("ledger-key", "Ledger", executor_user_id, _now(), company_id),
     )
     api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -59,6 +60,10 @@ def test_billing_job_creates_idempotent_finance_entries(isolated_api_db, monkeyp
         (api_key_id, "res-ledger", _now(), _now(), '{"mode":"create"}', company_id, "Ledger Co"),
     )
     usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at) VALUES (?, ?, ?, ?)",
+        ("captcha-ledger", "passed", usage_log_id, _now()),
+    )
     for icon_position in range(2):
         conn.execute(
             """
@@ -94,6 +99,495 @@ def test_billing_job_creates_idempotent_finance_entries(isolated_api_db, monkeyp
     ]
     assert sum(1 for row in rows if row["user_id"] == executor_user_id) == 1
     assert sum(1 for row in rows if row["user_id"] == operator_user_id) == 2
+
+
+def test_update_usage_price_recalculates_open_finance_entries(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import create_usage_finance_entries
+    from src.services.billing_service import update_usage_log
+
+    conn = get_connection()
+    conn.execute("INSERT INTO api_keys (key, label, created_at) VALUES (?, ?, ?)", ("reprice-key", "Reprice", _now()))
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 100, 0)
+        """,
+        (api_key_id, "res-reprice", _now(), _now()),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    create_usage_finance_entries(conn, usage_log_id, 100)
+    conn.commit()
+    conn.close()
+
+    status, updated = update_usage_log(
+        usage_log_id,
+        SimpleNamespace(price=500, paid=None),
+    )
+
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT kind, amount FROM finance_entries WHERE usage_log_id = ? ORDER BY id",
+        (usage_log_id,),
+    ).fetchall()
+    conn.close()
+
+    assert status == 200
+    assert updated["price"] == 500
+    assert [(row["kind"], row["amount"]) for row in rows] == [("customer_income", 500)]
+
+
+def test_operator_salary_uses_company_amount_when_operator_rate_missing(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import create_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Operator Fallback Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Operator", "operator", 1, 0, _now()),
+    )
+    operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-fallback", "Operator", _now(), 0, company_id),
+    )
+    operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operator_profiles (user_id, company_id, operator_id, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (operator_user_id, company_id, operator_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 1000, 500, 0, 60, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("operator-fallback-key", "Operator fallback", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, 0)
+        """,
+        (api_key_id, "res-operator-fallback", _now(), _now(), company_id, "Operator Fallback Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at) VALUES (?, ?, ?, ?)",
+        ("captcha-operator-fallback", "passed", usage_log_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO distribution_answers
+            (distribution_id, usage_log_id, captcha_id, operator_id, icon_position, x, y, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (1, usage_log_id, "captcha-operator-fallback", operator_id, 0, 10, 20, _now()),
+    )
+
+    create_usage_finance_entries(conn, usage_log_id, 1000)
+    rows = conn.execute(
+        """
+        SELECT kind, amount, user_id
+        FROM finance_entries
+        WHERE usage_log_id = ?
+        ORDER BY kind, id
+        """,
+        (usage_log_id,),
+    ).fetchall()
+    conn.close()
+
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in rows] == [
+        ("customer_income", 1000, None),
+        ("operator_salary", -60, operator_user_id),
+    ]
+
+
+def test_operator_salary_is_not_paid_to_usage_executor_for_own_clicks(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import create_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Own Clicks Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Executor Operator", "operator", 1, 0, _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO user_executor_companies (user_id, company_id, active, created_at) VALUES (?, ?, 1, ?)",
+        (user_id, company_id, _now()),
+    )
+    conn.execute(
+        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-own-clicks", "Executor Operator", _now(), 70, company_id),
+    )
+    operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operator_profiles (user_id, company_id, operator_id, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (user_id, company_id, operator_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 1000, 500, 200, 60, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, user_id, created_at, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("own-clicks-key", "Own clicks", user_id, _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, 0)
+        """,
+        (api_key_id, "res-own-clicks", _now(), _now(), company_id, "Own Clicks Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at) VALUES (?, ?, ?, ?)",
+        ("captcha-own-clicks", "passed", usage_log_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO distribution_answers
+            (distribution_id, usage_log_id, captcha_id, operator_id, icon_position, x, y, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (1, usage_log_id, "captcha-own-clicks", operator_id, 0, 10, 20, _now()),
+    )
+
+    create_usage_finance_entries(conn, usage_log_id, 1000)
+    rows = conn.execute(
+        """
+        SELECT kind, amount, user_id
+        FROM finance_entries
+        WHERE usage_log_id = ?
+        ORDER BY kind, id
+        """,
+        (usage_log_id,),
+    ).fetchall()
+    conn.close()
+
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in rows] == [
+        ("customer_income", 1000, None),
+        ("executor_salary", -200, user_id),
+    ]
+
+
+def test_operator_salary_is_created_only_for_successful_captcha_answers(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import create_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Passed Captcha Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Operator", "operator", 1, 0, _now()),
+    )
+    operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-passed-only", "Operator", _now(), 0, company_id),
+    )
+    operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operator_profiles (user_id, company_id, operator_id, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (operator_user_id, company_id, operator_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 1000, 500, 0, 75, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("passed-only-key", "Passed only", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, 0)
+        """,
+        (api_key_id, "res-passed-only", _now(), _now(), company_id, "Passed Captcha Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    for captcha_id, status in (("captcha-ok", "passed"), ("captcha-failed", "failed")):
+        conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at) VALUES (?, ?, ?, ?)",
+            (captcha_id, status, usage_log_id, _now()),
+        )
+        conn.execute(
+            """
+            INSERT INTO distribution_answers
+                (distribution_id, usage_log_id, captcha_id, operator_id, icon_position, x, y, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, usage_log_id, captcha_id, operator_id, 0, 10, 20, _now()),
+        )
+
+    create_usage_finance_entries(conn, usage_log_id, 1000)
+    rows = conn.execute(
+        """
+        SELECT kind, amount, user_id, distribution_answer_id
+        FROM finance_entries
+        WHERE usage_log_id = ?
+        ORDER BY kind, id
+        """,
+        (usage_log_id,),
+    ).fetchall()
+    failed_answer = conn.execute(
+        "SELECT id FROM distribution_answers WHERE usage_log_id = ? AND captcha_id = 'captcha-failed'",
+        (usage_log_id,),
+    ).fetchone()
+    conn.close()
+
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in rows] == [
+        ("customer_income", 1000, None),
+        ("operator_salary", -75, operator_user_id),
+    ]
+    assert all(row["distribution_answer_id"] != failed_answer["id"] for row in rows)
+
+
+def test_recalculate_removes_open_operator_salary_for_failed_captcha_answers(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import recalculate_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Recalc Passed Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("Operator", "operator", 1, 0, _now()),
+    )
+    operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-recalc-passed", "Operator", _now(), 0, company_id),
+    )
+    operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO operator_profiles (user_id, company_id, operator_id, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (operator_user_id, company_id, operator_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 1000, 500, 0, 75, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("recalc-passed-key", "Recalc passed", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, 0)
+        """,
+        (api_key_id, "res-recalc-passed", _now(), _now(), company_id, "Recalc Passed Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    answer_ids = {}
+    for captcha_id, status in (("captcha-ok", "passed"), ("captcha-failed", "failed")):
+        conn.execute(
+            "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at) VALUES (?, ?, ?, ?)",
+            (captcha_id, status, usage_log_id, _now()),
+        )
+        conn.execute(
+            """
+            INSERT INTO distribution_answers
+                (distribution_id, usage_log_id, captcha_id, operator_id, icon_position, x, y, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, usage_log_id, captcha_id, operator_id, 0, 10, 20, _now()),
+        )
+        answer_ids[captcha_id] = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    for captcha_id, answer_id in answer_ids.items():
+        conn.execute(
+            """
+            INSERT INTO finance_entries
+                (usage_log_id, distribution_answer_id, user_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+            VALUES (?, ?, ?, 'operator_salary', -75, 'open', 'system', ?, ?, ?)
+            """,
+            (usage_log_id, answer_id, operator_user_id, f"operator-answer:{answer_id}", _now(), _now()),
+        )
+    conn.commit()
+    conn.close()
+
+    recalculate_usage_finance_entries(usage_log_id)
+
+    conn = get_connection()
+    rows = conn.execute(
+        """
+        SELECT distribution_answer_id
+        FROM finance_entries
+        WHERE usage_log_id = ? AND kind = 'operator_salary'
+        ORDER BY id
+        """,
+        (usage_log_id,),
+    ).fetchall()
+    conn.close()
+
+    assert [row["distribution_answer_id"] for row in rows] == [answer_ids["captcha-ok"]]
+
+
+def test_executor_salary_uses_api_key_owner_and_company_tariff(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import create_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Key Company", _now()))
+    key_company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Usage Company", _now()))
+    usage_company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, login, role, active, is_director, company_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("Iriha", "iriha", "manager", 1, 0, key_company_id, _now()),
+    )
+    executor_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO user_executor_companies (user_id, company_id, active, created_at) VALUES (?, ?, 1, ?)",
+        (executor_user_id, key_company_id, _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (usage_company_id, 3000, 10000, 500, 75, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, user_id, created_at, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("iriha-key", "Iriha", executor_user_id, _now(), key_company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 3000, ?, ?, 0)
+        """,
+        (api_key_id, "res-iriha", _now(), _now(), usage_company_id, "Usage Company"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    create_usage_finance_entries(conn, usage_log_id, 3000)
+    rows = conn.execute(
+        """
+        SELECT kind, amount, user_id
+        FROM finance_entries
+        WHERE usage_log_id = ?
+        ORDER BY kind, id
+        """,
+        (usage_log_id,),
+    ).fetchall()
+    conn.close()
+
+    assert [(row["kind"], row["amount"], row["user_id"]) for row in rows] == [
+        ("customer_income", 3000, None),
+        ("executor_salary", -500, executor_user_id),
+    ]
+
+
+def test_finance_entry_list_includes_user_display_name(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import list_finance_entries
+
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO users (name, login, role, active, is_director, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ("Iriha", "iriha", "manager", 1, 0, _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (user_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, 'executor_salary', -500, 'open', 'test', 'test:user-name', ?, ?)
+        """,
+        (user_id, _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    rows = list_finance_entries({"kind": "executor_salary"})
+
+    assert rows[0]["user_id"] == user_id
+    assert rows[0]["user_name"] == "Iriha"
+    assert rows[0]["user_login"] == "iriha"
+
+
+def test_recalculate_usage_finance_entries_includes_user_display_name(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import recalculate_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Recalc Names Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, login, role, active, is_director, company_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("Iriha", "iriha", "manager", 1, 0, company_id, _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 3000, 10000, 500, 75, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, user_id, created_at, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("recalc-name-key", "Iriha", user_id, _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 3000, ?, ?, 0)
+        """,
+        (api_key_id, "res-recalc-name", _now(), _now(), company_id, "Recalc Names Co"),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    rows = recalculate_usage_finance_entries(usage_log_id)
+    executor_row = next(row for row in rows if row["kind"] == "executor_salary")
+
+    assert executor_row["user_id"] == user_id
+    assert executor_row["user_name"] == "Iriha"
+    assert executor_row["user_login"] == "iriha"
 
 
 def test_invoice_links_all_usage_entries_and_creates_profit_lot(isolated_api_db):

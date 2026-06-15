@@ -43,11 +43,14 @@ from src.services.prepaid_service import (
     update_prepaid_package,
 )
 from src.services.tariff_service import (
+    apply_default_company_tariff,
     delete_company_tariff,
     delete_tariff,
     get_company_tariff,
+    get_default_company_tariff,
     get_tariff,
     upsert_company_tariff,
+    upsert_default_company_tariff,
     upsert_tariff,
 )
 from src.services.user_service import (
@@ -96,6 +99,19 @@ def delete_finance_entry(entry_id: int) -> tuple[int, dict]:
     return 200, {"ok": True}
 
 
+def recalculate_usage_finance_entries(usage_log_id: int) -> tuple[int, dict]:
+    from src.db.finance import recalculate_usage_finance_entries as db_recalculate_usage_finance_entries
+
+    try:
+        entries = db_recalculate_usage_finance_entries(usage_log_id)
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message:
+            return 404, {"error": message}
+        return 422, {"error": message}
+    return 200, {"ok": True, "entries": entries}
+
+
 def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access_decision=None) -> tuple[int, dict]:
     """Update an API key and audit security-sensitive changes when available."""
     key = api_key_repo.update_api_key(api_key_id, body, admin_id=admin_id, access_decision=access_decision)
@@ -112,12 +128,17 @@ def update_usage_log(usage_log_id: int, body) -> tuple[int, dict]:
     )
     if not log:
         return 404, {"error": "Usage log not found"}
+    if body.price is not None:
+        status, content = recalculate_usage_finance_entries(usage_log_id)
+        if status >= 400:
+            return status, content
     return 200, log
 
 
 __all__ = [
     "update_api_key",
     "update_usage_log",
+    "recalculate_usage_finance_entries",
     "available_resources",
     "create_expense",
     "create_invoice",
@@ -132,6 +153,7 @@ __all__ = [
     "delete_prepaid_package",
     "delete_tariff",
     "delete_company_tariff",
+    "apply_default_company_tariff",
     "delete_user",
     "ensure_open_invoice",
     "list_profit_lots",
@@ -139,6 +161,7 @@ __all__ = [
     "generate_invoice",
     "get_tariff",
     "get_company_tariff",
+    "get_default_company_tariff",
     "get_user_stats",
     "issue_open_invoice",
     "list_company_aliases",
@@ -163,6 +186,7 @@ __all__ = [
     "update_prepaid_package",
     "upsert_tariff",
     "upsert_company_tariff",
+    "upsert_default_company_tariff",
     "update_user",
     "upsert_company_alias",
     "upsert_tariff",

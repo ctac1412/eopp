@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Input, InputNumber, Modal, Space } from "antd";
+import { Card, Checkbox, Input, InputNumber, Modal, Space } from "antd";
 import {
   Button,
   DataTable,
@@ -17,7 +17,7 @@ function formatDate(iso) {
   return date.toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
+    year: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -35,95 +35,168 @@ function clip(value, length = 120) {
   return value.length > length ? `${value.slice(0, length)}...` : value;
 }
 
-function CompanyAccessRoleSection({ kind, label, users, selectedIds, onDrop, onToggle }) {
+function formatMoney(value) {
+  if (value == null || value === "") return "—";
+  const number = Number(value) || 0;
+  return `${number.toLocaleString("ru-RU")} ₽`;
+}
+
+function renderTariffAmount(company, field) {
+  return <span className="text-nowrap">{formatMoney(company.tariff?.[field])}</span>;
+}
+
+const EMPTY_TARIFF_FORM = {
+  price_create: "",
+  price_reschedule: "",
+  price_create_peak: "",
+  price_custom_slots: "",
+  executor_amount: "",
+  operator_amount: "",
+};
+
+const TARIFF_FIELDS = [
+  ["price_create", "Создание"],
+  ["price_reschedule", "Перенос"],
+  ["price_create_peak", "Создание пик"],
+  ["price_custom_slots", "Свои слоты"],
+  ["operator_amount", "Оператор"],
+  ["executor_amount", "Исполнитель"],
+];
+
+function tariffToForm(tariff) {
+  return {
+    price_create: tariff?.price_create ?? "",
+    price_reschedule: tariff?.price_reschedule ?? "",
+    price_create_peak: tariff?.price_create_peak ?? "",
+    price_custom_slots: tariff?.price_custom_slots ?? "",
+    executor_amount: tariff?.executor_amount ?? "",
+    operator_amount: tariff?.operator_amount ?? "",
+  };
+}
+
+function tariffFormToBody(form) {
+  return {
+    price_create: Number(form.price_create) || 0,
+    price_reschedule: Number(form.price_reschedule) || 0,
+    price_create_peak: form.price_create_peak === "" ? null : Number(form.price_create_peak),
+    price_custom_slots: form.price_custom_slots === "" ? null : Number(form.price_custom_slots),
+    executor_amount: Number(form.executor_amount) || 0,
+    operator_amount: Number(form.operator_amount) || 0,
+  };
+}
+
+function CompanyTariffForm({ form, onChange }) {
   return (
-    <section
-      className="user-access-block mb-2"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => onDrop(kind, event)}
-    >
-      <div className="user-access-block__head">
-        <span className="fw-semibold">{label}</span>
+    <div className="company-tariff-form">
+      <div className="company-tariff-form__grid">
+        {TARIFF_FIELDS.map(([field, label]) => (
+          <label key={field} className="company-tariff-field">
+            <span className="company-tariff-field__label">{label}</span>
+            <InputNumber
+              className="company-tariff-field__input"
+              value={form[field] === "" || form[field] == null ? null : Number(form[field])}
+              onChange={(value) => onChange((prev) => ({ ...prev, [field]: value == null ? "" : value }))}
+              min={0}
+              controls={false}
+            />
+          </label>
+        ))}
       </div>
-      <div className="operator-master-tags user-access-block__source">
-        {users.map((user) => {
-          const selected = selectedIds.has(Number(user.id));
-          return (
-            <button
-              type="button"
-              key={user.id}
-              className={`operator-master-tag access-tag ${
-                selected ? "access-tag--selected" : "access-tag--available"
-              }`}
-              onClick={() => onToggle(kind, user.id)}
-            >
-              <span
-                className="access-tag__drag-icon"
-                draggable
-                onClick={(event) => event.stopPropagation()}
-                onDragStart={(event) => event.dataTransfer.setData("text/plain", String(user.id))}
-                title="Перетащить"
-              />
-              <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+    </div>
   );
 }
 
-function CompanyAccessRoleSectionV2({ kind, label, users, selectedIds, onDrop, onToggle }) {
-  const selectedUsers = users.filter((user) => selectedIds.has(Number(user.id)));
-  const availableUsers = users.filter((user) => !selectedIds.has(Number(user.id)));
+const COMPANY_ACCESS_ROLES = [
+  { key: "finance", label: "Финансы" },
+  { key: "operator", label: "Операторы" },
+  { key: "executor", label: "Исполнители" },
+];
+
+function userDisplayName(user) {
+  return user.name || user.login || `#${user.id}`;
+}
+
+function CompanyAccessMatrix({ users, draft, search, onSearchChange, onToggle }) {
+  const accessSets = useMemo(
+    () =>
+      Object.fromEntries(
+        COMPANY_ACCESS_ROLES.map((role) => [
+          role.key,
+          new Set((draft[role.key] || []).map((id) => Number(id))),
+        ]),
+      ),
+    [draft],
+  );
+
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return users;
+
+    return users.filter((user) =>
+      [user.id, user.name, user.login]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [search, users]);
+
+  const columns = useMemo(
+    () => [
+      {
+        title: "Пользователь",
+        dataIndex: "name",
+        width: 280,
+        render: (_, user) => (
+          <div className="company-access-user">
+            <span className="company-access-user__name">{userDisplayName(user)}</span>
+            {user.login && user.login !== user.name && (
+              <span className="company-access-user__login">{user.login}</span>
+            )}
+          </div>
+        ),
+      },
+      ...COMPANY_ACCESS_ROLES.map((role) => ({
+        title: role.label,
+        key: role.key,
+        width: 130,
+        align: "center",
+        render: (_, user) => (
+          <Checkbox
+            data-eopp-component="CompanyAccessCheckbox"
+            aria-label={`${role.label}: ${userDisplayName(user)}`}
+            checked={accessSets[role.key].has(Number(user.id))}
+            onChange={() => onToggle(role.key, user.id)}
+          />
+        ),
+      })),
+    ],
+    [accessSets, onToggle],
+  );
 
   return (
-    <section className="user-access-block mb-2">
-      <div className="user-access-block__head">
-        <span className="fw-semibold">{label}</span>
+    <div className="company-access-matrix">
+      <div className="company-access-matrix__toolbar">
+        <Input
+          allowClear
+          className="company-access-matrix__search"
+          placeholder="Поиск пользователя"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+        <span className="company-access-matrix__count">
+          {filteredUsers.length} из {users.length}
+        </span>
       </div>
-      <div className="user-access-block__label">Доступные</div>
-      <div className="operator-master-tags user-access-block__source">
-        {availableUsers.map((user) => (
-          <button
-            type="button"
-            key={user.id}
-            className="operator-master-tag access-tag access-tag--available"
-            onClick={() => onToggle(kind, user.id)}
-          >
-            <span
-              className="access-tag__drag-icon"
-              draggable
-              onClick={(event) => event.stopPropagation()}
-              onDragStart={(event) => event.dataTransfer.setData("text/plain", String(user.id))}
-              title="Перетащить"
-            />
-            <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
-          </button>
-        ))}
-        {availableUsers.length === 0 && <span className="text-muted">Все пользователи добавлены</span>}
-      </div>
-      <div className="user-access-block__label">Добавленные</div>
-      <div
-        className="user-access-block__drop"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => onDrop(kind, event)}
-      >
-        {selectedUsers.map((user) => (
-          <button
-            type="button"
-            key={user.id}
-            className="operator-master-tag access-tag access-tag--selected"
-            onClick={() => onToggle(kind, user.id)}
-          >
-            <span className="access-tag__text">{user.name || user.login || `#${user.id}`}</span>
-          </button>
-        ))}
-        {selectedUsers.length === 0 && (
-          <span className="text-muted">Перетащите сюда или кликните красный тег</span>
-        )}
-      </div>
-    </section>
+      <DataTable
+        className="company-access-matrix__table"
+        columns={columns}
+        data={filteredUsers}
+        emptyText={search.trim() ? "Пользователи не найдены" : "Нет пользователей"}
+        pagination={false}
+        scroll={{ x: "max-content", y: 430 }}
+      />
+    </div>
   );
 }
 
@@ -133,20 +206,19 @@ export function CompaniesTab({ adminToken, onError }) {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: "", aliases: "", notes: "" });
+  const [showDefaultTariffModal, setShowDefaultTariffModal] = useState(false);
+  const [defaultTariff, setDefaultTariff] = useState(null);
+  const [defaultTariffForm, setDefaultTariffForm] = useState(EMPTY_TARIFF_FORM);
+  const [defaultTariffSaving, setDefaultTariffSaving] = useState(false);
   const [tariffCompany, setTariffCompany] = useState(null);
-  const [tariffForm, setTariffForm] = useState({
-    price_create: "",
-    price_reschedule: "",
-    price_create_peak: "",
-    price_custom_slots: "",
-    executor_amount: "",
-  });
+  const [tariffForm, setTariffForm] = useState(EMPTY_TARIFF_FORM);
   const [tariffSaving, setTariffSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [accessCompany, setAccessCompany] = useState(null);
   const [accessUsers, setAccessUsers] = useState([]);
   const [accessDraft, setAccessDraft] = useState({ finance: [], operator: [], executor: [] });
+  const [accessSearch, setAccessSearch] = useState("");
   const [accessSaving, setAccessSaving] = useState(false);
 
   const fetchCompanies = useCallback(async () => {
@@ -165,9 +237,29 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   }, [adminToken, onError]);
 
+  const fetchDefaultTariff = useCallback(async () => {
+    try {
+      const res = await adminRequest("/admin/default-company-tariff", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (res.status === 404) {
+        setDefaultTariff(null);
+        setDefaultTariffForm(EMPTY_TARIFF_FORM);
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDefaultTariff(data);
+      setDefaultTariffForm(tariffToForm(data));
+    } catch (err) {
+      onError?.(`Ошибка загрузки дефолтного тарифа: ${err.message}`);
+    }
+  }, [adminToken, onError]);
+
   useEffect(() => {
     fetchCompanies();
-  }, [fetchCompanies]);
+    fetchDefaultTariff();
+  }, [fetchCompanies, fetchDefaultTariff]);
 
   const filteredCompanies = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -214,6 +306,31 @@ export function CompaniesTab({ adminToken, onError }) {
       notes: company.notes || "",
     });
     setShowModal(true);
+  };
+
+  const openDefaultTariff = () => {
+    setDefaultTariffForm(tariffToForm(defaultTariff));
+    setShowDefaultTariffModal(true);
+  };
+
+  const saveDefaultTariff = async () => {
+    setDefaultTariffSaving(true);
+    try {
+      const res = await adminRequest("/admin/default-company-tariff", {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(tariffFormToBody(defaultTariffForm)),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDefaultTariff(data);
+      setDefaultTariffForm(tariffToForm(data));
+      setShowDefaultTariffModal(false);
+    } catch (err) {
+      onError?.(`Ошибка сохранения дефолтного тарифа: ${err.message}`);
+    } finally {
+      setDefaultTariffSaving(false);
+    }
   };
 
   const saveCompany = async () => {
@@ -270,13 +387,7 @@ export function CompaniesTab({ adminToken, onError }) {
 
   const openTariff = async (company) => {
     setTariffCompany(company);
-    setTariffForm({
-      price_create: "",
-      price_reschedule: "",
-      price_create_peak: "",
-      price_custom_slots: "",
-      executor_amount: "",
-    });
+    setTariffForm(EMPTY_TARIFF_FORM);
     try {
       const res = await adminRequest(`/admin/company-tariffs/${company.id}`, {
         headers: adminHeadersJson(adminToken),
@@ -284,15 +395,9 @@ export function CompaniesTab({ adminToken, onError }) {
       if (res.status === 404) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setTariffForm({
-        price_create: data.price_create ?? "",
-        price_reschedule: data.price_reschedule ?? "",
-        price_create_peak: data.price_create_peak ?? "",
-        price_custom_slots: data.price_custom_slots ?? "",
-        executor_amount: data.executor_amount ?? "",
-      });
+      setTariffForm(tariffToForm(data));
     } catch (err) {
-      onError?.(`Company tariff load failed: ${err.message}`);
+      onError?.(`Ошибка загрузки тарифа компании: ${err.message}`);
     }
   };
 
@@ -300,22 +405,35 @@ export function CompaniesTab({ adminToken, onError }) {
     if (!tariffCompany) return;
     setTariffSaving(true);
     try {
-      const body = {
-        price_create: Number(tariffForm.price_create) || 0,
-        price_reschedule: Number(tariffForm.price_reschedule) || 0,
-        price_create_peak: tariffForm.price_create_peak === "" ? null : Number(tariffForm.price_create_peak),
-        price_custom_slots: tariffForm.price_custom_slots === "" ? null : Number(tariffForm.price_custom_slots),
-        executor_amount: Number(tariffForm.executor_amount) || 0,
-      };
       const res = await adminRequest(`/admin/company-tariffs/${tariffCompany.id}`, {
         method: "PUT",
         headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
+        body: JSON.stringify(tariffFormToBody(tariffForm)),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setTariffCompany(null);
+      await fetchCompanies();
     } catch (err) {
-      onError?.(`Company tariff save failed: ${err.message}`);
+      onError?.(`Ошибка сохранения тарифа компании: ${err.message}`);
+    } finally {
+      setTariffSaving(false);
+    }
+  };
+
+  const applyDefaultTariff = async () => {
+    if (!tariffCompany) return;
+    setTariffSaving(true);
+    try {
+      const res = await adminRequest(`/admin/company-tariffs/${tariffCompany.id}/apply-default`, {
+        method: "POST",
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setTariffForm(tariffToForm(data));
+      await fetchCompanies();
+    } catch (err) {
+      onError?.(`Ошибка применения дефолтного тарифа: ${err.message}`);
     } finally {
       setTariffSaving(false);
     }
@@ -331,8 +449,9 @@ export function CompaniesTab({ adminToken, onError }) {
       });
       if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
       setTariffCompany(null);
+      await fetchCompanies();
     } catch (err) {
-      onError?.(`Company tariff delete failed: ${err.message}`);
+      onError?.(`Ошибка удаления тарифа компании: ${err.message}`);
     } finally {
       setTariffSaving(false);
     }
@@ -341,6 +460,7 @@ export function CompaniesTab({ adminToken, onError }) {
   const openAccess = async (company) => {
     setAccessCompany(company);
     setAccessDraft({ finance: [], operator: [], executor: [] });
+    setAccessSearch("");
     try {
       const [usersRes, accessRes] = await Promise.all([
         adminRequest("/admin/users", { headers: adminHeadersJson(adminToken) }),
@@ -365,13 +485,6 @@ export function CompaniesTab({ adminToken, onError }) {
       ...prev,
       [kind]: Array.from(new Set([...(prev[kind] || []), userId])),
     }));
-  };
-
-  const dropAccessUser = (kind, event) => {
-    event.preventDefault();
-    const userId = Number(event.dataTransfer.getData("text/plain"));
-    if (!userId) return;
-    addAccessUser(kind, userId);
   };
 
   const removeAccessUser = (kind, userId) => {
@@ -416,20 +529,20 @@ export function CompaniesTab({ adminToken, onError }) {
     {
       title: "ID",
       dataIndex: "id",
-      width: 70,
+      width: 44,
       render: (value) => <span className="text-muted">#{value}</span>,
     },
     {
       title: "Название",
       dataIndex: "name",
-      width: 240,
+      width: 190,
       ellipsis: true,
       render: (value) => <span className="fw-semibold">{value}</span>,
     },
     {
       title: "Алиасы",
       dataIndex: "aliases",
-      width: 320,
+      width: 120,
       render: (aliases) => {
         if (!Array.isArray(aliases) || aliases.length === 0) return <span className="text-muted">—</span>;
         return (
@@ -444,27 +557,66 @@ export function CompaniesTab({ adminToken, onError }) {
       },
     },
     {
+      title: "Созд.",
+      width: 58,
+      render: (_, company) => renderTariffAmount(company, "price_create"),
+    },
+    {
+      title: "Перен.",
+      width: 58,
+      render: (_, company) => renderTariffAmount(company, "price_reschedule"),
+    },
+    {
+      title: "Пик",
+      width: 54,
+      render: (_, company) => renderTariffAmount(company, "price_create_peak"),
+    },
+    {
+      title: "Свои",
+      width: 54,
+      render: (_, company) => renderTariffAmount(company, "price_custom_slots"),
+    },
+    {
+      title: "Опер.",
+      width: 54,
+      render: (_, company) => renderTariffAmount(company, "operator_amount"),
+    },
+    {
+      title: "Исп.",
+      width: 54,
+      render: (_, company) => renderTariffAmount(company, "executor_amount"),
+    },
+    {
       title: "Заметки",
       dataIndex: "notes",
+      width: 72,
       ellipsis: true,
-      render: (value) => <span title={value || "—"}>{clip(value)}</span>,
+      render: (value) => <span title={value || "—"}>{value ? "Есть" : "—"}</span>,
     },
     {
       title: "Создана",
       dataIndex: "created_at",
-      width: 210,
+      width: 112,
       render: formatDate,
     },
     {
       title: "",
-      width: 150,
+      width: 142,
       align: "right",
       render: (_, company) => (
-        <Space size={4}>
-          <Button size="small" onClick={() => openAccess(company)}>Access</Button>
-          <Button size="small" onClick={() => openTariff(company)}>Tariff</Button>
-          <Button size="small" onClick={() => openEdit(company)}>Изм.</Button>
-          <Button size="small" variant="danger" onClick={() => deleteCompany(company)}>Удал.</Button>
+        <Space size={3} className="companies-table__actions">
+          <Button className="companies-table__action" size="small" title="Доступ" onClick={() => openAccess(company)}>
+            Д
+          </Button>
+          <Button className="companies-table__action" size="small" title="Тариф" onClick={() => openTariff(company)}>
+            ₽
+          </Button>
+          <Button className="companies-table__action companies-table__action--wide" size="small" title="Изменить" onClick={() => openEdit(company)}>
+            Изм
+          </Button>
+          <Button className="companies-table__action companies-table__action--wide" size="small" variant="danger" title="Удалить" onClick={() => deleteCompany(company)}>
+            Уд
+          </Button>
         </Space>
       ),
     },
@@ -485,6 +637,7 @@ export function CompaniesTab({ adminToken, onError }) {
         right={
           <Space wrap>
             <Button size="small" onClick={fetchCompanies} loading={loading}>Обновить</Button>
+            <Button size="small" onClick={openDefaultTariff}>Дефолтный тариф</Button>
             <Button size="small" variant="primary" onClick={openCreate}>Добавить компанию</Button>
           </Space>
         }
@@ -512,6 +665,8 @@ export function CompaniesTab({ adminToken, onError }) {
           columns={columns}
           loading={loading}
           emptyText="Нет компаний"
+          scroll={false}
+          tableLayout="fixed"
           pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
         />
       </Card>
@@ -561,19 +716,39 @@ export function CompaniesTab({ adminToken, onError }) {
       </Modal>
 
       <Modal
-        title={tariffCompany ? `Company tariff: ${tariffCompany.name}` : "Company tariff"}
+        title="Дефолтный тариф для новых компаний"
+        open={showDefaultTariffModal}
+        onOk={saveDefaultTariff}
+        onCancel={() => setShowDefaultTariffModal(false)}
+        okText="Сохранить"
+        cancelText="Отмена"
+        confirmLoading={defaultTariffSaving}
+        width={560}
+        destroyOnHidden
+      >
+        <CompanyTariffForm form={defaultTariffForm} onChange={setDefaultTariffForm} />
+      </Modal>
+
+      <Modal
+        title={tariffCompany ? `Тариф компании: ${tariffCompany.name}` : "Тариф компании"}
         open={!!tariffCompany}
         onOk={saveTariff}
         onCancel={() => setTariffCompany(null)}
-        okText="Save"
-        cancelText="Cancel"
+        okText="Сохранить"
+        cancelText="Отмена"
         confirmLoading={tariffSaving}
+        width={560}
         footer={(_, { OkBtn, CancelBtn }) => (
-          <div className="key-form-footer">
-            <Button size="small" variant="danger" onClick={deleteTariff} loading={tariffSaving}>
-              Delete tariff
-            </Button>
-            <Space size={6}>
+          <div className="company-tariff-footer">
+            <Space size={8} wrap>
+              <Button size="small" onClick={applyDefaultTariff} loading={tariffSaving}>
+                Применить дефолт
+              </Button>
+              <Button size="small" variant="danger" onClick={deleteTariff} loading={tariffSaving}>
+                Удалить тариф
+              </Button>
+            </Space>
+            <Space size={8}>
               <CancelBtn />
               <OkBtn />
             </Space>
@@ -581,58 +756,28 @@ export function CompaniesTab({ adminToken, onError }) {
         )}
         destroyOnHidden
       >
-        <div className="companies-modal-form">
-          {[
-            ["price_create", "Create"],
-            ["price_reschedule", "Reschedule"],
-            ["price_create_peak", "Create peak"],
-            ["price_custom_slots", "Custom slots"],
-            ["executor_amount", "Executor"],
-          ].map(([field, label]) => (
-            <label key={field} className="form-label small mb-0">
-              {label}
-              <InputNumber
-                className="key-form-number"
-                value={tariffForm[field] === "" || tariffForm[field] == null ? null : Number(tariffForm[field])}
-                onChange={(value) => setTariffForm((prev) => ({ ...prev, [field]: value == null ? "" : value }))}
-                min={0}
-                controls={false}
-              />
-            </label>
-          ))}
-        </div>
+        <CompanyTariffForm form={tariffForm} onChange={setTariffForm} />
       </Modal>
 
       <Modal
-        title={accessCompany ? `Access: ${accessCompany.name}` : "Access"}
+        title={accessCompany ? `Доступ: ${accessCompany.name}` : "Доступ"}
         open={!!accessCompany}
         onOk={saveAccess}
         onCancel={() => setAccessCompany(null)}
-        okText="Save"
-        cancelText="Cancel"
+        okText="Сохранить"
+        cancelText="Отмена"
         confirmLoading={accessSaving}
         width={820}
         destroyOnHidden
       >
         <div className="company-access-modal">
-          {[
-            ["finance", "Финансы"],
-            ["operator", "Операторы"],
-            ["executor", "Исполнители"],
-          ].map(([kind, label]) => {
-            const selectedIds = new Set((accessDraft[kind] || []).map(Number));
-            return (
-              <CompanyAccessRoleSectionV2
-                key={kind}
-                kind={kind}
-                label={label}
-                users={accessUsers}
-                selectedIds={selectedIds}
-                onDrop={dropAccessUser}
-                onToggle={toggleAccessUser}
-              />
-            );
-          })}
+          <CompanyAccessMatrix
+            users={accessUsers}
+            draft={accessDraft}
+            search={accessSearch}
+            onSearchChange={setAccessSearch}
+            onToggle={toggleAccessUser}
+          />
         </div>
       </Modal>
     </div>

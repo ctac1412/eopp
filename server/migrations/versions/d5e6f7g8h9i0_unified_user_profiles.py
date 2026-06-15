@@ -17,7 +17,7 @@ down_revision: str | Sequence[str] | None = "c4d5e6f7g8h9"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-DEFAULT_COMPANY = "Арттранс"
+DEFAULT_COMPANY = 'ООО "АРТ-ТРАНС"'
 
 
 def _table_exists(table_name: str) -> bool:

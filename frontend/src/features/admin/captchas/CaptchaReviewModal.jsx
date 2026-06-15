@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal } from "antd";
 
 function formatActionTime(value) {
@@ -14,12 +14,40 @@ function formatActionTime(value) {
   }
 }
 
+function normalizeCoordinate(value, size) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || size <= 0) return 0;
+  const absolute = numeric > 0 && numeric <= 1 ? numeric * size : numeric;
+  return Math.max(0, Math.min(100, (absolute / size) * 100));
+}
+
 export function CaptchaReviewModal({ captcha, open, onClose }) {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [labelPreview, setLabelPreview] = useState(null);
   const answers = Array.isArray(captcha?.operator_answers) ? captcha.operator_answers : [];
-  const imageUrl = captcha?.captcha_id
-    ? `/admin/captcha-files/${encodeURIComponent(captcha.captcha_id)}/thumbnail`
-    : "";
+  const encodedCaptchaId = captcha?.captcha_id ? encodeURIComponent(captcha.captcha_id) : "";
+  const mainImage = labelPreview?.images?.["0"] || "";
+  const iconsImage = labelPreview?.icons_image || "";
+
+  useEffect(() => {
+    setImageSize({ width: 0, height: 0 });
+    setLabelPreview(null);
+    if (!open || !encodedCaptchaId) return;
+
+    let cancelled = false;
+    fetch(`/admin/captcha-label/${encodedCaptchaId}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled) setLabelPreview(data);
+      })
+      .catch(() => {
+        if (!cancelled) setLabelPreview(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [encodedCaptchaId, open]);
 
   return (
     <Modal
@@ -33,37 +61,49 @@ export function CaptchaReviewModal({ captcha, open, onClose }) {
     >
       <div className="captcha-review">
         <div className="captcha-review__stage">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              onLoad={(event) => {
-                setImageSize({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight,
-                });
-              }}
-            />
+          {mainImage ? (
+            <>
+              <div className="captcha-review__image-layer">
+                <img
+                  src={`data:image/png;base64,${mainImage}`}
+                  alt=""
+                  onLoad={(event) => {
+                    setImageSize({
+                      width: event.currentTarget.naturalWidth,
+                      height: event.currentTarget.naturalHeight,
+                    });
+                  }}
+                />
+                {imageSize.width > 0 && imageSize.height > 0 && answers.map((answer, index) => {
+                  const left = normalizeCoordinate(answer.x, imageSize.width);
+                  const top = normalizeCoordinate(answer.y, imageSize.height);
+                  const label = answer.operator_nickname || `#${answer.operator_id}`;
+                  const time = formatActionTime(answer.created_at);
+                  return (
+                    <div
+                      key={`${answer.operator_id}-${answer.icon_position}-${index}`}
+                      className="captcha-review-marker"
+                      style={{ left: `${left}%`, top: `${top}%` }}
+                      title={`${label}: ${time}`}
+                    >
+                      <span className="captcha-review-marker__dot">{Number(answer.icon_position ?? 0) + 1}</span>
+                      <span className="captcha-review-marker__label">{label}{time ? ` · ${time}` : ""}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {iconsImage && (
+                <img
+                  className="captcha-review__icons"
+                  src={`data:image/png;base64,${iconsImage}`}
+                  alt="Иконки"
+                  draggable={false}
+                />
+              )}
+            </>
           ) : (
             <div className="captcha-review__empty">Нет изображения</div>
           )}
-          {imageSize.width > 0 && imageSize.height > 0 && answers.map((answer, index) => {
-            const left = Math.max(0, Math.min(100, (Number(answer.x) / imageSize.width) * 100));
-            const top = Math.max(0, Math.min(100, (Number(answer.y) / imageSize.height) * 100));
-            const label = answer.operator_nickname || `#${answer.operator_id}`;
-            const time = formatActionTime(answer.created_at);
-            return (
-              <div
-                key={`${answer.operator_id}-${answer.icon_position}-${index}`}
-                className="captcha-review-marker"
-                style={{ left: `${left}%`, top: `${top}%` }}
-                title={`${label}: ${time}`}
-              >
-                <span className="captcha-review-marker__dot">{Number(answer.icon_position ?? 0) + 1}</span>
-                <span className="captcha-review-marker__label">{label}{time ? ` · ${time}` : ""}</span>
-              </div>
-            );
-          })}
         </div>
         <div className="captcha-review__legend">
           {answers.length === 0 ? (

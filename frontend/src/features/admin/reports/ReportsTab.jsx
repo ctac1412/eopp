@@ -11,13 +11,10 @@ import {
   getCompanyFull,
   getErrorInfo,
   getErrorTagColor,
-  getFio,
   getFioFull,
   getOpType,
   getSearchText,
   getStatusLabel,
-  getVehicleNumber,
-  getVehicleNumberFull,
   isBillableRecord,
 } from "./reportUtils";
 import { OperationDetails } from "./OperationDetails";
@@ -48,16 +45,6 @@ function formatDate(iso) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
-}
-
-function formatSlotDate(iso) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
   });
 }
 
@@ -122,6 +109,9 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
   const [captchaRecords, setCaptchaRecords] = useState({});
   const [captchaLoading, setCaptchaLoading] = useState({});
   const [captchaErrors, setCaptchaErrors] = useState({});
+  const [financeEntries, setFinanceEntries] = useState({});
+  const [financeLoading, setFinanceLoading] = useState({});
+  const [financeErrors, setFinanceErrors] = useState({});
   const [showEditModal, setShowEditModal] = useState(null);
   const [editForm, setEditForm] = useState({ price: "", paid: "" });
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -212,28 +202,68 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
     fetchRecords();
   }, [fetchRecords]);
 
-  const selectDetails = async (record) => {
-    setExpandedRecordId(record.id);
-    if (captchaRecords[record.id] || captchaLoading[record.id]) return;
-
-    setCaptchaLoading((prev) => ({ ...prev, [record.id]: true }));
-    setCaptchaErrors((prev) => ({ ...prev, [record.id]: null }));
+  const refreshFinanceEntries = useCallback(async (recordId, { recalculate = false } = {}) => {
+    setFinanceLoading((prev) => ({ ...prev, [recordId]: true }));
+    setFinanceErrors((prev) => ({ ...prev, [recordId]: null }));
     try {
-      const res = await adminRequest(`/captchas?usage_log_id=${record.id}`, {
+      if (recalculate) {
+        const recalculateRes = await adminRequest(`/admin/usage-log/${recordId}/finance/recalculate`, {
+          method: "POST",
+          headers: adminHeadersJson(adminToken),
+        });
+        if (!recalculateRes.ok) throw new Error(`HTTP ${recalculateRes.status}`);
+        const recalculateData = await recalculateRes.json();
+        if (Array.isArray(recalculateData.entries)) {
+          setFinanceEntries((prev) => ({ ...prev, [recordId]: recalculateData.entries }));
+          return recalculateData.entries;
+        }
+      }
+
+      const res = await adminRequest(`/admin/finance-entries?usage_log_id=${recordId}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setCaptchaRecords((prev) => ({
-        ...prev,
-        [record.id]: Array.isArray(data) ? data : [],
-      }));
+      const entries = Array.isArray(data) ? data : [];
+      setFinanceEntries((prev) => ({ ...prev, [recordId]: entries }));
+      return entries;
     } catch (err) {
-      setCaptchaErrors((prev) => ({ ...prev, [record.id]: err.message }));
+      setFinanceErrors((prev) => ({ ...prev, [recordId]: err.message }));
+      throw err;
     } finally {
-      setCaptchaLoading((prev) => ({ ...prev, [record.id]: false }));
+      setFinanceLoading((prev) => ({ ...prev, [recordId]: false }));
     }
-  };
+  }, [adminToken]);
+
+  const selectDetails = useCallback(async (record) => {
+    setExpandedRecordId(record.id);
+
+    if (!captchaRecords[record.id] && !captchaLoading[record.id]) {
+      setCaptchaLoading((prev) => ({ ...prev, [record.id]: true }));
+      setCaptchaErrors((prev) => ({ ...prev, [record.id]: null }));
+      adminRequest(`/captchas?usage_log_id=${record.id}`, {
+        headers: adminHeadersJson(adminToken),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          setCaptchaRecords((prev) => ({
+            ...prev,
+            [record.id]: Array.isArray(data) ? data : [],
+          }));
+        })
+        .catch((err) => {
+          setCaptchaErrors((prev) => ({ ...prev, [record.id]: err.message }));
+        })
+        .finally(() => {
+          setCaptchaLoading((prev) => ({ ...prev, [record.id]: false }));
+        });
+    }
+
+    if (!financeEntries[record.id] && !financeLoading[record.id]) {
+      refreshFinanceEntries(record.id).catch(() => {});
+    }
+  }, [adminToken, captchaLoading, captchaRecords, financeEntries, financeLoading, refreshFinanceEntries]);
 
   const openEditModal = (record) => {
     setEditForm({
@@ -260,12 +290,16 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updatedRecord = await res.json();
 
       setRecords((prev) =>
         prev.map((r) =>
-          r.id === showEditModal.id ? { ...r, ...body } : r
+          r.id === showEditModal.id ? { ...r, ...updatedRecord } : r
         )
       );
+      if (body.price !== undefined) {
+        await refreshFinanceEntries(showEditModal.id);
+      }
       setShowEditModal(null);
     } catch (err) {
       onError?.(err.message);
@@ -337,6 +371,14 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
       return !normalizedSearch || getSearchText(record).includes(normalizedSearch);
     });
   }, [actionDateFilter, billableFilter, records, statusFilter, opTypeFilter, companyFilter, keyFilter, search]);
+
+  useEffect(() => {
+    if (loading || expandedRecordId != null) return;
+    const firstVisibleRecord = filteredRecords[(usagePage - 1) * usagePageSize] || filteredRecords[0];
+    if (firstVisibleRecord) {
+      selectDetails(firstVisibleRecord);
+    }
+  }, [expandedRecordId, filteredRecords, loading, selectDetails, usagePage, usagePageSize]);
 
   useEffect(() => {
     const visibleIds = new Set(filteredRecords.map((record) => record.id));
@@ -426,6 +468,15 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
     );
   };
 
+  const renderInvoiceStatus = (record) => (
+    <div className="reports-invoice-status">
+      <span className="reports-invoice-status__invoice">
+        {record.invoice_id ? `#${record.invoice_id}` : "-"}
+      </span>
+      {renderPaidStatus(record)}
+    </div>
+  );
+
   const renderClip = (value, className = "") => (
     <span className={`reports-cell-clip ${className}`} title={value || "—"}>
       {value || "—"}
@@ -437,33 +488,43 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
     ellipsis: true,
   });
 
-  const renderVehicleShort = (record) => {
-    const fullNumber = getVehicleNumberFull(record);
-    const shortNumber = fullNumber === "—" ? "—" : fullNumber.slice(0, 4);
-    return (
-      <span className="reports-cell-clip font-monospace" title={fullNumber}>
-        {shortNumber}
-      </span>
-    );
-  };
 
   const recordsColumns = [
     {
       title: "#",
-      ...compactColumn(44),
+      ...compactColumn(30),
       render: (_, __, idx) => usagePageStart + idx + 1,
     },
     {
       title: "ID",
       dataIndex: "id",
-      ...compactColumn(56),
+      ...compactColumn(42),
       render: (value) => <span className="small text-muted">{value}</span>,
+    },
+    {
+      title: "Дата",
+      dataIndex: "created_at",
+      ...compactColumn(106),
+      align: "center",
+      render: (value) => <span className="small text-nowrap">{formatDate(value)}</span>,
+    },
+    {
+      title: "Цена",
+      dataIndex: "price",
+      ...compactColumn(82),
+      align: "center",
+      render: (value) => <span className="small text-nowrap">{value != null ? formatMoney(value) : "-"}</span>,
+    },
+    {
+      title: "Компания",
+      ...compactColumn(118),
+      render: (_, record) => renderClip(getCompany(record)),
     },
     {
       title: "Токен",
       dataIndex: "label",
-      ...compactColumn(84),
-      render: (value) => renderClip(value),
+      ...compactColumn(58),
+      render: (value) => renderClip(value, "reports-cell-token"),
     },
     {
       title: "Тип",
@@ -484,66 +545,14 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
       render: (value) => <StatusTag status={value} label={getStatusLabel(value)} />,
     },
     {
-      title: "Дата",
-      dataIndex: "created_at",
-      ...compactColumn(106),
-      align: "center",
-      render: (value) => <span className="small text-nowrap">{formatDate(value)}</span>,
-    },
-    {
-      title: "Слот",
-      dataIndex: "slot_date",
+      title: "Счет/ст.",
       ...compactColumn(82),
       align: "center",
-      render: (value) => <span className="small text-nowrap">{formatSlotDate(value)}</span>,
-    },
-    {
-      title: "ФИО",
-      ...compactColumn(74),
-      align: "center",
-      render: (_, record) => renderClip(getFio(record)),
-    },
-    {
-      title: "Компания",
-      ...compactColumn(110),
-      render: (_, record) => renderClip(getCompany(record)),
-    },
-    {
-      title: "Авто",
-      ...compactColumn(56),
-      align: "center",
-      render: (_, record) => renderVehicleShort(record),
-    },
-    {
-      title: "Свои",
-      dataIndex: "has_custom_slots",
-      ...compactColumn(52),
-      align: "center",
-      render: (value) => (value ? "Да" : "—"),
-    },
-    {
-      title: "Цена",
-      dataIndex: "price",
-      ...compactColumn(82),
-      align: "center",
-      render: (value) => <span className="small text-nowrap">{value != null ? formatMoney(value) : "—"}</span>,
-    },
-    {
-      title: "Счёт",
-      dataIndex: "invoice_id",
-      ...compactColumn(58),
-      align: "center",
-      render: (value) => (value ? `#${value}` : "—"),
-    },
-    {
-      title: "Опл.",
-      ...compactColumn(52),
-      align: "center",
-      render: (_, record) => renderPaidStatus(record),
+      render: (_, record) => renderInvoiceStatus(record),
     },
     {
       title: "Ошибка",
-      ...compactColumn(128),
+      ...compactColumn(92),
       align: "center",
       render: (_, record) => {
         const errorInfo = getErrorInfo(record);
@@ -554,46 +563,11 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
             color={getErrorTagColor(errorInfo)}
           />
         ) : (
-          <span className="text-muted">—</span>
-        );
-      },
-    },
-    {
-      title: "",
-      width: 90,
-      render: (_, record) => {
-        const isSelected = expandedRecordId === record.id;
-        return (
-          <div className="eopp-table-actions">
-            <Button
-              data-eopp-component="ReportsDetailsButton"
-              size="small"
-              variant={isSelected ? "primary" : "secondary"}
-              onClick={(event) => {
-                event.stopPropagation();
-                selectDetails(record);
-              }}
-              title="Показать детали"
-            >
-              {isSelected ? "Откр." : "Дет."}
-            </Button>
-            <Button
-              data-eopp-component="ReportsEditButton"
-              size="small"
-              onClick={(event) => {
-                event.stopPropagation();
-                openEditModal(record);
-              }}
-              title="Редактировать"
-            >
-              Изм.
-            </Button>
-          </div>
+          <span className="text-muted">-</span>
         );
       },
     },
   ];
-
   return (
     <div data-eopp-component="ReportsTab" className="reports-page">
       <Toolbar
@@ -767,6 +741,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
             rowKey="id"
             data={filteredRecords}
             columns={recordsColumns}
+            scroll={false}
             emptyText="Нет записей"
             pagination={{
               current: usagePage,
@@ -833,9 +808,6 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
               >
                 Счет
               </Button>
-              <Button size="small" onClick={() => setExpandedRecordId(null)}>
-                Закрыть
-              </Button>
             </div>
           )}
         >
@@ -846,6 +818,10 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated }) {
                   captchaRecords={captchaRecords[selectedRecord.id] || []}
                   captchaLoading={!!captchaLoading[selectedRecord.id]}
                   captchaError={captchaErrors[selectedRecord.id]}
+                  financeEntries={financeEntries[selectedRecord.id] || []}
+                  financeLoading={!!financeLoading[selectedRecord.id]}
+                  financeError={financeErrors[selectedRecord.id]}
+                  onRecalculateFinance={() => refreshFinanceEntries(selectedRecord.id, { recalculate: true }).catch((err) => onError?.(err.message))}
                 />
             </div>
           ) : (

@@ -257,20 +257,35 @@ def _operator_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, di
     placeholders = ",".join("?" * len(invoice_ids))
     rows = conn.execute(
         f"""
+        WITH log_executor AS (
+            SELECT
+                ul.id AS usage_log_id,
+                MIN(uec.user_id) AS executor_user_id
+            FROM usage_log ul
+            LEFT JOIN user_executor_companies uec
+              ON ul.company_id IS NOT NULL
+             AND uec.active = 1
+             AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
+            WHERE ul.invoice_id IN ({placeholders})
+            GROUP BY ul.id
+        )
         SELECT
             op.user_id AS user_id,
             da.operator_id AS operator_id,
             COUNT(*) AS icons,
-            COALESCE(o.icon_rate, 0) AS icon_rate
+            COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) AS icon_rate
         FROM distribution_answers da
-        JOIN usage_log ul ON ul.id = da.usage_log_id
+        JOIN log_executor le ON le.usage_log_id = da.usage_log_id
+        JOIN usage_log ul ON ul.id = le.usage_log_id
         JOIN operators o ON o.id = da.operator_id
+        LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
         WHERE ul.invoice_id IN ({placeholders})
-          AND COALESCE(o.icon_rate, 0) > 0
-        GROUP BY op.user_id, da.operator_id, o.icon_rate
+          AND COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) > 0
+          AND (le.executor_user_id IS NULL OR op.user_id != le.executor_user_id)
+        GROUP BY op.user_id, da.operator_id, COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0)
         """,
-        invoice_ids,
+        [*invoice_ids, *invoice_ids],
     ).fetchall()
     payouts: dict[int, dict] = {}
     for row in rows:

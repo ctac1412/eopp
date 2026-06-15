@@ -36,5 +36,5 @@ def test_captcha_records_include_operator_answers(monkeypatch):
     status, content = captcha_records_service.list_records("session", usage_log_id=42)
 
     assert status == 200
-    assert content[0]["operator_names"] == ["Оператор 7"]
+    assert content[0]["operator_names"] == ["Оператор 7 (1)"]
     assert content[0]["operator_answers"][0]["icon_position"] == 2
