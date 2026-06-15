@@ -65,26 +65,40 @@ def test_distribution_answer_save_persists_click_on_current_schema(isolated_api_
     assert datetime.fromisoformat(row.created_at).tzinfo == UTC
 
 
-def test_distribution_answer_save_is_not_amplified_by_serialized_schema_lock(
+def test_distribution_answer_save_reproduces_and_removes_schema_lock_freeze(
     isolated_api_db,
 ):
-    from sqlalchemy import event
+    from sqlalchemy import event, text
 
-    from src.entities import get_engine
+    from src.entities import get_engine, get_session
     from src.repositories import distribution_repo
 
     schema_lock = threading.Lock()
-    alter_count = 0
+    alter_count_by_mode = {"legacy": 0, "fixed": 0}
+    current_mode = "fixed"
 
     def simulate_schema_lock(conn, cursor, statement, parameters, context, executemany):
-        nonlocal alter_count
         if "ALTER TABLE distribution_answers" in statement:
             with schema_lock:
-                alter_count += 1
+                alter_count_by_mode[current_mode] += 1
                 time.sleep(0.05)
 
-    def save_one(index: int) -> float:
+    def legacy_runtime_schema_checks() -> None:
+        with get_session() as session:
+            for statement in (
+                "ALTER TABLE distribution_answers ADD COLUMN usage_log_id INTEGER DEFAULT 0",
+                "ALTER TABLE distribution_answers ADD COLUMN duration_ms INTEGER",
+            ):
+                try:
+                    session.execute(text(statement))
+                    session.commit()
+                except Exception:
+                    session.rollback()
+
+    def save_one(index: int, legacy_schema_checks: bool) -> float:
         start = time.perf_counter()
+        if legacy_schema_checks:
+            legacy_runtime_schema_checks()
         distribution_repo.save_distribution_answer(
             usage_log_id=index + 1,
             captcha_id=f"schema-lock-captcha-{index}-{time.perf_counter_ns()}",
@@ -96,10 +110,13 @@ def test_distribution_answer_save_is_not_amplified_by_serialized_schema_lock(
         )
         return (time.perf_counter() - start) * 1000
 
-    def run_batch(workers: int) -> float:
+    def run_batch(workers: int, legacy_schema_checks: bool) -> float:
         latencies = []
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = [executor.submit(save_one, index) for index in range(workers * 2)]
+            futures = [
+                executor.submit(save_one, index, legacy_schema_checks)
+                for index in range(workers * 2)
+            ]
             for future in as_completed(futures):
                 latencies.append(future.result())
         latencies.sort()
@@ -109,14 +126,33 @@ def test_distribution_answer_save_is_not_amplified_by_serialized_schema_lock(
     event.listen(engine, "before_cursor_execute", simulate_schema_lock)
 
     try:
-        single_thread_p95 = run_batch(workers=1)
-        four_thread_p95 = run_batch(workers=4)
+        current_mode = "legacy"
+        legacy_single_thread_p95 = run_batch(workers=1, legacy_schema_checks=True)
+        legacy_four_thread_p95 = run_batch(workers=4, legacy_schema_checks=True)
+
+        current_mode = "fixed"
+        fixed_single_thread_p95 = run_batch(workers=1, legacy_schema_checks=False)
+        fixed_four_thread_p95 = run_batch(workers=4, legacy_schema_checks=False)
     finally:
         event.remove(engine, "before_cursor_execute", simulate_schema_lock)
 
-    assert single_thread_p95 < 150
-    assert four_thread_p95 < 150
-    assert alter_count == 0
+    evidence = {
+        "legacy_single_thread_p95_ms": legacy_single_thread_p95,
+        "legacy_four_thread_p95_ms": legacy_four_thread_p95,
+        "legacy_alter_count": alter_count_by_mode["legacy"],
+        "fixed_single_thread_p95_ms": fixed_single_thread_p95,
+        "fixed_four_thread_p95_ms": fixed_four_thread_p95,
+        "fixed_alter_count": alter_count_by_mode["fixed"],
+    }
+
+    assert legacy_single_thread_p95 < 150, evidence
+    assert legacy_four_thread_p95 > 300, evidence
+    assert legacy_four_thread_p95 > legacy_single_thread_p95 * 2, evidence
+    assert alter_count_by_mode["legacy"] == 20, evidence
+
+    assert fixed_single_thread_p95 < 150, evidence
+    assert fixed_four_thread_p95 < 150, evidence
+    assert alter_count_by_mode["fixed"] == 0, evidence
 
 
 def test_distribution_answer_route_handles_four_parallel_operators_without_second_scale_stalls(
