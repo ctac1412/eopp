@@ -43,6 +43,7 @@ function formatDuration(durationMs) {
 }
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const SHOW_CAPTCHA_SUMMARIES = false;
 
 function pageCount(total, pageSize) {
   return Math.max(1, Math.ceil(total / pageSize));
@@ -664,7 +665,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
 
   const fileColumns = [
     { title: "ID", dataIndex: "id", width: 56, render: (value) => <span className="text-muted">#{value}</span> },
-    { title: "Captcha ID", dataIndex: "captcha_id", width: 210, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Captcha ID", dataIndex: "captcha_id", width: 112, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
     { title: "Тип", dataIndex: "captcha_type", width: 92, render: (value) => value || "unknown" },
     {
       title: "Класс",
@@ -716,7 +717,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
 
   const operationColumns = [
     { title: "ID", dataIndex: "id", width: 56, render: (value) => <span className="text-muted">#{value}</span> },
-    { title: "Captcha ID", dataIndex: "captcha_id", width: 210, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Captcha ID", dataIndex: "captcha_id", width: 112, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
     { title: "Решена", width: 98, align: "center", render: (_, captcha) => solvedBadge(captcha.correct_answer, captcha.status) },
     { title: "Причина", dataIndex: "fail_reason", width: 150, ellipsis: true, render: (value) => <span className="text-danger" title={value || "—"}>{value || "—"}</span> },
     { title: "Hash", dataIndex: "tiles_hash", width: 120, ellipsis: true, render: (value) => <span className="font-monospace" title={value || "—"}>{value || "—"}</span> },
@@ -908,7 +909,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           ))}
         </div>
       )}
-      {subtab === "operations" && (failureSummary.length > 0 || userSummary.length > 0) && (
+      {SHOW_CAPTCHA_SUMMARIES && subtab === "operations" && (failureSummary.length > 0 || userSummary.length > 0) && (
         <div className="captchas-summary-grid mb-3">
           {failureSummary.length > 0 && (
             <Card data-eopp-component="CaptchasFailureSummaryCard" size="small" title="Причины непройденных капч">
@@ -994,7 +995,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             columns={fileColumns}
             emptyText="Нет файлов капч"
             pagination={false}
-            scroll={{ x: 1420 }}
+            scroll={{ x: 1320 }}
             rowSelection={{
               selectedRowKeys: [...selectedFileIds],
               onChange: (keys) => setSelectedFileIds(new Set(keys)),
@@ -1015,7 +1016,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           columns={operationColumns}
           emptyText="Нет капч"
           pagination={false}
-          scroll={{ x: 1320 }}
+          scroll={{ x: 1220 }}
           rowSelection={{
             selectedRowKeys: [...selected],
             onChange: (keys) => setSelected(new Set(keys)),

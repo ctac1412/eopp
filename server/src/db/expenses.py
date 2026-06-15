@@ -53,8 +53,21 @@ def list_expenses(company_id: int | None = None) -> list[dict]:
         ids = [e["id"] for e in result]
         placeholders = ",".join("?" * len(ids))
         alloc_rows = conn2.execute(
-            f"SELECT expense_id, COALESCE(SUM(amount), 0) as allocated FROM payout_expenses WHERE expense_id IN ({placeholders}) GROUP BY expense_id",
-            ids,
+            f"""
+            SELECT expense_id, COALESCE(SUM(amount), 0) as allocated
+            FROM (
+                SELECT expense_id, amount
+                FROM payout_expenses
+                WHERE expense_id IN ({placeholders})
+                UNION ALL
+                SELECT expense_id, ABS(amount) AS amount
+                FROM finance_entries
+                WHERE expense_id IN ({placeholders})
+                  AND kind = 'expense_repayment'
+            ) allocations
+            GROUP BY expense_id
+            """,
+            [*ids, *ids],
         ).fetchall()
         conn2.close()
         alloc_map = {r["expense_id"]: float(r["allocated"]) for r in alloc_rows}

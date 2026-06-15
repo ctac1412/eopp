@@ -1504,6 +1504,7 @@ def test_manual_invoice_uses_company_tax_commission_mode(isolated_api_db):
 
 def test_expense_repayment_uses_profit_lot_without_remaining_mutation(isolated_api_db):
     from src.db.connection import get_connection
+    from src.db.expenses import list_expenses
     from src.db.finance import create_expense_repayments
 
     conn = get_connection()
@@ -1555,6 +1556,10 @@ def test_expense_repayment_uses_profit_lot_without_remaining_mutation(isolated_a
     assert repayment["usage_log_id"] == usage_log_id
     assert "remaining_amount" not in columns
     assert available["available"] == 1080
+    expense = next(row for row in list_expenses() if row["id"] == expense_id)
+    assert expense["allocation"]["allocated_amount"] == 1000.0
+    assert expense["allocation"]["allocated_pct"] == 6.7
+    assert expense["allocation"]["status"] == "partially_allocated"
 
 
 def test_open_finance_entry_can_be_updated_but_locked_cannot(isolated_api_db):
@@ -1657,6 +1662,513 @@ def test_payout_uses_finance_entries_and_profit_lots_for_paid_invoice(isolated_a
     assert shares[users["Tax"]]["tax_amount"] == 120.0
     assert shares[users["Director"]]["profit_share"] == 2080.0
     assert result["net"] == 2080.0
+
+
+def test_payout_ledger_without_profit_lots_falls_back_to_invoice_net(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.payouts import preview_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Payout Preview Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Configured Split", "manager", _now()),
+    )
+    split_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-PREVIEW-NO-LOTS", "Payout Preview Co", 1000, 0, 0, 1000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 1000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, invoice_id, f"invoice:{invoice_id}:income", _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    result = preview_payout(
+        [invoice_id],
+        [],
+        [{"user_id": split_user_id, "split_pct": 100}],
+    )
+
+    assert result["net_amount"] == 1000.0
+    assert result["shares"][0]["profit_share"] == 1000.0
+    assert result["shares"][0]["user_name"] == "Configured Split"
+
+
+def test_payout_preview_reports_already_allocated_profit(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.payouts import preview_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Allocated Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director", "manager", _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-ALLOCATED", "Allocated Co", 1000, 0, 0, 1000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("allocated-key", "Allocated", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-allocated", _now(), _now(), company_id, "Allocated Co", invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (company_id, usage_log_id, invoice_id, 1000, _now(), _now()),
+    )
+    profit_lot_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, profit_lot_id, user_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'director_profit', -600, 'locked', 'test', ?, ?, ?)
+        """,
+        (company_id, invoice_id, profit_lot_id, user_id, f"director-profit:{invoice_id}", _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    result = preview_payout(
+        [invoice_id],
+        [],
+        [{"user_id": user_id, "split_pct": 100}],
+    )
+
+    assert result["total_income"] == 1000.0
+    assert result["already_allocated"] == 600.0
+    assert result["net_amount"] == 400.0
+    assert result["shares"][0]["profit_share"] == 400.0
+
+
+def test_payout_preview_mixes_profit_lots_with_legacy_invoices(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.payouts import preview_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Mixed Lots Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director", "manager", _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-LEGACY", "Mixed Lots Co", 3000, 0, 0, 3000, _now()),
+    )
+    legacy_invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 3000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, legacy_invoice_id, f"legacy:{legacy_invoice_id}:income", _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-LOT", "Mixed Lots Co", 1000, 0, 0, 1000, _now()),
+    )
+    lot_invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("mixed-lots-key", "Mixed Lots", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-mixed-lots", _now(), _now(), company_id, "Mixed Lots Co", lot_invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (company_id, usage_log_id, lot_invoice_id, 1000, _now(), _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 1000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, lot_invoice_id, f"lot:{lot_invoice_id}:income", _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    result = preview_payout(
+        [legacy_invoice_id, lot_invoice_id],
+        [],
+        [{"user_id": user_id, "split_pct": 100}],
+    )
+
+    assert result["total_income"] == 4000.0
+    assert result["net_amount"] == 4000.0
+    assert result["shares"][0]["profit_share"] == 4000.0
+
+
+def test_payout_preview_allows_empty_splits_and_shows_repayment_overflow(isolated_api_db):
+    from types import SimpleNamespace
+
+    from src.db.connection import get_connection
+    from src.db.payouts import preview_payout
+    from src.services.payout_service import create_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Partial Expense Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Expense Owner", "manager", _now()),
+    )
+    expense_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Split Owner", "manager", _now()),
+    )
+    split_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-PARTIAL-OVERFLOW", "Partial Expense Co", 1000, 0, 0, 1000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 1000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, invoice_id, f"invoice:{invoice_id}:income", _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, reason, created_at) VALUES (?, ?, ?, ?)",
+        (expense_user_id, 1500, "Partial server", _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    preview = preview_payout([invoice_id], [], [], [{"expense_id": expense_id, "amount": 1500}])
+
+    assert preview["net_amount"] == -500.0
+    assert preview["total_expenses"] == 1500.0
+    assert preview["shares"][0]["user_id"] == expense_user_id
+    assert preview["shares"][0]["expenses_compensation"] == 1500.0
+
+    status, payload = create_payout(
+        SimpleNamespace(
+            name="Overflow payout",
+            invoice_ids=[invoice_id],
+            expense_ids=[],
+            expense_repayments=[{"expense_id": expense_id, "amount": 1500}],
+            user_splits=[{"user_id": split_user_id, "split_pct": 100}],
+        ),
+    )
+
+    assert status == 400
+    assert "превышает net" in payload["error"]
+
+
+def test_expense_repayment_reduces_profit_shares_without_increasing_total(isolated_api_db):
+    from types import SimpleNamespace
+
+    from src.db.connection import get_connection
+    from src.db.payouts import preview_payout
+    from src.services.payout_service import create_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Repayment Balance Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director A", "manager", _now()),
+    )
+    director_a_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director B", "manager", _now()),
+    )
+    director_b_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Expense Owner", "manager", _now()),
+    )
+    expense_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-REPAYMENT-BALANCE", "Repayment Balance Co", 4000, 0, 0, 4000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("repayment-balance-key", "Repayment Balance", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-repayment-balance", _now(), _now(), company_id, "Repayment Balance Co", invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (company_id, usage_log_id, invoice_id, 4000, _now(), _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 4000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, invoice_id, f"repayment-balance:{invoice_id}:income", _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, reason, created_at) VALUES (?, ?, ?, ?)",
+        (expense_user_id, 1000, "Repayment balance expense", _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    splits = [
+        {"user_id": director_a_id, "split_pct": 50},
+        {"user_id": director_b_id, "split_pct": 50},
+    ]
+    repayments = [{"expense_id": expense_id, "amount": 1000}]
+    preview = preview_payout([invoice_id], [], splits, repayments)
+    preview_total = sum(float(share["total"] or 0) for share in preview["shares"])
+    shares_by_user = {share["user_id"]: share for share in preview["shares"]}
+
+    assert preview["net_amount"] == 3000.0
+    assert shares_by_user[director_a_id]["profit_share"] == 1500.0
+    assert shares_by_user[director_b_id]["profit_share"] == 1500.0
+    assert shares_by_user[expense_user_id]["expenses_compensation"] == 1000.0
+    assert preview_total == 4000.0
+
+    status, payout = create_payout(
+        SimpleNamespace(
+            name="Repayment balance payout",
+            invoice_ids=[invoice_id],
+            expense_ids=[],
+            expense_repayments=repayments,
+            user_splits=splits,
+        ),
+    )
+    assert status == 200
+    payout_shares_by_user = {share["user_id"]: share for share in payout["shares"]}
+    payout_total = sum(float(share["total"] or 0) for share in payout["shares"])
+
+    assert payout_shares_by_user[director_a_id]["profit_share"] == 1500.0
+    assert payout_shares_by_user[director_b_id]["profit_share"] == 1500.0
+    assert payout_shares_by_user[expense_user_id]["expenses_compensation"] == 1000.0
+    assert payout_total == 4000.0
+
+
+def test_create_payout_rebuilds_legacy_profit_lots_for_repayments(isolated_api_db):
+    from types import SimpleNamespace
+
+    from src.db.connection import get_connection
+    from src.services.payout_service import create_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Legacy Repay Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director", "manager", _now()),
+    )
+    director_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Expense Owner", "manager", _now()),
+    )
+    expense_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-LEGACY-REPAY", "Legacy Repay Co", 4000, 0, 0, 4000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("legacy-repay-key", "Legacy Repay", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-legacy-repay", _now(), _now(), company_id, "Legacy Repay Co", invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (company_id, invoice_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, ?, 'customer_income', 4000, 'open', 'test', ?, ?, ?)
+        """,
+        (company_id, invoice_id, f"usage:{usage_log_id}:income", _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, reason, created_at) VALUES (?, ?, ?, ?)",
+        (expense_user_id, 1000, "Legacy repayment expense", _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, payout = create_payout(
+        SimpleNamespace(
+            name="Legacy repayment payout",
+            invoice_ids=[invoice_id],
+            expense_ids=[],
+            expense_repayments=[{"expense_id": expense_id, "amount": 1000}],
+            user_splits=[{"user_id": director_id, "split_pct": 100}],
+        ),
+    )
+
+    assert status == 200
+    shares_by_user = {share["user_id"]: share for share in payout["shares"]}
+    assert shares_by_user[director_id]["profit_share"] == 3000.0
+    assert shares_by_user[expense_user_id]["expenses_compensation"] == 1000.0
+
+    conn = get_connection()
+    lot = conn.execute("SELECT * FROM profit_lots WHERE invoice_id = ?", (invoice_id,)).fetchone()
+    conn.close()
+    assert lot is not None
+
+
+def test_create_payout_rejects_unpaid_invoice_for_repayment(isolated_api_db):
+    from types import SimpleNamespace
+
+    from src.db.connection import get_connection
+    from src.services.payout_service import create_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Unpaid Lot Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director", "manager", _now()),
+    )
+    director_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Expense Owner", "manager", _now()),
+    )
+    expense_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 0, ?, ?, ?, ?, ?)",
+        ("INV-UNPAID-LOT", "Unpaid Lot Co", 1000, 0, 0, 1000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("unpaid-lot-key", "Unpaid Lot", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-unpaid-lot", _now(), _now(), company_id, "Unpaid Lot Co", invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (company_id, usage_log_id, invoice_id, 1000, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, reason, created_at) VALUES (?, ?, ?, ?)",
+        (expense_user_id, 400, "Unpaid lot repayment", _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, payload = create_payout(
+        SimpleNamespace(
+            name="Unpaid lot repayment payout",
+            invoice_ids=[invoice_id],
+            expense_ids=[],
+            expense_repayments=[{"expense_id": expense_id, "amount": 400}],
+            user_splits=[{"user_id": director_id, "split_pct": 100}],
+        ),
+    )
+
+    assert status == 400
+    assert "только оплаченные счета" in payload["error"]
+
+
+def test_create_payout_rejects_repayment_above_available_paid_lots(isolated_api_db):
+    from types import SimpleNamespace
+
+    from src.db.connection import get_connection
+    from src.services.payout_service import create_payout
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Available Lots Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 1, ?)",
+        ("Director", "manager", _now()),
+    )
+    director_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, ?, 1, 0, ?)",
+        ("Expense Owner", "manager", _now()),
+    )
+    expense_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO invoices (invoice_number, company, paid, debt_amount, percent_amount, tax_amount, total_amount, created_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
+        ("INV-AVAILABLE-LOTS", "Available Lots Co", 5000, 0, 0, 5000, _now()),
+    )
+    invoice_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("available-lots-key", "Available Lots", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO usage_log (api_key_id, reservation_id, status, created_at, confirmed_at, company_id, company, invoice_id) VALUES (?, ?, 'confirmed', ?, ?, ?, ?, ?)",
+        (api_key_id, "res-available-lots", _now(), _now(), company_id, "Available Lots Co", invoice_id),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        "INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (company_id, usage_log_id, invoice_id, 1000, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO expenses (user_id, amount, reason, created_at) VALUES (?, ?, ?, ?)",
+        (expense_user_id, 2000, "Too large repayment", _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, payload = create_payout(
+        SimpleNamespace(
+            name="Too large repayment payout",
+            invoice_ids=[invoice_id],
+            expense_ids=[],
+            expense_repayments=[{"expense_id": expense_id, "amount": 2000}],
+            user_splits=[{"user_id": director_id, "split_pct": 100}],
+        ),
+    )
+
+    assert status == 400
+    assert "доступную прибыль" in payload["error"]
 
 
 def test_create_payout_locks_linked_finance_entries(isolated_api_db):

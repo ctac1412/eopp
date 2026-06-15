@@ -17,7 +17,7 @@ from src.entities.distribution_answer import DistributionAnswer
 from src.entities.operator import Operator, OperatorCompanyBillingOverride, OperatorMasterLink
 from src.entities.expense import Expense
 from src.entities.invoice import Invoice, InvoiceItem
-from src.entities.payout import Payout, PayoutExpense, PayoutInvoice, PayoutShare
+from src.entities.payout import DefaultPayoutSplit, Payout, PayoutExpense, PayoutInvoice, PayoutShare
 from src.entities.prepaid import PrepaidDeduction, PrepaidPackage
 from src.entities.plugin_channel import (
     ConnectedPlugin,
@@ -61,6 +61,7 @@ __all__ = [
     "PayoutShare",
     "PayoutInvoice",
     "PayoutExpense",
+    "DefaultPayoutSplit",
     "PrepaidPackage",
     "PrepaidDeduction",
     "ConnectedPlugin",

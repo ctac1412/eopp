@@ -30,6 +30,7 @@ from src.models import (
     CreatePayoutBody,
     CreatePrepaidPackageBody,
     CreateUserBody,
+    DefaultPayoutSplitsBody,
     GenerateInvoiceBody,
     CompanyAccessBody,
     OpenInvoiceBody,
@@ -853,6 +854,24 @@ async def delete_admin_finance_entry(id: int):
 @router.get("/payouts")
 async def list_admin_payouts(request: Request):
     return _json_result(billing_service.list_payouts(_tenant_company_id(request)))
+
+
+@router.get("/default-payout-splits")
+async def get_admin_default_payout_splits():
+    return _json_result(billing_service.get_default_payout_splits())
+
+
+@router.put("/default-payout-splits")
+async def update_admin_default_payout_splits(body: DefaultPayoutSplitsBody, request: Request):
+    result = billing_service.update_default_payout_splits(body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "payout.default_splits_changed",
+            Permission.BILLING_EDIT,
+            target_type="default_payout_splits",
+        )
+    return _json_result(result)
 
 
 @router.post("/payouts/preview")

@@ -5,7 +5,7 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def test_profit_shares_are_paid_only_to_directors(isolated_api_db):
+def test_profit_shares_are_paid_to_configured_splits(isolated_api_db):
     from src.db.connection import get_connection
     from src.db.payouts import calculate_payout
 
@@ -42,7 +42,7 @@ def test_profit_shares_are_paid_only_to_directors(isolated_api_db):
     )
 
     shares = {share["user_id"]: share for share in result["payout_shares"]}
-    assert shares[director_id]["profit_share"] == 1000
-    assert shares[director_id]["split_pct"] == 100.0
-    assert shares[finance_id]["profit_share"] == 0.0
-    assert shares[finance_id]["split_pct"] == 0.0
+    assert shares[director_id]["profit_share"] == 500
+    assert shares[director_id]["split_pct"] == 50.0
+    assert shares[finance_id]["profit_share"] == 500
+    assert shares[finance_id]["split_pct"] == 50.0

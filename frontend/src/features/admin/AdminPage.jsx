@@ -24,6 +24,7 @@ import {
   ExpenseModal,
   PayoutsTab,
   PayoutModal,
+  DefaultPayoutSplitsModal,
   UsersTab,
   UserModal,
   UserStatsModal,
@@ -41,6 +42,7 @@ import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./users/use
 import { adminHeaders, adminHeadersJson, adminRequest } from "./shared/adminClient";
 import { ADMIN_TABS } from "./shared/tabs";
 import { Button, SegmentedControl } from "../../ui";
+import { expenseRepaymentsFromForm } from "./payouts/payoutExpenseRepayments";
 
 const ROLE_LABELS = {
   super_admin: "Супер админ",
@@ -117,10 +119,13 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
 
   // Payouts
   const [payouts, setPayouts] = useState([]);
-  const [payoutForm, setPayoutForm] = useState({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
+  const [payoutForm, setPayoutForm] = useState({ id: null, name: "", invoice_ids: [], expense_ids: [], expense_repayments: {}, splits: [] });
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [payoutPreview, setPayoutPreview] = useState(null);
   const [payoutPreviewLoading, setPayoutPreviewLoading] = useState(false);
+  const [showDefaultPayoutSplitsModal, setShowDefaultPayoutSplitsModal] = useState(false);
+  const [defaultPayoutSplitsForm, setDefaultPayoutSplitsForm] = useState([]);
+  const [defaultPayoutSplitsSaving, setDefaultPayoutSplitsSaving] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState([]);
   const [availableExpenses, setAvailableExpenses] = useState([]);
   const [prepaidPackages, setPrepaidPackages] = useState([]);
@@ -275,6 +280,60 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
     [adminToken],
   );
 
+  const fetchDefaultPayoutSplits = useCallback(
+    async (token) => {
+      const t = token || adminToken;
+      if (!t) return [];
+      const res = await adminRequest("/admin/default-payout-splits", {
+        headers: adminHeadersJson(t),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return Array.isArray(data?.splits) ? data.splits : [];
+    },
+    [adminToken],
+  );
+
+  const openDefaultPayoutSplits = useCallback(async () => {
+    try {
+      const splits = await fetchDefaultPayoutSplits(adminToken);
+      setDefaultPayoutSplitsForm(
+        splits.map((split) => ({
+          user_id: split.user_id,
+          split_pct: Number(split.split_pct) || 0,
+        })),
+      );
+      setShowDefaultPayoutSplitsModal(true);
+    } catch (err) {
+      setError(`Не удалось загрузить дефолтные доли выплаты: ${err.message}`);
+    }
+  }, [adminToken, fetchDefaultPayoutSplits]);
+
+  const saveDefaultPayoutSplits = useCallback(async () => {
+    setDefaultPayoutSplitsSaving(true);
+    try {
+      const splits = (defaultPayoutSplitsForm || [])
+        .filter((split) => split.user_id != null)
+        .map((split) => ({
+          user_id: split.user_id,
+          split_pct: Number(split.split_pct) || 0,
+        }));
+      const res = await adminRequest("/admin/default-payout-splits", {
+        method: "PUT",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify({ splits }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDefaultPayoutSplitsForm(Array.isArray(data?.splits) ? data.splits : splits);
+      setShowDefaultPayoutSplitsModal(false);
+    } catch (err) {
+      setError(`Не удалось сохранить дефолтные доли выплаты: ${err.message}`);
+    } finally {
+      setDefaultPayoutSplitsSaving(false);
+    }
+  }, [adminToken, defaultPayoutSplitsForm]);
+
   const fetchPrepaidPackages = useCallback(
     async (token) => {
       const t = token || adminToken;
@@ -312,7 +371,7 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
   );
 
   const fetchPayoutPreview = useCallback(
-    async (invoiceIds, expenseIds, splits) => {
+    async (invoiceIds, expenseIds, splits, expenseRepayments = []) => {
       const t = adminToken;
       if (!t) return;
       setPayoutPreviewLoading(true);
@@ -320,7 +379,12 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
         const res = await adminRequest("/admin/payouts/preview", {
           method: "POST",
           headers: adminHeaders(t),
-          body: JSON.stringify({ invoice_ids: invoiceIds || [], expense_ids: expenseIds || [], user_splits: splits || [] }),
+          body: JSON.stringify({
+            invoice_ids: invoiceIds || [],
+            expense_ids: expenseIds || [],
+            expense_repayments: expenseRepayments || [],
+            user_splits: splits || [],
+          }),
         });
         if (!res.ok) { setPayoutPreview(null); return; }
         const data = await res.json();
@@ -365,7 +429,11 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
         ]);
         if (invRes.ok) {
           const invData = await invRes.json();
-          setAvailableInvoices(Array.isArray(invData) ? invData : []);
+          setAvailableInvoices(
+            Array.isArray(invData)
+              ? invData.filter((invoice) => Number(invoice.paid) === 1 && invoice.allocation?.status !== "fully_allocated")
+              : [],
+          );
         }
         if (expRes.ok) {
           const expData = await expRes.json();
@@ -526,9 +594,14 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
   useEffect(() => {
     if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices" || activeTab === "reports")) {
       fetchUsers(adminToken);
+    }
+  }, [adminToken, activeTab, fetchUsers]);
+
+  useEffect(() => {
+    if (adminToken && (activeTab === "expenses" || activeTab === "invoices" || activeTab === "reports")) {
       fetchFinanceParticipants(adminToken);
     }
-  }, [adminToken, activeTab, fetchFinanceParticipants, fetchUsers]);
+  }, [adminToken, activeTab, fetchFinanceParticipants]);
 
   useEffect(() => {
     if (adminToken && activeTab === "payouts") {
@@ -682,10 +755,12 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
       const splits = (payoutForm.splits || [])
         .filter((s) => s.user_id != null)
         .map((s) => ({ user_id: s.user_id, split_pct: Number(s.split_pct) || 0 }));
+      const expenseRepayments = expenseRepaymentsFromForm(payoutForm);
       const body = {
         name: payoutForm.name,
         invoice_ids: payoutForm.invoice_ids || [],
         expense_ids: payoutForm.expense_ids || [],
+        expense_repayments: expenseRepayments,
         user_splits: splits,
       };
       const res = await adminRequest("/admin/payouts", {
@@ -694,7 +769,7 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
+      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], expense_repayments: {}, splits: [] });
       setShowPayoutModal(false);
       setPayoutPreview(null);
       fetchPayouts(adminToken);
@@ -720,6 +795,7 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
       const splits = (payoutForm.splits || [])
         .filter((s) => s.user_id != null)
         .map((s) => ({ user_id: s.user_id, split_pct: Number(s.split_pct) || 0 }));
+      const expenseRepayments = expenseRepaymentsFromForm(payoutForm);
       const recalcRes = await adminRequest(`/admin/payouts/${payoutForm.id}/recalculate`, {
         method: "POST",
         headers: adminHeaders(adminToken),
@@ -727,12 +803,13 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
           name: payoutForm.name,
           invoice_ids: payoutForm.invoice_ids || [],
           expense_ids: payoutForm.expense_ids || [],
+          expense_repayments: expenseRepayments,
           user_splits: splits,
         }),
       });
       if (!recalcRes.ok) throw new Error(`HTTP ${recalcRes.status} (recalculate)`);
 
-      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: [] });
+      setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], expense_repayments: {}, splits: [] });
       setShowPayoutModal(false);
       setPayoutPreview(null);
       fetchPayouts(adminToken);
@@ -1168,18 +1245,22 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
         <PayoutsTab
           payouts={payouts}
           onRefresh={() => fetchPayouts(adminToken)}
-          onCreate={() => {
-            const payoutUsers = financeParticipants;
-            const n = payoutUsers.length || 1;
-            const base = Math.floor(100 / n);
-            const remainder = 100 - base * n;
-            const autoSplits = payoutUsers.map((u, i) => ({
-              user_id: u.id,
-              split_pct: base + (i < remainder ? 1 : 0),
-            }));
-            setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], splits: autoSplits });
-            setPayoutPreview(null);
-            setShowPayoutModal(true);
+          onConfigureDefaultSplits={openDefaultPayoutSplits}
+          onCreate={async () => {
+            try {
+              const defaultSplits = await fetchDefaultPayoutSplits(adminToken);
+              const splits = defaultSplits
+                .filter((split) => split.user_id != null)
+                .map((split) => ({
+                  user_id: split.user_id,
+                  split_pct: Number(split.split_pct) || 0,
+                }));
+              setPayoutForm({ id: null, name: "", invoice_ids: [], expense_ids: [], expense_repayments: {}, splits });
+              setPayoutPreview(null);
+              setShowPayoutModal(true);
+            } catch (err) {
+              setError(`Не удалось загрузить дефолтные доли выплаты: ${err.message}`);
+            }
           }}
           onEdit={(p) => {
             const splits = (p.shares || []).map((sh) => ({
@@ -1188,7 +1269,7 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
             }));
             const invoiceIds = (p.invoices || []).map((i) => i.invoice_id || i.id);
             const expenseIds = (p.expenses || []).map((e) => e.expense_id || e.id);
-            setPayoutForm({ id: p.id, name: p.name, invoice_ids: invoiceIds, expense_ids: expenseIds, splits });
+            setPayoutForm({ id: p.id, name: p.name, invoice_ids: invoiceIds, expense_ids: expenseIds, expense_repayments: {}, splits });
             fetchAllResources(adminToken);
             setShowPayoutModal(true);
           }}
@@ -1254,11 +1335,22 @@ function AdminPage({ themeMode = "dark", onThemeModeChange }) {
         onSubmit={payoutForm.id ? handleUpdatePayout : handleCreatePayout}
         onClose={() => setShowPayoutModal(false)}
         preview={payoutPreview}
-        users={financeParticipants}
+        users={users}
         availableInvoices={availableInvoices}
         availableExpenses={availableExpenses}
         onPreview={fetchPayoutPreview}
         previewLoading={payoutPreviewLoading}
+        adminToken={adminToken}
+      />
+
+      <DefaultPayoutSplitsModal
+        open={showDefaultPayoutSplitsModal}
+        splits={defaultPayoutSplitsForm}
+        users={users}
+        saving={defaultPayoutSplitsSaving}
+        onChange={setDefaultPayoutSplitsForm}
+        onClose={() => setShowDefaultPayoutSplitsModal(false)}
+        onSubmit={saveDefaultPayoutSplits}
       />
 
       <UserModal

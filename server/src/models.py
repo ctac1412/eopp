@@ -284,6 +284,10 @@ class PreviewPayoutBody(BaseModel):
     user_splits: list[dict] = []
 
 
+class DefaultPayoutSplitsBody(BaseModel):
+    splits: list[dict] = []
+
+
 class UpdatePayoutBody(BaseModel):
     name: str | None = None
 

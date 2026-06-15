@@ -13,6 +13,7 @@ export { OperationsDashboardTab } from "./operations/OperationsDashboardTab";
 export { OperatorsTab } from "./operators/OperatorsTab";
 export { PayoutsTab } from "./payouts/PayoutsTab";
 export { PayoutModal } from "./payouts/PayoutModal";
+export { DefaultPayoutSplitsModal } from "./payouts/DefaultPayoutSplitsModal";
 export { PluginChannelTab } from "./pluginChannel/PluginChannelTab";
 export { ReportsTab } from "./reports/ReportsTab";
 export { AITab } from "./system/AITab";

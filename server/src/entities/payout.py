@@ -74,3 +74,16 @@ class PayoutExpense(Base):
 
     payout: Mapped[Payout] = relationship(back_populates="expense_links")
     expense: Mapped[Expense | None] = relationship(back_populates="payout_links")
+
+
+class DefaultPayoutSplit(Base):
+    __tablename__ = "default_payout_splits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    split_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+    user: Mapped[User] = relationship()

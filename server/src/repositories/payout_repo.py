@@ -25,14 +25,23 @@ def list_payouts(company_id: int | None = None) -> list[dict]:
     return db_list_payouts(company_id=company_id)
 
 
-def preview_payout(invoice_ids: list[int], expense_ids: list[int], user_splits: list[dict]) -> dict:
-    return db_preview_payout(invoice_ids, expense_ids, user_splits)
+def preview_payout(
+    invoice_ids: list[int],
+    expense_ids: list[int],
+    user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
+) -> dict:
+    return db_preview_payout(invoice_ids, expense_ids, user_splits, expense_repayments or [])
 
 
 def create_payout_with_calculation(
-    name: str, invoice_ids: list[int], expense_ids: list[int], user_splits: list[dict]
+    name: str,
+    invoice_ids: list[int],
+    expense_ids: list[int],
+    user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
 ) -> dict:
-    return db_create_payout_with_calculation(name, invoice_ids, expense_ids, user_splits)
+    return db_create_payout_with_calculation(name, invoice_ids, expense_ids, user_splits, expense_repayments or [])
 
 
 def update_payout(payout_id: int, name: str) -> dict | None:
@@ -48,6 +57,10 @@ def delete_payout(payout_id: int) -> bool:
 
 
 def recalculate_payout(
-    payout_id: int, invoice_ids: list[int], expense_ids: list[int], user_splits: list[dict]
+    payout_id: int,
+    invoice_ids: list[int],
+    expense_ids: list[int],
+    user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
 ) -> dict | None:
-    return db_recalculate_payout(payout_id, invoice_ids, expense_ids, user_splits)
+    return db_recalculate_payout(payout_id, invoice_ids, expense_ids, user_splits, expense_repayments or [])

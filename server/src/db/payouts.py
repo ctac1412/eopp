@@ -5,6 +5,7 @@ CRUD для выплат с FIFO компенсацией расходов.
 """
 
 from datetime import UTC, datetime
+import re
 
 from src.db.connection import get_connection
 from src.db.connection import row_to_dict as _row_to_dict
@@ -92,14 +93,12 @@ def _create_director_profit_entries_for_payout(
     placeholders = ",".join("?" * len(invoice_ids))
     conn = get_connection()
     try:
-        split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
-        director_ids = _director_user_ids(conn, split_user_ids)
-        director_splits = [
+        profit_splits = [
             {"user_id": int(us["user_id"]), "split_pct": float(us["split_pct"])}
             for us in user_splits
-            if us.get("user_id") is not None and int(us["user_id"]) in director_ids
+            if us.get("user_id") is not None
         ]
-        total_split_pct = sum(us["split_pct"] for us in director_splits)
+        total_split_pct = sum(us["split_pct"] for us in profit_splits)
         if total_split_pct <= 0:
             return
 
@@ -125,8 +124,8 @@ def _create_director_profit_entries_for_payout(
             if available <= 0:
                 continue
             allocated = 0.0
-            for idx, split in enumerate(director_splits):
-                if idx == len(director_splits) - 1:
+            for idx, split in enumerate(profit_splits):
+                if idx == len(profit_splits) - 1:
                     share = round(available - allocated, 2)
                 else:
                     share = round(available * split["split_pct"] / total_split_pct, 2)
@@ -165,6 +164,199 @@ def _create_director_profit_entries_for_payout(
         raise
     finally:
         conn.close()
+
+
+def _attach_user_names(conn, shares: list[dict]) -> list[dict]:
+    user_ids = sorted({int(share["user_id"]) for share in shares if share.get("user_id") is not None})
+    if not user_ids:
+        return shares
+    placeholders = ",".join("?" * len(user_ids))
+    rows = conn.execute(
+        f"SELECT id, name FROM users WHERE id IN ({placeholders})",
+        user_ids,
+    ).fetchall()
+    names = {int(row["id"]): row["name"] for row in rows}
+    for share in shares:
+        user_id = share.get("user_id")
+        if user_id is not None:
+            share["user_name"] = names.get(int(user_id))
+    return shares
+
+
+def _share_total(share: dict) -> float:
+    return (
+        float(share.get("profit_share") or 0)
+        + float(share.get("commission_amount") or 0)
+        + float(share.get("tax_amount") or 0)
+        + float(share.get("expenses_compensation") or 0)
+        + float(share.get("operator_amount") or 0)
+        + float(share.get("executor_amount") or 0)
+    )
+
+
+def _ensure_profit_lots_for_invoices(invoice_ids: list[int]) -> None:
+    if not invoice_ids:
+        return
+    from src.db.finance import rebuild_profit_lots
+
+    conn = get_connection()
+    try:
+        for invoice_id in invoice_ids:
+            rows = conn.execute(
+                """
+                SELECT id, usage_log_id, source_key
+                FROM finance_entries
+                WHERE invoice_id = ?
+                  AND kind = 'customer_income'
+                """,
+                (invoice_id,),
+            ).fetchall()
+            usage_log_ids: list[int] = []
+            for row in rows:
+                usage_log_id = row["usage_log_id"]
+                if usage_log_id is None:
+                    match = re.match(r"usage:(\d+):income$", row["source_key"] or "")
+                    if match:
+                        usage_log_id = int(match.group(1))
+                        conn.execute(
+                            "UPDATE finance_entries SET usage_log_id = ? WHERE id = ?",
+                            (usage_log_id, row["id"]),
+                        )
+                if usage_log_id is not None:
+                    usage_log_ids.append(int(usage_log_id))
+            if usage_log_ids:
+                rebuild_profit_lots(conn, invoice_id, usage_log_ids)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _expense_repayment_preview_allocations(expense_repayments: list[dict]) -> tuple[float, dict[int, float]]:
+    repayment_total = 0.0
+    repayment_by_user: dict[int, float] = {}
+    if not expense_repayments:
+        return repayment_total, repayment_by_user
+
+    conn = get_connection()
+    try:
+        for item in expense_repayments:
+            expense_id = item.get("expense_id")
+            requested = float(item.get("amount") or 0)
+            if expense_id is None or requested <= 0:
+                continue
+            row = conn.execute(
+                """
+                SELECT e.user_id,
+                       MAX(
+                           e.amount
+                           - COALESCE(pe.allocated_amount, 0)
+                           - COALESCE(fe.repaid_amount, 0),
+                           0
+                       ) AS remaining
+                FROM expenses e
+                LEFT JOIN (
+                    SELECT expense_id, SUM(amount) AS allocated_amount
+                    FROM payout_expenses
+                    WHERE expense_id = ?
+                    GROUP BY expense_id
+                ) pe ON pe.expense_id = e.id
+                LEFT JOIN (
+                    SELECT expense_id, SUM(ABS(amount)) AS repaid_amount
+                    FROM finance_entries
+                    WHERE expense_id = ?
+                      AND kind = 'expense_repayment'
+                    GROUP BY expense_id
+                ) fe ON fe.expense_id = e.id
+                WHERE e.id = ?
+                """,
+                (expense_id, expense_id, expense_id),
+            ).fetchone()
+            if not row:
+                continue
+            amount = min(requested, float(row["remaining"] or 0))
+            if amount <= 0:
+                continue
+            repayment_total += amount
+            if row["user_id"]:
+                user_id = int(row["user_id"])
+                repayment_by_user[user_id] = repayment_by_user.get(user_id, 0.0) + amount
+    finally:
+        conn.close()
+    return repayment_total, repayment_by_user
+
+
+def validate_expense_repayments_available_profit(
+    invoice_ids: list[int],
+    expense_repayments: list[dict],
+) -> tuple[bool, float, float]:
+    """Return whether selected paid invoice lots can fund requested repayments."""
+
+    if not expense_repayments:
+        return True, 0.0, 0.0
+    _ensure_profit_lots_for_invoices(invoice_ids)
+    repayment_total, _ = _expense_repayment_preview_allocations(expense_repayments)
+    from src.db.finance import available_profit_amount
+
+    available = float(available_profit_amount(invoice_ids))
+    return repayment_total <= available + 0.01, repayment_total, available
+
+
+def _apply_expense_repayment_allocations(
+    calc: dict,
+    repayment_total: float,
+    repayment_by_user: dict[int, float],
+) -> tuple[float, list[dict]]:
+    adjusted_net = calc["net"] - repayment_total
+    shares = [dict(share) for share in calc["payout_shares"]]
+
+    profit_shares = [share for share in shares if float(share.get("split_pct") or 0) > 0]
+    total_split_pct = sum(float(share.get("split_pct") or 0) for share in profit_shares)
+    remaining_profit = max(adjusted_net, 0.0)
+    allocated_profit = 0.0
+    for index, share in enumerate(profit_shares):
+        if total_split_pct <= 0:
+            profit = 0.0
+        elif index == len(profit_shares) - 1:
+            profit = round(remaining_profit - allocated_profit, 2)
+        else:
+            profit = round(remaining_profit * float(share.get("split_pct") or 0) / total_split_pct, 2)
+            allocated_profit += profit
+        share["profit_share"] = profit
+
+    if repayment_by_user:
+        shares_by_user = {int(share["user_id"]): share for share in shares if share.get("user_id") is not None}
+        for user_id, amount in repayment_by_user.items():
+            share = shares_by_user.get(user_id)
+            if not share:
+                share = {
+                    "user_id": user_id,
+                    "split_pct": 0.0,
+                    "commission_amount": 0.0,
+                    "tax_amount": 0.0,
+                    "expenses_compensation": 0.0,
+                    "operator_icons": 0,
+                    "operator_amount": 0.0,
+                    "executor_count": 0,
+                    "executor_amount": 0.0,
+                    "profit_share": 0.0,
+                    "total": 0.0,
+                }
+                shares.append(share)
+                shares_by_user[user_id] = share
+            share["expenses_compensation"] = float(share.get("expenses_compensation") or 0) + amount
+
+    for share in shares:
+        share["total"] = _share_total(share)
+
+    conn = get_connection()
+    try:
+        shares = _attach_user_names(conn, shares)
+    finally:
+        conn.close()
+    return adjusted_net, shares
 
 
 def _release_finance_entries_for_pending_payout(payout_id: int) -> None:
@@ -238,17 +430,6 @@ def _get_linked_expenses(payout_id: int) -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Расчёт выплаты (FIFO для расходов)
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _director_user_ids(conn, user_ids: list[int]) -> set[int]:
-    if not user_ids:
-        return set()
-    placeholders = ",".join("?" * len(user_ids))
-    rows = conn.execute(
-        f"SELECT id FROM users WHERE id IN ({placeholders}) AND COALESCE(is_director, 0) = 1",
-        user_ids,
-    ).fetchall()
-    return {int(row["id"]) for row in rows}
 
 
 def _operator_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, dict]:
@@ -423,18 +604,32 @@ def _ledger_payout_for_invoices(
         """,
         invoice_ids,
     ).fetchall()
-    net = sum(max(float(row["available"] or 0), 0.0) for row in lot_rows)
+    total_operator_amount = sum(item["operator_amount"] for item in operator_payouts.values())
+    total_executor_amount = sum(item["executor_amount"] for item in executor_payouts.values())
+    lot_invoice_ids = {int(row["invoice_id"]) for row in lot_rows if row["invoice_id"] is not None}
+    missing_lot_invoice_ids = set(invoice_ids) - lot_invoice_ids
+    fallback_net = sum(invoice_amounts.get(invoice_id, 0.0) for invoice_id in missing_lot_invoice_ids)
+    fallback_net -= sum(
+        abs(float(row["amount"] or 0))
+        for row in entry_rows
+        if int(row["invoice_id"] or 0) in missing_lot_invoice_ids
+        and row["kind"] in {"expense_repayment", "operator_salary", "executor_salary"}
+    )
+    net = sum(max(float(row["available"] or 0), 0.0) for row in lot_rows) + max(fallback_net, 0.0)
     total_compensated = sum(
         abs(float(row["amount"] or 0)) for row in entry_rows if row["kind"] == "expense_repayment"
     )
+    already_allocated = sum(
+        abs(float(row["amount"] or 0)) for row in entry_rows if row["kind"] == "director_profit"
+    )
+    if not lot_rows:
+        net = invoices_total - total_compensated - total_operator_amount - total_executor_amount
 
-    split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
-    director_ids = _director_user_ids(conn, split_user_ids)
-    director_splits = [us for us in user_splits if int(us["user_id"]) in director_ids]
-    total_split_pct = sum(us["split_pct"] for us in director_splits) or 0.0
+    profit_splits = [us for us in user_splits if us.get("user_id") is not None]
+    total_split_pct = sum(us["split_pct"] for us in profit_splits) or 0.0
     profit_shares: dict[int, float] = {}
     normalized_split_pct: dict[int, float] = {}
-    for us in director_splits:
+    for us in profit_splits:
         user_id = int(us["user_id"])
         pct = us["split_pct"]
         normalized_split_pct[user_id] = round(pct * 100 / total_split_pct, 2) if total_split_pct else 0.0
@@ -500,8 +695,6 @@ def _ledger_payout_for_invoices(
             }
         )
 
-    total_operator_amount = sum(item["operator_amount"] for item in operator_payouts.values())
-    total_executor_amount = sum(item["executor_amount"] for item in executor_payouts.values())
     return {
         "invoices_total": invoices_total,
         "total_commission": sum(user_commission.values()),
@@ -510,10 +703,11 @@ def _ledger_payout_for_invoices(
         "total_executor_amount": total_executor_amount,
         "expenses_total": total_compensated,
         "compensated_total": total_compensated,
+        "already_allocated": already_allocated,
         "net": net,
         "invoice_links": [{"invoice_id": iid} for iid in invoice_ids],
         "expense_links": [],
-        "payout_shares": payout_shares,
+        "payout_shares": _attach_user_names(conn, payout_shares),
     }
 
 
@@ -604,15 +798,13 @@ def calculate_payout(
     total_executor_amount = sum(item["executor_amount"] for item in executor_payouts.values())
     net = invoices_total - total_compensated - total_operator_amount - total_executor_amount
 
-    # 4. Делим net пропорционально split_pct только между директорами.
-    split_user_ids = [int(us["user_id"]) for us in user_splits if us.get("user_id") is not None]
-    director_ids = _director_user_ids(conn, split_user_ids)
-    director_splits = [us for us in user_splits if int(us["user_id"]) in director_ids]
+    # 4. Делим net пропорционально split_pct из конфигурации долей.
+    profit_splits = [us for us in user_splits if us.get("user_id") is not None]
     profit_shares: dict[int, float] = {}  # user_id → profit_share
     normalized_split_pct: dict[int, float] = {}
-    total_split_pct = sum(us["split_pct"] for us in director_splits) or 0.0
+    total_split_pct = sum(us["split_pct"] for us in profit_splits) or 0.0
 
-    for us in director_splits:
+    for us in profit_splits:
         user_id = int(us["user_id"])
         pct = us["split_pct"]
         normalized_split_pct[user_id] = round(pct * 100 / total_split_pct, 2) if total_split_pct else 0.0
@@ -692,6 +884,7 @@ def calculate_payout(
         "total_executor_amount": total_executor_amount,
         "expenses_total": sum(float(e["amount"]) for e in expenses),
         "compensated_total": total_compensated,
+        "already_allocated": 0.0,
         "net": net,
         "invoice_links": [{"invoice_id": iid} for iid in invoice_ids],
         "expense_links": [
@@ -705,9 +898,33 @@ def preview_payout(
     invoice_ids: list[int],
     expense_ids: list[int],
     user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
 ) -> dict:
     """Превью выплаты без сохранения в БД."""
-    if not invoice_ids and not expense_ids:
+    expense_repayments = expense_repayments or []
+    if not invoice_ids and not expense_ids and not expense_repayments:
+        conn = get_connection()
+        try:
+            shares = _attach_user_names(
+                conn,
+                [
+                    {
+                        **us,
+                        "commission_amount": 0.0,
+                        "tax_amount": 0.0,
+                        "expenses_compensation": 0.0,
+                        "operator_icons": 0,
+                        "operator_amount": 0.0,
+                        "executor_count": 0,
+                        "executor_amount": 0.0,
+                        "profit_share": 0.0,
+                        "total": 0.0,
+                    }
+                    for us in user_splits
+                ],
+            )
+        finally:
+            conn.close()
         return {
             "invoice_count": 0,
             "expense_count": 0,
@@ -717,22 +934,9 @@ def preview_payout(
             "total_operator_amount": 0.0,
             "total_executor_amount": 0.0,
             "total_expenses": 0.0,
+            "already_allocated": 0.0,
             "net_amount": 0.0,
-            "shares": [
-                {
-                    **us,
-                    "commission_amount": 0.0,
-                    "tax_amount": 0.0,
-                    "expenses_compensation": 0.0,
-                    "operator_icons": 0,
-                    "operator_amount": 0.0,
-                    "executor_count": 0,
-                    "executor_amount": 0.0,
-                    "profit_share": 0.0,
-                    "total": 0.0,
-                }
-                for us in user_splits
-            ],
+            "shares": shares,
         }
 
     calc = calculate_payout(invoice_ids, expense_ids, user_splits)
@@ -750,19 +954,21 @@ def preview_payout(
             original_expenses_total = float(row["total"])
         conn.close()
 
-    net_amount = calc["net"]
+    repayment_total, repayment_by_user = _expense_repayment_preview_allocations(expense_repayments)
+    net_amount, shares = _apply_expense_repayment_allocations(calc, repayment_total, repayment_by_user)
 
     return {
         "invoice_count": len(invoice_ids),
-        "expense_count": len(expense_ids),
+        "expense_count": len(expense_ids) + len(expense_repayments),
         "total_income": calc["invoices_total"],
         "total_commission": calc["total_commission"],
         "total_tax": calc["total_tax"],
         "total_operator_amount": calc["total_operator_amount"],
         "total_executor_amount": calc["total_executor_amount"],
-        "total_expenses": original_expenses_total,
+        "total_expenses": original_expenses_total + repayment_total,
+        "already_allocated": calc.get("already_allocated", 0.0),
         "net_amount": net_amount,
-        "shares": calc["payout_shares"],
+        "shares": shares,
     }
 
 
@@ -846,6 +1052,7 @@ def create_payout_with_calculation(
     invoice_ids: list[int],
     expense_ids: list[int],
     user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
 ) -> dict:
     """
     Создаёт выплату с полным расчётом (FIFO).
@@ -863,7 +1070,16 @@ def create_payout_with_calculation(
     conn.commit()
     conn.close()
 
+    expense_repayments = expense_repayments or []
+    _ensure_profit_lots_for_invoices(invoice_ids)
     calc = calculate_payout(invoice_ids, expense_ids, user_splits)
+    repayment_total, repayment_by_user = _expense_repayment_preview_allocations(expense_repayments)
+    if expense_repayments:
+        calc["net"], calc["payout_shares"] = _apply_expense_repayment_allocations(
+            calc,
+            repayment_total,
+            repayment_by_user,
+        )
 
     # Записываем payout_shares
     for share in calc["payout_shares"]:
@@ -897,6 +1113,11 @@ def create_payout_with_calculation(
     # Записываем payout_expenses с суммами компенсации
     for link in calc["expense_links"]:
         _link_expense(payout_id, link["expense_id"], link["amount"])
+
+    if expense_repayments:
+        from src.db.finance import create_expense_repayments
+
+        create_expense_repayments(payout_id, expense_repayments, invoice_ids)
 
     _create_director_profit_entries_for_payout(payout_id, invoice_ids, user_splits)
     _lock_finance_entries_for_payout(payout_id, invoice_ids)
@@ -1059,6 +1280,7 @@ def recalculate_payout(
     invoice_ids: list[int],
     expense_ids: list[int],
     user_splits: list[dict],
+    expense_repayments: list[dict] | None = None,
 ) -> dict | None:
     """Пересчитывает выплату (только pending)."""
     conn = get_connection()
@@ -1076,7 +1298,16 @@ def recalculate_payout(
     _unlink_expenses(payout_id)
     _delete_shares(payout_id)
 
+    expense_repayments = expense_repayments or []
+    _ensure_profit_lots_for_invoices(invoice_ids)
     calc = calculate_payout(invoice_ids, expense_ids, user_splits)
+    repayment_total, repayment_by_user = _expense_repayment_preview_allocations(expense_repayments)
+    if expense_repayments:
+        calc["net"], calc["payout_shares"] = _apply_expense_repayment_allocations(
+            calc,
+            repayment_total,
+            repayment_by_user,
+        )
 
     for share in calc["payout_shares"]:
         _create_share(
@@ -1107,6 +1338,11 @@ def recalculate_payout(
 
     for link in calc["expense_links"]:
         _link_expense(payout_id, link["expense_id"], link["amount"])
+
+    if expense_repayments:
+        from src.db.finance import create_expense_repayments
+
+        create_expense_repayments(payout_id, expense_repayments, invoice_ids)
 
     _create_director_profit_entries_for_payout(payout_id, invoice_ids, user_splits)
     _lock_finance_entries_for_payout(payout_id, invoice_ids)

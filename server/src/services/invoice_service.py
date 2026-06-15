@@ -372,7 +372,8 @@ def available_resources(company_id: int | None = None) -> tuple[int, dict]:
         "invoices": [
             invoice
             for invoice in invoices
-            if invoice.get("allocation", {}).get("status") != "fully_allocated"
+            if int(invoice.get("paid") or 0) == 1
+            and invoice.get("allocation", {}).get("status") != "fully_allocated"
         ],
         "expenses": [
             expense

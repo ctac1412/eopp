@@ -41,7 +41,8 @@ const MASTER_ACCESS_MODES = [
   { value: "selected", label: "Только выбранные" },
 ];
 
-const PER_PAGE = 20;
+const DEFAULT_ANSWERS_PAGE_SIZE = 25;
+const ANSWERS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 function formatTime(iso) {
   if (!iso) return "—";
@@ -104,6 +105,7 @@ export function OperatorsTab({ adminToken, onError }) {
   const [links, setLinks] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [answersPage, setAnswersPage] = useState(1);
+  const [answersPageSize, setAnswersPageSize] = useState(DEFAULT_ANSWERS_PAGE_SIZE);
   const [answersTotalPages, setAnswersTotalPages] = useState(1);
   const [answersTotal, setAnswersTotal] = useState(0);
   const [operatorSearch, setOperatorSearch] = useState("");
@@ -150,14 +152,16 @@ export function OperatorsTab({ adminToken, onError }) {
     }
   }, [adminToken, onError]);
 
-  const loadAnswers = useCallback(async (page = 1) => {
+  const loadAnswers = useCallback(async (page = 1, pageSize = DEFAULT_ANSWERS_PAGE_SIZE) => {
+    const safePageSize = Number(pageSize) || DEFAULT_ANSWERS_PAGE_SIZE;
     try {
-      const res = await adminRequest(`/admin/distribution-answers?page=${page}&per_page=${PER_PAGE}`, {
+      const res = await adminRequest(`/admin/distribution-answers?page=${page}&per_page=${safePageSize}`, {
         headers: adminHeaders(adminToken),
       });
       const data = await res.json();
       setAnswers(data.items || []);
       setAnswersPage(data.page || 1);
+      setAnswersPageSize(safePageSize);
       setAnswersTotalPages(data.pages || 1);
       setAnswersTotal(data.total || 0);
     } catch {
@@ -305,7 +309,7 @@ export function OperatorsTab({ adminToken, onError }) {
   }, [selectedOperator]);
 
   const refreshAll = async () => {
-    await Promise.all([loadOperators(), loadLinks(), loadAnswers(answersPage), loadKeys(), loadCompanies()]);
+    await Promise.all([loadOperators(), loadLinks(), loadAnswers(answersPage, answersPageSize), loadKeys(), loadCompanies()]);
   };
 
   const deleteOperator = async (id) => {
@@ -694,7 +698,7 @@ export function OperatorsTab({ adminToken, onError }) {
         className="mt-3"
         size="small"
         title={`Журнал действий операторов (${answersTotal})`}
-        extra={<Button size="small" onClick={() => loadAnswers(answersPage)}>Обновить</Button>}
+        extra={<Button size="small" onClick={() => loadAnswers(answersPage, answersPageSize)}>Обновить</Button>}
       >
         <DataTable
           className="operator-answers-table"
@@ -704,10 +708,11 @@ export function OperatorsTab({ adminToken, onError }) {
           emptyText="Нет действий"
           pagination={{
             current: answersPage,
-            pageSize: PER_PAGE,
+            pageSize: answersPageSize,
             total: answersTotal,
-            showSizeChanger: false,
-            onChange: (page) => loadAnswers(page),
+            showSizeChanger: true,
+            pageSizeOptions: ANSWERS_PAGE_SIZE_OPTIONS,
+            onChange: (page, pageSize) => loadAnswers(pageSize !== answersPageSize ? 1 : page, pageSize),
             showTotal: (total) => `${total} всего`,
           }}
         />

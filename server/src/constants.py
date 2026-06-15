@@ -93,8 +93,10 @@ USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED = sync_side_work_enabled(
     "USAGE_SYNC_CONFIG_ENRICHMENT_ENABLED"
 )
 
-# Единый путь к БД — все модули должны ссылаться сюда
-DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "data", "api_keys.db")
+# Единый путь к БД — все модули должны ссылаться сюда.
+# Локальный дефолт живет в server/data; EOPP_DB_PATH оставлен для тестов,
+# контейнеров и явного запуска против другой базы.
+DB_PATH = os.environ.get("EOPP_DB_PATH") or os.path.join(PROJECT_DIR, "server", "data", "api_keys.db")
 
 # Разрешённые origins для CORS (через запятую в env, по умолчанию localhost)
 _CORS_ORIGINS_RAW = os.environ.get("EOPP_CORS_ORIGINS", "http://localhost:8765,http://localhost:8766,http://127.0.0.1:8765,http://127.0.0.1:8766")

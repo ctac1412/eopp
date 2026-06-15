@@ -450,7 +450,11 @@ def rebuild_profit_lots(conn, invoice_id: int, usage_log_ids: list[int] | None =
         )
 
 
-def create_expense_repayments(payout_id: int, expense_repayments: list[dict]) -> list[dict]:
+def create_expense_repayments(
+    payout_id: int,
+    expense_repayments: list[dict],
+    invoice_ids: list[int] | None = None,
+) -> list[dict]:
     conn = get_connection()
     created: list[dict] = []
     try:
@@ -464,7 +468,7 @@ def create_expense_repayments(payout_id: int, expense_repayments: list[dict]) ->
             to_allocate = min(requested, remaining_expense)
             if to_allocate <= 0:
                 continue
-            for lot in _available_profit_lots(conn):
+            for lot in _available_profit_lots(conn, invoice_ids):
                 if to_allocate <= 0:
                     break
                 available = int(lot["available"] or 0)
@@ -503,6 +507,14 @@ def create_expense_repayments(payout_id: int, expense_repayments: list[dict]) ->
     return created
 
 
+def available_profit_amount(invoice_ids: list[int] | None = None) -> int:
+    conn = get_connection()
+    try:
+        return sum(int(row["available"] or 0) for row in _available_profit_lots(conn, invoice_ids))
+    finally:
+        conn.close()
+
+
 def _expense_unpaid_amount(conn, expense_id: int) -> int:
     row = conn.execute(
         """
@@ -520,18 +532,25 @@ def _expense_unpaid_amount(conn, expense_id: int) -> int:
     return int(row["remaining"] or 0)
 
 
-def _available_profit_lots(conn) -> list[dict]:
+def _available_profit_lots(conn, invoice_ids: list[int] | None = None) -> list[dict]:
+    conditions = ["COALESCE(i.paid, 0) = 1"]
+    params: list[int] = []
+    if invoice_ids:
+        placeholders = _placeholders(invoice_ids)
+        conditions.append(f"pl.invoice_id IN ({placeholders})")
+        params.extend(invoice_ids)
+    where_sql = " AND ".join(conditions)
     return [
         _row_to_dict(row)
         for row in conn.execute(
-            """
+            f"""
             SELECT
                 pl.*,
                 pl.gross_amount + COALESCE(SUM(fe.amount), 0) AS available
             FROM profit_lots pl
             JOIN invoices i ON i.id = pl.invoice_id
             LEFT JOIN finance_entries fe ON fe.profit_lot_id = pl.id
-            WHERE COALESCE(i.paid, 0) = 1
+            WHERE {where_sql}
               AND NOT EXISTS (
                   SELECT 1 FROM finance_entries locked
                   WHERE locked.profit_lot_id = pl.id
@@ -540,7 +559,8 @@ def _available_profit_lots(conn) -> list[dict]:
             GROUP BY pl.id
             HAVING available > 0
             ORDER BY pl.created_at ASC, pl.id ASC
-            """
+            """,
+            params,
         ).fetchall()
     ]
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Checkbox, Input, InputNumber, Modal, Space } from "antd";
+import { Card, Checkbox, Input, InputNumber, Modal, Space, Tabs } from "antd";
 import {
   Button,
   DataTable,
@@ -300,7 +300,7 @@ function CompanyAccessMatrix({ users, draft, search, onSearchChange, onToggle })
         data={filteredUsers}
         emptyText={search.trim() ? "Пользователи не найдены" : "Нет пользователей"}
         pagination={false}
-        scroll={{ x: "max-content", y: 430 }}
+        scroll={false}
       />
     </div>
   );
@@ -337,6 +337,7 @@ export function CompaniesTab({ adminToken, onError }) {
   const [accessDraft, setAccessDraft] = useState({ finance: [], operator: [], executor: [] });
   const [accessSearch, setAccessSearch] = useState("");
   const [accessSaving, setAccessSaving] = useState(false);
+  const [companyEditorTab, setCompanyEditorTab] = useState("tariffs");
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -438,7 +439,7 @@ export function CompaniesTab({ adminToken, onError }) {
     setShowModal(true);
   };
 
-  const openEdit = (company) => {
+  const openEdit = (company, { show = true } = {}) => {
     const setting = settingsByCompany.get(company.name);
     setEditingId(company.id);
     setForm({
@@ -447,7 +448,7 @@ export function CompaniesTab({ adminToken, onError }) {
       notes: company.notes || "",
       tax_commission_mode: normalizeTaxCommissionMode(setting?.tax_commission_mode),
     });
-    setShowModal(true);
+    if (show) setShowModal(true);
   };
 
   const openDefaultTariff = () => {
@@ -483,7 +484,8 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   };
 
-  const saveCompany = async () => {
+  const saveCompany = async (options = {}) => {
+    const close = options?.close !== false;
     if (!form.name.trim()) return;
     setSaving(true);
     const aliasesArray = parseAliases(form.aliases);
@@ -525,9 +527,14 @@ export function CompaniesTab({ adminToken, onError }) {
         );
         if (!settingsRes.ok) throw new Error(`HTTP ${settingsRes.status}`);
       }
-      setShowModal(false);
-      setEditingId(null);
-      setForm({ name: "", aliases: "", notes: "", tax_commission_mode: "added" });
+      if (close) {
+        setShowModal(false);
+        setEditingId(null);
+        setForm({ name: "", aliases: "", notes: "", tax_commission_mode: "added" });
+      } else {
+        setForm((prev) => ({ ...prev, name: saved.name || prev.name }));
+        setTariffCompany((prev) => (prev ? { ...prev, ...saved } : prev));
+      }
       await Promise.all([fetchCompanies(), fetchCompanySettings()]);
     } catch (err) {
       onError?.(`Ошибка сохранения компании: ${err.message}`);
@@ -559,6 +566,8 @@ export function CompaniesTab({ adminToken, onError }) {
   };
 
   const openTariff = async (company) => {
+    setCompanyEditorTab("tariffs");
+    openEdit(company, { show: false });
     const setting = settingsByCompany.get(company.name);
     setTariffCompany(company);
     setTariffForm(EMPTY_TARIFF_FORM);
@@ -649,7 +658,7 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   };
 
-  const openAccess = async (company) => {
+  const loadAccess = async (company) => {
     setAccessCompany(company);
     setAccessDraft({ finance: [], operator: [], executor: [] });
     setAccessSearch("");
@@ -671,6 +680,15 @@ export function CompaniesTab({ adminToken, onError }) {
       onError?.(`Access load failed: ${err.message}`);
     }
   };
+
+  const handleCompanyEditorTabChange = (key) => {
+    setCompanyEditorTab(key);
+    if (key === "access" && tariffCompany) {
+      loadAccess(tariffCompany);
+    }
+  };
+
+
 
   const addAccessUser = (kind, userId) => {
     setAccessDraft((prev) => ({
@@ -695,7 +713,8 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   };
 
-  const saveAccess = async () => {
+  const saveAccess = async (options = {}) => {
+    const close = options?.close !== false;
     if (!accessCompany) return;
     setAccessSaving(true);
     try {
@@ -709,13 +728,25 @@ export function CompaniesTab({ adminToken, onError }) {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setAccessCompany(null);
+      if (close) setAccessCompany(null);
     } catch (err) {
       onError?.(`Access save failed: ${err.message}`);
     } finally {
       setAccessSaving(false);
     }
   };
+
+  function saveCompanyEditorTab() {
+    if (companyEditorTab === "info") {
+      saveCompany({ close: false });
+      return;
+    }
+    if (companyEditorTab === "access") {
+      saveAccess({ close: false });
+      return;
+    }
+    saveTariff();
+  }
 
   const columns = [
     {
@@ -801,13 +832,10 @@ export function CompaniesTab({ adminToken, onError }) {
     },
     {
       title: "",
-      width: 88,
+      width: 56,
       align: "right",
       render: (_, company) => (
         <Space size={3} className="companies-table__actions">
-          <Button className="companies-table__action companies-table__action--wide" size="small" onClick={(event) => { event.stopPropagation(); openTariff(company); }}>
-            {"\u041e\u0442\u043a\u0440."}
-          </Button>
           <Button className="companies-table__action companies-table__action--wide" size="small" variant="danger" title={"\u0423\u0434\u0430\u043b\u0438\u0442\u044c"} onClick={(event) => { event.stopPropagation(); deleteCompany(company); }}>
             {"\u0423\u0434"}
           </Button>
@@ -934,63 +962,113 @@ export function CompaniesTab({ adminToken, onError }) {
       </Modal>
 
       <Modal
-        title={tariffCompany ? `Тариф компании: ${tariffCompany.name}` : "Тариф компании"}
+        title={tariffCompany ? `\u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f: ${tariffCompany.name}` : "\u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f"}
         open={!!tariffCompany}
-        onOk={saveTariff}
-        onCancel={() => setTariffCompany(null)}
-        okText="Сохранить"
-        cancelText="Отмена"
-        confirmLoading={tariffSaving}
-        width={680}
-        footer={(_, { OkBtn, CancelBtn }) => (
+        onOk={saveCompanyEditorTab}
+        onCancel={() => {
+          setTariffCompany(null);
+          setAccessCompany(null);
+        }}
+        okText={"\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
+        cancelText={"\u041e\u0442\u043c\u0435\u043d\u0430"}
+        confirmLoading={tariffSaving || saving || accessSaving}
+        width={860}
+        footer={(_, { CancelBtn }) => (
           <div className="company-tariff-footer">
-            <Space size={8} wrap>
-              <Button size="small" onClick={applyDefaultTariff} loading={tariffSaving}>
-                Применить дефолт
-              </Button>
-              <Button size="small" variant="danger" onClick={deleteTariff} loading={tariffSaving}>
-                Удалить тариф
-              </Button>
-            </Space>
+            {companyEditorTab === "tariffs" ? (
+              <Space size={8} wrap>
+                <Button size="small" onClick={applyDefaultTariff} loading={tariffSaving}>
+                  {"\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c \u0434\u0435\u0444\u043e\u043b\u0442"}
+                </Button>
+                <Button size="small" variant="danger" onClick={deleteTariff} loading={tariffSaving}>
+                  {"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0442\u0430\u0440\u0438\u0444"}
+                </Button>
+              </Space>
+            ) : <span />}
             <Space size={8}>
               <CancelBtn />
-              <OkBtn />
+              <Button size="small" variant="primary" onClick={saveCompanyEditorTab} loading={tariffSaving || saving || accessSaving}>
+                {"\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
+              </Button>
             </Space>
           </div>
         )}
         destroyOnHidden
       >
-        <CompanyTariffForm
-          form={tariffForm}
-          onChange={setTariffForm}
-          taxCommissionMode={tariffTaxCommissionMode}
-          onTaxCommissionModeChange={setTariffTaxCommissionMode}
-          billingDefaults={tariffBillingDefaults}
-          onBillingDefaultsChange={setTariffBillingDefaults}
-          financeParticipants={financeParticipants}
+        <Tabs
+          activeKey={companyEditorTab}
+          onChange={handleCompanyEditorTabChange}
+          items={[
+            {
+              key: "tariffs",
+              label: "\u0422\u0430\u0440\u0438\u0444\u044b",
+              children: (
+                <CompanyTariffForm
+                  form={tariffForm}
+                  onChange={setTariffForm}
+                  taxCommissionMode={tariffTaxCommissionMode}
+                  onTaxCommissionModeChange={setTariffTaxCommissionMode}
+                  billingDefaults={tariffBillingDefaults}
+                  onBillingDefaultsChange={setTariffBillingDefaults}
+                  financeParticipants={financeParticipants}
+                />
+              ),
+            },
+            {
+              key: "info",
+              label: "\u0418\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044f",
+              children: (
+                <div className="companies-modal-form">
+                  <label className="form-label small mb-0">
+                    {"\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435"}
+                    <TextInput
+                      value={form.name}
+                      onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+                      placeholder={"\u041e\u041e\u041e \u041a\u043e\u043c\u043f\u0430\u043d\u0438\u044f"}
+                    />
+                  </label>
+                  <label className="form-label small mb-0">
+                    {"\u0410\u043b\u0438\u0430\u0441\u044b"}
+                    <Input.TextArea
+                      data-eopp-component="CompaniesAliasesTextarea"
+                      className="companies-textarea"
+                      rows={5}
+                      value={form.aliases}
+                      onChange={(event) => setForm((prev) => ({ ...prev, aliases: event.target.value }))}
+                      placeholder={"\u041e\u041e\u041e \u0420\u043e\u043c\u0430\u0448\u043a\u0430\nRomashka Ltd"}
+                    />
+                  </label>
+                  <label className="form-label small mb-0">
+                    {"\u0417\u0430\u043c\u0435\u0442\u043a\u0438"}
+                    <Input.TextArea
+                      data-eopp-component="CompaniesNotesTextarea"
+                      className="companies-textarea"
+                      rows={4}
+                      value={form.notes}
+                      onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      placeholder={"\u041b\u044e\u0431\u044b\u0435 \u0437\u0430\u043c\u0435\u0442\u043a\u0438"}
+                    />
+                  </label>
+                </div>
+              ),
+            },
+            {
+              key: "access",
+              label: "\u0414\u043e\u0441\u0442\u0443\u043f",
+              children: (
+                <div className="company-access-modal">
+                  <CompanyAccessMatrix
+                    users={accessUsers}
+                    draft={accessDraft}
+                    search={accessSearch}
+                    onSearchChange={setAccessSearch}
+                    onToggle={toggleAccessUser}
+                  />
+                </div>
+              ),
+            },
+          ]}
         />
-      </Modal>
-
-      <Modal
-        title={accessCompany ? `Доступ: ${accessCompany.name}` : "Доступ"}
-        open={!!accessCompany}
-        onOk={saveAccess}
-        onCancel={() => setAccessCompany(null)}
-        okText="Сохранить"
-        cancelText="Отмена"
-        confirmLoading={accessSaving}
-        width={820}
-        destroyOnHidden
-      >
-        <div className="company-access-modal">
-          <CompanyAccessMatrix
-            users={accessUsers}
-            draft={accessDraft}
-            search={accessSearch}
-            onSearchChange={setAccessSearch}
-            onToggle={toggleAccessUser}
-          />
-        </div>
       </Modal>
     </div>
   );

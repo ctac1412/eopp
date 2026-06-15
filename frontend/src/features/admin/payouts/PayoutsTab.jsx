@@ -107,7 +107,7 @@ function PayoutDetails({ payout }) {
   );
 }
 
-export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange, onCreate, onRefresh }) {
+export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange, onCreate, onRefresh, onConfigureDefaultSplits }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -255,6 +255,7 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
         right={
           <Space wrap>
             <Button size="small" onClick={onRefresh}>Обновить</Button>
+            <Button size="small" onClick={onConfigureDefaultSplits}>Дефолтные доли</Button>
             <Button size="small" variant="primary" onClick={onCreate}>Новая выплата</Button>
           </Space>
         }
