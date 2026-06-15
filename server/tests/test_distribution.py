@@ -78,26 +78,64 @@ def admin_token(client):
     from src.db import list_keys
     admin_key = next((key for key in list_keys() if key["is_admin"]), None)
     assert admin_key is not None
-    return admin_key["key"]
+    response = client.post(
+        "/admin/auth",
+        json={"login": "admin", "password": admin_key["key"]},
+    )
+    assert response.status_code == 200
+    return response.cookies["eopp_admin_session"]
 
 
 @pytest.fixture
-def master_key(client, admin_token):
+def company_id(client, admin_token):
+    response = client.post(
+        "/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "Distribution Company"},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+@pytest.fixture
+def key_owner_id(client, admin_token, company_id):
+    response = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Distribution Key Owner",
+            "login": "distribution.key.owner",
+            "password": "strong-password",
+            "company_id": company_id,
+            "executor_access": {
+                "all_companies": False,
+                "company_ids": [company_id],
+            },
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["id"]
+
+
+@pytest.fixture
+def master_key(client, admin_token, key_owner_id):
     r = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "master", "max_uses": 1000},
+        json={"label": "master", "max_uses": 1000, "user_id": key_owner_id},
     )
+    assert r.status_code == 200
     return r.json()["key"]
 
 
 @pytest.fixture
-def operator_key(client, admin_token):
+def operator_key(client, admin_token, key_owner_id):
     r = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "operator", "max_uses": 1000},
+        json={"label": "operator", "max_uses": 1000, "user_id": key_owner_id},
     )
+    assert r.status_code == 200
     return r.json()["key"]
 
 
@@ -135,15 +173,38 @@ class TestDistributionFlow:
         })
         assert r.status_code == 404
 
-    def test_operator_subscribe_unsubscribe(self, client, master_key, operator_key, admin_token):
+    def test_operator_subscribe_unsubscribe(self, client, master_key, admin_token, company_id):
         """Create operator, link to master, verify."""
-        r = client.post("/admin/operators", headers={"X-Admin-Token": admin_token}, json={"nickname": "test-op"})
+        from src.repositories import api_key_repo
+
+        r = client.post(
+            "/admin/users",
+            headers={"X-Admin-Token": admin_token},
+            json={
+                "name": "Distribution Operator",
+                "login": "distribution.operator",
+                "password": "strong-password",
+                "company_id": company_id,
+                "operator_profile": {
+                    "company_id": company_id,
+                    "company_ids": [company_id],
+                    "active": True,
+                    "nickname": "test-op",
+                },
+            },
+        )
         assert r.status_code == 200
-        op = r.json()
+        op = r.json()["operator_profile"]
         assert "uuid" in op
         uuid = op["uuid"]
+        master = api_key_repo.get_key_record(master_key)
+        assert master is not None
 
-        r2 = client.post(f"/operators/{uuid}/link", json={"master_key": master_key})
+        r2 = client.put(
+            f"/admin/operators/{op['operator_id']}/link",
+            headers={"X-Admin-Token": admin_token},
+            json={"master_key_id": master.id},
+        )
         assert r2.status_code == 200
 
         # Operator page loads (SPA — renders client-side)

@@ -1,0 +1,179 @@
+from datetime import UTC, datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+
+
+def test_distribution_answer_save_does_not_run_runtime_schema_changes(
+    isolated_api_db,
+):
+    from sqlalchemy import event
+
+    from src.entities import get_engine
+    from src.repositories import distribution_repo
+
+    schema_sql: list[str] = []
+
+    def capture_sql(conn, cursor, statement, parameters, context, executemany):
+        if "ALTER TABLE distribution_answers" in statement:
+            schema_sql.append(statement)
+
+    engine = get_engine()
+    event.listen(engine, "before_cursor_execute", capture_sql)
+
+    try:
+        distribution_repo.save_distribution_answer(
+            usage_log_id=1,
+            captcha_id="hot-path-captcha",
+            operator_id=1,
+            icon_position=4,
+            x=120,
+            y=180,
+            duration_ms=450,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_sql)
+
+    assert schema_sql == []
+
+
+def test_distribution_answer_save_persists_click_on_current_schema(isolated_api_db):
+    from src.entities import DistributionAnswer, get_session
+    from src.repositories import distribution_repo
+
+    distribution_repo.save_distribution_answer(
+        usage_log_id=1,
+        captcha_id="hot-path-persist",
+        operator_id=2,
+        icon_position=3,
+        x=99,
+        y=101,
+        duration_ms=250,
+    )
+
+    with get_session() as session:
+        row = (
+            session.query(DistributionAnswer)
+            .filter(DistributionAnswer.captcha_id == "hot-path-persist")
+            .one()
+        )
+
+    assert row.usage_log_id == 1
+    assert row.operator_id == 2
+    assert row.icon_position == 3
+    assert row.duration_ms == 250
+    assert datetime.fromisoformat(row.created_at).tzinfo == UTC
+
+
+def test_distribution_answer_route_handles_four_parallel_operators_without_second_scale_stalls(
+    client,
+):
+    from src.routes.distribution import distribution_states, init_distribution_state
+
+    distribution_states.clear()
+    icons_cache = {
+        position: {"image": f"image-{position}", "icon": f"icon-{position}"}
+        for position in range(5)
+    }
+    requests = []
+    rounds = 25
+    for round_index in range(rounds):
+        captcha_id = f"load-captcha-{round_index}"
+        init_distribution_state(
+            captcha_id=captcha_id,
+            event=None,
+            usage_log_id=round_index + 1,
+            api_key_id=1,
+            num_operators=5,
+            icons_cache=icons_cache,
+            captcha_data={"puzzle": {"imageBase64": "main", "iconsBase64": "icons"}},
+        )
+        requests.extend(
+            [
+                {
+                    "captcha_id": captcha_id,
+                    "operator_id": 1,
+                    "icon_position": 4,
+                    "x": 40,
+                    "y": 80,
+                },
+                {
+                    "captcha_id": captcha_id,
+                    "operator_id": 2,
+                    "icon_position": 3,
+                    "x": 80,
+                    "y": 80,
+                },
+                {
+                    "captcha_id": captcha_id,
+                    "operator_id": 3,
+                    "icon_position": 2,
+                    "x": 120,
+                    "y": 80,
+                },
+                {
+                    "captcha_id": captcha_id,
+                    "operator_id": 4,
+                    "icon_position": 1,
+                    "x": 160,
+                    "y": 80,
+                },
+            ]
+        )
+
+    def submit(payload):
+        start = time.perf_counter()
+        response = client.post("/distribution/answer", json=payload)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        return response.status_code, elapsed_ms, response.json()
+
+    latencies = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(submit, payload) for payload in requests]
+        for future in as_completed(futures):
+            status_code, elapsed_ms, body = future.result()
+            assert status_code == 200, body
+            latencies.append(elapsed_ms)
+
+    latencies.sort()
+    p95 = latencies[int(len(latencies) * 0.95) - 1]
+    assert p95 < 1000, {
+        "p95_ms": p95,
+        "max_ms": max(latencies),
+        "count": len(latencies),
+    }
+
+
+def test_distribution_answer_route_records_latency_breakdown(client):
+    from src.platform.observability.metrics import reset_metrics, snapshot
+    from src.routes.distribution import distribution_states, init_distribution_state
+
+    reset_metrics()
+    distribution_states.clear()
+    init_distribution_state(
+        captcha_id="metrics-captcha",
+        event=None,
+        usage_log_id=1,
+        api_key_id=1,
+        num_operators=2,
+        icons_cache={position: {"image": f"image-{position}", "icon": f"icon-{position}"} for position in range(5)},
+        captcha_data={"puzzle": {"imageBase64": "main", "iconsBase64": "icons"}},
+    )
+
+    response = client.post(
+        "/distribution/answer",
+        json={
+            "captcha_id": "metrics-captcha",
+            "operator_id": 1,
+            "icon_position": 4,
+            "x": 44,
+            "y": 88,
+        },
+    )
+
+    assert response.status_code == 200
+    metrics = snapshot()
+    assert metrics["eopp_distribution_answer_total_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_lock_wait_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_state_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_sse_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_db_ms_count"] == 1

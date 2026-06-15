@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from src.constants import DISTRIBUTION, ICON_ORDER
 from src.models import DistributionAnswerBody
+from src.platform.observability.metrics import observe_latency_ms
 from src.repositories import distribution_repo
 from src.sse import push_sse
 
@@ -119,162 +120,191 @@ def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
 
 @router.post("/answer")
 async def handle_distribution_answer(body: DistributionAnswerBody):
+    request_start = time.perf_counter()
     captcha_id = body.captcha_id
     operator_id = body.operator_id
     icon_position = body.icon_position
 
-    state = distribution_states.get(captcha_id)
-    if not state:
-        return JSONResponse(
-            status_code=404,
-            content={"error": "Distribution state not found for this captcha"},
-        )
-
-    async with state["lock"]:
-        if icon_position in state["all_answers"]:
-            next_pos = _find_next_unanswered(state, operator_id)
+    try:
+        state = distribution_states.get(captcha_id)
+        if not state:
             return JSONResponse(
-                status_code=409,
-                content={
-                    "error": "Icon already answered",
-                    "next_available": next_pos,
-                    "answered_positions": sorted(state["all_answers"].keys()),
-                    "all_coords": state["all_answers"],
-                },
+                status_code=404,
+                content={"error": "Distribution state not found for this captcha"},
             )
 
-        op_info = state["operators"].setdefault(operator_id, {"assigned": [], "idx": 0})
-        op_info.setdefault("idx", 0)
-        assigned = op_info.get("assigned", [])
-
-        if operator_id > 0 and icon_position not in assigned:
-            own_remaining = [p for p in assigned if p not in state["all_answers"]]
-            if own_remaining:
+        lock_wait_start = time.perf_counter()
+        async with state["lock"]:
+            observe_latency_ms(
+                "distribution.answer.lock_wait_ms",
+                (time.perf_counter() - lock_wait_start) * 1000,
+            )
+            state_start = time.perf_counter()
+            if icon_position in state["all_answers"]:
+                next_pos = _find_next_unanswered(state, operator_id)
+                observe_latency_ms(
+                    "distribution.answer.state_ms",
+                    (time.perf_counter() - state_start) * 1000,
+                )
                 return JSONResponse(
-                    status_code=403,
-                    content={"error": "Icon not assigned to this operator", "next_assigned": own_remaining[0]},
+                    status_code=409,
+                    content={
+                        "error": "Icon already answered",
+                        "next_available": next_pos,
+                        "answered_positions": sorted(state["all_answers"].keys()),
+                        "all_coords": state["all_answers"],
+                    },
                 )
 
-        state["all_answers"][icon_position] = {
-            "x": body.x,
-            "y": body.y,
-            "operator_id": operator_id,
-        }
+            op_info = state["operators"].setdefault(operator_id, {"assigned": [], "idx": 0})
+            op_info.setdefault("idx", 0)
+            assigned = op_info.get("assigned", [])
 
-        answered_at = time.time()
-        assigned_at = state.get("icon_assigned_at", {}).get(icon_position)
-        duration_ms = int((answered_at - assigned_at) * 1000) if assigned_at else None
+            if operator_id > 0 and icon_position not in assigned:
+                own_remaining = [p for p in assigned if p not in state["all_answers"]]
+                if own_remaining:
+                    observe_latency_ms(
+                        "distribution.answer.state_ms",
+                        (time.perf_counter() - state_start) * 1000,
+                    )
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "Icon not assigned to this operator", "next_assigned": own_remaining[0]},
+                    )
 
-        is_complete = len(state["all_answers"]) == state["total_icons"]
-
-        if not is_complete:
-            next_pos = _find_next_unanswered(state, operator_id)
-            if next_pos is not None:
-                state.setdefault("icon_assigned_at", {})[next_pos] = time.time()
-        total_answered = len(state["all_answers"])
-        total_icons = state["total_icons"]
-        all_answers = dict(state["all_answers"])
-        answered_positions = sorted(all_answers.keys())
-
-    push_sse(
-        {
-            "type": "distribution_progress",
-            "captcha_id": captcha_id,
-            "operator_id": operator_id,
-            "icon_position": icon_position,
-            "x": body.x,
-            "y": body.y,
-            "solved_count": total_answered,
-            "total_icons": total_icons,
-            "answered_positions": answered_positions,
-            "all_coords": all_answers,
-        }
-    )
-
-    distribution_repo.save_distribution_answer(
-        usage_log_id=state.get("usage_log_id"),
-        captcha_id=captcha_id,
-        operator_id=state.get("operator_id_map", {}).get(operator_id, operator_id),
-        icon_position=icon_position,
-        x=body.x,
-        y=body.y,
-        duration_ms=duration_ms,
-    )
-
-    if is_complete:
-        coords = [all_answers[i] for i in range(total_icons)]
-        coordinates = [{"x": c["x"], "y": c["y"]} for c in coords]
-
-        from src.sse import pending as sse_pending
-        entry = sse_pending.get(captcha_id)
-        if entry:
-            entry["result"] = {
-                "variantIndex": 0,
-                "variantTiles": coordinates,
-                "captcha_type": 1,
+            state["all_answers"][icon_position] = {
+                "x": body.x,
+                "y": body.y,
+                "operator_id": operator_id,
             }
-            entry["event"].set()
 
-        owner_id = state["api_key_id"]
-        solved_event = {
-            "type": "captcha_solved",
-            "captcha_id": captcha_id,
-            "solved_by_super": False,
-            "solver_label": f"distributed_{state['num_operators']}op",
-            "owner_api_key_id": owner_id,
-        }
-        from src.sse.manager import push_sse_owner_and_operators
+            answered_at = time.time()
+            assigned_at = state.get("icon_assigned_at", {}).get(icon_position)
+            duration_ms = int((answered_at - assigned_at) * 1000) if assigned_at else None
 
-        push_sse_owner_and_operators(solved_event, owner_id)
+            is_complete = len(state["all_answers"]) == state["total_icons"]
 
-        distribution_states.pop(captcha_id, None)
+            if not is_complete:
+                next_pos = _find_next_unanswered(state, operator_id)
+                if next_pos is not None:
+                    state.setdefault("icon_assigned_at", {})[next_pos] = time.time()
+            total_answered = len(state["all_answers"])
+            total_icons = state["total_icons"]
+            all_answers = dict(state["all_answers"])
+            answered_positions = sorted(all_answers.keys())
+            observe_latency_ms(
+                "distribution.answer.state_ms",
+                (time.perf_counter() - state_start) * 1000,
+            )
 
-        logger.info(
-            "distribution_complete captcha=%s answers=%d",
-            captcha_id,
-            len(coordinates),
-        )
-
-        return JSONResponse(
-            content={
-                "complete": True,
-                "coordinates": coordinates,
-                "answered_positions": [int(p) for p in range(total_icons)],
-            }
-        )
-
-    my_answered = sum(1 for p in assigned if p in all_answers)
-    icons_cache = state["icons_cache"]
-    num_operators = state["num_operators"]
-
-    if next_pos is None:
-        return JSONResponse(
-            content={
-                "complete": True,
-                "waiting": True,
-                "solved_count": my_answered,
-                "total_solved": total_answered,
+        sse_start = time.perf_counter()
+        push_sse(
+            {
+                "type": "distribution_progress",
+                "captcha_id": captcha_id,
+                "operator_id": operator_id,
+                "icon_position": icon_position,
+                "x": body.x,
+                "y": body.y,
+                "solved_count": total_answered,
                 "total_icons": total_icons,
                 "answered_positions": answered_positions,
-                "all_icons": make_all_icons(
-                    icons_cache,
-                    build_icon_order(operator_id, num_operators),
-                ),
+                "all_coords": all_answers,
             }
         )
+        observe_latency_ms("distribution.answer.sse_ms", (time.perf_counter() - sse_start) * 1000)
 
-    icon_data = icons_cache.get(next_pos, {})
-    icon_order = build_icon_order(operator_id, num_operators)
+        db_start = time.perf_counter()
+        distribution_repo.save_distribution_answer(
+            usage_log_id=state.get("usage_log_id"),
+            captcha_id=captcha_id,
+            operator_id=state.get("operator_id_map", {}).get(operator_id, operator_id),
+            icon_position=icon_position,
+            x=body.x,
+            y=body.y,
+            duration_ms=duration_ms,
+        )
+        observe_latency_ms("distribution.answer.db_ms", (time.perf_counter() - db_start) * 1000)
 
-    return JSONResponse(
-        content={
-            "icon_position": next_pos,
-            "image": icon_data.get("image", ""),
-            "icon": icon_data.get("icon", ""),
-            "total_icons": total_icons,
-            "solved_count": my_answered,
-            "total_solved": total_answered,
-            "answered_positions": answered_positions,
-            "all_icons": make_all_icons(icons_cache, icon_order),
-        }
-    )
+        if is_complete:
+            coords = [all_answers[i] for i in range(total_icons)]
+            coordinates = [{"x": c["x"], "y": c["y"]} for c in coords]
+
+            from src.sse import pending as sse_pending
+            entry = sse_pending.get(captcha_id)
+            if entry:
+                entry["result"] = {
+                    "variantIndex": 0,
+                    "variantTiles": coordinates,
+                    "captcha_type": 1,
+                }
+                entry["event"].set()
+
+            owner_id = state["api_key_id"]
+            solved_event = {
+                "type": "captcha_solved",
+                "captcha_id": captcha_id,
+                "solved_by_super": False,
+                "solver_label": f"distributed_{state['num_operators']}op",
+                "owner_api_key_id": owner_id,
+            }
+            from src.sse.manager import push_sse_owner_and_operators
+
+            push_sse_owner_and_operators(solved_event, owner_id)
+
+            distribution_states.pop(captcha_id, None)
+
+            logger.info(
+                "distribution_complete captcha=%s answers=%d",
+                captcha_id,
+                len(coordinates),
+            )
+
+            return JSONResponse(
+                content={
+                    "complete": True,
+                    "coordinates": coordinates,
+                    "answered_positions": [int(p) for p in range(total_icons)],
+                }
+            )
+
+        my_answered = sum(1 for p in assigned if p in all_answers)
+        icons_cache = state["icons_cache"]
+        num_operators = state["num_operators"]
+
+        if next_pos is None:
+            return JSONResponse(
+                content={
+                    "complete": True,
+                    "waiting": True,
+                    "solved_count": my_answered,
+                    "total_solved": total_answered,
+                    "total_icons": total_icons,
+                    "answered_positions": answered_positions,
+                    "all_icons": make_all_icons(
+                        icons_cache,
+                        build_icon_order(operator_id, num_operators),
+                    ),
+                }
+            )
+
+        icon_data = icons_cache.get(next_pos, {})
+        icon_order = build_icon_order(operator_id, num_operators)
+
+        return JSONResponse(
+            content={
+                "icon_position": next_pos,
+                "image": icon_data.get("image", ""),
+                "icon": icon_data.get("icon", ""),
+                "total_icons": total_icons,
+                "solved_count": my_answered,
+                "total_solved": total_answered,
+                "answered_positions": answered_positions,
+                "all_icons": make_all_icons(icons_cache, icon_order),
+            }
+        )
+    finally:
+        observe_latency_ms(
+            "distribution.answer.total_ms",
+            (time.perf_counter() - request_start) * 1000,
+        )

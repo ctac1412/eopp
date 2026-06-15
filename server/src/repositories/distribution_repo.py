@@ -1,30 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import text
-
 from src.entities import ApiKey, DistributionAnswer, Operator, UsageLog, get_session
-
-
-def _ensure_columns(session):
-    try:
-        session.execute(text(
-            "ALTER TABLE distribution_answers ADD COLUMN usage_log_id INTEGER DEFAULT 0"
-        ))
-        session.commit()
-    except Exception:
-        session.rollback()
-        pass
-
-
-def _ensure_duration_column(session):
-    try:
-        session.execute(text(
-            "ALTER TABLE distribution_answers ADD COLUMN duration_ms INTEGER"
-        ))
-        session.commit()
-    except Exception:
-        session.rollback()
-        pass
 
 
 def save_distribution_answer(
@@ -37,8 +13,6 @@ def save_distribution_answer(
     duration_ms: int | None = None,
 ) -> None:
     with get_session() as session:
-        _ensure_columns(session)
-        _ensure_duration_column(session)
         answer = DistributionAnswer(
             usage_log_id=usage_log_id,
             captcha_id=captcha_id,
@@ -101,8 +75,6 @@ def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]
         return {}
     unique_ids = list(dict.fromkeys(captcha_ids))
     with get_session() as session:
-        _ensure_columns(session)
-        _ensure_duration_column(session)
         rows = (
             session.query(DistributionAnswer, Operator, ApiKey)
             .outerjoin(Operator, Operator.id == DistributionAnswer.operator_id)
