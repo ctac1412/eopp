@@ -1,14 +1,14 @@
-import { eoppTokens } from "../theme/tokens";
+import { darkThemeTokens } from "../theme/tokens";
 
 export const chartTheme = {
   colors: [
-    eoppTokens.colorPrimary,
-    eoppTokens.colorInfo,
-    eoppTokens.colorSuccess,
-    eoppTokens.colorWarning,
-    eoppTokens.colorError,
+    darkThemeTokens.colorPrimary,
+    darkThemeTokens.colorInfo,
+    darkThemeTokens.colorSuccess,
+    darkThemeTokens.colorWarning,
+    darkThemeTokens.colorError,
   ],
-  axisColor: eoppTokens.colorTextSecondary,
-  gridColor: eoppTokens.colorBorder,
-  textColor: eoppTokens.colorText,
+  axisColor: darkThemeTokens.colorTextSecondary,
+  gridColor: darkThemeTokens.colorBorder,
+  textColor: darkThemeTokens.colorText,
 };

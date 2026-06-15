@@ -1,7 +1,7 @@
 .eopp-app-shell {
   min-height: 100vh;
-  background: var(--bs-body-bg, #0a0e14);
-  color: var(--bs-body-color, #c9d1d9);
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
 }
 
 .eopp-page {
@@ -35,7 +35,7 @@
 
 .eopp-page-header__title {
   margin: 0;
-  color: #e6edf3;
+  color: var(--text-heading);
   font-size: 1rem;
   font-weight: 650;
   line-height: 1.3;
@@ -43,7 +43,7 @@
 
 .eopp-page-header__subtitle {
   margin-top: 4px;
-  color: #8b949e;
+  color: var(--text-subtle);
   font-size: 0.8125rem;
   line-height: 1.4;
 }
@@ -66,9 +66,9 @@
   min-width: 0;
   justify-content: space-between;
   padding: 10px 12px;
-  border: 1px solid #2a3340;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #131a24;
+  background: var(--surface);
   overflow: hidden;
 }
 
@@ -87,7 +87,7 @@
   min-width: 0;
   flex-direction: column;
   gap: 4px;
-  color: #8b949e;
+  color: var(--text-subtle);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.25;
@@ -144,16 +144,16 @@
 .eopp-metric-card {
   min-width: min(132px, 100%);
   padding: 9px 11px;
-  border: 1px solid #2a3340;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #131a24;
+  background: var(--surface);
 }
 
 .eopp-metric-card__label {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #8b949e;
+  color: var(--text-subtle);
   font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.1;
@@ -163,55 +163,55 @@
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #6e7681;
+  background: var(--text-muted);
 }
 
 .eopp-metric-card__value {
-  color: #e6edf3;
+  color: var(--text-heading);
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .eopp-metric-card--success {
-  border-color: rgba(16, 185, 129, 0.28);
+  border-color: var(--success-border-strong);
 }
 
 .eopp-metric-card--success .eopp-metric-card__dot {
-  background: #10b981;
+  background: var(--success);
 }
 
 .eopp-metric-card--danger {
-  border-color: rgba(239, 68, 68, 0.28);
+  border-color: var(--danger-border-strong);
 }
 
 .eopp-metric-card--danger .eopp-metric-card__dot {
-  background: #ef4444;
+  background: var(--danger);
 }
 
 .eopp-metric-card--warning {
-  border-color: rgba(245, 158, 11, 0.28);
+  border-color: var(--warning-border-soft);
 }
 
 .eopp-metric-card--warning .eopp-metric-card__dot {
-  background: #f59e0b;
+  background: var(--warning);
 }
 
 .eopp-metric-card--info {
-  border-color: rgba(59, 130, 246, 0.28);
+  border-color: var(--info-border-strong);
 }
 
 .eopp-metric-card--info .eopp-metric-card__dot {
-  background: #3b82f6;
+  background: var(--info);
 }
 
 .eopp-data-table {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid #2a3340;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #131a24;
+  background: var(--surface);
 }
 
 .eopp-data-table .ant-table-wrapper,
@@ -224,23 +224,33 @@
 }
 
 .eopp-data-table .ant-table {
-  background: #131a24;
+  background: var(--surface);
 }
 
 .eopp-data-table .ant-table-thead > tr > th {
-  color: #8b949e;
+  color: var(--text-subtle);
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
 .eopp-data-table .ant-table-tbody > tr > td {
-  color: #c9d1d9;
+  color: var(--text);
   vertical-align: middle;
 }
 
 .eopp-data-table .ant-table-cell-row-hover {
-  background: rgba(124, 58, 237, 0.05) !important;
+  background: var(--table-row-hover-bg) !important;
+}
+
+.eopp-data-table__row {
+  cursor: default;
+  outline: none;
+}
+
+.eopp-data-table__row:focus-visible > td {
+  background: var(--table-row-selected-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 
 .eopp-data-table .ant-pagination {
@@ -262,22 +272,22 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #8b949e;
+  color: var(--text-subtle);
   text-align: center;
 }
 
 .eopp-workbench {
   min-height: 100vh;
-  background: #0a0e14;
-  color: #c9d1d9;
+  background: var(--bs-body-bg);
+  color: var(--text);
 }
 
 .eopp-workbench__status {
   position: sticky;
   top: 0;
   z-index: 20;
-  border-bottom: 1px solid #2a3340;
-  background: #131a24;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .eopp-workbench__desktop {
@@ -299,8 +309,8 @@
 
 .eopp-workbench__side {
   min-width: 0;
-  border-left: 1px solid #2a3340;
-  background: #0d1117;
+  border-left: 1px solid var(--border);
+  background: var(--surface-sunken);
 }
 
 .eopp-workbench__bottom-actions {
@@ -372,8 +382,8 @@
     display: flex;
     gap: 8px;
     padding: 8px;
-    border-top: 1px solid #2a3340;
-    background: #131a24;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
   }
 
   .eopp-workbench__bottom-actions > * {

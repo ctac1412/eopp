@@ -40,7 +40,7 @@ import {
 import { accessPayloadFromForm, emptyAccess, normalizeAccess } from "./users/userCompanyAccess";
 import { adminHeaders, adminHeadersJson, adminRequest } from "./shared/adminClient";
 import { ADMIN_TABS } from "./shared/tabs";
-import { Button } from "../../ui";
+import { Button, SegmentedControl } from "../../ui";
 
 const ROLE_LABELS = {
   super_admin: "Супер админ",
@@ -56,7 +56,7 @@ const DEFAULT_ROLE_SECTIONS = {
   operator: ["operations", "operators", "streams"],
 };
 
-function AdminPage() {
+function AdminPage({ themeMode = "dark", onThemeModeChange }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [adminToken, setAdminToken] = useState(
     () => "session",
@@ -1019,6 +1019,17 @@ function AdminPage() {
           <Tag color={adminRole === "super_admin" ? "red" : adminRole === "administrator" ? "blue" : "default"}>
             {ROLE_LABELS[adminRole] || adminRole || "Роль"}
           </Tag>
+          <SegmentedControl
+            aria-label="Theme"
+            className="admin-page__theme-switch"
+            options={[
+              { label: "Темная", value: "dark" },
+              { label: "Светлая", value: "light" },
+            ]}
+            size="small"
+            value={themeMode}
+            onChange={(value) => onThemeModeChange?.(value)}
+          />
           <Button size="small" onClick={handleLogout}>
             Выйти
           </Button>
@@ -1197,7 +1208,6 @@ function AdminPage() {
           }}
           onEdit={openEditUser}
           onDelete={handleDeleteUser}
-          onStats={handleOpenUserStats}
         />
       )}
 
@@ -1265,6 +1275,7 @@ function AdminPage() {
         onToggleApiKey={handleToggleActive}
         onResetApiKey={handleResetUsage}
         onDeleteApiKey={handleDeletePersonalApiKey}
+        onStats={(user) => handleOpenUserStats({ id: user.id, name: user.name })}
       />
 
       <UserStatsModal

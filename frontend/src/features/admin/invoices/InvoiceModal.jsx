@@ -168,7 +168,7 @@ export function InvoiceModal({
             columns={columns}
             emptyText="Нет выбранных записей"
             pagination={false}
-            scroll={{ x: 960, y: 180 }}
+            scroll={false}
           />
         </section>
 

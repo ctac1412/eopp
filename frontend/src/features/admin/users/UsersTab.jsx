@@ -52,7 +52,7 @@ const ROLE_LABELS = {
   operator: "Оператор",
 };
 
-export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
+export function UsersTab({ users, onCreate, onEdit, onDelete }) {
   const [search, setSearch] = useState("");
   const [createdFilter, setCreatedFilter] = useState("all");
 
@@ -169,12 +169,10 @@ export function UsersTab({ users, onCreate, onEdit, onDelete, onStats }) {
     },
     {
       title: "",
-      width: 220,
+      width: 68,
       align: "right",
       render: (_, user) => (
         <Space size={4}>
-          <Button size="small" onClick={(event) => { event.stopPropagation(); onStats(user); }}>Стат.</Button>
-          <Button size="small" onClick={(event) => { event.stopPropagation(); onEdit(user); }}>Изм.</Button>
           <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); confirmDelete(user); }}>Удал.</Button>
         </Space>
       ),

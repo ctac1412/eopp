@@ -1,11 +1,12 @@
 /* ========================================
-   DESIGN TOKENS — Futuristic Dark Theme
+   DESIGN TOKENS - Runtime Themes
    ======================================== */
 
-:root {
-  /* ── Bootstrap overrides ── */
-  --bs-body-bg: #0a0e14;
-  --bs-body-color: #c9d1d9;
+:root,
+[data-theme="dark"] {
+  /* Bootstrap overrides */
+  --bs-body-bg: #0d1117;
+  --bs-body-color: #d2dae3;
   --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --bs-body-font-size: 0.8125rem;
   --bs-body-font-weight: 400;
@@ -24,52 +25,216 @@
 
   --bs-secondary: #21262d;
   --bs-secondary-rgb: 33, 38, 45;
-  --bs-secondary-color: #8b949e;
-  --bs-light: #161b22;
-  --bs-light-rgb: 22, 27, 34;
-  --bs-dark: #0d1117;
-  --bs-dark-rgb: 13, 17, 23;
+  --bs-secondary-color: #9aa5b1;
+  --bs-light: #151b24;
+  --bs-light-rgb: 21, 27, 36;
+  --bs-dark: #10151d;
+  --bs-dark-rgb: 16, 21, 29;
 
-  --bs-border-color: #21262d;
-  --bs-border-color-translucent: rgba(33, 38, 45, 0.5);
+  --bs-border-color: #2f3a49;
+  --bs-border-color-translucent: rgba(47, 58, 73, 0.5);
 
-  --bs-card-bg: #131a24;
-  --bs-card-border-color: #2a3340;
-  --bs-card-cap-bg: rgba(19, 26, 36, 0.8);
+  --bs-card-bg: #151b24;
+  --bs-card-border-color: #2f3a49;
+  --bs-card-cap-bg: rgba(21, 27, 36, 0.84);
 
-  --bs-modal-bg: #131a24;
-  --bs-modal-border-color: #2a3340;
+  --bs-modal-bg: #151b24;
+  --bs-modal-border-color: #2f3a49;
 
-  --bs-table-bg: #131a24;
-  --bs-table-color: #c9d1d9;
-  --bs-table-border-color: #2a3340;
-  --bs-table-hover-bg: rgba(124, 58, 237, 0.05);
-  --bs-table-hover-color: #c9d1d9;
-  --bs-table-striped-bg: rgba(13, 17, 23, 0.5);
+  --bs-table-bg: #151b24;
+  --bs-table-color: #d2dae3;
+  --bs-table-border-color: #2f3a49;
+  --bs-table-hover-bg: rgba(124, 58, 237, 0.055);
+  --bs-table-hover-color: #eef4fb;
+  --bs-table-striped-bg: rgba(16, 21, 29, 0.5);
 
-  --bs-tertiary-bg: #161b22;
-  --bs-tertiary-color: #6e7681;
+  --bs-tertiary-bg: #1a222e;
+  --bs-tertiary-color: #7d8794;
 
-  --bs-heading-color: #e6edf3;
+  --bs-heading-color: #eef4fb;
   --bs-link-color: #7c3aed;
   --bs-link-hover-color: #a78bfa;
 
   --bs-font-monospace: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 
-  /* ── Custom tokens ── */
+  /* Semantic app tokens */
   --accent: #7c3aed;
   --accent-light: #a78bfa;
   --accent-glow: rgba(124, 58, 237, 0.2);
-  --surface: #131a24;
-  --surface-raised: #1a2430;
-  --surface-muted: #202938;
-  --border: #2a3340;
-  --border-bright: #3a4555;
-  --text: #c9d1d9;
-  --text-muted: #6e7681;
+  --surface: #151b24;
+  --surface-raised: #1d2633;
+  --surface-muted: #253040;
+  --surface-sunken: #10151d;
+  --border: #2f3a49;
+  --border-bright: #465467;
+  --border-soft: rgba(47, 58, 73, 0.52);
+  --border-strong: #465467;
+  --text: #d2dae3;
+  --text-heading: #eef4fb;
+  --text-muted: #7d8794;
+  --text-subtle: #9aa5b1;
+  --text-disabled: #56616f;
+  --text-on-accent: #ffffff;
+  --text-inverse: #0d1117;
+  --hover-muted-bg: rgba(148, 163, 184, 0.12);
+  --table-header-bg: #1d2633;
+  --table-row-hover-bg: rgba(124, 58, 237, 0.055);
+  --table-row-selected-bg: rgba(124, 58, 237, 0.105);
+  --focus-ring: rgba(124, 58, 237, 0.18);
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --accent-border-soft: rgba(124, 58, 237, 0.3);
+  --accent-border-strong: rgba(124, 58, 237, 0.45);
+  --accent-surface-subtle: rgba(124, 58, 237, 0.04);
+  --accent-surface-soft: rgba(124, 58, 237, 0.08);
+  --accent-surface-strong: rgba(124, 58, 237, 0.1);
+  --accent-shadow: rgba(124, 58, 237, 0.24);
   --success: #10b981;
+  --success-text: #3fb950;
+  --success-surface-subtle: rgba(16, 185, 129, 0.08);
+  --success-surface-soft: rgba(16, 185, 129, 0.1);
+  --success-border-soft: rgba(16, 185, 129, 0.15);
+  --success-border-strong: rgba(16, 185, 129, 0.28);
+  --success-shadow: rgba(16, 185, 129, 0.5);
   --warning: #f59e0b;
+  --warning-text: #d29922;
+  --warning-strong-text: #f2cc60;
+  --warning-surface-subtle: rgba(245, 158, 11, 0.08);
+  --warning-surface-soft: rgba(245, 158, 11, 0.15);
+  --warning-border-soft: rgba(245, 158, 11, 0.3);
   --danger: #ef4444;
+  --danger-text: #f85149;
+  --danger-strong-text: #fca5a5;
+  --danger-surface-subtle: rgba(239, 68, 68, 0.08);
+  --danger-surface-soft: rgba(239, 68, 68, 0.12);
+  --danger-border-soft: rgba(239, 68, 68, 0.2);
+  --danger-border-strong: rgba(239, 68, 68, 0.44);
+  --danger-shadow: rgba(239, 68, 68, 0.5);
   --info: #3b82f6;
+  --info-text: #58a6ff;
+  --info-strong-text: #8ec5ff;
+  --info-surface-subtle: rgba(59, 130, 246, 0.08);
+  --info-surface-soft: rgba(59, 130, 246, 0.1);
+  --info-border-soft: rgba(59, 130, 246, 0.15);
+  --info-border-strong: rgba(88, 166, 255, 0.34);
+  --font-monospace: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+[data-theme="light"] {
+  /* Bootstrap overrides */
+  --bs-body-bg: #f7f9fc;
+  --bs-body-color: #1f2937;
+  --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --bs-body-font-size: 0.8125rem;
+  --bs-body-font-weight: 400;
+  --bs-body-line-height: 1.5;
+
+  --bs-primary: #6d28d9;
+  --bs-primary-rgb: 109, 40, 217;
+  --bs-success: #059669;
+  --bs-success-rgb: 5, 150, 105;
+  --bs-warning: #d97706;
+  --bs-warning-rgb: 217, 119, 6;
+  --bs-danger: #dc2626;
+  --bs-danger-rgb: 220, 38, 38;
+  --bs-info: #2563eb;
+  --bs-info-rgb: 37, 99, 235;
+
+  --bs-secondary: #e2e8f0;
+  --bs-secondary-rgb: 226, 232, 240;
+  --bs-secondary-color: #5f6f85;
+  --bs-light: #ffffff;
+  --bs-light-rgb: 255, 255, 255;
+  --bs-dark: #e7edf5;
+  --bs-dark-rgb: 231, 237, 245;
+
+  --bs-border-color: #d4dde8;
+  --bs-border-color-translucent: rgba(100, 116, 139, 0.28);
+
+  --bs-card-bg: #ffffff;
+  --bs-card-border-color: #d4dde8;
+  --bs-card-cap-bg: rgba(241, 245, 249, 0.86);
+
+  --bs-modal-bg: #ffffff;
+  --bs-modal-border-color: #d4dde8;
+
+  --bs-table-bg: #ffffff;
+  --bs-table-color: #1f2937;
+  --bs-table-border-color: #d4dde8;
+  --bs-table-hover-bg: rgba(109, 40, 217, 0.065);
+  --bs-table-hover-color: #111827;
+  --bs-table-striped-bg: rgba(226, 232, 240, 0.48);
+
+  --bs-tertiary-bg: #eef2f7;
+  --bs-tertiary-color: #5f6f85;
+
+  --bs-heading-color: #111827;
+  --bs-link-color: #6d28d9;
+  --bs-link-hover-color: #5b21b6;
+
+  --bs-font-monospace: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Semantic app tokens */
+  --accent: #6d28d9;
+  --accent-light: #8b5cf6;
+  --accent-glow: rgba(109, 40, 217, 0.16);
+  --surface: #ffffff;
+  --surface-raised: #f3f6fa;
+  --surface-muted: #e7edf5;
+  --surface-sunken: #e7edf5;
+  --border: #d4dde8;
+  --border-bright: #bfccd9;
+  --border-soft: rgba(100, 116, 139, 0.28);
+  --border-strong: #b8c4d4;
+  --text: #1f2937;
+  --text-heading: #111827;
+  --text-muted: #5f6f85;
+  --text-subtle: #475569;
+  --text-disabled: #94a3b8;
+  --text-on-accent: #ffffff;
+  --text-inverse: #ffffff;
+  --hover-muted-bg: rgba(100, 116, 139, 0.12);
+  --table-header-bg: #f3f6fa;
+  --table-row-hover-bg: rgba(109, 40, 217, 0.065);
+  --table-row-selected-bg: rgba(109, 40, 217, 0.095);
+  --focus-ring: rgba(109, 40, 217, 0.18);
+  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-elevated: 0 8px 24px rgba(15, 23, 42, 0.14);
+  --shadow-modal: 0 8px 32px rgba(15, 23, 42, 0.16);
+  --accent-border-soft: rgba(109, 40, 217, 0.28);
+  --accent-border-strong: rgba(109, 40, 217, 0.44);
+  --accent-surface-subtle: rgba(109, 40, 217, 0.05);
+  --accent-surface-soft: rgba(109, 40, 217, 0.08);
+  --accent-surface-strong: rgba(109, 40, 217, 0.11);
+  --accent-shadow: rgba(109, 40, 217, 0.18);
+  --success: #059669;
+  --success-text: #047857;
+  --success-surface-subtle: rgba(5, 150, 105, 0.08);
+  --success-surface-soft: rgba(5, 150, 105, 0.12);
+  --success-border-soft: rgba(5, 150, 105, 0.2);
+  --success-border-strong: rgba(5, 150, 105, 0.32);
+  --success-shadow: rgba(5, 150, 105, 0.25);
+  --warning: #d97706;
+  --warning-text: #b45309;
+  --warning-strong-text: #92400e;
+  --warning-surface-subtle: rgba(217, 119, 6, 0.08);
+  --warning-surface-soft: rgba(217, 119, 6, 0.14);
+  --warning-border-soft: rgba(217, 119, 6, 0.28);
+  --danger: #dc2626;
+  --danger-text: #b91c1c;
+  --danger-strong-text: #991b1b;
+  --danger-surface-subtle: rgba(220, 38, 38, 0.08);
+  --danger-surface-soft: rgba(220, 38, 38, 0.12);
+  --danger-border-soft: rgba(220, 38, 38, 0.22);
+  --danger-border-strong: rgba(220, 38, 38, 0.34);
+  --danger-shadow: rgba(220, 38, 38, 0.24);
+  --info: #2563eb;
+  --info-text: #1d4ed8;
+  --info-strong-text: #1e40af;
+  --info-surface-subtle: rgba(37, 99, 235, 0.08);
+  --info-surface-soft: rgba(37, 99, 235, 0.12);
+  --info-border-soft: rgba(37, 99, 235, 0.18);
+  --info-border-strong: rgba(37, 99, 235, 0.34);
   --font-monospace: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }

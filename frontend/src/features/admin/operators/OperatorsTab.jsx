@@ -688,16 +688,6 @@ export function OperatorsTab({ adminToken, onError }) {
     <>
       <MetricsStrip items={metrics} />
 
-      <Card data-eopp-component="OperatorDashboardCard" className="mt-3" size="small" title="Операторы и назначения к мастерам">
-        <DataTable
-          className="operators-table"
-          rowKey="id"
-          data={operatorDashboardRows}
-          columns={dashboardColumns}
-          emptyText="Нет операторов"
-          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [15, 30, 50] }}
-        />
-      </Card>
 
       <Card
         data-eopp-component="OperatorAnswersCard"
@@ -990,6 +980,17 @@ export function OperatorsTab({ adminToken, onError }) {
           </div>
         </div>
       </Card>
+
+      <Card data-eopp-component="OperatorDashboardCard" className="mt-3" size="small" title="Операторы и назначения к мастерам">
+              <DataTable
+                className="operators-table"
+                rowKey="id"
+                data={operatorDashboardRows}
+                columns={dashboardColumns}
+                emptyText="Нет операторов"
+                pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [15, 30, 50] }}
+              />
+            </Card>
     </div>
   );
 

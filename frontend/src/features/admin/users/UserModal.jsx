@@ -1,7 +1,6 @@
 import React from "react";
 import { Alert, Modal, Space, Switch } from "antd";
-import { Button } from "../../../ui";
-import { SelectInput, TextInput } from "../../../ui";
+import { Button, SelectInput, TextInput } from "../../../ui";
 import {
   emptyAccess,
   isAccessCompanySelected,
@@ -265,6 +264,7 @@ export function UserModal({
   onToggleApiKey = () => {},
   onResetApiKey = () => {},
   onDeleteApiKey = () => {},
+  onStats = null,
 }) {
   const handleOk = (event) => {
     event?.preventDefault?.();
@@ -302,6 +302,13 @@ export function UserModal({
         className="users-modal-form"
         onSubmit={handleOk}
       >
+        {form.id && onStats ? (
+          <div className="users-modal-form__toolbar">
+            <Button size="small" onClick={() => onStats(form)}>
+              {"\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0430"}
+            </Button>
+          </div>
+        ) : null}
         <div className="users-modal-form__fields">
           <label className="form-label small mb-0">
             Name

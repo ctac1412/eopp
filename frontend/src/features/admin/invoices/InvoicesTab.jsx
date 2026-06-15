@@ -9,6 +9,7 @@ import {
   DataTable,
   FilterBar,
   MetricsStrip,
+  SegmentedControl,
   SelectInput,
   StatusTag,
   TextInput,
@@ -87,6 +88,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const [userFilter, setUserFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [activeSubtab, setActiveSubtab] = useState("list");
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -449,12 +451,11 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     },
     {
       title: "",
-      width: 92,
+      width: 56,
       align: "right",
       render: (_, invoice) => (
         <Space size={4}>
-          <Button size="small" onClick={() => setEditingInvoice(invoice)}>Изм.</Button>
-          <Button size="small" variant="danger" onClick={() => deleteInvoice(invoice)}>Удал.</Button>
+          <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); deleteInvoice(invoice); }}>Удал.</Button>
         </Space>
       ),
     },
@@ -495,6 +496,17 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
 
       <MetricsStrip items={metrics} />
 
+      <SegmentedControl
+        className="mt-3"
+        value={activeSubtab}
+        onChange={setActiveSubtab}
+        options={[
+          { value: "list", label: "\u0421\u043f\u0438\u0441\u043e\u043a \u0441\u0447\u0435\u0442\u043e\u0432" },
+          { value: "auto", label: "\u0410\u0432\u0442\u043e-\u0441\u0447\u0435\u0442\u0430 \u043f\u043e \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u044f\u043c" },
+        ]}
+      />
+
+      {activeSubtab === "auto" && (
       <Card data-eopp-component="InvoicesAutomationCard" className="mt-3" size="small" title="Авто-счета по компаниям">
         <FilterBar className="mb-3">
           <label className="form-label small mb-0 invoices-search">
@@ -546,7 +558,9 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
           />
         </form>
       </Card>
+      )}
 
+      {activeSubtab === "list" && (
       <Card data-eopp-component="InvoicesListCard" className="mt-3" size="small" title="Список счетов">
         <FilterBar className="mb-3">
           <label className="form-label small mb-0 invoices-search">
@@ -622,8 +636,13 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
           emptyText="Нет счетов по выбранным фильтрам"
           pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
           scroll={false}
+          onRow={(invoice) => ({
+            onClick: () => setEditingInvoice(invoice),
+            className: "invoices-table-row",
+          })}
         />
       </Card>
+      )}
 
       <InvoiceEditModal
         show={!!editingInvoice}

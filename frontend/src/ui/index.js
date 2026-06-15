@@ -31,5 +31,13 @@ export { SettingsPage } from "./layouts/SettingsPage";
 export { SplitPage } from "./layouts/SplitPage";
 export { WorkbenchPage } from "./layouts/WorkbenchPage";
 
-export { antdTheme } from "./theme/antdTheme";
-export { eoppDensity, eoppSpacing, eoppTokens } from "./theme/tokens";
+export { antdTheme, createAntdTheme, defaultAntdTheme } from "./theme/antdTheme";
+export {
+  darkThemeTokens,
+  eoppDensity,
+  eoppSpacing,
+  lightThemeTokens,
+  sharedDensityTokens,
+  sharedTypographyTokens,
+  themeTokensByMode,
+} from "./theme/tokens";

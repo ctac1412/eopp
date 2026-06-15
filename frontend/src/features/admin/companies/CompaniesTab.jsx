@@ -4,7 +4,6 @@ import {
   Button,
   DataTable,
   FilterBar,
-  MetricsStrip,
   SelectInput,
   TextInput,
   Toolbar,
@@ -433,20 +432,6 @@ export function CompaniesTab({ adminToken, onError }) {
     );
   }, [companies, search]);
 
-  const metrics = useMemo(() => {
-    const aliasesCount = companies.reduce(
-      (total, company) => total + (Array.isArray(company.aliases) ? company.aliases.length : 0),
-      0,
-    );
-    const withNotes = companies.filter((company) => company.notes).length;
-    return [
-      { key: "companies", label: "Компании", value: companies.length, tone: companies.length > 0 ? "info" : "neutral" },
-      { key: "aliases", label: "Алиасы", value: aliasesCount, tone: aliasesCount > 0 ? "success" : "neutral" },
-      { key: "notes", label: "С заметками", value: withNotes, tone: withNotes > 0 ? "info" : "neutral" },
-      { key: "visible", label: "В выборке", value: filteredCompanies.length, tone: filteredCompanies.length === companies.length ? "neutral" : "warning" },
-    ];
-  }, [companies, filteredCompanies.length]);
-
   const openCreate = () => {
     setEditingId(null);
     setForm({ name: "", aliases: "", notes: "", tax_commission_mode: "added" });
@@ -816,21 +801,15 @@ export function CompaniesTab({ adminToken, onError }) {
     },
     {
       title: "",
-      width: 142,
+      width: 88,
       align: "right",
       render: (_, company) => (
         <Space size={3} className="companies-table__actions">
-          <Button className="companies-table__action" size="small" title="Доступ" onClick={() => openAccess(company)}>
-            Д
+          <Button className="companies-table__action companies-table__action--wide" size="small" onClick={(event) => { event.stopPropagation(); openTariff(company); }}>
+            {"\u041e\u0442\u043a\u0440."}
           </Button>
-          <Button className="companies-table__action" size="small" title="Тариф" onClick={() => openTariff(company)}>
-            ₽
-          </Button>
-          <Button className="companies-table__action companies-table__action--wide" size="small" title="Изменить" onClick={() => openEdit(company)}>
-            Изм
-          </Button>
-          <Button className="companies-table__action companies-table__action--wide" size="small" variant="danger" title="Удалить" onClick={() => deleteCompany(company)}>
-            Уд
+          <Button className="companies-table__action companies-table__action--wide" size="small" variant="danger" title={"\u0423\u0434\u0430\u043b\u0438\u0442\u044c"} onClick={(event) => { event.stopPropagation(); deleteCompany(company); }}>
+            {"\u0423\u0434"}
           </Button>
         </Space>
       ),
@@ -858,8 +837,6 @@ export function CompaniesTab({ adminToken, onError }) {
         }
       />
 
-      <MetricsStrip items={metrics} />
-
       <Card data-eopp-component="CompaniesListCard" className="mt-3" size="small" title="Список компаний">
         <FilterBar className="mb-3">
           <label className="form-label small mb-0 companies-search">
@@ -883,6 +860,10 @@ export function CompaniesTab({ adminToken, onError }) {
           scroll={false}
           tableLayout="fixed"
           pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          onRow={(company) => ({
+            onClick: () => openTariff(company),
+            className: "companies-table-row",
+          })}
         />
       </Card>
 

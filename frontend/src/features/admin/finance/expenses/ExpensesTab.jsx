@@ -141,12 +141,11 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate
     { title: "Создан", dataIndex: "created_at", width: 132, render: formatDate },
     {
       title: "",
-      width: 112,
+      width: 68,
       align: "right",
       render: (_, expense) => (
         <Space size={4}>
-          <Button size="small" onClick={() => onEdit(expense)}>Изм.</Button>
-          <Button size="small" variant="danger" onClick={() => confirmDelete(expense)}>Удал.</Button>
+          <Button size="small" variant="danger" onClick={(event) => { event.stopPropagation(); confirmDelete(expense); }}>Удал.</Button>
         </Space>
       ),
     },
@@ -245,6 +244,10 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate
           columns={columns}
           emptyText="Нет расходов"
           pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          onRow={(expense) => ({
+            onClick: () => onEdit(expense),
+            className: "expenses-table-row",
+          })}
         />
       </Card>
     </div>

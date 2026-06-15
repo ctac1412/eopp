@@ -182,7 +182,7 @@ export function FinanceEntriesView({
   const columns = [
     { title: "ID", dataIndex: "id", width: 64, render: (value) => <span className="text-muted">#{value}</span> },
     { title: "Дата", dataIndex: "created_at", width: 132, render: formatDateTime },
-    { title: "Тип", dataIndex: "kind", width: 150, render: (value) => financeKindLabel(value) },
+    { title: "Тип", dataIndex: "kind", width: 184, render: (value) => <span className="finance-kind-cell">{financeKindLabel(value)}</span> },
     {
       title: "Сумма",
       dataIndex: "amount",
@@ -203,28 +203,28 @@ export function FinanceEntriesView({
       dataIndex: "usage_log_id",
       width: 88,
       render: (value) =>
-        value ? <Button size="small" onClick={() => applyRelationFilter("usage_log_id", value)}>#{value}</Button> : "—",
+        value ? <Button size="small" onClick={(event) => { event.stopPropagation(); applyRelationFilter("usage_log_id", value); }}>#{value}</Button> : "—",
     },
     {
       title: "Счёт",
       dataIndex: "invoice_id",
       width: 88,
       render: (value) =>
-        value ? <Button size="small" onClick={() => applyRelationFilter("invoice_id", value)}>#{value}</Button> : "—",
+        value ? <Button size="small" onClick={(event) => { event.stopPropagation(); applyRelationFilter("invoice_id", value); }}>#{value}</Button> : "—",
     },
     {
       title: "Выплата",
       dataIndex: "payout_id",
       width: 88,
       render: (value) =>
-        value ? <Button size="small" onClick={() => applyRelationFilter("payout_id", value)}>#{value}</Button> : "—",
+        value ? <Button size="small" onClick={(event) => { event.stopPropagation(); applyRelationFilter("payout_id", value); }}>#{value}</Button> : "—",
     },
     { title: "Участник", dataIndex: "user_name", width: 140, ellipsis: true, render: (value, row) => value || row.user_id || "—" },
     { title: "Источник", dataIndex: "source", width: 110, ellipsis: true, render: (value) => value || "—" },
     { title: "Комментарий", dataIndex: "comment", width: 220, ellipsis: true, render: (value) => <span title={value || "—"}>{value || "—"}</span> },
     {
       title: "",
-      width: 132,
+      width: 68,
       fixed: "right",
       align: "right",
       render: (_, entry) => {
@@ -232,11 +232,8 @@ export function FinanceEntriesView({
         const reason = lockReason(entry);
         return (
           <Space size={4}>
-            <Tooltip title={editable ? "Редактировать" : reason}>
-              <Button size="small" disabled={!editable} onClick={() => openEdit(entry)}>Изм.</Button>
-            </Tooltip>
             <Tooltip title={editable ? "Удалить" : reason}>
-              <Button size="small" variant="danger" disabled={!editable} onClick={() => confirmDelete(entry)}>Удал.</Button>
+              <Button size="small" variant="danger" disabled={!editable} onClick={(event) => { event.stopPropagation(); confirmDelete(entry); }}>Удал.</Button>
             </Tooltip>
           </Space>
         );
@@ -270,6 +267,11 @@ export function FinanceEntriesView({
           loading={loading}
           error={error}
           emptyText="Нет проводок"
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          onRow={(entry) => ({
+            onClick: () => canEditEntry(entry) && openEdit(entry),
+            className: canEditEntry(entry) ? "finance-table-row" : "finance-table-row finance-table-row--locked",
+          })}
         />
       </div>
       <FinanceEntryModal

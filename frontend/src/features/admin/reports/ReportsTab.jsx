@@ -612,20 +612,37 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
       },
     },
   ];
-  const recordsColumns = baseRecordsColumns.map((column, index) => ({
+  const visibleRecordsColumns = baseRecordsColumns.slice(0, -1);
+  const recordsColumns = visibleRecordsColumns.map((column, index) => ({
     ...column,
     render: (value, record, rowIndex) => {
       if (record.__group) {
         return index === 0
           ? {
               children: <span className="reports-date-group__label">{record.label}</span>,
-              props: { colSpan: baseRecordsColumns.length },
+              props: { colSpan: visibleRecordsColumns.length },
             }
           : { children: null, props: { colSpan: 0 } };
       }
       return column.render ? column.render(value, record, rowIndex) : value;
     },
   }));
+  const usagePagination = (
+    <Pagination
+      current={usagePage}
+      pageSize={usagePageSize}
+      total={filteredRecords.length}
+      showSizeChanger
+      pageSizeOptions={USAGE_PAGE_SIZE_OPTIONS}
+      showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
+      locale={{ items_per_page: "" }}
+      size="small"
+      onChange={(page, pageSize) => {
+        setUsagePage(page);
+        setUsagePageSize(pageSize);
+      }}
+    />
+  );
   return (
     <div data-eopp-component="ReportsTab" className="reports-page">
       <Toolbar
@@ -791,25 +808,13 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
                   placeholder="Поиск: компания, бронь, капча, ФИО, машина, ошибка"
                 />
               </div>
+              <div className="reports-usage-log-pagination">
+                {usagePagination}
+              </div>
             </div>
           }
         >
-          <div className="reports-table-pagination">
-            <Pagination
-              current={usagePage}
-              pageSize={usagePageSize}
-              total={filteredRecords.length}
-              showSizeChanger
-              pageSizeOptions={USAGE_PAGE_SIZE_OPTIONS}
-              showTotal={(total, range) => `${range[0]}-${range[1]} из ${total}`}
-              locale={{ items_per_page: "" }}
-              size="small"
-              onChange={(page, pageSize) => {
-                setUsagePage(page);
-                setUsagePageSize(pageSize);
-              }}
-            />
-          </div>
+
           <DataTable
             className="reports-log-table"
             rowKey="id"
@@ -842,6 +847,9 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
               },
             })}
           />
+          <div className="reports-table-pagination reports-table-pagination--footer">
+            {usagePagination}
+          </div>
         </Card>
 
         <Card
