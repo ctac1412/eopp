@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.entities.base import Base
@@ -58,5 +58,10 @@ class DefaultCompanyTariff(Base):
     price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     executor_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     operator_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tax_commission_mode: Mapped[str] = mapped_column(String, nullable=False, default="added")
+    default_percent_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    default_tax_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    default_commission_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_tax_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)

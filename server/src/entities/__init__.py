@@ -14,7 +14,7 @@ from src.entities.company import Company
 from src.entities.captcha import CaptchaFile, CaptchaRecord
 from src.entities.course import Course, CourseCaptcha, TestRun, TestRunResult
 from src.entities.distribution_answer import DistributionAnswer
-from src.entities.operator import Operator, OperatorMasterLink
+from src.entities.operator import Operator, OperatorCompanyBillingOverride, OperatorMasterLink
 from src.entities.expense import Expense
 from src.entities.invoice import Invoice, InvoiceItem
 from src.entities.payout import Payout, PayoutExpense, PayoutInvoice, PayoutShare
@@ -74,5 +74,6 @@ __all__ = [
     "CompanyAlias",
     "DistributionAnswer",
     "Operator",
+    "OperatorCompanyBillingOverride",
     "OperatorMasterLink",
 ]

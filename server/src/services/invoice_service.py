@@ -20,6 +20,37 @@ def _company_tax_commission_mode(company: str | None) -> str:
     return _normalize_tax_commission_mode(getattr(settings, "tax_commission_mode", None))
 
 
+def _company_billing_settings(company: str | None):
+    if not company:
+        return None
+    return company_billing_repo.get_company_billing_settings(company)
+
+
+def _settings_tax_commission_mode(settings) -> str:
+    return _normalize_tax_commission_mode(getattr(settings, "tax_commission_mode", None))
+
+
+def _body_fields(body) -> set[str]:
+    fields = getattr(body, "model_fields_set", None)
+    if fields is not None:
+        return set(fields)
+    return set(getattr(body, "__fields_set__", set()))
+
+
+def _apply_company_invoice_defaults(body, settings) -> None:
+    if not settings:
+        return
+    fields = _body_fields(body)
+    if "percent_rate" not in fields:
+        body.percent_rate = float(getattr(settings, "default_percent_rate", 0) or 0)
+    if "tax_rate" not in fields:
+        body.tax_rate = float(getattr(settings, "default_tax_rate", 0) or 0)
+    if "commission_user_id" not in fields:
+        body.commission_user_id = getattr(settings, "default_commission_user_id", None)
+    if "tax_user_id" not in fields:
+        body.tax_user_id = getattr(settings, "default_tax_user_id", None)
+
+
 def _invoice_totals(body, tax_commission_mode: str = "added") -> tuple[int, int, int, int]:
     items_total = sum(item.get("amount", 0) for item in (body.items or []))
     debt = body.debt_amount or items_total
@@ -74,12 +105,28 @@ def _generated_invoice_company(usage_logs: list[dict]) -> str | None:
     return None
 
 
+def _usage_company_key(log: dict) -> tuple[str, object]:
+    if log.get("company_id") is not None:
+        return ("id", log["company_id"])
+    company = log.get("company_name") or log.get("company")
+    if company:
+        return ("name", str(company).strip().lower())
+    return ("unknown", None)
+
+
+def _mixed_company_error(usage_logs: list[dict]) -> str | None:
+    company_keys = {_usage_company_key(log) for log in usage_logs}
+    if len(company_keys) > 1:
+        return "All usage logs in one invoice must belong to the same company"
+    return None
+
+
 def _generated_invoice_totals(body, usage_logs: list[dict], mode: str) -> tuple[int, int, int, int]:
     usage_total = sum(int(log.get("price") or 0) for log in usage_logs)
     if mode == "included":
-        total = body.total_amount or body.debt_amount or usage_total
-        percent = body.percent_amount or round(total * body.percent_rate / 100)
-        tax = body.tax_amount or round(total * body.tax_rate / 100)
+        total = body.debt_amount or usage_total or body.total_amount
+        percent = round(total * body.percent_rate / 100)
+        tax = round(total * body.tax_rate / 100)
         return total, percent, tax, total
     debt = body.debt_amount or usage_total
     percent = body.percent_amount or 0
@@ -97,9 +144,13 @@ def generate_invoice(body) -> tuple[int, dict]:
     ]
     if not usage_logs:
         return 400, {"error": "No valid usage logs provided"}
+    if error := _mixed_company_error(usage_logs):
+        return 400, {"error": error}
 
     company = _generated_invoice_company(usage_logs)
-    tax_commission_mode = _company_tax_commission_mode(company)
+    company_settings = _company_billing_settings(company)
+    _apply_company_invoice_defaults(body, company_settings)
+    tax_commission_mode = _settings_tax_commission_mode(company_settings)
     debt_amount, percent_amount, tax_amount, total_amount = _generated_invoice_totals(
         body, usage_logs, tax_commission_mode
     )
@@ -190,7 +241,14 @@ def list_invoices(company_id: int | None = None) -> tuple[int, list[dict]]:
 
 
 def create_invoice(body) -> tuple[int, dict]:
-    tax_commission_mode = _normalize_tax_commission_mode(body.tax_commission_mode)
+    company = (body.company or "").strip() or None
+    company_settings = _company_billing_settings(company)
+    _apply_company_invoice_defaults(body, company_settings)
+    tax_commission_mode = (
+        _settings_tax_commission_mode(company_settings)
+        if company_settings
+        else _normalize_tax_commission_mode(body.tax_commission_mode)
+    )
     debt, calc_percent, calc_tax, calc_total = _invoice_totals(body, tax_commission_mode)
     body.percent_amount = body.percent_amount or calc_percent
     body.tax_amount = body.tax_amount or calc_tax
@@ -199,6 +257,7 @@ def create_invoice(body) -> tuple[int, dict]:
     invoice_number = body.invoice_number or f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     return 200, invoice_repo.create_invoice_with_items(
         invoice_number=invoice_number,
+        company=company,
         comment=body.comment,
         percent_rate=body.percent_rate,
         tax_rate=body.tax_rate,

@@ -4,6 +4,13 @@ from src.entities.utils import entities_to_list, entity_to_dict
 from src.repositories import company_billing_repo as company_repo
 
 
+def _body_fields(body) -> set[str]:
+    fields = getattr(body, "model_fields_set", None)
+    if fields is not None:
+        return set(fields)
+    return set(getattr(body, "__fields_set__", set()))
+
+
 def list_company_billing_settings() -> tuple[int, list[dict]]:
     return 200, entities_to_list(company_repo.list_company_billing_settings())
 
@@ -13,11 +20,22 @@ def update_company_billing_settings(company: str, body) -> tuple[int, dict]:
         return 400, {"error": "company required"}
     if body.tax_commission_mode not in company_repo.TAX_COMMISSION_MODES:
         return 400, {"error": "Invalid tax_commission_mode"}
+    fields = _body_fields(body)
+    optional_settings = {}
+    for field in [
+        "default_percent_rate",
+        "default_tax_rate",
+        "default_commission_user_id",
+        "default_tax_user_id",
+    ]:
+        if field in fields:
+            optional_settings[field] = getattr(body, field)
     return 200, entity_to_dict(
         company_repo.upsert_company_billing_settings(
             company,
             body.auto_invoice_reopen,
             body.tax_commission_mode,
+            **optional_settings,
         )
     )
 

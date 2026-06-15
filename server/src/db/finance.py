@@ -250,20 +250,25 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
             da.id AS distribution_answer_id,
             op.user_id,
             CASE
-                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
                 ELSE COALESCE(ct.operator_amount, 0)
             END AS amount
         FROM distribution_answers da
         JOIN usage_log ul ON ul.id = da.usage_log_id
         JOIN successful_captchas sc ON sc.captcha_id = da.captcha_id
         JOIN operators o ON o.id = da.operator_id
+        LEFT JOIN operator_company_billing_overrides obo
+          ON obo.operator_id = o.id
+         AND obo.company_id = ul.company_id
         LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
         LEFT JOIN usage_executor ue ON 1 = 1
         WHERE da.usage_log_id = ?
-          AND COALESCE(o.billing_mode, 'company') != 'free'
+          AND COALESCE(obo.billing_mode, o.billing_mode, 'company') != 'free'
           AND CASE
-                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
                 ELSE COALESCE(ct.operator_amount, 0)
               END > 0
           AND (ue.user_id IS NULL OR op.user_id != ue.user_id)

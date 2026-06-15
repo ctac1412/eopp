@@ -34,6 +34,18 @@ class Operator(Base):
     profile: Mapped[OperatorProfile | None] = relationship(back_populates="operator", uselist=False)
 
 
+class OperatorCompanyBillingOverride(Base):
+    __tablename__ = "operator_company_billing_overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operator_id: Mapped[int] = mapped_column(Integer, ForeignKey("operators.id"), nullable=False)
+    company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
+    billing_mode: Mapped[str] = mapped_column(Text, nullable=False, default="company")
+    icon_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class OperatorMasterLink(Base):
     __tablename__ = "operator_master_links"
 

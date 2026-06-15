@@ -670,15 +670,30 @@ class TestAdmin:
         assert old_payload.status_code == 200
         assert old_payload.json()["auto_invoice_reopen"] is True
         assert old_payload.json()["tax_commission_mode"] == "added"
+        assert old_payload.json()["default_percent_rate"] == 0
+        assert old_payload.json()["default_tax_rate"] == 0
+        assert old_payload.json()["default_commission_user_id"] is None
+        assert old_payload.json()["default_tax_user_id"] is None
 
         response = client.put(
             "/admin/company-billing-settings/Mode API Co",
             headers={"X-Admin-Token": admin_token},
-            json={"auto_invoice_reopen": False, "tax_commission_mode": "included"},
+            json={
+                "auto_invoice_reopen": False,
+                "tax_commission_mode": "included",
+                "default_percent_rate": 5,
+                "default_tax_rate": 6,
+                "default_commission_user_id": 11,
+                "default_tax_user_id": 12,
+            },
         )
         assert response.status_code == 200
         assert response.json()["auto_invoice_reopen"] is False
         assert response.json()["tax_commission_mode"] == "included"
+        assert response.json()["default_percent_rate"] == 5
+        assert response.json()["default_tax_rate"] == 6
+        assert response.json()["default_commission_user_id"] == 11
+        assert response.json()["default_tax_user_id"] == 12
 
     def test_admin_streams(self, client, admin_token):
         """doc"""

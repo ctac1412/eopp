@@ -124,10 +124,16 @@ class TariffBody(BaseModel):
     price_custom_slots: int | None = None
     executor_amount: int | None = None
     operator_amount: int | None = None
+    tax_commission_mode: str | None = None
+    default_percent_rate: float | None = None
+    default_tax_rate: float | None = None
+    default_commission_user_id: int | None = None
+    default_tax_user_id: int | None = None
 
 
 class CreateInvoiceBody(BaseModel):
     invoice_number: str | None = None
+    company: str | None = None
     comment: str = ""
     percent_rate: float = 0
     tax_rate: float = 0
@@ -294,6 +300,10 @@ class OpenInvoiceBody(BaseModel):
 class CompanyBillingSettingBody(BaseModel):
     auto_invoice_reopen: bool = False
     tax_commission_mode: str = "added"
+    default_percent_rate: float | None = None
+    default_tax_rate: float | None = None
+    default_commission_user_id: int | None = None
+    default_tax_user_id: int | None = None
 
 
 class CompanyAliasBody(BaseModel):

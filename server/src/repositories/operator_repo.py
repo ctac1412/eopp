@@ -10,6 +10,7 @@ from src.entities import (
     Company,
     CompanyMembership,
     Operator,
+    OperatorCompanyBillingOverride,
     OperatorMasterLink,
     OperatorProfile,
     User,
@@ -17,6 +18,8 @@ from src.entities import (
 )
 
 logger = logging.getLogger("eopp.operator_repo")
+
+OPERATOR_BILLING_MODES = {"company", "custom", "free"}
 
 
 def _normalize_company_ids(value, fallback_company_id: int | None) -> list[int]:
@@ -87,11 +90,89 @@ def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None)
             names.get(company_id) for company_id in operator_company_ids if names.get(company_id)
         ],
     }
+    data["billing_overrides"] = _operator_billing_overrides(op.id, names)
     if op.profile:
         data["profile_id"] = op.profile.id
         data["user_id"] = op.profile.user_id
         data["profile_active"] = op.profile.active
     return data
+
+
+def _operator_billing_overrides(operator_id: int, company_names: dict[int, str] | None = None) -> list[dict]:
+    names = company_names or {}
+    with get_session() as session:
+        rows = (
+            session.query(OperatorCompanyBillingOverride)
+            .filter(OperatorCompanyBillingOverride.operator_id == operator_id)
+            .order_by(OperatorCompanyBillingOverride.company_id.asc())
+            .all()
+        )
+        return [
+            {
+                "company_id": row.company_id,
+                "company_name": names.get(row.company_id),
+                "billing_mode": row.billing_mode or "company",
+                "icon_rate": int(row.icon_rate or 0),
+            }
+            for row in rows
+        ]
+
+
+def _normalize_billing_overrides(value) -> list[dict]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("billing_overrides must be a list")
+    result: list[dict] = []
+    seen: set[int] = set()
+    for raw in value:
+        if not isinstance(raw, dict):
+            raise ValueError("billing_overrides entries must be objects")
+        company_id = raw.get("company_id")
+        if company_id in (None, ""):
+            continue
+        company_id = int(company_id)
+        if company_id in seen:
+            continue
+        billing_mode = str(raw.get("billing_mode") or "company")
+        if billing_mode not in OPERATOR_BILLING_MODES:
+            raise ValueError("Invalid operator billing_mode")
+        icon_rate = max(0, int(raw.get("icon_rate") or 0)) if billing_mode == "custom" else 0
+        result.append(
+            {
+                "company_id": company_id,
+                "billing_mode": billing_mode,
+                "icon_rate": icon_rate,
+            }
+        )
+        seen.add(company_id)
+    return result
+
+
+def _replace_billing_overrides(session, operator_id: int, overrides) -> None:
+    normalized = _normalize_billing_overrides(overrides)
+    if normalized:
+        company_ids = [item["company_id"] for item in normalized]
+        companies = session.query(Company.id).filter(Company.id.in_(company_ids)).all()
+        existing = {int(row.id) for row in companies}
+        missing = [company_id for company_id in company_ids if company_id not in existing]
+        if missing:
+            raise ValueError(f"company_not_found:{missing[0]}")
+    session.query(OperatorCompanyBillingOverride).filter(
+        OperatorCompanyBillingOverride.operator_id == operator_id
+    ).delete()
+    now = datetime.now(UTC).isoformat()
+    for item in normalized:
+        session.add(
+            OperatorCompanyBillingOverride(
+                operator_id=operator_id,
+                company_id=item["company_id"],
+                billing_mode=item["billing_mode"],
+                icon_rate=item["icon_rate"],
+                created_at=now,
+                updated_at=now,
+            )
+        )
 
 
 def create_operator(nickname: str, company_id: int | None = None) -> dict:
@@ -166,6 +247,14 @@ def list_operators(company_id: int | None = None) -> list[dict]:
         for op in ops:
             all_company_ids.update(_profile_company_ids(op.profile, op.company_id))
             all_company_ids.update(_operator_access_scope(op)["company_ids"])
+        op_ids = [op.id for op in ops]
+        if op_ids:
+            for row in (
+                session.query(OperatorCompanyBillingOverride.company_id)
+                .filter(OperatorCompanyBillingOverride.operator_id.in_(op_ids))
+                .all()
+            ):
+                all_company_ids.add(int(row.company_id))
         company_names = {
             row.id: row.name
             for row in session.query(Company).filter(Company.id.in_(all_company_ids)).all()
@@ -227,6 +316,7 @@ def update_operator(operator_id: int, **kwargs) -> dict | None:
         if not op:
             return None
         company_ids = kwargs.pop("company_ids", None)
+        billing_overrides = kwargs.pop("billing_overrides", None)
         for attr, value in kwargs.items():
             if value is not None and hasattr(op, attr):
                 setattr(op, attr, value)
@@ -237,6 +327,8 @@ def update_operator(operator_id: int, **kwargs) -> dict | None:
                 if normalized:
                     op.profile.company_id = normalized[0]
                     op.company_id = normalized[0]
+        if billing_overrides is not None:
+            _replace_billing_overrides(session, operator_id, billing_overrides)
         session.commit()
         session.refresh(op)
         return _operator_to_dict(op)

@@ -5,6 +5,7 @@ import {
   DataTable,
   FilterBar,
   MetricsStrip,
+  SelectInput,
   TextInput,
   Toolbar,
 } from "../../../ui";
@@ -54,6 +55,22 @@ const EMPTY_TARIFF_FORM = {
   operator_amount: "",
 };
 
+const EMPTY_BILLING_DEFAULTS = {
+  default_percent_rate: 0,
+  default_tax_rate: 0,
+  default_commission_user_id: null,
+  default_tax_user_id: null,
+};
+
+const TAX_COMMISSION_MODE_OPTIONS = [
+  { value: "added", label: "Сверху" },
+  { value: "included", label: "Включено" },
+];
+
+function normalizeTaxCommissionMode(mode) {
+  return mode === "included" ? "included" : "added";
+}
+
 const TARIFF_FIELDS = [
   ["price_create", "Создание"],
   ["price_reschedule", "Перенос"],
@@ -85,7 +102,41 @@ function tariffFormToBody(form) {
   };
 }
 
-function CompanyTariffForm({ form, onChange }) {
+function billingDefaultsFromSetting(setting) {
+  return {
+    default_percent_rate: Number(setting?.default_percent_rate) || 0,
+    default_tax_rate: Number(setting?.default_tax_rate) || 0,
+    default_commission_user_id: setting?.default_commission_user_id ?? null,
+    default_tax_user_id: setting?.default_tax_user_id ?? null,
+  };
+}
+
+function billingDefaultsToBody(defaults) {
+  return {
+    default_percent_rate: Number(defaults?.default_percent_rate) || 0,
+    default_tax_rate: Number(defaults?.default_tax_rate) || 0,
+    default_commission_user_id: defaults?.default_commission_user_id ?? null,
+    default_tax_user_id: defaults?.default_tax_user_id ?? null,
+  };
+}
+
+function CompanyTariffForm({
+  form,
+  onChange,
+  taxCommissionMode,
+  onTaxCommissionModeChange,
+  billingDefaults,
+  onBillingDefaultsChange,
+  financeParticipants = [],
+}) {
+  const userOptions = financeParticipants.map((user) => ({
+    value: user.id,
+    label: user.name || user.login || `#${user.id}`,
+  }));
+  const updateBillingDefault = (field, value) => {
+    onBillingDefaultsChange?.((prev) => ({ ...prev, [field]: value }));
+  };
+
   return (
     <div className="company-tariff-form">
       <div className="company-tariff-form__grid">
@@ -101,6 +152,62 @@ function CompanyTariffForm({ form, onChange }) {
             />
           </label>
         ))}
+        {taxCommissionMode != null && (
+          <label className="company-tariff-field company-tariff-field--wide">
+            <span className="company-tariff-field__label">Тип комиссии и налога</span>
+            <SelectInput
+              className="company-tariff-field__select"
+              value={taxCommissionMode}
+              onChange={(value) => onTaxCommissionModeChange?.(normalizeTaxCommissionMode(value))}
+              options={TAX_COMMISSION_MODE_OPTIONS}
+              allowClear={false}
+            />
+          </label>
+        )}
+        {billingDefaults && (
+          <>
+            <label className="company-tariff-field">
+              <span className="company-tariff-field__label">Комиссия по умолчанию, %</span>
+              <InputNumber
+                className="company-tariff-field__input"
+                value={Number(billingDefaults.default_percent_rate) || 0}
+                onChange={(value) => updateBillingDefault("default_percent_rate", value == null ? 0 : value)}
+                min={0}
+                controls={false}
+              />
+            </label>
+            <label className="company-tariff-field">
+              <span className="company-tariff-field__label">Налог по умолчанию, %</span>
+              <InputNumber
+                className="company-tariff-field__input"
+                value={Number(billingDefaults.default_tax_rate) || 0}
+                onChange={(value) => updateBillingDefault("default_tax_rate", value == null ? 0 : value)}
+                min={0}
+                controls={false}
+              />
+            </label>
+            <label className="company-tariff-field company-tariff-field--wide">
+              <span className="company-tariff-field__label">Получатель комиссии по умолчанию</span>
+              <SelectInput
+                className="company-tariff-field__select"
+                value={billingDefaults.default_commission_user_id ?? undefined}
+                onChange={(value) => updateBillingDefault("default_commission_user_id", value ?? null)}
+                options={userOptions}
+                placeholder="Не указан"
+              />
+            </label>
+            <label className="company-tariff-field company-tariff-field--wide">
+              <span className="company-tariff-field__label">Получатель налога по умолчанию</span>
+              <SelectInput
+                className="company-tariff-field__select"
+                value={billingDefaults.default_tax_user_id ?? undefined}
+                onChange={(value) => updateBillingDefault("default_tax_user_id", value ?? null)}
+                options={userOptions}
+                placeholder="Не указан"
+              />
+            </label>
+          </>
+        )}
       </div>
     </div>
   );
@@ -202,19 +309,30 @@ function CompanyAccessMatrix({ users, draft, search, onSearchChange, onToggle })
 
 export function CompaniesTab({ adminToken, onError }) {
   const [companies, setCompanies] = useState([]);
+  const [companySettings, setCompanySettings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ name: "", aliases: "", notes: "" });
+  const [form, setForm] = useState({
+    name: "",
+    aliases: "",
+    notes: "",
+    tax_commission_mode: "added",
+  });
   const [showDefaultTariffModal, setShowDefaultTariffModal] = useState(false);
   const [defaultTariff, setDefaultTariff] = useState(null);
   const [defaultTariffForm, setDefaultTariffForm] = useState(EMPTY_TARIFF_FORM);
+  const [defaultTariffTaxCommissionMode, setDefaultTariffTaxCommissionMode] = useState("added");
+  const [defaultTariffBillingDefaults, setDefaultTariffBillingDefaults] = useState(EMPTY_BILLING_DEFAULTS);
   const [defaultTariffSaving, setDefaultTariffSaving] = useState(false);
   const [tariffCompany, setTariffCompany] = useState(null);
   const [tariffForm, setTariffForm] = useState(EMPTY_TARIFF_FORM);
+  const [tariffTaxCommissionMode, setTariffTaxCommissionMode] = useState("added");
+  const [tariffBillingDefaults, setTariffBillingDefaults] = useState(EMPTY_BILLING_DEFAULTS);
   const [tariffSaving, setTariffSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [financeParticipants, setFinanceParticipants] = useState([]);
   const [accessCompany, setAccessCompany] = useState(null);
   const [accessUsers, setAccessUsers] = useState([]);
   const [accessDraft, setAccessDraft] = useState({ finance: [], operator: [], executor: [] });
@@ -245,21 +363,58 @@ export function CompaniesTab({ adminToken, onError }) {
       if (res.status === 404) {
         setDefaultTariff(null);
         setDefaultTariffForm(EMPTY_TARIFF_FORM);
+        setDefaultTariffTaxCommissionMode("added");
+        setDefaultTariffBillingDefaults(EMPTY_BILLING_DEFAULTS);
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setDefaultTariff(data);
       setDefaultTariffForm(tariffToForm(data));
+      setDefaultTariffTaxCommissionMode(normalizeTaxCommissionMode(data?.tax_commission_mode));
+      setDefaultTariffBillingDefaults(billingDefaultsFromSetting(data));
     } catch (err) {
       onError?.(`Ошибка загрузки дефолтного тарифа: ${err.message}`);
+    }
+  }, [adminToken, onError]);
+
+  const fetchCompanySettings = useCallback(async () => {
+    try {
+      const res = await adminRequest("/admin/company-billing-settings", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCompanySettings(Array.isArray(data) ? data : []);
+    } catch (err) {
+      onError?.(`Ошибка загрузки настроек компаний: ${err.message}`);
+    }
+  }, [adminToken, onError]);
+
+  const fetchFinanceParticipants = useCallback(async () => {
+    try {
+      const res = await adminRequest("/admin/finance-participants", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setFinanceParticipants(Array.isArray(data) ? data : []);
+    } catch (err) {
+      onError?.(`Ошибка загрузки финучастников: ${err.message}`);
     }
   }, [adminToken, onError]);
 
   useEffect(() => {
     fetchCompanies();
     fetchDefaultTariff();
-  }, [fetchCompanies, fetchDefaultTariff]);
+    fetchCompanySettings();
+    fetchFinanceParticipants();
+  }, [fetchCompanies, fetchDefaultTariff, fetchCompanySettings, fetchFinanceParticipants]);
+
+  const settingsByCompany = useMemo(
+    () => new Map(companySettings.map((setting) => [setting.company, setting])),
+    [companySettings],
+  );
 
   const filteredCompanies = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -294,22 +449,26 @@ export function CompaniesTab({ adminToken, onError }) {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ name: "", aliases: "", notes: "" });
+    setForm({ name: "", aliases: "", notes: "", tax_commission_mode: "added" });
     setShowModal(true);
   };
 
   const openEdit = (company) => {
+    const setting = settingsByCompany.get(company.name);
     setEditingId(company.id);
     setForm({
       name: company.name || "",
       aliases: Array.isArray(company.aliases) ? company.aliases.join("\n") : "",
       notes: company.notes || "",
+      tax_commission_mode: normalizeTaxCommissionMode(setting?.tax_commission_mode),
     });
     setShowModal(true);
   };
 
   const openDefaultTariff = () => {
     setDefaultTariffForm(tariffToForm(defaultTariff));
+    setDefaultTariffTaxCommissionMode(normalizeTaxCommissionMode(defaultTariff?.tax_commission_mode));
+    setDefaultTariffBillingDefaults(billingDefaultsFromSetting(defaultTariff));
     setShowDefaultTariffModal(true);
   };
 
@@ -319,12 +478,18 @@ export function CompaniesTab({ adminToken, onError }) {
       const res = await adminRequest("/admin/default-company-tariff", {
         method: "PUT",
         headers: adminHeaders(adminToken),
-        body: JSON.stringify(tariffFormToBody(defaultTariffForm)),
+        body: JSON.stringify({
+          ...tariffFormToBody(defaultTariffForm),
+          tax_commission_mode: normalizeTaxCommissionMode(defaultTariffTaxCommissionMode),
+          ...billingDefaultsToBody(defaultTariffBillingDefaults),
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setDefaultTariff(data);
       setDefaultTariffForm(tariffToForm(data));
+      setDefaultTariffTaxCommissionMode(normalizeTaxCommissionMode(data?.tax_commission_mode));
+      setDefaultTariffBillingDefaults(billingDefaultsFromSetting(data));
       setShowDefaultTariffModal(false);
     } catch (err) {
       onError?.(`Ошибка сохранения дефолтного тарифа: ${err.message}`);
@@ -352,10 +517,33 @@ export function CompaniesTab({ adminToken, onError }) {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const saved = await res.json();
+      const previousCompany = editingId
+        ? companies.find((company) => company.id === editingId)
+        : null;
+      const previousSetting = previousCompany
+        ? settingsByCompany.get(previousCompany.name)
+        : null;
+      const previousDefaults = billingDefaultsFromSetting(previousSetting);
+      if (editingId && previousSetting) {
+        const settingsRes = await adminRequest(
+          `/admin/company-billing-settings/${encodeURIComponent(saved.name)}`,
+          {
+            method: "PUT",
+            headers: adminHeaders(adminToken),
+            body: JSON.stringify({
+              auto_invoice_reopen: !!previousSetting.auto_invoice_reopen,
+              tax_commission_mode: normalizeTaxCommissionMode(previousSetting.tax_commission_mode),
+              ...billingDefaultsToBody(previousDefaults),
+            }),
+          },
+        );
+        if (!settingsRes.ok) throw new Error(`HTTP ${settingsRes.status}`);
+      }
       setShowModal(false);
       setEditingId(null);
-      setForm({ name: "", aliases: "", notes: "" });
-      await fetchCompanies();
+      setForm({ name: "", aliases: "", notes: "", tax_commission_mode: "added" });
+      await Promise.all([fetchCompanies(), fetchCompanySettings()]);
     } catch (err) {
       onError?.(`Ошибка сохранения компании: ${err.message}`);
     } finally {
@@ -386,8 +574,11 @@ export function CompaniesTab({ adminToken, onError }) {
   };
 
   const openTariff = async (company) => {
+    const setting = settingsByCompany.get(company.name);
     setTariffCompany(company);
     setTariffForm(EMPTY_TARIFF_FORM);
+    setTariffTaxCommissionMode(normalizeTaxCommissionMode(setting?.tax_commission_mode));
+    setTariffBillingDefaults(billingDefaultsFromSetting(setting));
     try {
       const res = await adminRequest(`/admin/company-tariffs/${company.id}`, {
         headers: adminHeadersJson(adminToken),
@@ -411,8 +602,22 @@ export function CompaniesTab({ adminToken, onError }) {
         body: JSON.stringify(tariffFormToBody(tariffForm)),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const setting = settingsByCompany.get(tariffCompany.name);
+      const settingsRes = await adminRequest(
+        `/admin/company-billing-settings/${encodeURIComponent(tariffCompany.name)}`,
+        {
+          method: "PUT",
+          headers: adminHeaders(adminToken),
+          body: JSON.stringify({
+            auto_invoice_reopen: !!setting?.auto_invoice_reopen,
+            tax_commission_mode: normalizeTaxCommissionMode(tariffTaxCommissionMode),
+            ...billingDefaultsToBody(tariffBillingDefaults),
+          }),
+        },
+      );
+      if (!settingsRes.ok) throw new Error(`HTTP ${settingsRes.status}`);
       setTariffCompany(null);
-      await fetchCompanies();
+      await Promise.all([fetchCompanies(), fetchCompanySettings()]);
     } catch (err) {
       onError?.(`Ошибка сохранения тарифа компании: ${err.message}`);
     } finally {
@@ -431,7 +636,9 @@ export function CompaniesTab({ adminToken, onError }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setTariffForm(tariffToForm(data));
-      await fetchCompanies();
+      setTariffTaxCommissionMode(normalizeTaxCommissionMode(defaultTariff?.tax_commission_mode));
+      setTariffBillingDefaults(billingDefaultsFromSetting(defaultTariff));
+      await Promise.all([fetchCompanies(), fetchCompanySettings()]);
     } catch (err) {
       onError?.(`Ошибка применения дефолтного тарифа: ${err.message}`);
     } finally {
@@ -587,6 +794,14 @@ export function CompaniesTab({ adminToken, onError }) {
       render: (_, company) => renderTariffAmount(company, "executor_amount"),
     },
     {
+      title: "Н/К",
+      width: 78,
+      render: (_, company) => {
+        const mode = normalizeTaxCommissionMode(settingsByCompany.get(company.name)?.tax_commission_mode);
+        return mode === "included" ? "Вкл." : "Св.";
+      },
+    },
+    {
       title: "Заметки",
       dataIndex: "notes",
       width: 72,
@@ -723,10 +938,18 @@ export function CompaniesTab({ adminToken, onError }) {
         okText="Сохранить"
         cancelText="Отмена"
         confirmLoading={defaultTariffSaving}
-        width={560}
+        width={680}
         destroyOnHidden
       >
-        <CompanyTariffForm form={defaultTariffForm} onChange={setDefaultTariffForm} />
+        <CompanyTariffForm
+          form={defaultTariffForm}
+          onChange={setDefaultTariffForm}
+          taxCommissionMode={defaultTariffTaxCommissionMode}
+          onTaxCommissionModeChange={setDefaultTariffTaxCommissionMode}
+          billingDefaults={defaultTariffBillingDefaults}
+          onBillingDefaultsChange={setDefaultTariffBillingDefaults}
+          financeParticipants={financeParticipants}
+        />
       </Modal>
 
       <Modal
@@ -737,7 +960,7 @@ export function CompaniesTab({ adminToken, onError }) {
         okText="Сохранить"
         cancelText="Отмена"
         confirmLoading={tariffSaving}
-        width={560}
+        width={680}
         footer={(_, { OkBtn, CancelBtn }) => (
           <div className="company-tariff-footer">
             <Space size={8} wrap>
@@ -756,7 +979,15 @@ export function CompaniesTab({ adminToken, onError }) {
         )}
         destroyOnHidden
       >
-        <CompanyTariffForm form={tariffForm} onChange={setTariffForm} />
+        <CompanyTariffForm
+          form={tariffForm}
+          onChange={setTariffForm}
+          taxCommissionMode={tariffTaxCommissionMode}
+          onTaxCommissionModeChange={setTariffTaxCommissionMode}
+          billingDefaults={tariffBillingDefaults}
+          onBillingDefaultsChange={setTariffBillingDefaults}
+          financeParticipants={financeParticipants}
+        />
       </Modal>
 
       <Modal

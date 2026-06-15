@@ -273,17 +273,29 @@ def _operator_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, di
             op.user_id AS user_id,
             da.operator_id AS operator_id,
             COUNT(*) AS icons,
-            COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) AS icon_rate
+            CASE
+                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+            END AS effective_icon_rate
         FROM distribution_answers da
         JOIN log_executor le ON le.usage_log_id = da.usage_log_id
         JOIN usage_log ul ON ul.id = le.usage_log_id
         JOIN operators o ON o.id = da.operator_id
+        LEFT JOIN operator_company_billing_overrides obo
+          ON obo.operator_id = o.id
+         AND obo.company_id = ul.company_id
         LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
         WHERE ul.invoice_id IN ({placeholders})
-          AND COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) > 0
+          AND COALESCE(obo.billing_mode, o.billing_mode, 'company') != 'free'
+          AND CASE
+                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+              END > 0
           AND (le.executor_user_id IS NULL OR op.user_id != le.executor_user_id)
-        GROUP BY op.user_id, da.operator_id, COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0)
+        GROUP BY op.user_id, da.operator_id, effective_icon_rate
         """,
         [*invoice_ids, *invoice_ids],
     ).fetchall()
@@ -291,7 +303,7 @@ def _operator_payouts_for_invoices(conn, invoice_ids: list[int]) -> dict[int, di
     for row in rows:
         user_id = int(row["user_id"])
         icons = int(row["icons"] or 0)
-        amount = float(icons * int(row["icon_rate"] or 0))
+        amount = float(icons * int(row["effective_icon_rate"] or 0))
         item = payouts.setdefault(user_id, {"operator_icons": 0, "operator_amount": 0.0})
         item["operator_icons"] += icons
         item["operator_amount"] += amount

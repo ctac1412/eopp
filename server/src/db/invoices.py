@@ -47,6 +47,34 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
     if not invoice_ids:
         return {}
     placeholders = ",".join("?" * len(invoice_ids))
+    result: dict[int, dict] = {}
+    ledger_rows = conn.execute(
+        f"""
+        SELECT
+            invoice_id,
+            SUM(CASE WHEN kind = 'operator_salary' THEN 1 ELSE 0 END) AS operator_icons,
+            SUM(CASE WHEN kind = 'operator_salary' THEN ABS(amount) ELSE 0 END) AS operator_amount,
+            SUM(CASE WHEN kind = 'executor_salary' THEN 1 ELSE 0 END) AS executor_count,
+            SUM(CASE WHEN kind = 'executor_salary' THEN ABS(amount) ELSE 0 END) AS executor_amount
+        FROM finance_entries
+        WHERE invoice_id IN ({placeholders})
+          AND kind IN ('operator_salary', 'executor_salary')
+        GROUP BY invoice_id
+        """,
+        invoice_ids,
+    ).fetchall()
+    for row in ledger_rows:
+        invoice_id = int(row["invoice_id"])
+        result[invoice_id] = {
+            "operator_icons": int(row["operator_icons"] or 0),
+            "operator_amount": float(row["operator_amount"] or 0),
+            "executor_count": int(row["executor_count"] or 0),
+            "executor_amount": float(row["executor_amount"] or 0),
+        }
+    fallback_invoice_ids = [invoice_id for invoice_id in invoice_ids if int(invoice_id) not in result]
+    if not fallback_invoice_ids:
+        return result
+    placeholders = ",".join("?" * len(fallback_invoice_ids))
     operator_rows = conn.execute(
         f"""
         WITH log_executor AS (
@@ -65,21 +93,34 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
         SELECT
             le.invoice_id AS invoice_id,
             COUNT(*) AS operator_icons,
-            SUM(COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0)) AS operator_amount
+            SUM(
+                CASE
+                    WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                        THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
+                    ELSE COALESCE(ct.operator_amount, 0)
+                END
+            ) AS operator_amount
         FROM distribution_answers da
         JOIN log_executor le ON le.usage_log_id = da.usage_log_id
         JOIN usage_log ul ON ul.id = le.usage_log_id
         JOIN operators o ON o.id = da.operator_id
+        LEFT JOIN operator_company_billing_overrides obo
+          ON obo.operator_id = o.id
+         AND obo.company_id = ul.company_id
         LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
         WHERE ul.invoice_id IN ({placeholders})
-          AND COALESCE(NULLIF(o.icon_rate, 0), ct.operator_amount, 0) > 0
+          AND COALESCE(obo.billing_mode, o.billing_mode, 'company') != 'free'
+          AND CASE
+                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+              END > 0
           AND (le.executor_user_id IS NULL OR op.user_id != le.executor_user_id)
         GROUP BY le.invoice_id
         """,
-        [*invoice_ids, *invoice_ids],
+        [*fallback_invoice_ids, *fallback_invoice_ids],
     ).fetchall()
-    result: dict[int, dict] = {}
     for row in operator_rows:
         invoice_id = int(row["invoice_id"])
         result.setdefault(invoice_id, {})
@@ -109,7 +150,7 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
         WHERE user_id IS NOT NULL
         GROUP BY invoice_id
         """,
-        invoice_ids,
+        fallback_invoice_ids,
     ).fetchall()
     for row in executor_rows:
         invoice_id = int(row["invoice_id"])

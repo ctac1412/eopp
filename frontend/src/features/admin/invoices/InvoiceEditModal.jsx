@@ -2,8 +2,9 @@ import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
-import { Button, DataTable, TextInput } from "../../../ui";
-import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
+import { Button, DataTable, SegmentedControl, TextInput } from "../../../ui";
+import { editStateLabel, financeKindLabel, formatDateTime } from "../finance/financeFormat";
+import { InvoiceAccountingTable, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 function adminHeaders() {
   return { "Content-Type": "application/json" };
@@ -29,6 +30,9 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const [loading, setLoading] = useState(false);
   const [usageLogs, setUsageLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [financeEntries, setFinanceEntries] = useState([]);
+  const [financeEntriesLoading, setFinanceEntriesLoading] = useState(false);
+  const [profitView, setProfitView] = useState("summary");
   const [screenMode, setScreenMode] = useState(false);
   const [printMode, setPrintMode] = useState(false);
 
@@ -46,6 +50,8 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
       tax_user_id: invoice.tax_user_id || null,
     });
     setItems(invoice.items || []);
+    setFinanceEntries([]);
+    setProfitView("summary");
     setScreenMode(false);
     setPrintMode(false);
     setLogsLoading(true);
@@ -54,15 +60,24 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
       .then((data) => setUsageLogs(Array.isArray(data) ? data : []))
       .catch(() => setUsageLogs([]))
       .finally(() => setLogsLoading(false));
+    setFinanceEntriesLoading(true);
+    adminRequest(`/admin/finance-entries?invoice_id=${invoice.id}`)
+      .then((response) => response.json())
+      .then((data) => setFinanceEntries(Array.isArray(data) ? data : []))
+      .catch(() => setFinanceEntries([]))
+      .finally(() => setFinanceEntriesLoading(false));
   }, [show, invoice, adminToken]);
 
   if (!invoice) return null;
 
   const itemsTotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const taxCommissionMode = invoice.tax_commission_mode === "included" ? "included" : "added";
   const editDebt = form.debt_amount || itemsTotal;
   const editCombinedRate = (form.percent_rate || 0) + (form.tax_rate || 0);
   const editDivisor = editCombinedRate < 100 ? 1 - editCombinedRate / 100 : 0;
-  const editTotal = editDivisor > 0 ? Math.round(editDebt / editDivisor) : 0;
+  const editTotal = taxCommissionMode === "included"
+    ? editDebt
+    : (editDivisor > 0 ? Math.round(editDebt / editDivisor) : 0);
   const editPercent = Math.round(editTotal * (form.percent_rate || 0) / 100);
   const editTax = Math.round(editTotal * (form.tax_rate || 0) / 100);
   const recipientErrors = hasInvoiceRecipientErrors({
@@ -78,6 +93,11 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
   const printTax = editTax || invoice.tax_amount || Math.round(itemsTotal * printTaxRate / 100);
   const printDebt = editDebt || invoice.debt_amount || 0;
   const printFinal = editTotal || invoice.total_amount || (itemsTotal + printPercent + printTax);
+  const operatorAmount = Number(invoice.operator_amount || 0);
+  const executorAmount = Number(invoice.executor_amount || 0);
+  const sidePayoutAmount = Number(invoice.side_payout_amount || operatorAmount + executorAmount || 0);
+  const profitDeductions = taxCommissionMode === "included" ? editPercent + editTax : 0;
+  const profitAmount = editDebt - profitDeductions - sidePayoutAmount;
 
   const addItem = () => setItems((prev) => [...prev, { description: "", amount: 0, sort_order: prev.length }]);
   const removeItem = (index) => setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
@@ -174,6 +194,32 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
     { title: "Ключ", width: 140, ellipsis: true, render: (_, log) => log.label || log.api_key_id || "-" },
     { title: "Сумма", dataIndex: "price", width: 96, align: "right", render: (value) => formatMoney(value) },
   ];
+  const financeEntryColumns = [
+    { title: "Тип", dataIndex: "kind", width: 150, render: (value) => financeKindLabel(value) },
+    {
+      title: "Сумма",
+      dataIndex: "amount",
+      width: 110,
+      align: "right",
+      render: (value) => (
+        <span className={Number(value) < 0 ? "text-danger font-monospace" : "text-success font-monospace"}>
+          {formatMoney(value)}
+        </span>
+      ),
+    },
+    {
+      title: "Участник",
+      dataIndex: "user_name",
+      width: 140,
+      ellipsis: true,
+      render: (value, entry) => value || entry.user_login || entry.user_id || "-",
+    },
+    { title: "Usage", dataIndex: "usage_log_id", width: 78, render: (value) => (value ? `#${value}` : "-") },
+    { title: "Статус", dataIndex: "edit_state", width: 96, render: (value) => editStateLabel(value) },
+    { title: "Дата", dataIndex: "created_at", width: 120, render: formatDateTime },
+    { title: "Комментарий", dataIndex: "comment", ellipsis: true, render: (value) => value || "-" },
+  ];
+  const financeEntriesTotal = financeEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
 
   const preview = (
     <div className="invoice-modal__screen-preview">
@@ -236,7 +282,7 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
         title={`Редактировать счет #${invoice.id}`}
         open={show}
         onCancel={onClose}
-        width={940}
+        width={980}
         destroyOnClose
         footer={
           screenMode
@@ -265,23 +311,32 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
             preview
           ) : (
             <>
-              <section className="invoice-modal__section">
+              <section className="invoice-modal__section invoice-modal__section--compact">
                 <div className="invoice-modal__section-title">
                   <span>Строки счета</span>
                   <Button size="small" variant="primary" onClick={addItem}>
                     Добавить
                   </Button>
                 </div>
-                <DataTable
-                  className="invoice-modal__table"
-                  rowKey={(_, index) => index}
-                  data={items}
-                  columns={itemColumns}
-                  emptyText="Нет строк"
-                  pagination={false}
-                  scroll={false}
-                />
-                <div className="invoice-modal__inline-total">Сумма строк: {formatMoney(itemsTotal)}</div>
+                {items.length > 0 ? (
+                  <>
+                    <DataTable
+                      className="invoice-modal__table invoice-modal__table--compact"
+                      rowKey={(_, index) => index}
+                      data={items}
+                      columns={itemColumns}
+                      emptyText="Нет строк"
+                      pagination={false}
+                      scroll={false}
+                    />
+                    <div className="invoice-modal__inline-total">Сумма строк: {formatMoney(itemsTotal)}</div>
+                  </>
+                ) : (
+                  <div className="invoice-modal__empty-line">
+                    <span>Строк нет</span>
+                    <span>Сумма строк: {formatMoney(itemsTotal)}</span>
+                  </div>
+                )}
               </section>
 
               <section className="invoice-modal__section">
@@ -298,63 +353,99 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                 />
               </section>
 
-              <section className="invoice-modal__section invoice-modal__section--compact">
-                <div className="invoice-modal__section-title">Суммы</div>
-                <div className="invoice-modal__grid">
-                <label className="form-label small mb-0">
-                  Сумма долга
-                  <InputNumber
-                    data-eopp-component="InvoiceEditDebtAmount"
-                    size="small"
-                    min={0}
-                    value={form.debt_amount}
-                    onChange={(value) => updateForm("debt_amount", Number(value) || 0)}
-                    addonAfter="₽"
-                    className="invoice-modal__amount-input"
-                  />
-                </label>
-                <label className="form-label small mb-0">
-                  Комиссия, %
-                  <InputNumber
-                    data-eopp-component="InvoiceEditPercentRate"
-                    size="small"
-                    min={0}
-                    max={99}
-                    step={0.01}
-                    value={form.percent_rate}
-                    onChange={(value) => updateForm("percent_rate", Number(value) || 0)}
-                    className="invoice-modal__number"
-                  />
-                </label>
-                  <label className="form-label small mb-0">
-                  Налог, %
-                  <InputNumber
-                    data-eopp-component="InvoiceEditTaxRate"
-                    size="small"
-                    min={0}
-                    max={99}
-                    step={0.01}
-                    value={form.tax_rate}
-                    onChange={(value) => updateForm("tax_rate", Number(value) || 0)}
-                    className="invoice-modal__number"
-                  />
-                </label>
-                  <div className="invoice-modal__summary invoice-modal__summary--total">
-                    <span>Итого</span>
-                    <strong>{formatMoney(editTotal)}</strong>
-                  </div>
-                </div>
-              </section>
-
-              <InvoiceRecipientFields
+              <InvoiceAccountingTable
                 users={users}
+                debtAmount={editDebt}
+                debtEditable
+                debtLabel="Строки / ручная сумма"
+                onDebtChange={(value) => updateForm("debt_amount", value)}
+                commissionRate={form.percent_rate}
+                taxRate={form.tax_rate}
                 commissionAmount={editPercent}
                 taxAmount={editTax}
+                totalAmount={editTotal}
                 commissionUserId={form.commission_user_id}
                 taxUserId={form.tax_user_id}
+                onCommissionRateChange={(value) => updateForm("percent_rate", value)}
+                onTaxRateChange={(value) => updateForm("tax_rate", value)}
                 onCommissionChange={(value) => updateForm("commission_user_id", value)}
                 onTaxChange={(value) => updateForm("tax_user_id", value)}
+                componentPrefix="InvoiceEdit"
               />
+
+              <section className="invoice-modal__section invoice-modal__section--compact">
+                <div className="invoice-modal__section-title">
+                  <span>Расчёт прибыли</span>
+                  <SegmentedControl
+                    size="small"
+                    value={profitView}
+                    onChange={setProfitView}
+                    options={[
+                      { value: "summary", label: "Сводка" },
+                      { value: "entries", label: "Проводки" },
+                    ]}
+                  />
+                </div>
+                {profitView === "summary" ? (
+                  <div className="invoice-finance-summary">
+                    <div className="invoice-finance-summary__row">
+                      <span>Долг</span>
+                      <strong>{formatMoney(editDebt)}</strong>
+                    </div>
+                    <div className="invoice-finance-summary__row">
+                      <span>Итого к оплате</span>
+                      <strong>{formatMoney(editTotal)}</strong>
+                    </div>
+                    {taxCommissionMode === "included" && (
+                      <>
+                        <div className="invoice-finance-summary__row is-deduction">
+                          <span>Минус комиссия</span>
+                          <strong>{formatMoney(editPercent)}</strong>
+                        </div>
+                        <div className="invoice-finance-summary__row is-deduction">
+                          <span>Минус налог</span>
+                          <strong>{formatMoney(editTax)}</strong>
+                        </div>
+                      </>
+                    )}
+                    <div className="invoice-finance-summary__row is-deduction">
+                      <span>Минус операторы</span>
+                      <strong>{formatMoney(operatorAmount)}</strong>
+                    </div>
+                    <div className="invoice-finance-summary__row is-deduction">
+                      <span>Минус исполнители</span>
+                      <strong>{formatMoney(executorAmount)}</strong>
+                    </div>
+                    {sidePayoutAmount !== operatorAmount + executorAmount && (
+                      <div className="invoice-finance-summary__row is-deduction">
+                        <span>Минус операторы/исполнители</span>
+                        <strong>{formatMoney(sidePayoutAmount)}</strong>
+                      </div>
+                    )}
+                    <div className="invoice-finance-summary__row invoice-finance-summary__row--profit">
+                      <span>Прибыль</span>
+                      <strong>{formatMoney(profitAmount)}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="invoice-finance-entries">
+                    <DataTable
+                      className="invoice-modal__table invoice-modal__table--compact"
+                      rowKey="id"
+                      data={financeEntries}
+                      columns={financeEntryColumns}
+                      loading={financeEntriesLoading}
+                      emptyText="Нет проводок"
+                      pagination={false}
+                      scroll={{ x: 820, y: 180 }}
+                    />
+                    <div className="invoice-finance-entries__total">
+                      <span>Сумма проводок</span>
+                      <strong>{formatMoney(financeEntriesTotal)}</strong>
+                    </div>
+                  </div>
+                )}
+              </section>
 
               <label className="form-label small mb-0 invoice-modal__comment">
                 Комментарий

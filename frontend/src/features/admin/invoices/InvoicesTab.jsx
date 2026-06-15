@@ -70,11 +70,6 @@ function MoneyCell({ value, tone = "" }) {
   return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value || 0)}</span>;
 }
 
-const taxCommissionModeOptions = [
-  { value: "added", label: "Сверху" },
-  { value: "included", label: "Включено" },
-];
-
 export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
   const [invoices, setInvoices] = useState([]);
   const [companySettings, setCompanySettings] = useState([]);
@@ -234,26 +229,10 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
         body: JSON.stringify({
           auto_invoice_reopen: enabled,
           tax_commission_mode: current?.tax_commission_mode || "added",
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      await fetchCompanySettings();
-    } catch (err) {
-      setError(err.message);
-      onError?.(err.message);
-    }
-  };
-
-  const setTaxCommissionMode = async (company, mode) => {
-    try {
-      const current = companySettings.find((setting) => setting.company === company);
-      const res = await adminRequest(`/admin/company-billing-settings/${encodeURIComponent(company)}`, {
-        method: "PUT",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify({
-          auto_invoice_reopen: !!current?.auto_invoice_reopen,
-          tax_commission_mode: mode || "added",
+          default_percent_rate: Number(current?.default_percent_rate) || 0,
+          default_tax_rate: Number(current?.default_tax_rate) || 0,
+          default_commission_user_id: current?.default_commission_user_id ?? null,
+          default_tax_user_id: current?.default_tax_user_id ?? null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -385,20 +364,6 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
     { title: "Компания", dataIndex: "company", ellipsis: true, render: (value) => <span title={value}>{value}</span> },
     { title: "Открытый", dataIndex: "activeInvoice", width: 92, align: "center", render: (invoice) => (invoice ? `#${invoice.id}` : "—") },
     { title: "Долг", dataIndex: "activeInvoice", width: 110, align: "right", render: (invoice) => <MoneyCell value={invoice?.debt_amount || 0} /> },
-    {
-      title: "Режим",
-      dataIndex: "tax_commission_mode",
-      width: 132,
-      render: (mode, row) => (
-        <SelectInput
-          size="small"
-          value={mode || "added"}
-          options={taxCommissionModeOptions}
-          allowClear={false}
-          onChange={(value) => setTaxCommissionMode(row.company, value)}
-        />
-      ),
-    },
     {
       title: "Авто",
       dataIndex: "auto_invoice_reopen",
@@ -675,6 +640,8 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
         onCreated={handleCreated}
         adminToken={adminToken}
         users={users || []}
+        companies={companyRows}
+        companySettings={companySettings}
       />
     </div>
   );

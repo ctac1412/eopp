@@ -1,11 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Input, InputNumber, Modal } from "antd";
+import { Input, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
 import { Button, DataTable } from "../../../ui";
-import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
-
-const DEFAULT_COMMISSION_RATE = 5;
-const DEFAULT_TAX_RATE = 6;
+import { InvoiceAccountingTable, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 function formatDate(value) {
   return value ? String(value).substring(0, 10) : "-";
@@ -15,13 +12,43 @@ function getOperationLabel(log) {
   return log.op_type === "reschedule" ? "Перенос" : "Создание";
 }
 
-export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, users = [] }) {
+function getCompanyLabel(log) {
+  return log.company_name || log.company || (log.company_id != null ? `Компания #${log.company_id}` : "Не указана");
+}
+
+function normalizeTaxCommissionMode(mode) {
+  return mode === "included" ? "included" : "added";
+}
+
+function getTaxCommissionMode(companySettings, company) {
+  return normalizeTaxCommissionMode(
+    companySettings.find((setting) => setting.company === company)?.tax_commission_mode,
+  );
+}
+
+function getCompanyBillingSetting(companySettings, company) {
+  return companySettings.find((setting) => setting.company === company) || null;
+}
+
+export function InvoiceModal({
+  show,
+  selectedLogs = [],
+  onGenerate,
+  onClose,
+  users = [],
+  companySettings = [],
+}) {
   const [debtAmount, setDebtAmount] = useState(0);
-  const [percentRate, setPercentRate] = useState(DEFAULT_COMMISSION_RATE);
-  const [taxRate, setTaxRate] = useState(DEFAULT_TAX_RATE);
+  const [percentRate, setPercentRate] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [commissionUserId, setCommissionUserId] = useState(null);
   const [taxUserId, setTaxUserId] = useState(null);
   const [comment, setComment] = useState("");
+
+  const selectedCompanies = [...new Set(selectedLogs.map(getCompanyLabel))];
+  const hasMixedCompanies = selectedCompanies.length > 1;
+  const selectedCompany = hasMixedCompanies ? null : selectedCompanies[0];
+  const companyBillingSetting = getCompanyBillingSetting(companySettings, selectedCompany);
 
   useEffect(() => {
     const sum = selectedLogs.reduce((acc, log) => acc + (Number(log.price) || 0), 0);
@@ -30,17 +57,29 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
 
   useEffect(() => {
     if (show) {
-      setPercentRate(DEFAULT_COMMISSION_RATE);
-      setTaxRate(DEFAULT_TAX_RATE);
-      setCommissionUserId(null);
-      setTaxUserId(null);
       setComment("");
     }
   }, [show]);
 
+  useEffect(() => {
+    if (!show) return;
+    setPercentRate(Number(companyBillingSetting?.default_percent_rate) || 0);
+    setTaxRate(Number(companyBillingSetting?.default_tax_rate) || 0);
+    setCommissionUserId(companyBillingSetting?.default_commission_user_id ?? null);
+    setTaxUserId(companyBillingSetting?.default_tax_user_id ?? null);
+  }, [show, companyBillingSetting]);
+
+  const taxCommissionMode = hasMixedCompanies
+    ? "added"
+    : getTaxCommissionMode(companySettings, selectedCompany);
   const combinedRate = percentRate + taxRate;
   const divisor = combinedRate < 100 ? 1 - combinedRate / 100 : 0;
-  const totalAmount = divisor > 0 ? Math.round(debtAmount / divisor) : 0;
+  const totalAmount =
+    taxCommissionMode === "included"
+      ? debtAmount
+      : divisor > 0
+        ? Math.round(debtAmount / divisor)
+        : 0;
   const percentAmount = Math.round(totalAmount * percentRate / 100);
   const taxAmount = Math.round(totalAmount * taxRate / 100);
   const recipientErrors = hasInvoiceRecipientErrors({
@@ -55,17 +94,21 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
     { title: "#", width: 44, render: (_, __, index) => index + 1 },
     { title: "Дата", dataIndex: "created_at", width: 96, render: formatDate },
     {
+      title: "Компания",
+      width: 220,
+      render: (_, log) => <span title={getCompanyLabel(log)}>{getCompanyLabel(log)}</span>,
+    },
+    {
       title: "Бронь",
       dataIndex: "reservation_id",
-      width: 160,
-      ellipsis: true,
-      render: (value) => value || "-",
+      width: 430,
+      render: (value) => <span className="font-monospace text-nowrap">{value || "-"}</span>,
     },
-    { title: "Тип", width: 96, render: (_, log) => getOperationLabel(log) },
+    { title: "Тип", width: 140, render: (_, log) => getOperationLabel(log) },
     {
       title: "Цена",
       dataIndex: "price",
-      width: 96,
+      width: 130,
       align: "right",
       render: (value) => formatMoney(value),
     },
@@ -91,7 +134,7 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
       title="Сформировать счет"
       open={show}
       onCancel={onClose}
-      width={860}
+      width={1040}
       destroyOnClose
       footer={[
         <Button key="cancel" size="small" onClick={onClose}>
@@ -102,7 +145,7 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
           size="small"
           variant="primary"
           onClick={handleGenerate}
-          disabled={selectedLogs.length === 0 || totalAmount <= 0 || hasRecipientErrors}
+          disabled={selectedLogs.length === 0 || totalAmount <= 0 || hasRecipientErrors || hasMixedCompanies}
         >
           Сформировать счет
         </Button>,
@@ -113,6 +156,11 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
           <div className="invoice-modal__section-title">
             Выбранные записи <span className="text-muted">({selectedLogs.length})</span>
           </div>
+          {hasMixedCompanies ? (
+            <div className="invoice-modal__warning">
+              В одном счете нельзя смешивать компании: {selectedCompanies.join(", ")}
+            </div>
+          ) : null}
           <DataTable
             className="invoice-modal__table"
             rowKey="id"
@@ -120,60 +168,26 @@ export function InvoiceModal({ show, selectedLogs = [], onGenerate, onClose, use
             columns={columns}
             emptyText="Нет выбранных записей"
             pagination={false}
-            scroll={{ x: 560, y: 220 }}
+            scroll={{ x: 960, y: 180 }}
           />
         </section>
 
-        <section className="invoice-modal__section invoice-modal__section--compact">
-          <div className="invoice-modal__section-title">Суммы</div>
-          <div className="invoice-modal__grid">
-          <div className="invoice-modal__summary">
-            <span className="text-muted">Сумма долга</span>
-            <strong>{formatMoney(debtAmount)}</strong>
-          </div>
-          <label className="form-label small mb-0">
-            Комиссия, %
-            <InputNumber
-              data-eopp-component="InvoicePercentRateInput"
-              size="small"
-              min={0}
-              max={99}
-              step={0.01}
-              value={percentRate}
-              onChange={(value) => setPercentRate(Number(value) || 0)}
-              className="invoice-modal__number"
-            />
-            <span className="text-muted">{formatMoney(percentAmount)} от итого</span>
-          </label>
-          <label className="form-label small mb-0">
-            Налог, %
-            <InputNumber
-              data-eopp-component="InvoiceTaxRateInput"
-              size="small"
-              min={0}
-              max={99}
-              step={0.01}
-              value={taxRate}
-              onChange={(value) => setTaxRate(Number(value) || 0)}
-              className="invoice-modal__number"
-            />
-            <span className="text-muted">{formatMoney(taxAmount)} от итого</span>
-          </label>
-          <div className="invoice-modal__summary invoice-modal__summary--total">
-            <span>Итого</span>
-            <strong>{formatMoney(totalAmount)}</strong>
-          </div>
-          </div>
-        </section>
-
-        <InvoiceRecipientFields
+        <InvoiceAccountingTable
           users={users}
+          debtAmount={debtAmount}
+          debtLabel="Выбранные записи"
+          commissionRate={percentRate}
+          taxRate={taxRate}
           commissionAmount={percentAmount}
           taxAmount={taxAmount}
+          totalAmount={totalAmount}
           commissionUserId={commissionUserId}
           taxUserId={taxUserId}
+          onCommissionRateChange={setPercentRate}
+          onTaxRateChange={setTaxRate}
           onCommissionChange={setCommissionUserId}
           onTaxChange={setTaxUserId}
+          componentPrefix="Invoice"
         />
 
         <label className="form-label small mb-0 invoice-modal__comment">

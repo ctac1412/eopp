@@ -124,6 +124,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
   const [editForm, setEditForm] = useState({ price: "", paid: "" });
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceSelectedLogs, setInvoiceSelectedLogs] = useState([]);
+  const [companySettings, setCompanySettings] = useState([]);
   const [selectedLogIds, setSelectedLogIds] = useState([]);
   const [usagePage, setUsagePage] = useState(() => getUrlPositiveInt(searchParams, "page", 1));
   const [usagePageSize, setUsagePageSize] = useState(() => getUrlPageSize(searchParams));
@@ -209,6 +210,23 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  const fetchCompanySettings = useCallback(async () => {
+    try {
+      const res = await adminRequest("/admin/company-billing-settings", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCompanySettings(Array.isArray(data) ? data : []);
+    } catch (err) {
+      onError?.(`Ошибка загрузки настроек компаний: ${err.message}`);
+    }
+  }, [adminToken, onError]);
+
+  useEffect(() => {
+    fetchCompanySettings();
+  }, [fetchCompanySettings]);
 
   const refreshFinanceEntries = useCallback(async (recordId, { recalculate = false } = {}) => {
     setFinanceLoading((prev) => ({ ...prev, [recordId]: true }));
@@ -895,6 +913,7 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
         onGenerate={handleGenerateInvoice}
         onClose={() => setShowInvoiceModal(false)}
         users={users}
+        companySettings={companySettings}
       />
     </div>
   );

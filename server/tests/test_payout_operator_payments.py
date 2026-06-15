@@ -27,10 +27,10 @@ def test_operator_icon_payments_are_calculated_before_director_shares(isolated_a
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
         """
-        INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        ("op-pay-1", "Operator", _now(), 25, company_id),
+        ("op-pay-1", "Operator", _now(), 25, "custom", company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(

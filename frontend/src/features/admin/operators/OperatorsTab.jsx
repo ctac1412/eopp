@@ -57,6 +57,25 @@ function uniqueNumbers(values) {
   return Array.from(new Set((values || []).map(Number).filter(Boolean)));
 }
 
+function normalizeBillingOverrides(overrides = []) {
+  const seen = new Set();
+  const result = [];
+  (Array.isArray(overrides) ? overrides : []).forEach((override) => {
+    const companyId = Number(override.company_id);
+    if (!companyId || seen.has(companyId)) return;
+    const billingMode = ["company", "custom", "free"].includes(override.billing_mode)
+      ? override.billing_mode
+      : "company";
+    result.push({
+      company_id: companyId,
+      billing_mode: billingMode,
+      icon_rate: billingMode === "custom" ? Math.max(0, Number(override.icon_rate) || 0) : 0,
+    });
+    seen.add(companyId);
+  });
+  return result;
+}
+
 function getOperatorCompanyScope(op) {
   if (op.operator_all_companies === true) {
     return { allCompanies: true, companyIds: [] };
@@ -100,6 +119,7 @@ export function OperatorsTab({ adminToken, onError }) {
     icon_rate: 0,
     masterAccessMode: "all",
     allowed_master_keys: [],
+    billing_overrides: [],
   });
   const [linkSavingOperatorId, setLinkSavingOperatorId] = useState(null);
 
@@ -280,6 +300,7 @@ export function OperatorsTab({ adminToken, onError }) {
       icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
+      billing_overrides: normalizeBillingOverrides(selectedOperator.billing_overrides),
     });
   }, [selectedOperator]);
 
@@ -321,6 +342,7 @@ export function OperatorsTab({ adminToken, onError }) {
           editForm.masterAccessMode,
           editForm.allowed_master_keys,
         ),
+        billing_overrides: normalizeBillingOverrides(editForm.billing_overrides),
       };
       if (body.billing_mode === "custom") {
         body.icon_rate = Math.max(0, Number(editForm.icon_rate) || 0);
@@ -349,7 +371,40 @@ export function OperatorsTab({ adminToken, onError }) {
       icon_rate: Number(selectedOperator.icon_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
+      billing_overrides: normalizeBillingOverrides(selectedOperator.billing_overrides),
     });
+  };
+
+  const addBillingOverride = () => {
+    const used = new Set((editForm.billing_overrides || []).map((item) => Number(item.company_id)));
+    const company = companies.find((item) => !used.has(Number(item.id)));
+    if (!company) return;
+    setEditForm((prev) => ({
+      ...prev,
+      billing_overrides: [
+        ...(prev.billing_overrides || []),
+        { company_id: Number(company.id), billing_mode: "free", icon_rate: 0 },
+      ],
+    }));
+  };
+
+  const updateBillingOverride = (index, patch) => {
+    setEditForm((prev) => ({
+      ...prev,
+      billing_overrides: (prev.billing_overrides || []).map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const next = { ...item, ...patch };
+        if (next.billing_mode !== "custom") next.icon_rate = 0;
+        return next;
+      }),
+    }));
+  };
+
+  const removeBillingOverride = (index) => {
+    setEditForm((prev) => ({
+      ...prev,
+      billing_overrides: (prev.billing_overrides || []).filter((_, itemIndex) => itemIndex !== index),
+    }));
   };
 
   const availableLinkOptions = (op) => {
@@ -796,6 +851,62 @@ export function OperatorsTab({ adminToken, onError }) {
                       />
                     </label>
                   )}
+                  <div className="operator-billing-overrides">
+                    <div className="operator-billing-overrides__head">
+                      <div>
+                        <div className="fw-semibold">Исключения по компаниям</div>
+                        <div className="small text-muted">Если строки нет, работает общий тариф оператора.</div>
+                      </div>
+                      <Button size="small" onClick={addBillingOverride} disabled={companies.length === 0}>
+                        Добавить
+                      </Button>
+                    </div>
+                    {(editForm.billing_overrides || []).map((override, index) => {
+                      const usedCompanies = new Set(
+                        (editForm.billing_overrides || [])
+                          .filter((_, itemIndex) => itemIndex !== index)
+                          .map((item) => Number(item.company_id)),
+                      );
+                      const companyOptions = companies.map((company) => ({
+                        value: Number(company.id),
+                        label: company.name,
+                        disabled: usedCompanies.has(Number(company.id)),
+                      }));
+                      return (
+                        <div key={`${override.company_id}-${index}`} className="operator-billing-overrides__row">
+                          <SelectInput
+                            value={Number(override.company_id) || undefined}
+                            onChange={(value) => updateBillingOverride(index, { company_id: Number(value) || null })}
+                            options={companyOptions}
+                            allowClear={false}
+                          />
+                          <SelectInput
+                            value={override.billing_mode || "company"}
+                            onChange={(value) => updateBillingOverride(index, { billing_mode: value || "company" })}
+                            options={OPERATOR_BILLING_MODES}
+                            allowClear={false}
+                          />
+                          {override.billing_mode === "custom" ? (
+                            <TextInput
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={override.icon_rate}
+                              onChange={(event) => updateBillingOverride(index, { icon_rate: event.target.value })}
+                            />
+                          ) : (
+                            <span className="operator-billing-overrides__rate-muted">-</span>
+                          )}
+                          <Button size="small" variant="danger" onClick={() => removeBillingOverride(index)}>
+                            Удалить
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    {(editForm.billing_overrides || []).length === 0 && (
+                      <div className="small text-muted">Нет исключений.</div>
+                    )}
+                  </div>
                   <label className="form-label small mb-0">
                     Текущий master key
                     <SelectInput

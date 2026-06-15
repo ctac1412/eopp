@@ -460,8 +460,23 @@ async def admin_update_operator(operator_id: int, request: Request):
         if tenant_company_id is not None:
             company_ids = [tenant_company_id]
         kwargs["company_ids"] = company_ids
+    if "billing_overrides" in body:
+        overrides = body["billing_overrides"] or []
+        if tenant_company_id is not None:
+            overrides = [
+                {
+                    **override,
+                    "company_id": tenant_company_id,
+                }
+                for override in overrides
+                if int(override.get("company_id") or 0) == int(tenant_company_id)
+            ]
+        kwargs["billing_overrides"] = overrides
 
-    op = operator_repo.update_operator(operator_id, **kwargs)
+    try:
+        op = operator_repo.update_operator(operator_id, **kwargs)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})
     if "icon_display_mode" in kwargs:

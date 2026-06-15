@@ -1,6 +1,7 @@
 """Default company tariff behavior."""
 
 from src.repositories import company_repo
+from src.repositories import company_billing_repo
 
 
 DEFAULT_TARIFF = {
@@ -10,6 +11,14 @@ DEFAULT_TARIFF = {
     "price_custom_slots": 4400,
     "executor_amount": 550,
     "operator_amount": 660,
+}
+
+DEFAULT_BILLING = {
+    "tax_commission_mode": "included",
+    "default_percent_rate": 5,
+    "default_tax_rate": 6,
+    "default_commission_user_id": 101,
+    "default_tax_user_id": 102,
 }
 
 
@@ -52,6 +61,34 @@ def test_auto_company_creation_copies_default_tariff(client, admin_token):
         "source": "company",
         "company_id": company.id,
     }
+
+
+def test_manual_company_creation_copies_default_billing_settings(client, admin_token):
+    default_response = _put_default_tariff(
+        client,
+        admin_token,
+        {**DEFAULT_TARIFF, **DEFAULT_BILLING},
+    )
+    assert default_response.status_code == 200
+    assert default_response.json() == {
+        **DEFAULT_TARIFF,
+        **DEFAULT_BILLING,
+        "source": "default",
+    }
+
+    create_response = client.post(
+        "/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "Manual Default Billing LLC"},
+    )
+
+    assert create_response.status_code == 201
+    settings = company_billing_repo.get_company_billing_settings("Manual Default Billing LLC")
+    assert settings.tax_commission_mode == "included"
+    assert settings.default_percent_rate == 5
+    assert settings.default_tax_rate == 6
+    assert settings.default_commission_user_id == 101
+    assert settings.default_tax_user_id == 102
 
 
 def test_apply_default_tariff_overwrites_existing_company_tariff(client, admin_token):

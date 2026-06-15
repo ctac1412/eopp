@@ -1,9 +1,9 @@
 import { adminRequest } from "../shared/adminClient";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Input, InputNumber, Modal } from "antd";
 import { formatMoney } from "../../../utils/format";
-import { Button, DataTable, TextInput } from "../../../ui";
-import { InvoiceRecipientFields, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
+import { Button, DataTable, SelectInput, TextInput } from "../../../ui";
+import { InvoiceAccountingTable, hasInvoiceRecipientErrors } from "./InvoiceRecipientFields";
 
 function adminHeaders() {
   return { "Content-Type": "application/json" };
@@ -11,11 +11,30 @@ function adminHeaders() {
 
 const EMPTY_ITEM = { description: "", amount: 0 };
 
-export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users = [] }) {
+function taxCommissionModeForCompany(companySettings, company) {
+  return companySettings.find((setting) => setting.company === company)?.tax_commission_mode === "included"
+    ? "included"
+    : "added";
+}
+
+function billingSettingForCompany(companySettings, company) {
+  return companySettings.find((setting) => setting.company === company) || null;
+}
+
+export function InvoiceCreateModal({
+  show,
+  onClose,
+  onCreated,
+  adminToken,
+  users = [],
+  companies = [],
+  companySettings = [],
+}) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [company, setCompany] = useState("");
   const [comment, setComment] = useState("");
-  const [percentRate, setPercentRate] = useState(5);
-  const [taxRate, setTaxRate] = useState(6);
+  const [percentRate, setPercentRate] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
   const [commissionUserId, setCommissionUserId] = useState(null);
   const [taxUserId, setTaxUserId] = useState(null);
   const [items, setItems] = useState([]);
@@ -39,18 +58,32 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
 
   const resetForm = () => {
     setInvoiceNumber("");
+    setCompany("");
     setComment("");
-    setPercentRate(5);
-    setTaxRate(6);
+    setPercentRate(0);
+    setTaxRate(0);
     setCommissionUserId(null);
     setTaxUserId(null);
     setItems([]);
   };
 
+  const companyBillingSetting = billingSettingForCompany(companySettings, company);
+
+  useEffect(() => {
+    if (!show) return;
+    setPercentRate(Number(companyBillingSetting?.default_percent_rate) || 0);
+    setTaxRate(Number(companyBillingSetting?.default_tax_rate) || 0);
+    setCommissionUserId(companyBillingSetting?.default_commission_user_id ?? null);
+    setTaxUserId(companyBillingSetting?.default_tax_user_id ?? null);
+  }, [show, companyBillingSetting]);
+
   const itemsTotal = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const taxCommissionMode = taxCommissionModeForCompany(companySettings, company);
   const combinedRate = percentRate + taxRate;
   const divisor = combinedRate < 100 ? 1 - combinedRate / 100 : 0;
-  const calcTotal = divisor > 0 ? Math.round(itemsTotal / divisor) : 0;
+  const calcTotal = taxCommissionMode === "included"
+    ? itemsTotal
+    : (divisor > 0 ? Math.round(itemsTotal / divisor) : 0);
   const calcPercent = Math.round(calcTotal * percentRate / 100);
   const calcTax = Math.round(calcTotal * taxRate / 100);
   const recipientErrors = hasInvoiceRecipientErrors({
@@ -67,6 +100,7 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
     try {
       const body = {
         invoice_number: invoiceNumber || undefined,
+        company: company || undefined,
         comment,
         percent_rate: percentRate,
         tax_rate: taxRate,
@@ -144,13 +178,18 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
     },
   ];
 
+  const companyOptions = [
+    { value: "", label: "Не указана" },
+    ...companies.map((row) => ({ value: row.company, label: row.company })),
+  ];
+
   return (
     <Modal
       data-eopp-component="InvoiceCreateModal"
       title="Новый счет"
       open={show}
       onCancel={onClose}
-      width={900}
+      width={1040}
       destroyOnClose
       footer={[
         <Button key="cancel" size="small" onClick={onClose}>
@@ -180,6 +219,15 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
               placeholder="Авто, если пусто"
             />
           </label>
+          <label className="form-label small mb-0">
+            Компания
+            <SelectInput
+              value={company}
+              onChange={(value) => setCompany(value || "")}
+              options={companyOptions}
+              allowClear={false}
+            />
+          </label>
           </div>
         </section>
 
@@ -201,56 +249,22 @@ export function InvoiceCreateModal({ show, onClose, onCreated, adminToken, users
           />
         </section>
 
-        <section className="invoice-modal__section invoice-modal__section--compact">
-          <div className="invoice-modal__section-title">Суммы</div>
-          <div className="invoice-modal__grid">
-          <div className="invoice-modal__summary">
-            <span className="text-muted">Сумма строк</span>
-            <strong>{formatMoney(itemsTotal)}</strong>
-          </div>
-          <label className="form-label small mb-0">
-            Комиссия, %
-            <InputNumber
-              data-eopp-component="InvoiceCreatePercentRate"
-              size="small"
-              min={0}
-              max={99}
-              step={0.01}
-              value={percentRate}
-              onChange={(value) => setPercentRate(Number(value) || 0)}
-              className="invoice-modal__number"
-            />
-            <span className="text-muted">{formatMoney(calcPercent)} от итого</span>
-          </label>
-          <label className="form-label small mb-0">
-            Налог, %
-            <InputNumber
-              data-eopp-component="InvoiceCreateTaxRate"
-              size="small"
-              min={0}
-              max={99}
-              step={0.01}
-              value={taxRate}
-              onChange={(value) => setTaxRate(Number(value) || 0)}
-              className="invoice-modal__number"
-            />
-            <span className="text-muted">{formatMoney(calcTax)} от итого</span>
-          </label>
-          <div className="invoice-modal__summary invoice-modal__summary--total">
-            <span>Итого</span>
-            <strong>{formatMoney(calcTotal)}</strong>
-          </div>
-          </div>
-        </section>
-
-        <InvoiceRecipientFields
+        <InvoiceAccountingTable
           users={users}
+          debtAmount={itemsTotal}
+          debtLabel="Строки счета"
+          commissionRate={percentRate}
+          taxRate={taxRate}
           commissionAmount={calcPercent}
           taxAmount={calcTax}
+          totalAmount={calcTotal}
           commissionUserId={commissionUserId}
           taxUserId={taxUserId}
+          onCommissionRateChange={setPercentRate}
+          onTaxRateChange={setTaxRate}
           onCommissionChange={setCommissionUserId}
           onTaxChange={setTaxUserId}
+          componentPrefix="InvoiceCreate"
         />
 
         <label className="form-label small mb-0 invoice-modal__comment">

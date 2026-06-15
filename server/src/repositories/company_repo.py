@@ -49,6 +49,7 @@ def create_company(
         session.commit()
         session.refresh(c)
         tariff_repo.apply_default_company_tariff(c.id)
+        tariff_repo.apply_default_company_billing_settings(c.name)
         return c
 
 
