@@ -70,6 +70,19 @@ Focused checks:
 - Document new idempotency keys and handler locations in `docs/AGENTS-full.md`
   or a focused docs file.
 
+## Database Schema
+
+- Runtime code must not execute schema DDL or schema repair SQL. No
+  `ALTER TABLE`, `ADD COLUMN`, `DROP COLUMN`, `PRAGMA table_info`, or
+  `sqlite_master` schema probing in `server/src/*` hot paths, repositories,
+  services, routes, startup, backfills, or job handlers.
+- All schema changes and physical DB repairs must live in Alembic revisions
+  under `server/migrations/versions`. If an existing DB is stamped at head but
+  physically misses a column, add a new idempotent repair migration after the
+  current head instead of adding runtime `_ensure_*` helpers.
+- Backfills may transform data only after migrations have established the
+  schema they need; they must not create, drop, or repair columns themselves.
+
 ## Runtime Flags
 
 Preserve these semantics:

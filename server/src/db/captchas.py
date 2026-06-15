@@ -427,7 +427,6 @@ def create_captcha_records(
         return []
 
     conn = get_connection()
-    _ensure_duration_ms_column(conn)
     now = datetime.now(UTC).isoformat()
     created_ids = []
 
@@ -518,18 +517,9 @@ def _parse_naive_dt(iso: str):
     return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
 
 
-def _ensure_duration_ms_column(conn):
-    try:
-        conn.execute("ALTER TABLE captchas ADD COLUMN duration_ms INTEGER DEFAULT NULL")
-        conn.commit()
-    except Exception:
-        pass
-
-
 def backfill_duration_ms() -> int:
     """Backfill duration_ms from logs stored in usage_log."""
     conn = get_connection()
-    _ensure_duration_ms_column(conn)
 
     rows = conn.execute(
         "SELECT c.id, c.captcha_id, c.created_at, c.usage_log_id, u.logs, u.created_at AS usage_created_at "

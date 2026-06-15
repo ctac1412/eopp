@@ -734,6 +734,10 @@ Important rules:
 - If an existing DB is already stamped at head but lacks a column, fix it with
   an idempotent repair migration (`ALTER TABLE ... ADD COLUMN` guarded by
   `PRAGMA table_info`) instead of editing old migration history.
+- Never put schema repair in runtime code. `server/src/*` routes, services,
+  repositories, backfills, startup, and job handlers must not execute
+  `ALTER TABLE`, `ADD COLUMN`, `DROP COLUMN`, `PRAGMA table_info`, or
+  `sqlite_master` probing to compensate for missing migrations.
 - Run this focused check after touching delivery scripts or runbook:
   - `uv run pytest server/tests/test_deploy_scripts.py`
 
