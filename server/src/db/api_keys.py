@@ -47,21 +47,7 @@ def list_keys() -> list[dict]:
     keys = [_row_to_dict(r) for r in rows]
 
     if keys:
-        key_ids = [k["id"] for k in keys]
-        placeholders = ",".join("?" * len(key_ids))
-        tariff_rows = conn.execute(
-            f"SELECT * FROM tariffs WHERE api_key_id IN ({placeholders})", key_ids
-        ).fetchall()
-        tariff_map = {
-            r["api_key_id"]: {
-                "price_create": r["price_create"],
-                "price_reschedule": r["price_reschedule"],
-                "price_create_peak": r["price_create_peak"],
-            }
-            for r in tariff_rows
-        }
         for k in keys:
-            k["tariff"] = tariff_map.get(k["id"])
             k["debt"] = calc_debt(k["id"])
 
     conn.close()

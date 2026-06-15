@@ -1,6 +1,3 @@
-export { ApiKeysTab } from "./apiKeys/ApiKeysTab";
-export { KeyFormModal } from "./apiKeys/KeyFormModal";
-export { DeleteConfirmModal } from "./apiKeys/KeyFormModal";
 export { CaptchasTab } from "./captchas/CaptchasTab";
 export { CompaniesTab } from "./companies/CompaniesTab";
 export { ExpensesTab } from "./finance/expenses/ExpensesTab";

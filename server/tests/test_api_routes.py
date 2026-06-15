@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import threading
+from datetime import UTC, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,14 +60,20 @@ def client(isolate_db):
 
 
 @pytest.fixture
-def admin_token():
+def admin_token(client):
     """doc"""
     from src.db import list_keys
 
     keys = list_keys()
     admin_key = next((k for k in keys if k["is_admin"]), None)
     assert admin_key is not None, "Admin key not found in test DB"
-    return admin_key["key"]
+    response = client.post(
+        "/admin/auth",
+        json={"login": "admin", "password": admin_key["key"]},
+    )
+    assert response.status_code == 200
+    assert "eopp_admin_session" in response.cookies
+    return response.cookies["eopp_admin_session"]
 
 
 @pytest.fixture
@@ -78,6 +85,57 @@ def api_key(client, admin_token):
         json={"label": "pytest_key", "max_uses": 1000},
     )
     return response.json()["key"]
+
+
+def create_company_with_tariff(client, admin_token, name, tariff):
+    from src.db.connection import get_connection
+
+    now = datetime.now(UTC).isoformat()
+    conn = get_connection()
+    cur = conn.execute(
+        "INSERT INTO companies (name, created_at, updated_at) VALUES (?, ?, ?)",
+        (name, now, now),
+    )
+    company_id = cur.lastrowid
+    conn.execute(
+        """
+        INSERT INTO company_tariffs (
+            company_id, price_create, price_reschedule, price_create_peak,
+            price_custom_slots, executor_amount, operator_amount, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            company_id,
+            tariff["price_create"],
+            tariff["price_reschedule"],
+            tariff.get("price_create_peak"),
+            tariff.get("price_custom_slots"),
+            tariff.get("executor_amount", 0),
+            tariff.get("operator_amount", 0),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": company_id, "name": name}
+
+
+def attach_api_key_to_company(api_key_id, company_id):
+    from src.db.connection import get_connection
+
+    conn = get_connection()
+    conn.execute("UPDATE api_keys SET company_id = ? WHERE id = ?", (company_id, api_key_id))
+    conn.commit()
+    conn.close()
+
+
+def create_api_key_for_company(label, company_id):
+    from src.db import create_key
+
+    key = create_key(label=label)
+    attach_api_key_to_company(key["id"], company_id)
+    return key
 
 
 # === API Keys Tests ===
@@ -95,6 +153,58 @@ class TestAPIKeys:
         data = response.json()
         assert "key" in data
         assert data["max_uses"] == 10
+
+    def test_user_can_have_only_one_personal_key(self, client, admin_token):
+        """doc"""
+        user = client.post(
+            "/admin/users",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Key Owner", "login": "key.owner", "password": "strong-password"},
+        )
+        assert user.status_code == 200
+        user_id = user.json()["id"]
+        first = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "owner-key", "user_id": user_id},
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "owner-key-2", "user_id": user_id},
+        )
+
+        assert second.status_code == 400
+        assert "personal API key" in second.json()["error"]
+
+    def test_disabled_user_personal_key_is_invalid(self, client, admin_token):
+        """doc"""
+        user = client.post(
+            "/admin/users",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Disabled Owner", "login": "disabled.owner", "password": "strong-password"},
+        )
+        assert user.status_code == 200
+        user_id = user.json()["id"]
+        key = client.post(
+            "/api-keys",
+            headers={"X-Admin-Token": admin_token},
+            json={"label": "disabled-owner-key", "user_id": user_id},
+        ).json()
+        disabled = client.put(
+            f"/admin/users/{user_id}",
+            headers={"X-Admin-Token": admin_token},
+            json={"name": "Disabled Owner", "login": "disabled.owner", "role": "manager", "active": False},
+        )
+        assert disabled.status_code == 200
+
+        response = client.get(f"/validate-key?api_key={key['key']}")
+
+        assert response.status_code == 200
+        assert response.json()["valid"] is False
+        assert response.json()["reason"] == "User is disabled"
 
     def test_list_keys(self, client, admin_token):
         """doc"""
@@ -119,16 +229,17 @@ class TestAPIKeys:
 
     def test_validate_key_includes_peak_create_price(self, client, admin_token):
         """doc"""
-        create = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "validate_peak"},
-        ).json()
-        client.put(
-            f"/admin/tariffs/{create['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 1000, "price_reschedule": 7000, "price_create_peak": 9000},
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "Validate Peak Co",
+            {
+                "price_create": 1000,
+                "price_reschedule": 7000,
+                "price_create_peak": 9000,
+            },
         )
+        create = create_api_key_for_company("validate_peak", company["id"])
 
         response = client.get(f"/validate-key?api_key={create['key']}")
 
@@ -295,16 +406,13 @@ class TestUsage:
 
         monkeypatch.setattr(usage_log_module, "datetime", NoonMskDatetime)
 
-        key_data = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "peak_price_key"},
-        ).json()
-        client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 1000, "price_reschedule": 7000, "price_create_peak": 9000},
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "Peak Price Co",
+            {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": 9000},
         )
+        key_data = create_api_key_for_company("peak_price_key", company["id"])
         uid = log_usage(
             api_key=key_data["key"],
             reservation_id="real-reservation-peak",
@@ -338,16 +446,13 @@ class TestUsage:
 
         monkeypatch.setattr(usage_log_module, "datetime", NoonMskDatetime)
 
-        key_data = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "peak_fallback_key"},
-        ).json()
-        client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "Peak Fallback Co",
+            {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
         )
+        key_data = create_api_key_for_company("peak_fallback_key", company["id"])
         uid = log_usage(
             api_key=key_data["key"],
             reservation_id="real-reservation-peak-fallback",
@@ -615,16 +720,13 @@ class TestAdmin:
         """doc"""
         from src.db import confirm_usage, log_usage
 
-        created = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "api_open_issue"},
-        ).json()
-        client.put(
-            f"/admin/tariffs/{created['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 1500, "price_reschedule": 7000},
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "ООО API Open",
+            {"price_create": 1500, "price_reschedule": 7000},
         )
+        created = create_api_key_for_company("api_open_issue", company["id"])
         log_id = log_usage(
             created["key"],
             "res-open-api",
@@ -1170,84 +1272,16 @@ class TestCaptcha:
 class TestTariffs:
     """doc"""
 
-    def test_get_tariff_not_found(self, client, admin_token, api_key):
+    def test_api_key_tariff_endpoints_are_removed(self, client, admin_token):
         """doc"""
-        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
-        response = client.get(
-            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
-        )
-        assert response.status_code == 404
-
-    def test_create_tariff(self, client, admin_token, api_key):
-        """doc"""
-        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
-        response = client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 100, "price_reschedule": 50, "price_create_peak": 200},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["price_create"] == 100
-        assert data["price_reschedule"] == 50
-        assert data["price_create_peak"] == 200
-
-        keys = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()
-        listed_key = next(item for item in keys if item["id"] == key_data["id"])
-        assert listed_key["tariff"]["price_create_peak"] == 200
-
-    def test_update_tariff(self, client, admin_token, api_key):
-        """doc"""
-        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
-        client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
+        headers = {"X-Admin-Token": admin_token}
+        assert client.get("/admin/tariffs/999", headers=headers).status_code == 404
+        assert client.put(
+            "/admin/tariffs/999",
+            headers=headers,
             json={"price_create": 100, "price_reschedule": 50},
-        )
-        response = client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 200, "price_reschedule": 50},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["price_create"] == 200
-        assert data["price_reschedule"] == 50
-
-    def test_update_tariff_can_clear_peak_price(self, client, admin_token, api_key):
-        """doc"""
-        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
-        client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 100, "price_reschedule": 50, "price_create_peak": 200},
-        )
-
-        response = client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 100, "price_reschedule": 50, "price_create_peak": None},
-        )
-
-        assert response.status_code == 200
-        assert response.json()["price_create_peak"] is None
-
-    def test_delete_tariff(self, client, admin_token, api_key):
-        """doc"""
-        key_data = client.get("/api-keys", headers={"X-Admin-Token": admin_token}).json()[0]
-        client.put(
-            f"/admin/tariffs/{key_data['id']}",
-            headers={"X-Admin-Token": admin_token},
-            json={"price_create": 100, "price_reschedule": 50},
-        )
-        response = client.delete(
-            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
-        )
-        assert response.status_code == 200
-        get_response = client.get(
-            f"/admin/tariffs/{key_data['id']}", headers={"X-Admin-Token": admin_token}
-        )
-        assert get_response.status_code == 404
+        ).status_code == 404
+        assert client.delete("/admin/tariffs/999", headers=headers).status_code == 404
 
 
 # === Update API Key Tests ===
@@ -1399,14 +1433,15 @@ class TestPrepaidPackagesApi:
         assert deleted.status_code == 200
 
     def test_prepaid_top_up_and_deductions_list(self, client, admin_token):
-        from src.db import confirm_usage, create_tariff, log_usage
+        from src.db import confirm_usage, log_usage
 
-        key = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "prepaid_top_up_key"},
-        ).json()
-        create_tariff(key["id"], price_create=200, price_reschedule=100)
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "Prepaid Top Up Co",
+            {"price_create": 200, "price_reschedule": 100},
+        )
+        key = create_api_key_for_company("prepaid_top_up_key", company["id"])
         created = client.post(
             "/admin/prepaid-packages",
             headers={"X-Admin-Token": admin_token},
@@ -1435,14 +1470,15 @@ class TestPrepaidPackagesApi:
 
 class TestCompanyBillingApi:
     def test_company_alias_normalizes_usage_company(self, client, admin_token):
-        from src.db import confirm_usage, create_tariff, get_usage_log_entry, log_usage
+        from src.db import confirm_usage, get_usage_log_entry, log_usage
 
-        key = client.post(
-            "/api-keys",
-            headers={"X-Admin-Token": admin_token},
-            json={"label": "company_alias_key"},
-        ).json()
-        create_tariff(key["id"], price_create=100, price_reschedule=70)
+        company = create_company_with_tariff(
+            client,
+            admin_token,
+            "ООО Тестовая Компания",
+            {"price_create": 100, "price_reschedule": 70},
+        )
+        key = create_api_key_for_company("company_alias_key", company["id"])
 
         created_alias = client.post(
             "/admin/company-aliases",

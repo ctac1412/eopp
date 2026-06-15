@@ -1,12 +1,12 @@
-"""
+﻿"""
 EOPP Captcha Solver - Database Unit Tests
 
-РџРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ С‚РµСЃС‚РѕРІ Р‘Р”:
-- TestAPIKeysDB - CRUD РѕРїРµСЂР°С†РёРё СЃ РєР»СЋС‡Р°РјРё
-- TestValidateKey - РІР°Р»РёРґР°С†РёСЏ РєР»СЋС‡РµР№
-- TestUsageLog - Р»РѕРіРёСЂРѕРІР°РЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ
-- TestAdminKey - Р°РґРјРёРЅСЃРєРёР№ РєР»СЋС‡
-- TestEdgeCases - РіСЂР°РЅРёС‡РЅС‹Рµ СЃР»СѓС‡Р°Рё
+Р СџР С•Р В»Р Р…РЎвЂ№Р в„– Р Р…Р В°Р В±Р С•РЎР‚ РЎвЂљР ВµРЎРѓРЎвЂљР С•Р Р† Р вЂР вЂќ:
+- TestAPIKeysDB - CRUD Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘ РЎРѓ Р С”Р В»РЎР‹РЎвЂЎР В°Р СР С‘
+- TestValidateKey - Р Р†Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р С”Р В»РЎР‹РЎвЂЎР ВµР в„–
+- TestUsageLog - Р В»Р С•Р С–Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘Р Вµ Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ
+- TestAdminKey - Р В°Р Т‘Р СР С‘Р Р…РЎРѓР С”Р С‘Р в„– Р С”Р В»РЎР‹РЎвЂЎ
+- TestEdgeCases - Р С–РЎР‚Р В°Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р Вµ РЎРѓР В»РЎС“РЎвЂЎР В°Р С‘
 """
 
 import os
@@ -20,7 +20,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    """Изолируем БД для каждого теста."""
+    """РР·РѕР»РёСЂСѓРµРј Р‘Р” РґР»СЏ РєР°Р¶РґРѕРіРѕ С‚РµСЃС‚Р°."""
     import src.db.connection as conn_module
     import src.db.init as init_module
     from src.entities.base import set_db_path
@@ -44,11 +44,52 @@ def isolate_db(monkeypatch):
             pass
 
 
+def attach_key_to_company_tariff(
+    key_id: int,
+    company_name: str,
+    *,
+    price_create: int,
+    price_reschedule: int,
+    price_create_peak: int | None = None,
+    price_custom_slots: int | None = None,
+) -> int:
+    from datetime import UTC, datetime
+
+    from src.db.connection import get_connection
+
+    now = datetime.now(UTC).isoformat()
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", (company_name, now))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute("UPDATE api_keys SET company_id = ? WHERE id = ?", (company_id, key_id))
+    conn.execute(
+        """
+        INSERT INTO company_tariffs (
+            company_id, price_create, price_reschedule, price_create_peak,
+            price_custom_slots, executor_amount, operator_amount, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
+        """,
+        (
+            company_id,
+            price_create,
+            price_reschedule,
+            price_create_peak,
+            price_custom_slots,
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return company_id
+
+
 class TestAPIKeysDB:
-    """CRUD РѕРїРµСЂР°С†РёРё СЃ API РєР»СЋС‡Р°РјРё."""
+    """CRUD Р С•Р С—Р ВµРЎР‚Р В°РЎвЂ Р С‘Р С‘ РЎРѓ API Р С”Р В»РЎР‹РЎвЂЎР В°Р СР С‘."""
 
     def test_create_key(self):
-        """РЎРѕР·РґР°РЅРёРµ РєР»СЋС‡Р°."""
+        """Р РЋР С•Р В·Р Т‘Р В°Р Р…Р С‘Р Вµ Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import create_key
 
         key = create_key(label="test", max_uses=10)
@@ -58,7 +99,7 @@ class TestAPIKeysDB:
         assert "key" in key
 
     def test_list_keys(self):
-        """РЎРїРёСЃРѕРє РєР»СЋС‡РµР№."""
+        """Р РЋР С—Р С‘РЎРѓР С•Р С” Р С”Р В»РЎР‹РЎвЂЎР ВµР в„–."""
         from src.db import create_key, list_keys
 
         create_key(label="key1")
@@ -67,7 +108,7 @@ class TestAPIKeysDB:
         assert len(keys) >= 2
 
     def test_update_key(self):
-        """РћР±РЅРѕРІР»РµРЅРёРµ РєР»СЋС‡Р°."""
+        """Р С›Р В±Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘Р Вµ Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import create_key, update_key
 
         key = create_key(label="original")
@@ -76,7 +117,7 @@ class TestAPIKeysDB:
         assert updated["active"] is False
 
     def test_update_key_comment(self):
-        """РћР±РЅРѕРІР»РµРЅРёРµ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ."""
+        """Р С›Р В±Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘Р Вµ Р С”Р С•Р СР СР ВµР Р…РЎвЂљР В°РЎР‚Р С‘РЎРЏ."""
         from src.db import create_key, update_key
 
         key = create_key(label="comment_test")
@@ -84,7 +125,7 @@ class TestAPIKeysDB:
         assert updated["comment"] == "Test comment"
 
     def test_delete_key(self):
-        """РЈРґР°Р»РµРЅРёРµ РєР»СЋС‡Р°."""
+        """Р Р€Р Т‘Р В°Р В»Р ВµР Р…Р С‘Р Вµ Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import create_key, delete_key, list_keys
 
         key = create_key(label="to_delete")
@@ -93,7 +134,7 @@ class TestAPIKeysDB:
         assert not any(k["id"] == key["id"] for k in keys)
 
     def test_get_key_by_id(self):
-        """РџРѕР»СѓС‡РµРЅРёРµ РєР»СЋС‡Р° РїРѕ ID."""
+        """Р СџР С•Р В»РЎС“РЎвЂЎР ВµР Р…Р С‘Р Вµ Р С”Р В»РЎР‹РЎвЂЎР В° Р С—Р С• ID."""
         from src.db import create_key, get_key_by_id
 
         key = create_key(label="lookup")
@@ -101,17 +142,17 @@ class TestAPIKeysDB:
         assert found["label"] == "lookup"
 
     def test_get_key_by_id_not_found(self):
-        """РџРѕР»СѓС‡РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
+        """Р СџР С•Р В»РЎС“РЎвЂЎР ВµР Р…Р С‘Р Вµ Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР С–Р С• Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import get_key_by_id
 
         assert get_key_by_id(99999) is None
 
 
 class TestValidateKey:
-    """Р’Р°Р»РёРґР°С†РёСЏ РєР»СЋС‡РµР№."""
+    """Р вЂ™Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р С”Р В»РЎР‹РЎвЂЎР ВµР в„–."""
 
     def test_validate_valid_key(self):
-        """Р’Р°Р»РёРґР°С†РёСЏ РІР°Р»РёРґРЅРѕРіРѕ РєР»СЋС‡Р°."""
+        """Р вЂ™Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р Р†Р В°Р В»Р С‘Р Т‘Р Р…Р С•Р С–Р С• Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import create_key, validate_key
 
         key = create_key(label="valid")
@@ -119,7 +160,7 @@ class TestValidateKey:
         assert result["valid"] is True
 
     def test_validate_invalid_key(self):
-        """Р’Р°Р»РёРґР°С†РёСЏ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
+        """Р вЂ™Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР С–Р С• Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import validate_key
 
         result = validate_key("nonexistent")
@@ -127,7 +168,7 @@ class TestValidateKey:
         assert result["reason"] == "Key not found"
 
     def test_validate_disabled_key(self):
-        """Р’Р°Р»РёРґР°С†РёСЏ РѕС‚РєР»СЋС‡РµРЅРЅРѕРіРѕ РєР»СЋС‡Р°."""
+        """Р вЂ™Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р С•РЎвЂљР С”Р В»РЎР‹РЎвЂЎР ВµР Р…Р Р…Р С•Р С–Р С• Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import create_key, update_key, validate_key
 
         key = create_key(label="disabled")
@@ -137,7 +178,7 @@ class TestValidateKey:
         assert result["reason"] == "Key is disabled"
 
     def test_validate_exhausted_key(self):
-        """Р’Р°Р»РёРґР°С†РёСЏ РєР»СЋС‡Р° СЃ РёСЃС‡РµСЂРїР°РЅРЅС‹Рј Р»РёРјРёС‚РѕРј."""
+        """Р вЂ™Р В°Р В»Р С‘Р Т‘Р В°РЎвЂ Р С‘РЎРЏ Р С”Р В»РЎР‹РЎвЂЎР В° РЎРѓ Р С‘РЎРѓРЎвЂЎР ВµРЎР‚Р С—Р В°Р Р…Р Р…РЎвЂ№Р С Р В»Р С‘Р СР С‘РЎвЂљР С•Р С."""
         from src.db import create_key, update_key, validate_key
 
         key = create_key(label="exhausted", max_uses=1)
@@ -154,10 +195,10 @@ class TestValidateKey:
 
 
 class TestUsageLog:
-    """Р›РѕРіРёСЂРѕРІР°РЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+    """Р вЂєР С•Р С–Р С‘РЎР‚Р С•Р Р†Р В°Р Р…Р С‘Р Вµ Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
 
     def test_log_usage(self):
-        """Р РµРіРёСЃС‚СЂР°С†РёСЏ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """Р В Р ВµР С–Р С‘РЎРѓРЎвЂљРЎР‚Р В°РЎвЂ Р С‘РЎРЏ Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
         from src.db import create_key, log_usage
 
         key = create_key(label="usage_test")
@@ -165,7 +206,7 @@ class TestUsageLog:
         assert log_id > 0
 
     def test_confirm_usage(self):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
         from src.db import confirm_usage, create_key, log_usage
 
         key = create_key(label="confirm_test")
@@ -203,34 +244,42 @@ class TestUsageLog:
         assert captured["overall_status"] == "confirmed"
 
     def test_confirm_usage_with_price(self):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ СЃ С†РµРЅРѕР№ РёР· С‚Р°СЂРёС„Р°."""
+        """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ РЎРѓ РЎвЂ Р ВµР Р…Р С•Р в„– Р С‘Р В· РЎвЂљР В°РЎР‚Р С‘РЎвЂћР В°."""
         from src.db import (
             confirm_usage,
             create_key,
-            create_tariff,
             get_usage_log_entry,
             log_usage,
         )
 
         key = create_key(label="price_test")
-        create_tariff(key["id"], price_create=100, price_reschedule=50)
+        attach_key_to_company_tariff(
+            key["id"],
+            "Price Test Co",
+            price_create=100,
+            price_reschedule=50,
+        )
         log_id = log_usage(key["key"], "res-price", "capt-price", config_json={"mode": "create"})
         confirm_usage(log_id)
         log = get_usage_log_entry(log_id)
         assert log["price"] == 100
 
     def test_confirm_usage_reschedule_price(self):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РїРµСЂРµРЅРѕСЃР° СЃ С†РµРЅРѕР№."""
+        """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ Р С—Р ВµРЎР‚Р ВµР Р…Р С•РЎРѓР В° РЎРѓ РЎвЂ Р ВµР Р…Р С•Р в„–."""
         from src.db import (
             confirm_usage,
             create_key,
-            create_tariff,
             get_usage_log_entry,
             log_usage,
         )
 
         key = create_key(label="reschedule_price")
-        create_tariff(key["id"], price_create=100, price_reschedule=75)
+        attach_key_to_company_tariff(
+            key["id"],
+            "Reschedule Price Co",
+            price_create=100,
+            price_reschedule=75,
+        )
         log_id = log_usage(
             key["key"], "res-resched", "capt-resched", config_json={"mode": "reschedule"}
         )
@@ -239,12 +288,18 @@ class TestUsageLog:
         assert log["price"] == 75
 
     def test_confirm_usage_links_company_to_open_invoice(self):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРЅС‹Р№ usage РєРѕРјРїР°РЅРёРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРѕРїР°РґР°РµС‚ РІ РѕС‚РєСЂС‹С‚С‹Р№ СЃС‡РµС‚."""
-        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
+        """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р Р…РЎвЂ№Р в„– usage Р С”Р С•Р СР С—Р В°Р Р…Р С‘Р С‘ Р В°Р Р†РЎвЂљР С•Р СР В°РЎвЂљР С‘РЎвЂЎР ВµРЎРѓР С”Р С‘ Р С—Р С•Р С—Р В°Р Т‘Р В°Р ВµРЎвЂљ Р Р† Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎвЂ№Р в„– РЎРѓРЎвЂЎР ВµРЎвЂљ."""
+        from src.db import confirm_usage, create_key, get_usage_log_entry, log_usage
         from src.db.invoices import ensure_open_invoice, get_open_invoice
 
+        company = "Open Invoice Link Co"
         key = create_key(label="open_invoice_link")
-        create_tariff(key["id"], price_create=100, price_reschedule=70)
+        attach_key_to_company_tariff(
+            key["id"],
+            company,
+            price_create=100,
+            price_reschedule=70,
+        )
         log_id = log_usage(
             key["key"],
             "res-open-link",
@@ -252,24 +307,24 @@ class TestUsageLog:
             config_json={
                 "mode": "create",
                 "reservationData": {
-                    "raw": {"userData": {"organizationName": "РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ"}}
+                    "raw": {"userData": {"organizationName": company}}
                 },
             },
         )
 
-        open_invoice = ensure_open_invoice("РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ")
+        open_invoice = ensure_open_invoice(company)
         assert open_invoice is not None
 
         assert confirm_usage(log_id) is True
         log = get_usage_log_entry(log_id)
         assert log["invoice_id"] is not None
-        open_invoice = get_open_invoice("РћРћРћ РўРµСЃС‚ РљРѕРјРїР°РЅРёСЏ")
+        open_invoice = get_open_invoice(company)
         assert open_invoice is not None
         assert log["invoice_id"] == open_invoice["id"]
         assert open_invoice["is_open"] is True
 
     def test_fail_usage(self):
-        """РћС‚РјРµС‚РєР° РѕС€РёР±РєРё."""
+        """Р С›РЎвЂљР СР ВµРЎвЂљР С”Р В° Р С•РЎв‚¬Р С‘Р В±Р С”Р С‘."""
         from src.db import create_key, fail_usage, log_usage
 
         key = create_key(label="fail_test")
@@ -277,7 +332,7 @@ class TestUsageLog:
         assert fail_usage(log_id, error_message="Test error", error_stage="captcha") is True
 
     def test_update_usage_log(self):
-        """РћР±РЅРѕРІР»РµРЅРёРµ Р»РѕРіР°."""
+        """Р С›Р В±Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘Р Вµ Р В»Р С•Р С–Р В°."""
         from src.db import create_key, log_usage, update_usage_log
 
         key = create_key(label="update_log")
@@ -287,7 +342,7 @@ class TestUsageLog:
         assert updated["paid"] is True
 
     def test_list_usages(self):
-        """РЎРїРёСЃРѕРє Р»РѕРіРѕРІ."""
+        """Р РЋР С—Р С‘РЎРѓР С•Р С” Р В»Р С•Р С–Р С•Р Р†."""
         from src.db import create_key, list_usages, log_usage
 
         key = create_key(label="list_test")
@@ -297,66 +352,18 @@ class TestUsageLog:
         assert len(usages) >= 2
 
 
-class TestTariffs:
-    """РћРїРµСЂР°С†РёРё СЃ С‚Р°СЂРёС„Р°РјРё."""
-
-    def test_create_tariff(self):
-        """РЎРѕР·РґР°РЅРёРµ С‚Р°СЂРёС„Р°."""
-        from src.db import create_key, create_tariff
-
-        key = create_key(label="tariff_test")
-        tariff = create_tariff(key["id"], price_create=100, price_reschedule=50)
-        assert tariff["price_create"] == 100
-        assert tariff["price_reschedule"] == 50
-
-    def test_get_tariff(self):
-        """РџРѕР»СѓС‡РµРЅРёРµ С‚Р°СЂРёС„Р°."""
-        from src.db import create_key, create_tariff, get_tariff
-
-        key = create_key(label="get_tariff")
-        create_tariff(key["id"], price_create=200, price_reschedule=100)
-        tariff = get_tariff(key["id"])
-        assert tariff["price_create"] == 200
-
-    def test_get_tariff_not_found(self):
-        """РџРѕР»СѓС‡РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ С‚Р°СЂРёС„Р°."""
-        from src.db import create_key, get_tariff
-
-        key = create_key(label="no_tariff")
-        assert get_tariff(key["id"]) is None
-
-    def test_update_tariff(self):
-        """РћР±РЅРѕРІР»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
-        from src.db import create_key, create_tariff, update_tariff
-
-        key = create_key(label="update_tariff")
-        create_tariff(key["id"], price_create=100, price_reschedule=50)
-        updated = update_tariff(key["id"], price_create=150)
-        assert updated["price_create"] == 150
-        assert updated["price_reschedule"] == 50
-
-    def test_delete_tariff(self):
-        """РЈРґР°Р»РµРЅРёРµ С‚Р°СЂРёС„Р°."""
-        from src.db import create_key, create_tariff, delete_tariff, get_tariff
-
-        key = create_key(label="delete_tariff")
-        create_tariff(key["id"], price_create=100, price_reschedule=50)
-        assert delete_tariff(key["id"]) is True
-        assert get_tariff(key["id"]) is None
-
-
 class TestAdminKey:
-    """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡."""
+    """Р С’Р Т‘Р СР С‘Р Р…РЎРѓР С”Р С‘Р в„– Р С”Р В»РЎР‹РЎвЂЎ."""
 
     def test_admin_key_exists(self):
-        """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡ СЃСѓС‰РµСЃС‚РІСѓРµС‚."""
+        """Р С’Р Т‘Р СР С‘Р Р…РЎРѓР С”Р С‘Р в„– Р С”Р В»РЎР‹РЎвЂЎ РЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“Р ВµРЎвЂљ."""
         from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
         assert admin is not None
 
     def test_admin_key_active(self):
-        """РђРґРјРёРЅСЃРєРёР№ РєР»СЋС‡ Р°РєС‚РёРІРµРЅ."""
+        """Р С’Р Т‘Р СР С‘Р Р…РЎРѓР С”Р С‘Р в„– Р С”Р В»РЎР‹РЎвЂЎ Р В°Р С”РЎвЂљР С‘Р Р†Р ВµР Р…."""
         from src.db import get_key_by_label
 
         admin = get_key_by_label("admin")
@@ -364,17 +371,17 @@ class TestAdminKey:
 
 
 class TestEdgeCases:
-    """Р“СЂР°РЅРёС‡РЅС‹Рµ СЃР»СѓС‡Р°Рё."""
+    """Р вЂњРЎР‚Р В°Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р Вµ РЎРѓР В»РЎС“РЎвЂЎР В°Р С‘."""
 
     def test_empty_label(self):
-        """РљР»СЋС‡ СЃ РїСѓСЃС‚С‹Рј Р»РµР№Р±Р»РѕРј."""
+        """Р С™Р В»РЎР‹РЎвЂЎ РЎРѓ Р С—РЎС“РЎРѓРЎвЂљРЎвЂ№Р С Р В»Р ВµР в„–Р В±Р В»Р С•Р С."""
         from src.db import create_key
 
         key = create_key(label="")
         assert key["label"] == ""
 
     def test_max_uses_none(self):
-        """РљР»СЋС‡ Р±РµР· Р»РёРјРёС‚Р°."""
+        """Р С™Р В»РЎР‹РЎвЂЎ Р В±Р ВµР В· Р В»Р С‘Р СР С‘РЎвЂљР В°."""
         from src.db import create_key, validate_key
 
         key = create_key(label="unlimited", max_uses=None)
@@ -383,7 +390,7 @@ class TestEdgeCases:
         assert result["remaining"] is None
 
     def test_usage_increment(self):
-        """РРЅРєСЂРµРјРµРЅС‚ СЃС‡С‘С‚С‡РёРєР° РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """Р ВР Р…Р С”РЎР‚Р ВµР СР ВµР Р…РЎвЂљ РЎРѓРЎвЂЎРЎвЂРЎвЂљРЎвЂЎР С‘Р С”Р В° Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
         from src.db import confirm_usage, create_key, increment_usage, log_usage
 
         key = create_key(label="increment")
@@ -396,40 +403,45 @@ class TestEdgeCases:
         assert updated["usage_count"] >= 1
 
     def test_get_key_by_label_not_found(self):
-        """РџРѕР»СѓС‡РµРЅРёРµ РєР»СЋС‡Р° РїРѕ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРјСѓ Р»РµР№Р±Р»Сѓ."""
+        """Р СџР С•Р В»РЎС“РЎвЂЎР ВµР Р…Р С‘Р Вµ Р С”Р В»РЎР‹РЎвЂЎР В° Р С—Р С• Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР СРЎС“ Р В»Р ВµР в„–Р В±Р В»РЎС“."""
         from src.db import get_key_by_label
 
         assert get_key_by_label("nonexistent_label") is None
 
     def test_delete_nonexistent_key(self):
-        """РЈРґР°Р»РµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РєР»СЋС‡Р°."""
+        """Р Р€Р Т‘Р В°Р В»Р ВµР Р…Р С‘Р Вµ Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР С–Р С• Р С”Р В»РЎР‹РЎвЂЎР В°."""
         from src.db import delete_key
 
         assert delete_key(99999) is False
 
     def test_confirm_nonexistent_usage(self):
-        """РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """Р СџР С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР С–Р С• Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
         from src.db import confirm_usage
 
         assert confirm_usage(99999) is False
 
     def test_fail_nonexistent_usage(self):
-        """РћС‚РјРµС‚РєР° РЅРµСЃСѓС‰РµСЃС‚РІСѓСЋС‰РµРіРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёСЏ."""
+        """Р С›РЎвЂљР СР ВµРЎвЂљР С”Р В° Р Р…Р ВµРЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“РЎР‹РЎвЂ°Р ВµР С–Р С• Р С‘РЎРѓР С—Р С•Р В»РЎРЉР В·Р С•Р Р†Р В°Р Р…Р С‘РЎРЏ."""
         from src.db import fail_usage
 
         assert fail_usage(99999, error_message="Error", error_stage="test") is False
 
 
 class TestOpenInvoices:
-    """РћС‚РєСЂС‹С‚С‹Рµ СЃС‡РµС‚Р° РїРѕ РєРѕРјРїР°РЅРёСЏРј."""
+    """Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎвЂ№Р Вµ РЎРѓРЎвЂЎР ВµРЎвЂљР В° Р С—Р С• Р С”Р С•Р СР С—Р В°Р Р…Р С‘РЎРЏР С."""
 
     def test_issue_open_invoice_closes_current_and_creates_new(self):
-        from src.db import confirm_usage, create_key, create_tariff, log_usage
+        from src.db import confirm_usage, create_key, log_usage
         from src.db.invoices import ensure_open_invoice, get_open_invoice, issue_open_invoice
 
-        company = "ООО Issue"
+        company = "РћРћРћ Issue"
         key = create_key(label="open_issue")
-        create_tariff(key["id"], price_create=120, price_reschedule=90)
+        attach_key_to_company_tariff(
+            key["id"],
+            company,
+            price_create=120,
+            price_reschedule=90,
+        )
         ensure_open_invoice(company)
         for idx in range(2):
             log_id = log_usage(
@@ -457,14 +469,19 @@ class TestOpenInvoices:
 
 
 class TestPrepaidPackages:
-    """РџСЂРµРґРѕРїР»Р°С‡РµРЅРЅС‹Рµ РїР°РєРµС‚С‹ Рё СЃРїРёСЃР°РЅРёСЏ."""
+    """Р СџРЎР‚Р ВµР Т‘Р С•Р С—Р В»Р В°РЎвЂЎР ВµР Р…Р Р…РЎвЂ№Р Вµ Р С—Р В°Р С”Р ВµРЎвЂљРЎвЂ№ Р С‘ РЎРѓР С—Р С‘РЎРѓР В°Р Р…Р С‘РЎРЏ."""
 
     def test_prepaid_deduction_on_confirm_usage(self):
-        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
+        from src.db import confirm_usage, create_key, get_usage_log_entry, log_usage
         from src.db.prepaid import create_prepaid_package, list_prepaid_packages
 
         key = create_key(label="prepaid")
-        create_tariff(key["id"], price_create=100, price_reschedule=70)
+        attach_key_to_company_tariff(
+            key["id"],
+            "Prepaid Co",
+            price_create=100,
+            price_reschedule=70,
+        )
         create_prepaid_package(api_key_id=key["id"], balance_amount=500, active=True)
 
         log_id = log_usage(
@@ -482,11 +499,16 @@ class TestPrepaidPackages:
         assert pkg["balance_amount"] == 400
 
     def test_prepaid_not_deducted_when_insufficient_balance(self):
-        from src.db import confirm_usage, create_key, create_tariff, get_usage_log_entry, log_usage
+        from src.db import confirm_usage, create_key, get_usage_log_entry, log_usage
         from src.db.prepaid import create_prepaid_package, list_prepaid_packages
 
         key = create_key(label="prepaid_low")
-        create_tariff(key["id"], price_create=200, price_reschedule=70)
+        attach_key_to_company_tariff(
+            key["id"],
+            "Prepaid Low Co",
+            price_create=200,
+            price_reschedule=70,
+        )
         create_prepaid_package(api_key_id=key["id"], balance_amount=100, active=True)
 
         log_id = log_usage(

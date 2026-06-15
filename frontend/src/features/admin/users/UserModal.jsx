@@ -1,5 +1,6 @@
 import React from "react";
-import { Modal, Switch } from "antd";
+import { Alert, Modal, Space, Switch } from "antd";
+import { Button } from "../../../ui";
 import { SelectInput, TextInput } from "../../../ui";
 import {
   emptyAccess,
@@ -169,6 +170,87 @@ function AccessBlockV2({ title, value, onChange, companies, canUseGlobalAccess }
   );
 }
 
+function hasAccess(value) {
+  const access = normalizeAccess(value);
+  return Boolean(access.allCompanies || access.companyIds?.length);
+}
+
+function copyToClipboard(text) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(ta);
+    }
+  });
+}
+
+function PersonalApiKeyBlock({
+  userId,
+  apiKey,
+  newApiKey,
+  isExecutor,
+  onCreate,
+  onToggleActive,
+  onResetUsage,
+  onDelete,
+}) {
+  const isFreshKey = Number(newApiKey?.user_id) === Number(userId);
+  const token = isFreshKey ? newApiKey.key : apiKey?.key;
+  return (
+    <div className={`user-api-key-block ${isExecutor ? "user-api-key-block--executor" : ""}`}>
+      <div className="user-access-block__head">
+        <span className="fw-semibold">Персональный ключ</span>
+        {isExecutor && <span className="access-tag access-tag--selected">Исполнитель</span>}
+      </div>
+      {!userId && (
+        <div className="text-muted small">Ключ можно выдать после создания пользователя.</div>
+      )}
+      {userId && isFreshKey && (
+        <Alert
+          className="mb-2"
+          type="success"
+          showIcon
+          message="Ключ выдан"
+          description="Скопируйте токен сейчас. После обновления будет видна только маска."
+        />
+      )}
+      {userId && apiKey && (
+        <div className="user-api-key-block__card">
+          <div>
+            <div className="font-monospace user-api-key-block__token">{token || apiKey.masked_key || apiKey.key}</div>
+            <div className="text-muted small">
+              {apiKey.active ? "Активен" : "Отключен"} · использований {apiKey.usage_count || 0}
+              {apiKey.max_uses != null ? ` / ${apiKey.max_uses}` : ""}
+            </div>
+          </div>
+          <Space size={6} wrap>
+            <Button size="small" onClick={() => copyToClipboard(token || apiKey.key)}>Копировать</Button>
+            <Button size="small" onClick={() => onResetUsage(apiKey.id)}>Сбросить</Button>
+            <Button size="small" onClick={() => onToggleActive(apiKey)}>
+              {apiKey.active ? "Отключить" : "Включить"}
+            </Button>
+            <Button size="small" variant="danger" onClick={() => onDelete(apiKey.id)}>Удалить</Button>
+          </Space>
+        </div>
+      )}
+      {userId && !apiKey && (
+        <div className="user-api-key-block__empty">
+          <span className="text-muted small">Персональный ключ не выдан.</span>
+          <Button size="small" variant="primary" onClick={() => onCreate(userId)}>Выдать ключ</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function UserModal({
   show,
   form,
@@ -177,6 +259,12 @@ export function UserModal({
   onClose,
   companies = [],
   canUseGlobalAccess = false,
+  apiKey = null,
+  newApiKey = null,
+  onCreateApiKey = () => {},
+  onToggleApiKey = () => {},
+  onResetApiKey = () => {},
+  onDeleteApiKey = () => {},
 }) {
   const handleOk = (event) => {
     event?.preventDefault?.();
@@ -286,6 +374,16 @@ export function UserModal({
           </div>
         </div>
         <div className="users-modal-form__access">
+          <PersonalApiKeyBlock
+            userId={form.id}
+            apiKey={apiKey}
+            newApiKey={newApiKey}
+            isExecutor={hasAccess(form.executorAccess)}
+            onCreate={onCreateApiKey}
+            onToggleActive={onToggleApiKey}
+            onResetUsage={onResetApiKey}
+            onDelete={onDeleteApiKey}
+          />
           {ACCESS_BLOCKS.map(([field, title]) => (
             <AccessBlockV2
               key={field}

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from src.entities import CompanyTariff, DefaultCompanyTariff, Tariff, get_session
+from src.entities import CompanyTariff, DefaultCompanyTariff, get_session
 from src.repositories import company_billing_repo
 
 _UNSET = object()
@@ -19,7 +19,7 @@ def _normalize_user_id(user_id: int | None | object) -> int | None:
 
 
 def tariff_to_dict(
-    tariff: Tariff | CompanyTariff | DefaultCompanyTariff,
+    tariff: CompanyTariff | DefaultCompanyTariff,
     *,
     source: str,
     company_id: int | None = None,
@@ -52,11 +52,6 @@ def tariff_to_dict(
     return data
 
 
-def get_tariff(api_key_id: int) -> Tariff | None:
-    with get_session() as session:
-        return session.query(Tariff).filter(Tariff.api_key_id == api_key_id).first()
-
-
 def get_company_tariff(company_id: int) -> CompanyTariff | None:
     with get_session() as session:
         return session.query(CompanyTariff).filter(CompanyTariff.company_id == company_id).first()
@@ -67,11 +62,8 @@ def get_default_company_tariff() -> DefaultCompanyTariff | None:
         return session.query(DefaultCompanyTariff).order_by(DefaultCompanyTariff.id).first()
 
 
-def get_effective_tariff(api_key_id: int, company_id: int | None) -> tuple[Tariff | CompanyTariff | None, str | None]:
+def get_effective_tariff(_api_key_id: int, company_id: int | None) -> tuple[CompanyTariff | None, str | None]:
     with get_session() as session:
-        tariff = session.query(Tariff).filter(Tariff.api_key_id == api_key_id).first()
-        if tariff:
-            return tariff, "api_key"
         if company_id is None:
             return None, None
         company_tariff = (
@@ -82,38 +74,6 @@ def get_effective_tariff(api_key_id: int, company_id: int | None) -> tuple[Tarif
         if company_tariff:
             return company_tariff, "company"
         return None, None
-
-
-def upsert_tariff(
-    api_key_id: int,
-    price_create: int,
-    price_reschedule: int,
-    price_create_peak: int | None = None,
-    price_custom_slots: int | None = None,
-) -> Tariff:
-    now = datetime.now(UTC).isoformat()
-    with get_session() as session:
-        tariff = session.query(Tariff).filter(Tariff.api_key_id == api_key_id).first()
-        if tariff:
-            tariff.price_create = price_create
-            tariff.price_reschedule = price_reschedule
-            tariff.price_create_peak = price_create_peak
-            tariff.price_custom_slots = price_custom_slots
-            tariff.updated_at = now
-        else:
-            tariff = Tariff(
-                api_key_id=api_key_id,
-                price_create=price_create,
-                price_reschedule=price_reschedule,
-                price_create_peak=price_create_peak,
-                price_custom_slots=price_custom_slots,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(tariff)
-        session.commit()
-        session.refresh(tariff)
-        return tariff
 
 
 def upsert_company_tariff(
@@ -243,16 +203,6 @@ def apply_default_company_billing_settings(company: str):
         default_commission_user_id=getattr(default_tariff, "default_commission_user_id", None),
         default_tax_user_id=getattr(default_tariff, "default_tax_user_id", None),
     )
-
-
-def delete_tariff(api_key_id: int) -> bool:
-    with get_session() as session:
-        tariff = session.query(Tariff).filter(Tariff.api_key_id == api_key_id).first()
-        if not tariff:
-            return False
-        session.delete(tariff)
-        session.commit()
-        return True
 
 
 def delete_company_tariff(company_id: int) -> bool:

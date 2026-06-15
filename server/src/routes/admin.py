@@ -509,40 +509,6 @@ async def admin_captcha_label_recompute(captcha_id: str):
     })
 
 
-@router.get("/tariffs/{api_key_id}")
-async def get_admin_tariff(api_key_id: int):
-    return _json_result(billing_service.get_tariff(api_key_id))
-
-
-@router.put("/tariffs/{api_key_id}")
-async def create_update_tariff(api_key_id: int, body: TariffBody, request: Request):
-    result = billing_service.upsert_tariff(api_key_id, body)
-    if result[0] < 400:
-        _audit_business_action(
-            request,
-            "tariff.changed",
-            Permission.TARIFF_EDIT,
-            target_type="tariff",
-            target_id=api_key_id,
-        )
-    return _json_result(result)
-
-
-@router.delete("/tariffs/{api_key_id}")
-async def delete_admin_tariff(api_key_id: int, request: Request):
-    result = billing_service.delete_tariff(api_key_id)
-    if result[0] < 400:
-        _audit_business_action(
-            request,
-            "tariff.changed",
-            Permission.TARIFF_EDIT,
-            target_type="tariff",
-            target_id=api_key_id,
-            metadata={"deleted": True},
-        )
-    return _json_result(result)
-
-
 @router.get("/default-company-tariff")
 async def get_admin_default_company_tariff():
     return _json_result(billing_service.get_default_company_tariff())
@@ -623,6 +589,11 @@ async def delete_admin_company_tariff(company_id: int, request: Request):
             metadata={"deleted": True},
         )
     return _json_result(result)
+
+
+@router.api_route("/tariffs/{_path:path}", methods=["GET", "PUT", "DELETE"])
+async def removed_admin_api_key_tariffs(_path: str):
+    return JSONResponse(status_code=404, content={"error": "API key tariffs were removed"})
 
 
 @router.patch("/api-keys/{id}")

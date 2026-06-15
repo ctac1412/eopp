@@ -121,6 +121,51 @@ def test_unified_profiles_migration_uses_existing_art_trans_company(tmp_path, mo
 
     assert companies == [(company_id, 'ООО "АРТ-ТРАНС"')]
     assert api_key_company_id == company_id
+def test_remove_unowned_api_keys_migration_keeps_system_keys(tmp_path, monkeypatch):
+    db_path = tmp_path / "api_keys.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL,
+                label TEXT,
+                user_id INTEGER,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                admin_role TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO api_keys (key, label, user_id, is_admin, admin_role) VALUES (?, ?, NULL, 0, NULL)",
+            ("legacy-key", "legacy"),
+        )
+        conn.execute(
+            "INSERT INTO api_keys (key, label, user_id, is_admin, admin_role) VALUES (?, ?, NULL, 1, 'super_admin')",
+            ("admin-key", "admin"),
+        )
+        conn.execute(
+            "INSERT INTO api_keys (key, label, user_id, is_admin, admin_role) VALUES (?, ?, 7, 0, NULL)",
+            ("user-key", "user"),
+        )
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES ('t0u1v2w3x4y5')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("EOPP_DB_PATH", str(db_path).replace("\\", "/"))
+    cfg = Config(str(SERVER_DIR / "alembic.ini"))
+    command.upgrade(cfg, "u0v1w2x3y4z5")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        keys = [row[0] for row in conn.execute("SELECT key FROM api_keys ORDER BY key").fetchall()]
+    finally:
+        conn.close()
+
+    assert keys == ["admin-key", "user-key"]
 
 
 def test_schema_checker_reports_model_columns_missing_from_existing_db(tmp_path):

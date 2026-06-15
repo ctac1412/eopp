@@ -12,6 +12,10 @@ def create_key(
     user_id: int | None = None,
 ) -> ApiKey:
     with get_session() as session:
+        if user_id is not None:
+            existing = session.query(ApiKey).filter(ApiKey.user_id == user_id).first()
+            if existing:
+                raise ValueError("User already has a personal API key")
         key = ApiKey(
             key=secrets.token_hex(16),
             label=label,
@@ -59,7 +63,7 @@ def list_keys(company_id: int | None = None) -> list[dict]:
     with get_session() as session:
         query = (
             session.query(ApiKey)
-            .options(joinedload(ApiKey.tariff), joinedload(ApiKey.company), joinedload(ApiKey.user))
+            .options(joinedload(ApiKey.company), joinedload(ApiKey.user))
         )
         if company_id is not None:
             from src.entities import User
@@ -91,15 +95,7 @@ def list_keys(company_id: int | None = None) -> list[dict]:
             d["executor_company_ids"] = executor_access["company_ids"]
             d["executor_company_names"] = _executor_company_names(executor_access["company_ids"])
             d["user_role"] = k.user.role if k.user else None
-            if k.tariff:
-                d["tariff"] = {
-                    "price_create": k.tariff.price_create,
-                    "price_reschedule": k.tariff.price_reschedule,
-                    "price_create_peak": k.tariff.price_create_peak,
-                    "price_custom_slots": k.tariff.price_custom_slots,
-                    "source": "api_key",
-                }
-            elif k.company_id is not None:
+            if k.company_id is not None:
                 from src.repositories import tariff_repo
 
                 company_tariff = tariff_repo.get_company_tariff(k.company_id)
@@ -203,6 +199,15 @@ def update_key(key_id: int, **kwargs) -> ApiKey | None:
         key = session.get(ApiKey, key_id)
         if not key:
             return None
+        next_user_id = kwargs.get("user_id")
+        if next_user_id is not None and next_user_id != key.user_id:
+            existing = (
+                session.query(ApiKey)
+                .filter(ApiKey.user_id == next_user_id, ApiKey.id != key_id)
+                .first()
+            )
+            if existing:
+                raise ValueError("User already has a personal API key")
         for attr, value in kwargs.items():
             if value is not None:
                 setattr(key, attr, value)
@@ -242,6 +247,13 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access
             changes["company_id"] = (str(key.company_id), "None")
             key.company_id = None
         if body.user_id is not None and body.user_id != key.user_id:
+            existing = (
+                session.query(ApiKey)
+                .filter(ApiKey.user_id == body.user_id, ApiKey.id != api_key_id)
+                .first()
+            )
+            if existing:
+                raise ValueError("User already has a personal API key")
             changes["user_id"] = (str(key.user_id), str(body.user_id))
             key.user_id = body.user_id
         session.commit()
@@ -309,8 +321,11 @@ def reset_usage(key_id: int) -> ApiKey | None:
 def validate_api_key(api_key: str) -> dict:
     with get_session() as session:
         record = session.query(ApiKey).filter(ApiKey.key == api_key).first()
+        user_active = record.user.active if record and record.user_id is not None and record.user else True
     if not record:
         return {"valid": False, "reason": "Key not found"}
+    if not user_active:
+        return {"valid": False, "reason": "User is disabled"}
     if not record.active:
         return {"valid": False, "reason": "Key is disabled"}
     if record.max_uses is not None and record.usage_count >= record.max_uses:

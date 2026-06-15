@@ -18,8 +18,18 @@ def _has_column(conn, table_name: str, column_name: str) -> bool:
     return any(row[1] == column_name for row in rows)
 
 
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def upgrade() -> None:
     conn = op.get_bind()
+    if not _table_exists(conn, "company_billing_settings"):
+        return
     columns = [
         ("default_percent_rate", "REAL NOT NULL DEFAULT 0"),
         ("default_tax_rate", "REAL NOT NULL DEFAULT 0"),
@@ -33,6 +43,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
+    if not _table_exists(conn, "company_billing_settings"):
+        return
     for name in [
         "default_tax_user_id",
         "default_commission_user_id",

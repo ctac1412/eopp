@@ -9,7 +9,6 @@ from src.entities.base import Base
 
 if TYPE_CHECKING:
     from src.entities.company import Company
-    from src.entities.tariff import Tariff
     from src.entities.usage_log import UsageLog
     from src.entities.user import User
 
@@ -38,5 +37,4 @@ class ApiKey(Base):
 
     company: Mapped[Company | None] = relationship(back_populates="api_keys")
     user: Mapped[User | None] = relationship(back_populates="api_keys")
-    tariff: Mapped[Tariff | None] = relationship(back_populates="api_key", uselist=False)
     usage_logs: Mapped[list[UsageLog]] = relationship(back_populates="api_key")

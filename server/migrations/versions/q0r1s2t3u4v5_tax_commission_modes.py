@@ -18,14 +18,24 @@ def _has_column(conn, table_name: str, column_name: str) -> bool:
     return any(row[1] == column_name for row in rows)
 
 
+def _table_exists(conn, table_name: str) -> bool:
+    row = conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def upgrade() -> None:
     conn = op.get_bind()
-    if not _has_column(conn, "company_billing_settings", "tax_commission_mode"):
+    if _table_exists(conn, "company_billing_settings") and not _has_column(
+        conn, "company_billing_settings", "tax_commission_mode"
+    ):
         op.execute(
             "ALTER TABLE company_billing_settings "
             "ADD COLUMN tax_commission_mode TEXT NOT NULL DEFAULT 'added'"
         )
-    if not _has_column(conn, "invoices", "tax_commission_mode"):
+    if _table_exists(conn, "invoices") and not _has_column(conn, "invoices", "tax_commission_mode"):
         op.execute(
             "ALTER TABLE invoices ADD COLUMN tax_commission_mode TEXT DEFAULT 'added'"
         )
@@ -33,7 +43,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     conn = op.get_bind()
-    if _has_column(conn, "invoices", "tax_commission_mode"):
+    if _table_exists(conn, "invoices") and _has_column(conn, "invoices", "tax_commission_mode"):
         op.execute("ALTER TABLE invoices DROP COLUMN tax_commission_mode")
-    if _has_column(conn, "company_billing_settings", "tax_commission_mode"):
+    if _table_exists(conn, "company_billing_settings") and _has_column(
+        conn, "company_billing_settings", "tax_commission_mode"
+    ):
         op.execute("ALTER TABLE company_billing_settings DROP COLUMN tax_commission_mode")

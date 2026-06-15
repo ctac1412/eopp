@@ -264,11 +264,6 @@ def test_confirm_usage_core_mode_survives_billing_captcha_records_and_telegram_f
     monkeypatch.setenv("EOPP_USAGE_SYNC_CAPTCHA_RECORDS_ENABLED", "0")
     monkeypatch.setattr(
         db_usage_log,
-        "get_tariff",
-        lambda api_key_id: (_ for _ in ()).throw(RuntimeError("billing should be deferred")),
-    )
-    monkeypatch.setattr(
-        db_usage_log,
         "deduct_prepaid_for_usage_tx",
         lambda conn, api_key_id, usage_log_id, price: (_ for _ in ()).throw(
             RuntimeError("prepaid should be deferred")

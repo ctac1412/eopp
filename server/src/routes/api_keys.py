@@ -196,7 +196,10 @@ async def update_api_key(key_id: int, body: UpdateApiKeyBody, request: Request):
             "user_id": body.user_id,
         }.items() if v is not None
     }
-    record = api_key_repo.update_key(key_id, **kwargs)
+    try:
+        record = api_key_repo.update_key(key_id, **kwargs)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
     if not record:
         return JSONResponse(status_code=404, content={"error": "Key not found"})
     return JSONResponse(content=_make_masked(record))
@@ -230,7 +233,10 @@ async def validate_api_key(api_key: str = Query(...)):
         key_record = api_key_repo.get_key_record(api_key)
         if key_record:
             result["api_key_id"] = key_record.id
-            tariff = tariff_repo.get_tariff(key_record.id)
+            tariff, _source = tariff_repo.get_effective_tariff(
+                key_record.id,
+                key_record.company_id,
+            )
             if tariff:
                 result["price_create"] = tariff.price_create
                 result["price_reschedule"] = tariff.price_reschedule

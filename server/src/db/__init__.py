@@ -25,12 +25,6 @@ from src.db.api_keys import (
 )
 from src.db.connection import DB_PATH, get_connection
 from src.db.init import init_db
-from src.db.tariffs import (
-    create_tariff,
-    delete_tariff,
-    get_tariff,
-    update_tariff,
-)
 from src.db.usage_log import (
     calc_debt,
     confirm_usage,
@@ -65,8 +59,4 @@ __all__ = [
     "list_usages",
     "calc_debt",
     "update_usage_log",
-    "get_tariff",
-    "create_tariff",
-    "update_tariff",
-    "delete_tariff",
 ]

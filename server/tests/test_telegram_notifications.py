@@ -3,6 +3,55 @@ from datetime import UTC, date, datetime
 import pytest
 
 
+def attach_api_key_to_company(api_key_id, company_id):
+    from src.db.connection import get_connection
+
+    conn = get_connection()
+    conn.execute("UPDATE api_keys SET company_id = ? WHERE id = ?", (company_id, api_key_id))
+    conn.commit()
+    conn.close()
+
+
+def create_company_with_tariff(name, tariff):
+    from src.db.connection import get_connection
+
+    now = datetime.now(UTC).isoformat()
+    conn = get_connection()
+    cur = conn.execute(
+        "INSERT INTO companies (name, created_at, updated_at) VALUES (?, ?, ?)",
+        (name, now, now),
+    )
+    company_id = cur.lastrowid
+    conn.execute(
+        """
+        INSERT INTO company_tariffs (
+            company_id, price_create, price_reschedule, price_create_peak,
+            price_custom_slots, executor_amount, operator_amount, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?)
+        """,
+        (
+            company_id,
+            tariff["price_create"],
+            tariff["price_reschedule"],
+            tariff.get("price_create_peak"),
+            tariff.get("price_custom_slots"),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return {"id": company_id, "name": name}
+
+
+def create_api_key_for_company(label, company_id):
+    from src.db import create_key
+
+    key = create_key(label=label)
+    attach_api_key_to_company(key["id"], company_id)
+    return key
+
+
 def test_render_confirm_notification_contains_type_and_price():
     from src.services import telegram_service
 
@@ -106,16 +155,11 @@ def test_confirm_usage_triggers_telegram_for_real_record(client, admin_token, mo
     sent = []
     monkeypatch.setattr(telegram_service, "send_message_async", lambda text: sent.append(text))
 
-    key_data = client.post(
-        "/api-keys",
-        headers={"X-Admin-Token": admin_token},
-        json={"label": "telegram_confirm_key"},
-    ).json()
-    client.put(
-        f"/admin/tariffs/{key_data['id']}",
-        headers={"X-Admin-Token": admin_token},
-        json={"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
+    company = create_company_with_tariff(
+        "Telegram Confirm Co",
+        {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
     )
+    key_data = create_api_key_for_company("telegram_confirm_key", company["id"])
     uid = log_usage(
         api_key=key_data["key"],
         reservation_id="real-reservation-telegram",

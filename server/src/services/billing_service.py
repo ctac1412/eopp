@@ -45,13 +45,10 @@ from src.services.prepaid_service import (
 from src.services.tariff_service import (
     apply_default_company_tariff,
     delete_company_tariff,
-    delete_tariff,
     get_company_tariff,
     get_default_company_tariff,
-    get_tariff,
     upsert_company_tariff,
     upsert_default_company_tariff,
-    upsert_tariff,
 )
 from src.services.user_service import (
     create_user,
@@ -114,7 +111,10 @@ def recalculate_usage_finance_entries(usage_log_id: int) -> tuple[int, dict]:
 
 def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access_decision=None) -> tuple[int, dict]:
     """Update an API key and audit security-sensitive changes when available."""
-    key = api_key_repo.update_api_key(api_key_id, body, admin_id=admin_id, access_decision=access_decision)
+    try:
+        key = api_key_repo.update_api_key(api_key_id, body, admin_id=admin_id, access_decision=access_decision)
+    except ValueError as exc:
+        return 400, {"error": str(exc)}
     if not key:
         return 404, {"error": "API key not found"}
     return 200, entity_to_dict(key)
@@ -151,7 +151,6 @@ __all__ = [
     "delete_invoice",
     "delete_payout",
     "delete_prepaid_package",
-    "delete_tariff",
     "delete_company_tariff",
     "apply_default_company_tariff",
     "delete_user",
@@ -159,7 +158,6 @@ __all__ = [
     "list_profit_lots",
     "create_finance_entry",
     "generate_invoice",
-    "get_tariff",
     "get_company_tariff",
     "get_default_company_tariff",
     "get_user_stats",
@@ -184,10 +182,8 @@ __all__ = [
     "update_invoice",
     "update_payout",
     "update_prepaid_package",
-    "upsert_tariff",
     "upsert_company_tariff",
     "upsert_default_company_tariff",
     "update_user",
     "upsert_company_alias",
-    "upsert_tariff",
 ]

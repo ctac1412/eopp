@@ -15,14 +15,10 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Alert, Tag } from "antd";
 import {
-  ApiKeysTab,
   BackendLogsTab,
   StreamsTab,
   TestBenchmarkTab,
   InvoicesTab,
-  KeyFormModal,
-  DeleteConfirmModal,
-  UsageLogEditModal,
   ReportsTab,
   ExpensesTab,
   ExpenseModal,
@@ -103,31 +99,7 @@ function AdminPage() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showEdit, setShowEdit] = useState(null);
   const [newKey, setNewKey] = useState(null);
-  const [createForm, setCreateForm] = useState({ label: "", maxUses: "", isExternal: false, userId: "" });
-  const [editForm, setEditForm] = useState({
-    label: "",
-    maxUses: "",
-    active: true,
-    isExternal: false,
-    comment: "",
-    priceCreate: "",
-    priceReschedule: "",
-    priceCreatePeak: "",
-    priceCustomSlots: "",
-    userId: "",
-  });
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [expandedHistory, setExpandedHistory] = useState({});
-  const [historyLoading, setHistoryLoading] = useState({});
-  const [historyHideTest, setHistoryHideTest] = useState({});
-  const [expandedLogs, setExpandedLogs] = useState({});
-  const [expandedConfig, setExpandedConfig] = useState({});
-  const [showUsageLogEdit, setShowUsageLogEdit] = useState(null);
-  const [usageLogEditForm, setUsageLogEditForm] = useState({ price: "", paid: "" });
-  const [editingPriceId, setEditingPriceId] = useState(null);
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -547,8 +519,9 @@ function AdminPage() {
   useEffect(() => {
     if (adminToken && activeTab === "users") {
       fetchUsers(adminToken);
+      fetchKeys(adminToken);
     }
-  }, [adminToken, activeTab, fetchUsers]);
+  }, [adminToken, activeTab, fetchKeys, fetchUsers]);
 
   useEffect(() => {
     if (adminToken && (activeTab === "expenses" || activeTab === "payouts" || activeTab === "invoices" || activeTab === "reports")) {
@@ -576,93 +549,6 @@ function AdminPage() {
     setAdminSections([]);
     setAdminPermissions([]);
     setKeys([]);
-    setExpandedHistory({});
-    setExpandedLogs({});
-    setExpandedConfig({});
-  };
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    try {
-      if (!createForm.userId) {
-        throw new Error("Выберите пользователя-владельца ключа");
-      }
-      const body = { label: createForm.label };
-      if (createForm.maxUses) {
-        body.max_uses = parseInt(createForm.maxUses, 10);
-      }
-      if (createForm.isExternal) {
-        body.is_external = true;
-      }
-      body.user_id = parseInt(createForm.userId, 10);
-      const res = await adminRequest("/api-keys", {
-        method: "POST",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setNewKey(data);
-      setCreateForm({ label: "", maxUses: "", isExternal: false, userId: "" });
-      setShowCreate(false);
-      fetchKeys(adminToken);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleEdit = async (e) => {
-    e.preventDefault();
-    if (!showEdit) return;
-    try {
-      const body = { label: editForm.label, active: editForm.active, is_external: editForm.isExternal };
-      if (editForm.maxUses !== "") {
-        body.max_uses = parseInt(editForm.maxUses, 10);
-      } else {
-        body.max_uses = null;
-      }
-      if (editForm.comment !== "") {
-        body.comment = editForm.comment;
-      }
-      if (editForm.userId) {
-        body.user_id = parseInt(editForm.userId, 10);
-      }
-      const res = await adminRequest(`/api-keys/${showEdit}`, {
-        method: "PUT",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      if (
-        editForm.priceCreate !== "" ||
-        editForm.priceReschedule !== "" ||
-        editForm.priceCreatePeak !== "" ||
-        editForm.priceCustomSlots !== ""
-      ) {
-        const tariffBody = {};
-        if (editForm.priceCreate !== "") {
-          tariffBody.price_create = parseInt(editForm.priceCreate, 10);
-        }
-        if (editForm.priceReschedule !== "") {
-          tariffBody.price_reschedule = parseInt(editForm.priceReschedule, 10);
-        }
-        tariffBody.price_create_peak =
-          editForm.priceCreatePeak !== "" ? parseInt(editForm.priceCreatePeak, 10) : null;
-        tariffBody.price_custom_slots =
-          editForm.priceCustomSlots !== "" ? parseInt(editForm.priceCustomSlots, 10) : null;
-        await adminRequest(`/admin/tariffs/${showEdit}`, {
-          method: "PUT",
-          headers: adminHeaders(adminToken),
-          body: JSON.stringify(tariffBody),
-        });
-      }
-
-      setShowEdit(null);
-      fetchKeys(adminToken);
-    } catch (err) {
-      setError(err.message);
-    }
   };
 
   const handleDelete = async (id) => {
@@ -672,7 +558,6 @@ function AdminPage() {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setConfirmDelete(null);
       fetchKeys(adminToken);
     } catch (err) {
       setError(err.message);
@@ -706,84 +591,36 @@ function AdminPage() {
     }
   };
 
-  const openEdit = (keyObj) => {
-    const tariff = keyObj.tariff;
-    setEditForm({
-      label: keyObj.label || "",
-      maxUses: keyObj.max_uses ?? "",
-      active: keyObj.active,
-      isExternal: keyObj.is_external || false,
-      comment: keyObj.comment || "",
-      priceCreate: tariff ? String(tariff.price_create) : "1000",
-      priceReschedule: tariff ? String(tariff.price_reschedule) : "7000",
-      priceCreatePeak:
-        tariff && tariff.price_create_peak != null ? String(tariff.price_create_peak) : "",
-      priceCustomSlots:
-        tariff && tariff.price_custom_slots != null ? String(tariff.price_custom_slots) : "",
-      userId: keyObj.user_id != null ? String(keyObj.user_id) : "",
-    });
-    setShowEdit(keyObj.id);
-    fetchCompanies(adminToken);
-    fetchUsers(adminToken);
-  };
-
-  const fetchUsageHistory = async (keyId, hideTest = true) => {
-    if (expandedHistory[keyId] !== undefined && expandedHistory[keyId] !== null) {
-      const currentHideTest = historyHideTest[keyId] ?? true;
-      if (hideTest === currentHideTest) return;
-    }
-    setHistoryLoading((p) => ({ ...p, [keyId]: true }));
+  const handleCreatePersonalApiKey = async (userId) => {
     try {
-      const res = await adminRequest(
-        `/usage-log?api_key_id=${keyId}&hide_test=${hideTest}`,
-        {
-          headers: adminHeadersJson(adminToken),
-        },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = {
+        label: userForm.login || userForm.name || `user-${userId}`,
+        user_id: Number(userId),
+      };
+      if (userForm.companyId) {
+        body.company_id = Number(userForm.companyId);
+      }
+      const res = await adminRequest("/api-keys", {
+        method: "POST",
+        headers: adminHeaders(adminToken),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
       const data = await res.json();
-      setExpandedHistory((p) => ({
-        ...p,
-        [keyId]: Array.isArray(data) ? data : data.logs || data.records || [],
-      }));
-      setHistoryHideTest((p) => ({ ...p, [keyId]: hideTest }));
-    } catch (err) {
-      setExpandedHistory((p) => ({ ...p, [keyId]: null }));
-    } finally {
-      setHistoryLoading((p) => ({ ...p, [keyId]: false }));
-    }
-  };
-
-  const toggleHistory = (keyId) => {
-    if (expandedHistory[keyId] !== undefined) {
-      setExpandedHistory((p) => {
-        const n = { ...p };
-        delete n[keyId];
-        return n;
-      });
-    } else {
-      fetchUsageHistory(keyId, true);
-    }
-  };
-
-  const handleDeleteUsage = async (keyId, usageId) => {
-    try {
-      const res = await adminRequest(`/usage-log/${usageId}`, {
-        method: "DELETE",
-        headers: adminHeadersJson(adminToken),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setExpandedHistory((prev) => {
-        const updated = { ...prev };
-        const entries = updated[keyId];
-        if (entries) {
-          updated[keyId] = entries.filter((l) => l.id !== usageId);
-        }
-        return updated;
-      });
+      setNewKey(data);
+      await fetchKeys(adminToken);
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  const handleDeletePersonalApiKey = async (keyId) => {
+    if (!window.confirm("Удалить персональный ключ пользователя?")) return;
+    await handleDelete(keyId);
+    await fetchKeys(adminToken);
   };
 
   const handleCreateExpense = async (e) => {
@@ -1144,8 +981,9 @@ function AdminPage() {
       executorAccess: normalizeAccess(u.executor_access),
     });
     fetchCompanies(adminToken);
+    fetchKeys(adminToken);
     setShowUserModal(true);
-  }, [adminToken, fetchCompanies]);
+  }, [adminToken, fetchCompanies, fetchKeys]);
 
   const handleDeleteExpense = async (id) => {
     try {
@@ -1160,120 +998,10 @@ function AdminPage() {
     }
   };
 
-  const togglePluginLogs = (usageLogId) => {
-    setExpandedLogs((p) => ({ ...p, [usageLogId]: !p[usageLogId] }));
-  };
-
-  const toggleConfig = (usageLogId) => {
-    setExpandedConfig((p) => ({ ...p, [usageLogId]: !p[usageLogId] }));
-  };
-
-  const openUsageLogEdit = (entry) => {
-    setUsageLogEditForm({
-      price: entry.price ?? "",
-      paid: entry.paid === null || entry.paid === undefined ? "" : String(entry.paid),
-    });
-    setShowUsageLogEdit(entry);
-  };
-
-  const handleSaveUsageLog = async (e) => {
-    e.preventDefault();
-    if (!showUsageLogEdit) return;
-    try {
-      const body = {};
-      if (usageLogEditForm.price !== "") {
-        body.price = parseInt(usageLogEditForm.price, 10);
-      }
-      if (usageLogEditForm.paid !== "") {
-        body.paid = usageLogEditForm.paid === "true";
-      }
-      const res = await adminRequest(`/admin/usage-log/${showUsageLogEdit.id}`, {
-        method: "PATCH",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === showUsageLogEdit.id));
-      if (keyId) {
-        setExpandedHistory((prev) => {
-          const updated = { ...prev };
-          const entries = [...(updated[keyId] || [])];
-          const idx = entries.findIndex((l) => l.id === showUsageLogEdit.id);
-          if (idx !== -1) {
-            entries[idx] = { ...entries[idx], ...body };
-          }
-          updated[keyId] = entries;
-          return updated;
-        });
-      }
-      setShowUsageLogEdit(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleInlinePriceChange = async (logId, newPrice) => {
-    try {
-      const res = await adminRequest(`/admin/usage-log/${logId}`, {
-        method: "PATCH",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify({ price: newPrice }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === logId));
-      if (keyId) {
-        setExpandedHistory((prev) => {
-          const updated = { ...prev };
-          const entries = [...(updated[keyId] || [])];
-          const idx = entries.findIndex((l) => l.id === logId);
-          if (idx !== -1) {
-            entries[idx] = { ...entries[idx], price: newPrice };
-          }
-          updated[keyId] = entries;
-          return updated;
-        });
-      }
-      fetchKeys(adminToken);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const handleInlineTogglePaid = async (logId) => {
-    const entry = Object.values(expandedHistory)
-      .flat()
-      .find((l) => l.id === logId);
-    if (!entry) return;
-
-    const nextPaid = entry.paid === true ? false : entry.paid === false ? null : true;
-    try {
-      const res = await adminRequest(`/admin/usage-log/${logId}`, {
-        method: "PATCH",
-        headers: adminHeaders(adminToken),
-        body: JSON.stringify({ paid: nextPaid }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const keyId = Object.keys(expandedHistory).find((k) => expandedHistory[k]?.some((l) => l.id === logId));
-      if (keyId) {
-        setExpandedHistory((prev) => {
-          const updated = { ...prev };
-          const entries = [...(updated[keyId] || [])];
-          const idx = entries.findIndex((l) => l.id === logId);
-          if (idx !== -1) {
-            entries[idx] = { ...entries[idx], paid: nextPaid };
-          }
-          updated[keyId] = entries;
-          return updated;
-        });
-      }
-      fetchKeys(adminToken);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
+  const currentUserApiKey = useMemo(
+    () => (userForm.id ? keys.find((key) => Number(key.user_id) === Number(userForm.id)) || null : null),
+    [keys, userForm.id],
+  );
 
   if (!authChecked) {
     return null;
@@ -1291,11 +1019,6 @@ function AdminPage() {
           <Tag color={adminRole === "super_admin" ? "red" : adminRole === "administrator" ? "blue" : "default"}>
             {ROLE_LABELS[adminRole] || adminRole || "Роль"}
           </Tag>
-          {activeTab === "keys" && adminPermissions.includes("admin.users.manage") && (
-            <Button size="small" variant="primary" onClick={() => { setShowCreate(true); fetchCompanies(adminToken); fetchUsers(adminToken); }}>
-              Новый ключ
-            </Button>
-          )}
           <Button size="small" onClick={handleLogout}>
             Выйти
           </Button>
@@ -1356,33 +1079,6 @@ function AdminPage() {
           onError={(msg) => setError(msg)}
           onInvoiceGenerated={handleManualInvoiceCreated}
           users={financeParticipants}
-        />
-      )}
-
-      {activeTab === "keys" && (
-        <ApiKeysTab
-          keys={keys}
-          loading={loading}
-          error={error}
-          newKey={newKey}
-          expandedHistory={expandedHistory}
-          historyLoading={historyLoading}
-          historyHideTest={historyHideTest}
-          expandedLogs={expandedLogs}
-          expandedConfig={expandedConfig}
-          onEditKey={openEdit}
-          onToggleActive={handleToggleActive}
-          onToggleHistory={toggleHistory}
-          onFetchUsageHistory={fetchUsageHistory}
-          onDeleteUsage={handleDeleteUsage}
-          onEditUsageLog={openUsageLogEdit}
-          onTogglePluginLogs={togglePluginLogs}
-          onToggleConfig={toggleConfig}
-          onCloseNewKey={() => setNewKey(null)}
-          editingPriceId={editingPriceId}
-          setEditingPriceId={setEditingPriceId}
-          onPriceChange={handleInlinePriceChange}
-          onTogglePaid={handleInlineTogglePaid}
         />
       )}
 
@@ -1532,43 +1228,6 @@ function AdminPage() {
         <TrainingAdminTab adminToken={adminToken} onError={(msg) => setError(msg)} />
       )}
 
-      <KeyFormModal
-        show={showCreate}
-        mode="create"
-        form={createForm}
-        setForm={setCreateForm}
-        onSubmit={handleCreate}
-        onClose={() => setShowCreate(false)}
-        users={users}
-      />
-
-      <KeyFormModal
-        show={showEdit}
-        mode="edit"
-        form={editForm}
-        setForm={setEditForm}
-        onSubmit={handleEdit}
-        onClose={() => setShowEdit(null)}
-        onResetUsage={() => { if (showEdit) handleResetUsage(showEdit); }}
-        onDeleteKey={() => { if (showEdit) { setShowEdit(null); setConfirmDelete(showEdit); } }}
-        users={users}
-      />
-
-      <DeleteConfirmModal
-        show={!!confirmDelete}
-        onConfirm={() => handleDelete(confirmDelete)}
-        onClose={() => setConfirmDelete(null)}
-      />
-
-      <UsageLogEditModal
-        show={!!showUsageLogEdit}
-        entry={showUsageLogEdit}
-        form={usageLogEditForm}
-        setForm={setUsageLogEditForm}
-        onSubmit={handleSaveUsageLog}
-        onClose={() => setShowUsageLogEdit(null)}
-      />
-
       <ExpenseModal
         show={showExpenseModal}
         form={expenseForm}
@@ -1600,6 +1259,12 @@ function AdminPage() {
         onClose={() => setShowUserModal(false)}
         companies={companies}
         canUseGlobalAccess={canUseGlobalUserCompanyAccess}
+        apiKey={currentUserApiKey}
+        newApiKey={newKey}
+        onCreateApiKey={handleCreatePersonalApiKey}
+        onToggleApiKey={handleToggleActive}
+        onResetApiKey={handleResetUsage}
+        onDeleteApiKey={handleDeletePersonalApiKey}
       />
 
       <UserStatsModal
@@ -1613,4 +1278,3 @@ function AdminPage() {
 }
 
 export default AdminPage;
-

@@ -1,7 +1,6 @@
 export const ADMIN_TABS = [
   { id: "operations", label: "Оперативный дэшборд", shortLabel: "Оперативка" },
   { id: "reports", label: "Журнал" },
-  { id: "keys", label: "API Keys", shortLabel: "API" },
   { id: "companies", label: "Компании" },
   { id: "operators", label: "Операторы" },
   { id: "channels", label: "Каналы" },

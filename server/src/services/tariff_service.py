@@ -11,22 +11,6 @@ def _body_fields(body) -> set[str]:
     return set(getattr(body, "__fields_set__", set()))
 
 
-def get_tariff(api_key_id: int) -> tuple[int, dict]:
-    tariff = tariff_repo.get_tariff(api_key_id)
-    if not tariff:
-        return 404, {"error": "Tariff not found"}
-    return 200, entity_to_dict(tariff)
-
-
-def upsert_tariff(api_key_id: int, body) -> tuple[int, dict]:
-    return 200, entity_to_dict(
-        tariff_repo.upsert_tariff(
-            api_key_id, body.price_create, body.price_reschedule,
-            body.price_create_peak, body.price_custom_slots,
-        )
-    )
-
-
 def get_company_tariff(company_id: int) -> tuple[int, dict]:
     tariff = tariff_repo.get_company_tariff(company_id)
     if not tariff:
@@ -91,10 +75,4 @@ def apply_default_company_tariff(company_id: int) -> tuple[int, dict]:
 def delete_company_tariff(company_id: int) -> tuple[int, dict]:
     if not tariff_repo.delete_company_tariff(company_id):
         return 404, {"error": "Company tariff not found"}
-    return 200, {"ok": True}
-
-
-def delete_tariff(api_key_id: int) -> tuple[int, dict]:
-    if not tariff_repo.delete_tariff(api_key_id):
-        return 404, {"error": "Tariff not found"}
     return 200, {"ok": True}

@@ -105,18 +105,6 @@ def _should_index_captchas(config_json: dict | None) -> bool:
     return source != "local"
 
 
-def get_tariff(api_key_id: int) -> dict | None:
-    """Legacy tariff lookup wrapper kept outside the confirm hot path.
-
-    Phase 6 moved billing into deferred jobs, but older tests and maintenance
-    scripts still patch this symbol to prove confirm does not call it.
-    """
-
-    from src.db.tariffs import get_tariff as _get_tariff
-
-    return _get_tariff(api_key_id)
-
-
 def deduct_prepaid_for_usage_tx(conn, api_key_id: int, usage_log_id: int, amount: int) -> bool:
     """Legacy prepaid wrapper kept patchable while billing is job-driven."""
 
@@ -332,11 +320,21 @@ def confirm_usage(
     )
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
     conn.commit()
-    _defer_job("billing.calculate_usage_price", {"usage_log_id": usage_log_id})
+    if sync_billing:
+        from src.modules.usage.jobs import confirm_billing
+
+        confirm_billing({"usage_log_id": usage_log_id})
+    else:
+        _defer_job("billing.calculate_usage_price", {"usage_log_id": usage_log_id})
 
     stored_logs = _read_usage_logs(conn, usage_log_id)
     if stored_logs and _should_index_captchas(config_json):
-        _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"})
+        if sync_captcha_records:
+            from src.db.captchas import create_captcha_records
+
+            create_captcha_records(usage_log_id, "unknown", stored_logs, "confirmed")
+        else:
+            _defer_job("captcha_records", {"usage_log_id": usage_log_id, "status": "confirmed"})
 
     conn.close()
     return True

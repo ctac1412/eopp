@@ -63,6 +63,55 @@ def test_auto_company_creation_copies_default_tariff(client, admin_token):
     }
 
 
+def test_effective_tariff_ignores_legacy_api_key_tariff(isolated_api_db):
+    from datetime import UTC, datetime
+
+    from src.db.connection import get_connection
+    from src.db.tariffs import get_effective_tariff
+
+    now = datetime.now(UTC).isoformat()
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES ('Key Tariff Legacy Co', ?)", (now,))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO api_keys (key, label, created_at, company_id)
+        VALUES ('legacy-key-tariff', 'Legacy key tariff', ?, ?)
+        """,
+        (now, company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO company_tariffs (
+            company_id, price_create, price_reschedule, price_create_peak,
+            price_custom_slots, executor_amount, operator_amount, created_at, updated_at
+        )
+        VALUES (?, 1100, 2200, 3300, 4400, 0, 0, ?, ?)
+        """,
+        (company_id, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO tariffs (
+            api_key_id, price_create, price_reschedule, price_create_peak,
+            price_custom_slots, created_at, updated_at
+        )
+        VALUES (?, 1, 2, 3, 4, ?, ?)
+        """,
+        (api_key_id, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    tariff = get_effective_tariff(api_key_id)
+
+    assert tariff["price_create"] == 1100
+    assert tariff["price_reschedule"] == 2200
+    assert tariff["price_create_peak"] == 3300
+    assert tariff["price_custom_slots"] == 4400
+
+
 def test_manual_company_creation_copies_default_billing_settings(client, admin_token):
     default_response = _put_default_tariff(
         client,
