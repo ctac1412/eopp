@@ -543,6 +543,27 @@ async def delete_admin_tariff(api_key_id: int, request: Request):
     return _json_result(result)
 
 
+@router.get("/default-company-tariff")
+async def get_admin_default_company_tariff():
+    return _json_result(billing_service.get_default_company_tariff())
+
+
+@router.put("/default-company-tariff")
+async def create_update_default_company_tariff(body: TariffBody, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
+    result = billing_service.upsert_default_company_tariff(body)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="default_company_tariff",
+        )
+    return _json_result(result)
+
+
 @router.get("/company-tariffs/{company_id}")
 async def get_admin_company_tariff(company_id: int, request: Request):
     tenant_company_id = _tenant_company_id(request)
@@ -564,6 +585,24 @@ async def create_update_company_tariff(company_id: int, body: TariffBody, reques
             Permission.TARIFF_EDIT,
             target_type="company_tariff",
             target_id=company_id,
+        )
+    return _json_result(result)
+
+
+@router.post("/company-tariffs/{company_id}/apply-default")
+async def apply_admin_default_company_tariff(company_id: int, request: Request):
+    system_guard = _require_system_scope(request)
+    if system_guard:
+        return system_guard
+    result = billing_service.apply_default_company_tariff(company_id)
+    if result[0] < 400:
+        _audit_business_action(
+            request,
+            "tariff.changed",
+            Permission.TARIFF_EDIT,
+            target_type="company_tariff",
+            target_id=company_id,
+            metadata={"applied_default": True},
         )
     return _json_result(result)
 
@@ -596,6 +635,11 @@ async def update_api_key(id: int, body: UpdateApiKeyBody, request: Request):
 @router.patch("/usage-log/{id}")
 async def update_admin_usage_log(id: int, body: UpdateUsageLogBody):
     return _json_result(billing_service.update_usage_log(id, body))
+
+
+@router.post("/usage-log/{id}/finance/recalculate")
+async def recalculate_admin_usage_log_finance(id: int):
+    return _json_result(billing_service.recalculate_usage_finance_entries(id))
 
 
 @router.post("/generate-invoice")
@@ -730,10 +774,7 @@ async def create_admin_company(body: CompanyBody, request: Request):
             aliases=body.aliases,
             notes=body.notes,
         )
-        return JSONResponse(
-            status_code=201,
-            content={k: getattr(c, k) for k in ("id", "name", "aliases", "notes", "created_at")},
-        )
+        return JSONResponse(status_code=201, content=company_repo.list_companies(c.id)[0])
     except Exception as exc:
         logger.error("create_company_error name=%r %s", body.name, exc)
         return JSONResponse(status_code=409, content={"error": str(exc)})
@@ -802,6 +843,25 @@ async def list_admin_finance_entries(
         "edit_state": edit_state,
     }
     return _json_result(billing_service.list_finance_entries(filters))
+
+
+@router.get("/profit-lots")
+async def list_admin_profit_lots(
+    company_id: int | None = None,
+    usage_log_id: int | None = None,
+    invoice_id: int | None = None,
+    status: str | None = None,
+):
+    return _json_result(
+        billing_service.list_profit_lots(
+            {
+                "company_id": company_id,
+                "usage_log_id": usage_log_id,
+                "invoice_id": invoice_id,
+                "status": status,
+            }
+        )
+    )
 
 
 @router.post("/finance-entries")
@@ -1126,6 +1186,23 @@ async def admin_captcha_thumbnail(captcha_id: str, mode: str | None = None):
 
         if main_img is None:
             return Response(status_code=500, content="Cannot decode main image")
+
+        if mode == "main":
+            buf = io.BytesIO()
+            main_img.save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
+
+        if mode == "icons":
+            if icons_img is None:
+                return Response(status_code=404, content="No icons")
+            if (
+                icons_img.height > main_img.height
+                and icons_img.width >= main_img.width * 0.8
+            ):
+                icons_img = icons_img.crop((0, main_img.height, icons_img.width, icons_img.height))
+            buf = io.BytesIO()
+            icons_img.save(buf, format="PNG")
+            return Response(content=buf.getvalue(), media_type="image/png")
 
         if icons_img:
             main_w = main_img.width

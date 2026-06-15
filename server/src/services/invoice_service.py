@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 
+from src.db.invoices import InvoiceDeleteConflict
 from src.repositories import company_repo, invoice_repo, usage_log_repo
 
 
@@ -178,7 +179,11 @@ def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
 
 
 def delete_invoice(invoice_id: int) -> tuple[int, dict]:
-    if not invoice_repo.delete_invoice(invoice_id):
+    try:
+        deleted = invoice_repo.delete_invoice(invoice_id)
+    except InvoiceDeleteConflict:
+        return 409, {"error": "Invoice is linked to payout or locked finance entries"}
+    if not deleted:
         return 404, {"error": "Invoice not found"}
     return 200, {"ok": True}
 

@@ -161,19 +161,68 @@ def create_usage_finance_entries(conn, usage_log_id: int, price: int) -> None:
         )
 
 
+def recalculate_usage_finance_entries(usage_log_id: int) -> list[dict]:
+    """Rebuild open automatic finance entries from the current usage log price."""
+
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        usage = conn.execute("SELECT * FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
+        if usage is None:
+            conn.execute("ROLLBACK")
+            raise ValueError(f"usage_log {usage_log_id} not found")
+        if usage["price"] is None:
+            conn.execute("ROLLBACK")
+            raise ValueError(f"usage_log {usage_log_id} has no price")
+        conn.execute(
+            """
+            DELETE FROM finance_entries
+            WHERE usage_log_id = ?
+              AND kind IN ('customer_income', 'executor_salary', 'operator_salary')
+              AND source = 'system'
+              AND edit_state = 'open'
+              AND payout_id IS NULL
+            """,
+            (usage_log_id,),
+        )
+        create_usage_finance_entries(conn, usage_log_id, int(usage["price"]))
+        if usage["invoice_id"] is not None:
+            rebuild_profit_lots(conn, int(usage["invoice_id"]), [usage_log_id])
+        conn.commit()
+        rows = conn.execute(
+            """
+            SELECT fe.*, u.name AS user_name, u.login AS user_login
+            FROM finance_entries fe
+            LEFT JOIN users u ON u.id = fe.user_id
+            WHERE fe.usage_log_id = ?
+            ORDER BY fe.created_at DESC, fe.id DESC
+            """,
+            (usage_log_id,),
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+
+
 def _executor_entry(conn, usage_log_id: int, company_id: int | None) -> dict | None:
     if company_id is None:
         return None
     row = conn.execute(
         """
-        SELECT MIN(uec.user_id) AS user_id, COALESCE(ct.executor_amount, 0) AS amount
+        SELECT ak.user_id AS user_id, COALESCE(ct.executor_amount, 0) AS amount
         FROM usage_log ul
+        JOIN api_keys ak ON ak.id = ul.api_key_id
         JOIN company_tariffs ct ON ct.company_id = ul.company_id
-        JOIN user_executor_companies uec
-          ON uec.active = 1
-         AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
-        WHERE ul.id = ? AND ul.company_id IS NOT NULL AND COALESCE(ct.executor_amount, 0) > 0
-        GROUP BY ct.executor_amount
+        WHERE ul.id = ?
+          AND ul.company_id IS NOT NULL
+          AND ak.user_id IS NOT NULL
+          AND COALESCE(ct.executor_amount, 0) > 0
         """,
         (usage_log_id,),
     ).fetchone()
@@ -185,14 +234,42 @@ def _executor_entry(conn, usage_log_id: int, company_id: int | None) -> dict | N
 def _operator_entries(conn, usage_log_id: int) -> list[dict]:
     rows = conn.execute(
         """
-        SELECT da.id AS distribution_answer_id, op.user_id, COALESCE(o.icon_rate, 0) AS amount
+        WITH usage_executor AS (
+            SELECT ak.user_id AS user_id
+            FROM usage_log ul
+            JOIN api_keys ak ON ak.id = ul.api_key_id
+            WHERE ul.id = ? AND ul.company_id IS NOT NULL
+        ),
+        successful_captchas AS (
+            SELECT DISTINCT captcha_id
+            FROM captchas
+            WHERE usage_log_id = ?
+              AND status IN ('passed', 'confirmed')
+        )
+        SELECT
+            da.id AS distribution_answer_id,
+            op.user_id,
+            CASE
+                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+            END AS amount
         FROM distribution_answers da
+        JOIN usage_log ul ON ul.id = da.usage_log_id
+        JOIN successful_captchas sc ON sc.captcha_id = da.captcha_id
         JOIN operators o ON o.id = da.operator_id
+        LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
         JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
-        WHERE da.usage_log_id = ? AND COALESCE(o.icon_rate, 0) > 0
+        LEFT JOIN usage_executor ue ON 1 = 1
+        WHERE da.usage_log_id = ?
+          AND COALESCE(o.billing_mode, 'company') != 'free'
+          AND CASE
+                WHEN COALESCE(o.billing_mode, 'company') = 'custom' THEN COALESCE(o.icon_rate, 0)
+                ELSE COALESCE(ct.operator_amount, 0)
+              END > 0
+          AND (ue.user_id IS NULL OR op.user_id != ue.user_id)
         ORDER BY da.id
         """,
-        (usage_log_id,),
+        (usage_log_id, usage_log_id, usage_log_id),
     ).fetchall()
     return [
         {
@@ -447,13 +524,75 @@ def list_finance_entries(filters: dict | None = None) -> list[dict]:
     for key in ("company_id", "usage_log_id", "invoice_id", "payout_id", "kind", "edit_state"):
         value = filters.get(key)
         if value is not None:
-            conditions.append(f"{key} = ?")
+            conditions.append(f"fe.{key} = ?")
             params.append(value)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     conn = get_connection()
     try:
         rows = conn.execute(
-            f"SELECT * FROM finance_entries {where} ORDER BY created_at DESC, id DESC",
+            f"""
+            SELECT fe.*, u.name AS user_name, u.login AS user_login
+            FROM finance_entries fe
+            LEFT JOIN users u ON u.id = fe.user_id
+            {where}
+            ORDER BY fe.created_at DESC, fe.id DESC
+            """,
+            params,
+        ).fetchall()
+        return [_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def list_profit_lots(filters: dict | None = None) -> list[dict]:
+    filters = filters or {}
+    conditions = []
+    params = []
+    for key in ("company_id", "usage_log_id", "invoice_id"):
+        value = filters.get(key)
+        if value is not None:
+            conditions.append(f"pl.{key} = ?")
+            params.append(value)
+    allocated_expr = "COALESCE(linked.allocated_amount, 0)"
+    remaining_expr = f"pl.gross_amount - {allocated_expr}"
+    status = filters.get("status")
+    if status == "open":
+        conditions.append(f"{remaining_expr} > 0")
+    elif status == "allocated":
+        conditions.append(f"{remaining_expr} <= 0")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT
+                pl.id,
+                pl.company_id,
+                pl.usage_log_id,
+                pl.invoice_id,
+                pl.gross_amount,
+                pl.created_at,
+                pl.updated_at,
+                {allocated_expr} AS allocated_amount,
+                {remaining_expr} AS remaining_amount,
+                COALESCE(linked.linked_entries_count, 0) AS linked_entries_count,
+                i.invoice_number,
+                COALESCE(c.name, i.company) AS company_name
+            FROM profit_lots pl
+            LEFT JOIN invoices i ON i.id = pl.invoice_id
+            LEFT JOIN companies c ON c.id = pl.company_id
+            LEFT JOIN (
+                SELECT
+                    profit_lot_id,
+                    SUM(ABS(amount)) AS allocated_amount,
+                    COUNT(*) AS linked_entries_count
+                FROM finance_entries
+                WHERE profit_lot_id IS NOT NULL
+                GROUP BY profit_lot_id
+            ) linked ON linked.profit_lot_id = pl.id
+            {where}
+            ORDER BY pl.created_at DESC, pl.id DESC
+            """,
             params,
         ).fetchall()
         return [_row_to_dict(row) for row in rows]

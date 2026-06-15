@@ -8,13 +8,15 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from src.entities import Company, get_session
+from src.entities import Company, CompanyTariff, get_session
+from src.repositories import tariff_repo
+from src.repositories.tariff_repo import tariff_to_dict
 
 logger = logging.getLogger("eopp.company_repo")
 
 
-def _company_to_dict(c: Company) -> dict:
-    return {
+def _company_to_dict(c: Company, tariff: CompanyTariff | None = None) -> dict:
+    data = {
         "id": c.id,
         "name": c.name,
         "aliases": json.loads(c.aliases) if c.aliases else None,
@@ -22,6 +24,9 @@ def _company_to_dict(c: Company) -> dict:
         "created_at": c.created_at,
         "updated_at": c.updated_at,
     }
+    if tariff:
+        data["tariff"] = tariff_to_dict(tariff, source="company", company_id=c.id)
+    return data
 
 
 def create_company(
@@ -43,6 +48,7 @@ def create_company(
         session.flush()
         session.commit()
         session.refresh(c)
+        tariff_repo.apply_default_company_tariff(c.id)
         return c
 
 
@@ -52,8 +58,9 @@ def list_companies(company_id: int | None = None) -> list[dict]:
         query = session.query(Company)
         if company_id is not None:
             query = query.filter(Company.id == company_id)
-        rows = query.order_by(Company.name).all()
-        return [_company_to_dict(r) for r in rows]
+        rows = query.outerjoin(CompanyTariff, CompanyTariff.company_id == Company.id)
+        rows = rows.with_entities(Company, CompanyTariff).order_by(Company.name).all()
+        return [_company_to_dict(company, tariff) for company, tariff in rows]
 
 
 def get_company(company_id: int) -> Company | None:

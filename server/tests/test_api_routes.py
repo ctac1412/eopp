@@ -1760,6 +1760,31 @@ class TestIconClickCaptcha:
         "hgGAWjR9awAAAABJRU5ErkJggg=="
     )
 
+    @staticmethod
+    def _png_b64_size(width, height, color=(255, 0, 0, 255)):
+        import base64
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGBA", (width, height), color).save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    @staticmethod
+    def _combined_icon_click_b64(width, main_height, icons_height):
+        import base64
+        import io
+
+        from PIL import Image
+
+        image = Image.new("RGBA", (width, main_height + icons_height), (255, 0, 0, 255))
+        strip = Image.new("RGBA", (width, icons_height), (255, 255, 255, 255))
+        image.paste(strip, (0, main_height))
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
     def test_solve_captcha_type1_creates_entry(self, client, api_key):
         """POST /solve-captcha with type=1 creates pending entry, returns on timeout."""
         response = client.post(
@@ -1928,6 +1953,90 @@ class TestIconClickCaptcha:
         assert saved["puzzle"]["imageBase64"] == self._TINY_PNG
         assert saved["puzzle"]["iconsBase64"] == self._TINY_PNG
         assert saved.get("manual_labeled") is False
+
+    def test_icon_click_thumbnail_main_mode_returns_real_click_image(
+        self, client, admin_token, tmp_path, monkeypatch
+    ):
+        import io
+        import json
+
+        from PIL import Image
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+
+        captcha_id = "icon_review_main"
+        payload = {
+            "type": 1,
+            "puzzle": {
+                "imageBase64": self._png_b64_size(30, 20),
+                "iconsBase64": self._png_b64_size(15, 5),
+            },
+        }
+        with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
+        assert login.status_code == 200
+        client.cookies.update(login.cookies)
+
+        response = client.get(
+            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=main",
+        )
+
+        assert response.status_code == 200
+        image = Image.open(io.BytesIO(response.content))
+        assert image.size == (30, 20)
+
+        icons_response = client.get(
+            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
+        )
+
+        assert icons_response.status_code == 200
+        icons_image = Image.open(io.BytesIO(icons_response.content))
+        assert icons_image.size == (15, 5)
+
+        combined_response = client.get(
+            f"/admin/captcha-files/{captcha_id}/thumbnail",
+        )
+
+        assert combined_response.status_code == 200
+        combined_image = Image.open(io.BytesIO(combined_response.content))
+        assert combined_image.size == (30, 30)
+
+    def test_icon_click_thumbnail_icons_mode_crops_combined_icons_payload(
+        self, client, admin_token, tmp_path, monkeypatch
+    ):
+        import io
+        import json
+
+        from PIL import Image
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+
+        captcha_id = "icon_review_combined_icons"
+        payload = {
+            "type": 1,
+            "puzzle": {
+                "imageBase64": self._png_b64_size(30, 20),
+                "iconsBase64": self._combined_icon_click_b64(30, 20, 10),
+            },
+        }
+        with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
+        assert login.status_code == 200
+        client.cookies.update(login.cookies)
+
+        response = client.get(
+            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
+        )
+
+        assert response.status_code == 200
+        image = Image.open(io.BytesIO(response.content))
+        assert image.size == (30, 10)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,3 @@
-const COMPANY_ALIASES = {
-  'ООО "АРТ-ТРАНС"': "Хип-Хоп Транс Дэнс",
-};
-
 export const REPORT_PRESETS = [
   { id: "all", label: "Все" },
   { id: "success", label: "Успешные" },
@@ -26,13 +22,13 @@ export function getFioFull(record) {
 }
 
 export function getCompany(record) {
-  const name = record.company;
+  const name = record.company_name || record.company;
   if (!name) return "—";
-  return COMPANY_ALIASES[name] || name;
+  return name;
 }
 
 export function getCompanyFull(record) {
-  return record.company || "—";
+  return record.company_name || record.company || "—";
 }
 
 export function getVehicleNumber(record, short = true) {
@@ -69,6 +65,7 @@ export function getSearchText(record) {
     record.captcha_id,
     record.error_message,
     record.error_stage,
+    record.company_name,
     record.company,
     record.fio,
     record.vehicle_number,

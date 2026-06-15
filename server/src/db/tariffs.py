@@ -30,6 +30,8 @@ def _company_tariff_to_dict(row) -> dict:
         "price_reschedule": row["price_reschedule"],
         "price_create_peak": row["price_create_peak"],
         "price_custom_slots": row["price_custom_slots"],
+        "executor_amount": row["executor_amount"],
+        "operator_amount": row["operator_amount"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

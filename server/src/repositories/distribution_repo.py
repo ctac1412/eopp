@@ -74,6 +74,7 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
         items = [
             {
                 "id": a.id,
+                "usage_log_id": a.usage_log_id,
                 "captcha_id": a.captcha_id,
                 "operator_id": a.operator_id,
                 "operator_nickname": (
@@ -116,6 +117,7 @@ def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]
         grouped.setdefault(answer.captcha_id, []).append(
             {
                 "id": answer.id,
+                "usage_log_id": answer.usage_log_id,
                 "captcha_id": answer.captcha_id,
                 "operator_id": answer.operator_id,
                 "operator_nickname": (

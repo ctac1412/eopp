@@ -21,7 +21,7 @@
  * Используется: всеми компонентами для доступа к состоянию
  */
 import { create } from "zustand";
-import { upsertScheduledEvent } from "../components/scheduledEventsState";
+import { upsertScheduledEvent } from "../features/captcha/solving/scheduledEventsState";
 
 const STORAGE_KEY = "kiosk_api_key";
 const SUPER_KIOSK_KEY = "super_kiosk_mode";

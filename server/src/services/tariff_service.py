@@ -35,7 +35,34 @@ def upsert_company_tariff(company_id: int, body) -> tuple[int, dict]:
         body.price_create_peak,
         body.price_custom_slots,
         body.executor_amount or 0,
+        body.operator_amount or 0,
     )
+    return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
+
+
+def get_default_company_tariff() -> tuple[int, dict]:
+    tariff = tariff_repo.get_default_company_tariff()
+    if not tariff:
+        return 404, {"error": "Default company tariff not found"}
+    return 200, tariff_repo.tariff_to_dict(tariff, source="default")
+
+
+def upsert_default_company_tariff(body) -> tuple[int, dict]:
+    tariff = tariff_repo.upsert_default_company_tariff(
+        body.price_create,
+        body.price_reschedule,
+        body.price_create_peak,
+        body.price_custom_slots,
+        body.executor_amount or 0,
+        body.operator_amount or 0,
+    )
+    return 200, tariff_repo.tariff_to_dict(tariff, source="default")
+
+
+def apply_default_company_tariff(company_id: int) -> tuple[int, dict]:
+    tariff = tariff_repo.apply_default_company_tariff(company_id)
+    if not tariff:
+        return 404, {"error": "Default company tariff not found"}
     return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
 
 

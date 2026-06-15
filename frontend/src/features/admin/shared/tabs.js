@@ -10,6 +10,7 @@ export const ADMIN_TABS = [
   { id: "invoices", label: "Счета" },
   { id: "prepaid", label: "Предоплата", shortLabel: "Аванс" },
   { id: "expenses", label: "Расходы" },
+  { id: "finance", label: "Финансы" },
   { id: "payouts", label: "Выплаты" },
   { id: "users", label: "Пользователи", shortLabel: "Доступ" },
   { id: "testbench", label: "Тесты и бенчмарк", shortLabel: "Тесты" },

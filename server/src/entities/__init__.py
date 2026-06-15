@@ -26,7 +26,7 @@ from src.entities.plugin_channel import (
     PluginChannelSession,
     PluginChannelSnapshot,
 )
-from src.entities.tariff import CompanyTariff, Tariff
+from src.entities.tariff import CompanyTariff, DefaultCompanyTariff, Tariff
 from src.entities.usage_log import UsageLog
 from src.entities.user import User
 
@@ -46,6 +46,7 @@ __all__ = [
     "UserExecutorCompany",
     "Tariff",
     "CompanyTariff",
+    "DefaultCompanyTariff",
     "UsageLog",
     "CaptchaRecord",
     "CaptchaFile",

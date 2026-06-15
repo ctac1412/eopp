@@ -41,7 +41,22 @@ class CompanyTariff(Base):
     price_create_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
     price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     executor_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    operator_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
     company: Mapped[Company] = relationship(back_populates="tariff")
+
+
+class DefaultCompanyTariff(Base):
+    __tablename__ = "default_company_tariffs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    price_create: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_reschedule: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_create_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    executor_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    operator_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)

@@ -71,6 +71,7 @@ def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None)
         "created_at": op.created_at,
         "icon_display_mode": op.icon_display_mode,
         "icon_rate": int(getattr(op, "icon_rate", 0) or 0),
+        "billing_mode": getattr(op, "billing_mode", None) or "company",
         "allowed_master_keys": (
             _json.loads(op.allowed_master_keys)
             if op.allowed_master_keys
@@ -101,6 +102,7 @@ def create_operator(nickname: str, company_id: int | None = None) -> dict:
             nickname=nickname,
             created_at=now,
             icon_rate=0,
+            billing_mode="company",
             company_id=company_id,
         )
         session.add(op)
