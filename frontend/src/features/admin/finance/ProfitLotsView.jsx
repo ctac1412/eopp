@@ -73,7 +73,7 @@ export function ProfitLotsView({
     if (!invoiceId) {
       return;
     }
-    window.location.assign(`/admin?tab=invoices&invoice_id=${invoiceId}`);
+    window.location.assign(`/admin/invoices?invoice_id=${invoiceId}`);
   };
 
   const columns = [

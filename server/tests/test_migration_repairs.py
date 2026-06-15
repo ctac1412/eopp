@@ -227,6 +227,91 @@ def test_operator_billing_mode_migration_backfills_from_icon_rate(tmp_path, monk
     assert rows == [("company-mode", "company"), ("custom-mode", "custom")]
 
 
+def test_finance_income_backfill_keeps_only_positive_price_entries(tmp_path, monkeypatch):
+    db_path = tmp_path / "api_keys.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER,
+                invoice_id INTEGER,
+                price INTEGER,
+                confirmed_at TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE finance_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER,
+                usage_log_id INTEGER,
+                invoice_id INTEGER,
+                payout_id INTEGER,
+                expense_id INTEGER,
+                profit_lot_id INTEGER,
+                distribution_answer_id INTEGER,
+                user_id INTEGER,
+                kind TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                edit_state TEXT NOT NULL DEFAULT 'open',
+                source TEXT NOT NULL DEFAULT 'system',
+                source_key TEXT UNIQUE,
+                comment TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        for price in (0, 125):
+            conn.execute(
+                """
+                INSERT INTO usage_log (company_id, invoice_id, price, confirmed_at, created_at)
+                VALUES (1, NULL, ?, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')
+                """,
+                (price,),
+            )
+            usage_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO finance_entries (
+                    company_id, usage_log_id, invoice_id, user_id, kind, amount,
+                    edit_state, source, source_key, comment, created_at, updated_at
+                )
+                VALUES (1, ?, NULL, NULL, 'customer_income', ?, 'open', 'migration', ?, 'Migrated from usage_log.price', ?, ?)
+                """,
+                (
+                    usage_id,
+                    price,
+                    f"usage:{usage_id}:income",
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                ),
+            )
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version (version_num) VALUES ('v0w1x2y3z4a5')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("EOPP_DB_PATH", str(db_path).replace("\\", "/"))
+    cfg = Config(str(SERVER_DIR / "alembic.ini"))
+    command.upgrade(cfg, "heads")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT usage_log_id, amount FROM finance_entries ORDER BY usage_log_id"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [(2, 125)]
+
+
 def test_schema_checker_accepts_fresh_database_after_all_migrations():
     assert find_schema_drift() == []
 

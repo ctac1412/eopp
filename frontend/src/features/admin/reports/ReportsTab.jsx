@@ -166,7 +166,6 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
   useEffect(() => {
     setSearchParams((currentParams) => {
       const nextParams = new URLSearchParams(currentParams);
-      nextParams.set("tab", "reports");
       nextParams.set("preset", preset);
       nextParams.set("hide_test", hideTest ? "1" : "0");
       nextParams.set("q", getUrlValue(currentParams, "q", ""));

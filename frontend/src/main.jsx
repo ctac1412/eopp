@@ -63,7 +63,7 @@ function EoppRoot() {
         <Routes>
           <Route path="/" element={<App />} />
           <Route
-            path="/admin"
+            path="/admin/:tabId?"
             element={
               <AdminPage
                 themeMode={themeMode}

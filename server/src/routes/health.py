@@ -40,6 +40,19 @@ async def health():
     )
 
 
+@router.get("/version")
+async def version():
+    """Return release metadata baked into the running Docker image."""
+
+    return JSONResponse(
+        content={
+            "release_id": os.environ.get("EOPP_RELEASE_ID", "local"),
+            "git_sha": os.environ.get("EOPP_GIT_SHA", "unknown"),
+            "image": os.environ.get("EOPP_IMAGE", "eopp:local"),
+        }
+    )
+
+
 @router.get("/health/modules")
 async def module_health(request: Request):
     """Return optional module load status without probing side-module internals."""

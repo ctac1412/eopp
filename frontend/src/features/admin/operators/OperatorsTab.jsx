@@ -271,29 +271,6 @@ export function OperatorsTab({ adminToken, onError }) {
       { key: "answers", label: "Действия", value: answersTotal, tone: answersTotal > 0 ? "info" : "neutral" },
     ];
   }, [answersTotal, links, operators]);
-  const groupedAnswers = useMemo(() => {
-    const groups = new Map();
-    answers.forEach((answer) => {
-      const key = answer.captcha_id || `answer-${answer.id}`;
-      if (!groups.has(key)) {
-        groups.set(key, {
-          ...answer,
-          id: key,
-          operator_answers: [],
-          operator_names: [],
-          answered_icons_count: 0,
-        });
-      }
-      const group = groups.get(key);
-      group.operator_answers.push(answer);
-      group.answered_icons_count = group.operator_answers.length;
-      if (answer.operator_nickname && !group.operator_names.includes(answer.operator_nickname)) {
-        group.operator_names.push(answer.operator_nickname);
-      }
-    });
-    return Array.from(groups.values());
-  }, [answers]);
-
   useEffect(() => {
     if (!selectedOperator) return;
     const allowed = normalizeAllowedMasters(selectedOperator.allowed_master_keys);
@@ -703,7 +680,7 @@ export function OperatorsTab({ adminToken, onError }) {
         <DataTable
           className="operator-answers-table"
           rowKey="id"
-          data={groupedAnswers}
+          data={answers}
           columns={answerColumns}
           emptyText="Нет действий"
           pagination={{

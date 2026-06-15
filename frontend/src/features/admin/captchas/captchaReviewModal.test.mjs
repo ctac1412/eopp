@@ -37,8 +37,9 @@ test("journal details and operator logs can open captcha review", () => {
   assert.match(detailsSource, /onDoubleClick:\s*\(\)\s*=>\s*setReviewCaptcha\(row\)/);
   assert.match(detailsSource, /<CaptchaReviewModal\s+captcha=\{reviewCaptcha\}/);
   assert.match(operatorsSource, /activeTab === "dashboard" \? renderDashboard\(\) : renderSettings\(\)/);
-  assert.match(operatorsSource, /const groupedAnswers = useMemo/);
-  assert.match(operatorsSource, /data=\{groupedAnswers\}/);
+  assert.doesNotMatch(operatorsSource, /const groupedAnswers = useMemo/);
+  assert.match(operatorsSource, /data=\{answers\}/);
+  assert.doesNotMatch(operatorsSource, /data=\{groupedAnswers\}/);
   assert.match(operatorsSource, /setReviewCaptcha\(reviewFromAnswer\(row\)\)/);
   assert.match(operatorsSource, /icon_rate/);
   assert.match(operatorsSource, /billing_mode/);

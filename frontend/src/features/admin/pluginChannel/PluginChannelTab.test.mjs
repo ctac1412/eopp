@@ -7,9 +7,10 @@ const permissions = await readFile(new URL("../../../../../server/src/modules/ac
 const component = await readFile(new URL("./PluginChannelTab.jsx", import.meta.url), "utf8");
 
 assert.match(tabs, /id:\s*"channels"/);
+assert.match(tabs, /path:\s*"channels"/);
 assert.match(permissions, /"channels"/);
-assert.match(adminPage, /PluginChannelTab/);
-assert.match(adminPage, /activeTab === "channels"/);
+assert.match(tabs, /PluginChannelTab/);
+assert.match(tabs, /component:\s*PluginChannelTabContainer/);
 assert.match(component, /Панель управления сессией/);
 assert.match(component, /Исполнитель/);
 assert.match(component, /executor_token/);

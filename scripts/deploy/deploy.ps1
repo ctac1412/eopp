@@ -53,7 +53,11 @@ Pop-Location
 
 Log-Info "Building Docker image $imageFull..."
 Push-Location $ProjectRoot
-docker build -t $imageFull .
+docker build `
+    --build-arg EOPP_GIT_SHA=$gitSha `
+    --build-arg EOPP_RELEASE_ID=$releaseId `
+    --build-arg EOPP_IMAGE=$imageFull `
+    -t $imageFull .
 Require-Success $LASTEXITCODE "Docker image build failed"
 Pop-Location
 

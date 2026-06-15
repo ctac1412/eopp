@@ -48,6 +48,28 @@ def test_deploy_uses_release_manifest_and_mandatory_backup():
     assert "EOPP_AUTO_MIGRATE=0" in script
 
 
+def test_deploy_passes_git_metadata_into_docker_build():
+    script = read_script("deploy.ps1")
+
+    assert "--build-arg" in script
+    assert "EOPP_GIT_SHA=$gitSha" in script
+    assert "EOPP_RELEASE_ID=$releaseId" in script
+    assert "EOPP_IMAGE=$imageFull" in script
+
+
+def test_dockerfile_embeds_release_metadata_env_and_labels():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "ARG EOPP_GIT_SHA=unknown" in dockerfile
+    assert "ARG EOPP_RELEASE_ID=local" in dockerfile
+    assert "ARG EOPP_IMAGE=eopp:local" in dockerfile
+    assert "ENV EOPP_GIT_SHA=$EOPP_GIT_SHA" in dockerfile
+    assert "ENV EOPP_RELEASE_ID=$EOPP_RELEASE_ID" in dockerfile
+    assert "ENV EOPP_IMAGE=$EOPP_IMAGE" in dockerfile
+    assert 'org.opencontainers.image.revision="$EOPP_GIT_SHA"' in dockerfile
+    assert 'org.opencontainers.image.version="$EOPP_RELEASE_ID"' in dockerfile
+
+
 def test_release_helper_documents_release_state_contract():
     script = read_script("release.ps1")
 
@@ -91,10 +113,13 @@ def test_verify_release_checks_manifest_backup_db_plugins_and_alembic():
     for token in [
         "current/release.json",
         "docker compose ps",
+        "/version",
         "/plugins/update.xml",
         "sqlite3",
         "alembic current",
         "db_backup",
+        "git_sha mismatch",
+        "release_id mismatch",
     ]:
         assert token in script
 

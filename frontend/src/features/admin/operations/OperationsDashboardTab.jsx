@@ -698,8 +698,8 @@ export function OperationsDashboardTab({ adminToken, onError }) {
                         title={
                           <div className="ops-master-card__title">
                             <span className={`ops-status-dot ${online ? "is-online" : ""}`} />
-                            <span>{keyLabel(master)}</span>
-                            <span className="text-muted">#{master.id}</span>
+                            <span className="ops-master-card__name">{keyLabel(master)}</span>
+                            <span className="ops-master-card__id text-muted">#{master.id}</span>
                             <span
                               className={`ops-master-active-count ${activeAssignedCount > 0 ? "has-active" : ""}`}
                               title="Активные назначенные операторы"

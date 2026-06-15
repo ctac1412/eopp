@@ -90,7 +90,7 @@ def upgrade() -> None:
                 COALESCE(confirmed_at, created_at),
                 COALESCE(confirmed_at, created_at)
             FROM usage_log
-            WHERE price IS NOT NULL
+            WHERE COALESCE(price, 0) > 0
             """
         )
 

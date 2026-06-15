@@ -15,9 +15,10 @@ from pathlib import Path
 from PIL import Image
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from src.benchmark import run_benchmark_cached
+from src.constants import FRONTEND_DIST
 from src.models import (
     AdminAuthBody,
     CaptchaLabelSaveBody,
@@ -70,10 +71,48 @@ from src.test_runner import get_test_stats
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+ADMIN_SPA_TAB_PATHS = {
+    "/admin",
+    "/admin/operations",
+    "/admin/reports",
+    "/admin/companies",
+    "/admin/operators",
+    "/admin/captchas",
+    "/admin/invoices",
+    "/admin/expenses",
+    "/admin/finance",
+    "/admin/payouts",
+    "/admin/users",
+    "/admin/testbench",
+    "/admin/training",
+    "/admin/streams",
+    "/admin/backend-logs",
+    "/admin/prepaid",
+    "/admin/channels",
+    "/admin/ai",
+}
+
+
+def _admin_spa_navigation_response(request: Request):
+    if request.method not in {"GET", "HEAD"}:
+        return None
+    if request.url.path not in ADMIN_SPA_TAB_PATHS:
+        return None
+    if "text/html" not in request.headers.get("accept", ""):
+        return None
+    index_path = os.path.join(FRONTEND_DIST, "index.html")
+    if not os.path.isfile(index_path):
+        return None
+    return FileResponse(index_path)
+
 
 def admin_auth_middleware_factory(app):
     @app.middleware("http")
     async def admin_auth_middleware(request, call_next):
+        admin_spa_response = _admin_spa_navigation_response(request)
+        if admin_spa_response is not None:
+            return admin_spa_response
+
         path = request.url.path
         if requires_admin(request.method, path):
             token = token_from_request(request)
