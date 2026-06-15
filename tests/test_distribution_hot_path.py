@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 import time
 
 
@@ -62,6 +63,60 @@ def test_distribution_answer_save_persists_click_on_current_schema(isolated_api_
     assert row.icon_position == 3
     assert row.duration_ms == 250
     assert datetime.fromisoformat(row.created_at).tzinfo == UTC
+
+
+def test_distribution_answer_save_is_not_amplified_by_serialized_schema_lock(
+    isolated_api_db,
+):
+    from sqlalchemy import event
+
+    from src.entities import get_engine
+    from src.repositories import distribution_repo
+
+    schema_lock = threading.Lock()
+    alter_count = 0
+
+    def simulate_schema_lock(conn, cursor, statement, parameters, context, executemany):
+        nonlocal alter_count
+        if "ALTER TABLE distribution_answers" in statement:
+            with schema_lock:
+                alter_count += 1
+                time.sleep(0.05)
+
+    def save_one(index: int) -> float:
+        start = time.perf_counter()
+        distribution_repo.save_distribution_answer(
+            usage_log_id=index + 1,
+            captcha_id=f"schema-lock-captcha-{index}-{time.perf_counter_ns()}",
+            operator_id=(index % 4) + 1,
+            icon_position=index % 5,
+            x=120 + index,
+            y=180 + index,
+            duration_ms=450,
+        )
+        return (time.perf_counter() - start) * 1000
+
+    def run_batch(workers: int) -> float:
+        latencies = []
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(save_one, index) for index in range(workers * 2)]
+            for future in as_completed(futures):
+                latencies.append(future.result())
+        latencies.sort()
+        return latencies[int(len(latencies) * 0.95) - 1]
+
+    engine = get_engine()
+    event.listen(engine, "before_cursor_execute", simulate_schema_lock)
+
+    try:
+        single_thread_p95 = run_batch(workers=1)
+        four_thread_p95 = run_batch(workers=4)
+    finally:
+        event.remove(engine, "before_cursor_execute", simulate_schema_lock)
+
+    assert single_thread_p95 < 150
+    assert four_thread_p95 < 150
+    assert alter_count == 0
 
 
 def test_distribution_answer_route_handles_four_parallel_operators_without_second_scale_stalls(
