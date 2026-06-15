@@ -255,7 +255,11 @@ class TestDistributionWithSSE:
 
     def test_distribution_state_machine(self, client, master_key, admin_token):
         """Test distribution state init, answer submission, completion."""
-        from src.routes.distribution import init_distribution_state, distribution_states
+        from src.routes.distribution import (
+            init_distribution_state,
+            distribution_states,
+            wait_for_distribution_answer_archives,
+        )
         import threading
 
         captcha = _make_icon_click_captcha()
@@ -332,3 +336,4 @@ class TestDistributionWithSSE:
 
         # State should be cleaned up
         assert cid not in distribution_states
+        wait_for_distribution_answer_archives(timeout=5)

@@ -158,7 +158,11 @@ def test_distribution_answer_save_reproduces_and_removes_schema_lock_freeze(
 def test_distribution_answer_route_handles_four_parallel_operators_without_second_scale_stalls(
     client,
 ):
-    from src.routes.distribution import distribution_states, init_distribution_state
+    from src.routes.distribution import (
+        distribution_states,
+        init_distribution_state,
+        wait_for_distribution_answer_archives,
+    )
 
     distribution_states.clear()
     icons_cache = {
@@ -232,11 +236,64 @@ def test_distribution_answer_route_handles_four_parallel_operators_without_secon
         "max_ms": max(latencies),
         "count": len(latencies),
     }
+    wait_for_distribution_answer_archives(timeout=5)
+
+
+def test_distribution_answer_route_does_not_wait_for_archive_write(client, monkeypatch):
+    from src.repositories import distribution_repo
+    from src.routes.distribution import (
+        distribution_states,
+        init_distribution_state,
+        wait_for_distribution_answer_archives,
+    )
+
+    saved = threading.Event()
+
+    def slow_save_distribution_answer(**payload):
+        time.sleep(0.3)
+        saved.set()
+
+    monkeypatch.setattr(distribution_repo, "save_distribution_answer", slow_save_distribution_answer)
+
+    distribution_states.clear()
+    init_distribution_state(
+        captcha_id="slow-archive-captcha",
+        event=None,
+        usage_log_id=1,
+        api_key_id=1,
+        num_operators=2,
+        icons_cache={position: {"image": f"image-{position}", "icon": f"icon-{position}"} for position in range(5)},
+        captcha_data={"puzzle": {"imageBase64": "main", "iconsBase64": "icons"}},
+    )
+
+    start = time.perf_counter()
+    response = client.post(
+        "/distribution/answer",
+        json={
+            "captcha_id": "slow-archive-captcha",
+            "operator_id": 1,
+            "icon_position": 4,
+            "x": 44,
+            "y": 88,
+        },
+    )
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert response.status_code == 200
+    assert elapsed_ms < 150
+    assert not saved.is_set()
+
+    wait_for_distribution_answer_archives(timeout=5)
+    assert saved.is_set()
 
 
 def test_distribution_answer_route_records_latency_breakdown(client):
     from src.platform.observability.metrics import reset_metrics, snapshot
-    from src.routes.distribution import distribution_states, init_distribution_state
+    from src.routes.distribution import (
+        distribution_states,
+        init_distribution_state,
+        wait_for_distribution_answer_archives,
+    )
 
     reset_metrics()
     distribution_states.clear()
@@ -262,9 +319,11 @@ def test_distribution_answer_route_records_latency_breakdown(client):
     )
 
     assert response.status_code == 200
+    wait_for_distribution_answer_archives(timeout=5)
     metrics = snapshot()
     assert metrics["eopp_distribution_answer_total_ms_count"] == 1
     assert metrics["eopp_distribution_answer_lock_wait_ms_count"] == 1
     assert metrics["eopp_distribution_answer_state_ms_count"] == 1
     assert metrics["eopp_distribution_answer_sse_ms_count"] == 1
-    assert metrics["eopp_distribution_answer_db_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_archive_submit_ms_count"] == 1
+    assert metrics["eopp_distribution_answer_archive_save_ms_count"] == 1

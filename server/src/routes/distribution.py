@@ -7,13 +7,15 @@
 import asyncio
 import logging
 import time
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from threading import Lock
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from src.constants import DISTRIBUTION, ICON_ORDER
 from src.models import DistributionAnswerBody
-from src.platform.observability.metrics import observe_latency_ms
+from src.platform.observability.metrics import counter_inc, observe_latency_ms
 from src.repositories import distribution_repo
 from src.sse import push_sse
 
@@ -22,6 +24,75 @@ logger = logging.getLogger("eopp.distribution")
 router = APIRouter(prefix="/distribution", tags=["distribution"])
 
 distribution_states: dict[str, dict] = {}
+_answer_archive_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="distribution-answer-archive",
+)
+_answer_archive_futures: set[Future] = set()
+_answer_archive_futures_lock = Lock()
+
+
+def _save_distribution_answer_archive(payload: dict) -> None:
+    start = time.perf_counter()
+    try:
+        distribution_repo.save_distribution_answer(**payload)
+        counter_inc("distribution_answer_archive_saved_total")
+    except Exception:
+        counter_inc("distribution_answer_archive_failures_total")
+        logger.exception(
+            "distribution_answer_archive_failed captcha=%s icon=%s",
+            payload.get("captcha_id"),
+            payload.get("icon_position"),
+        )
+    finally:
+        observe_latency_ms(
+            "distribution.answer.archive_save_ms",
+            (time.perf_counter() - start) * 1000,
+        )
+
+
+def schedule_distribution_answer_archive(payload: dict) -> None:
+    """Submit click archival outside the operator response hot path.
+
+    Active distribution state, next-icon selection, completion, and SSE fanout
+    are all in memory. This archive write feeds records, finance, and admin
+    history, so submit failures are observable but must not block operators.
+    """
+
+    start = time.perf_counter()
+    try:
+        future = _answer_archive_executor.submit(_save_distribution_answer_archive, dict(payload))
+    except Exception:
+        counter_inc("distribution_answer_archive_submit_failures_total")
+        logger.exception(
+            "distribution_answer_archive_submit_failed captcha=%s icon=%s",
+            payload.get("captcha_id"),
+            payload.get("icon_position"),
+        )
+    else:
+        with _answer_archive_futures_lock:
+            _answer_archive_futures.add(future)
+        future.add_done_callback(_forget_distribution_answer_archive)
+        counter_inc("distribution_answer_archive_submitted_total")
+    finally:
+        observe_latency_ms(
+            "distribution.answer.archive_submit_ms",
+            (time.perf_counter() - start) * 1000,
+        )
+
+
+def _forget_distribution_answer_archive(future: Future) -> None:
+    with _answer_archive_futures_lock:
+        _answer_archive_futures.discard(future)
+
+
+def wait_for_distribution_answer_archives(timeout: float | None = None) -> None:
+    """Wait for currently submitted archive writes; intended for tests."""
+
+    with _answer_archive_futures_lock:
+        futures = list(_answer_archive_futures)
+    if futures:
+        wait(futures, timeout=timeout)
 
 
 def build_icon_order(operator_id: int, num_operators: int) -> list[int]:
@@ -214,17 +285,17 @@ async def handle_distribution_answer(body: DistributionAnswerBody):
         )
         observe_latency_ms("distribution.answer.sse_ms", (time.perf_counter() - sse_start) * 1000)
 
-        db_start = time.perf_counter()
-        distribution_repo.save_distribution_answer(
-            usage_log_id=state.get("usage_log_id"),
-            captcha_id=captcha_id,
-            operator_id=state.get("operator_id_map", {}).get(operator_id, operator_id),
-            icon_position=icon_position,
-            x=body.x,
-            y=body.y,
-            duration_ms=duration_ms,
+        schedule_distribution_answer_archive(
+            {
+                "usage_log_id": state.get("usage_log_id"),
+                "captcha_id": captcha_id,
+                "operator_id": state.get("operator_id_map", {}).get(operator_id, operator_id),
+                "icon_position": icon_position,
+                "x": body.x,
+                "y": body.y,
+                "duration_ms": duration_ms,
+            }
         )
-        observe_latency_ms("distribution.answer.db_ms", (time.perf_counter() - db_start) * 1000)
 
         if is_complete:
             coords = [all_answers[i] for i in range(total_icons)]
