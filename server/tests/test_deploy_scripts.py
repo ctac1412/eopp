@@ -147,7 +147,7 @@ def test_nginx_removes_basic_auth_and_sets_noindex_perimeter():
     assert "location /operators/" not in nginx
     assert "location = /operators/test" in nginx
     assert "location ~ ^/operators/[^/]+/(stream|masters|unlink)$" in nginx
-    assert 'location ~ "^/operators/[0-9a-fA-F-]{36}$"' in nginx
+    assert "location ~ ^/operators/[^/]+$" in nginx
     for public_path in [
         "/plugins/",
         "/solve-captcha",
