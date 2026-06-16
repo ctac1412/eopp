@@ -42,6 +42,63 @@ def _parse_help_for(raw: str | None) -> set[int]:
     return result
 
 
+def _pending_snapshot_events(
+    pending_map,
+    distribution_states,
+    *,
+    api_key_id: int,
+    owner_label: str,
+    timeout: int | float,
+    now: float | None = None,
+) -> list[dict]:
+    """Return SSE events needed to restore active captchas after reconnect."""
+
+    created_at = time.time() if now is None else now
+    events = []
+    for entry in list(pending_map.values()):
+        entry_api_key_id = entry.get("api_key_id") if hasattr(entry, "get") else None
+        if entry_api_key_id != api_key_id or entry.get("result") is not None:
+            continue
+
+        captcha_id = entry.get("captcha_id")
+        images = entry.get("images", {}) or {}
+        captcha_event = {
+            "type": "new_captcha",
+            "captcha_id": captcha_id,
+            "images": images,
+            "count": len(images),
+            "top3": [],
+            "confident": False,
+            "created_at": created_at,
+            "timeout": timeout,
+            "owner_label": owner_label,
+            "owner_api_key_id": api_key_id,
+        }
+        if entry.get("captcha_type") is not None:
+            captcha_event["captcha_type"] = entry.get("captcha_type")
+        if entry.get("icons_image"):
+            captcha_event["icons_image"] = entry.get("icons_image")
+        if entry.get("distribution") is not None:
+            captcha_event["distribution"] = entry.get("distribution")
+        events.append(captcha_event)
+
+        dist_state = distribution_states.get(captcha_id)
+        if dist_state and dist_state.get("api_key_id") == api_key_id:
+            all_answers = dict(dist_state.get("all_answers") or {})
+            if all_answers:
+                events.append(
+                    {
+                        "type": "distribution_progress",
+                        "captcha_id": captcha_id,
+                        "solved_count": len(all_answers),
+                        "total_icons": dist_state.get("total_icons", 5),
+                        "answered_positions": sorted(all_answers.keys()),
+                        "all_coords": all_answers,
+                    }
+                )
+    return events
+
+
 @router.get("/check-stream")
 async def check_stream(
     api_key: str = Query(...), super_kiosk: int = Query(0), help_for: str = Query(None)
@@ -198,6 +255,29 @@ async def sse_stream(
                 await _push_slot_update(key_record.id)
             except Exception as exc:
                 logger.error("sse_slot_push_error key=%s %s", key_record.id, exc)
+            try:
+                from src.routes.captcha import captcha_timeout
+                from src.routes.distribution import distribution_states
+                from src.sse import lock as sse_lock, pending as sse_pending
+
+                with sse_lock:
+                    snapshot_events = _pending_snapshot_events(
+                        sse_pending,
+                        distribution_states,
+                        api_key_id=key_record.id,
+                        owner_label=key_record.label,
+                        timeout=captcha_timeout,
+                    )
+                for event in snapshot_events:
+                    q.put_nowait("data: %s\n\n" % json.dumps(event))
+                if snapshot_events:
+                    logger.info(
+                        "sse_pending_snapshot api_key_id=%s events=%s",
+                        key_record.id,
+                        len(snapshot_events),
+                    )
+            except Exception as exc:
+                logger.error("sse_pending_snapshot_error key=%s %s", key_record.id, exc)
             for oid in op_ids:
                 _push({
                     "type": "master_online",
