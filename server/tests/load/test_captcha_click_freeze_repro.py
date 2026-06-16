@@ -6,6 +6,10 @@ Run directly when investigating click freezes:
 For soak runs:
     $env:EOPP_LOAD_ROUNDS='20'
     uv run pytest server/tests/load/test_captcha_click_freeze_repro.py -q -s
+
+Useful toggles:
+    EOPP_LOAD_REALTIME_READERS=0  # disable background realtime queue readers
+    EOPP_LOAD_PRINT_ROUNDS=0      # hide per-wave timing lines
 """
 
 from __future__ import annotations
@@ -15,6 +19,9 @@ import statistics
 import threading
 import time
 import tracemalloc
+import ctypes
+import ctypes.wintypes
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -85,6 +92,76 @@ def _compact_series(values: list, edge: int = 5) -> dict[str, object]:
         "first": values[:edge],
         "last": values[-edge:],
     }
+
+
+def _rss_bytes() -> int | None:
+    if os.name != "nt":
+        try:
+            import resource
+
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+            return int(usage.ru_maxrss * 1024)
+        except Exception:
+            return None
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", ctypes.wintypes.DWORD),
+            ("PageFaultCount", ctypes.wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(ProcessMemoryCounters)
+    handle = ctypes.windll.kernel32.GetCurrentProcess()
+    for library_name, function_name in (
+        ("psapi.dll", "GetProcessMemoryInfo"),
+        ("kernel32.dll", "K32GetProcessMemoryInfo"),
+    ):
+        try:
+            function = getattr(ctypes.WinDLL(library_name), function_name)
+            function.argtypes = [
+                ctypes.c_void_p,
+                ctypes.POINTER(ProcessMemoryCounters),
+                ctypes.wintypes.DWORD,
+            ]
+            function.restype = ctypes.wintypes.BOOL
+            if function(handle, ctypes.byref(counters), counters.cb):
+                return int(counters.WorkingSetSize)
+        except Exception:
+            continue
+    return None
+
+
+def _start_realtime_readers(stop_event: threading.Event) -> list[threading.Thread]:
+    from src.sse.manager import registry as realtime_registry
+
+    threads = []
+
+    def drain_queue(queue) -> None:
+        while not stop_event.is_set():
+            try:
+                queue.get_nowait()
+            except Exception:
+                time.sleep(0.001)
+
+    for conn in realtime_registry.snapshot():
+        thread = threading.Thread(
+            target=drain_queue,
+            args=(conn.queue,),
+            daemon=True,
+            name=f"load-sse-reader-{conn.api_key_id}",
+        )
+        thread.start()
+        threads.append(thread)
+    return threads
 
 
 def _create_master(client, admin_token: str, index: int) -> tuple[str, int]:
@@ -195,6 +272,9 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     )
     from src.sse.manager import registry as realtime_registry
 
+    logging.getLogger("eopp").setLevel(logging.WARNING)
+    logging.getLogger("alembic").setLevel(logging.WARNING)
+
     monkeypatch.setattr(
         captcha_route,
         "assemble_captchas",
@@ -208,6 +288,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     distribution_states.clear()
     tracemalloc.start()
     memory_before = tracemalloc.take_snapshot()
+    rss_before = _rss_bytes()
 
     masters = [_create_master(client, admin_token, index) for index in range(7)]
     distributed = masters[:4]
@@ -215,6 +296,13 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
 
     for _, key_id in masters:
         realtime_registry.register_connection(api_key_id=key_id, ip=f"load-master-{key_id}")
+
+    reader_stop = threading.Event()
+    reader_threads = (
+        _start_realtime_readers(reader_stop)
+        if os.environ.get("EOPP_LOAD_REALTIME_READERS", "1") != "0"
+        else []
+    )
 
     def run_wave(label: str, requests: list[tuple[str, dict]]) -> tuple[list[tuple[str, int, float, dict]], float]:
         barrier = threading.Barrier(len(requests))
@@ -234,106 +322,116 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
             for future in as_completed(futures):
                 wave_results.append(future.result())
         elapsed_ms = (time.perf_counter() - start_all) * 1000
-        print(f"{label}_total_ms={elapsed_ms:.1f}")
+        if print_waves:
+            print(f"{label}_total_ms={elapsed_ms:.1f}")
         return wave_results, elapsed_ms
 
     rounds = int(os.environ.get("EOPP_LOAD_ROUNDS", "1"))
+    print_waves = os.environ.get("EOPP_LOAD_PRINT_ROUNDS", "1" if rounds <= 20 else "0") != "0"
     results = []
     total_ms = 0.0
     round_state = []
     round_memory = []
     round_queues = []
-    for round_index in range(rounds):
-        offset = round_index * 100
-        solo_captchas = [
-            (api_key, *_start_solo_pending(client, api_key, offset + index))
-            for index, (api_key, _key_id) in enumerate(solo)
-        ]
-        distributed_captchas = [
-            _seed_distribution_state(api_key, key_id, offset + index)
-            for index, (api_key, key_id) in enumerate(distributed)
-        ]
+    try:
+        for round_index in range(rounds):
+            offset = round_index * 100
+            solo_captchas = [
+                (api_key, *_start_solo_pending(client, api_key, offset + index))
+                for index, (api_key, _key_id) in enumerate(solo)
+            ]
+            distributed_captchas = [
+                _seed_distribution_state(api_key, key_id, offset + index)
+                for index, (api_key, key_id) in enumerate(distributed)
+            ]
 
-        first_wave: list[tuple[str, dict]] = []
-        second_wave: list[tuple[str, dict]] = []
-        for api_key, captcha_id, _thread, _holder in solo_captchas:
-            first_wave.append(
-                (
-                    "solo",
-                    {
-                        "path": "/solve",
-                        "json": {
-                            "captcha_id": captcha_id,
-                            "variantIndex": 0,
-                            "api_key": api_key,
-                        },
-                    },
-                )
-            )
-
-        for captcha_id in distributed_captchas:
-            for operator_id, icon_position in ((0, 0), (1, 4), (2, 2)):
+            first_wave: list[tuple[str, dict]] = []
+            second_wave: list[tuple[str, dict]] = []
+            for api_key, captcha_id, _thread, _holder in solo_captchas:
                 first_wave.append(
                     (
-                        "distributed",
+                        "solo",
                         {
-                            "path": "/distribution/answer",
+                            "path": "/solve",
                             "json": {
                                 "captcha_id": captcha_id,
-                                "operator_id": operator_id,
-                                "icon_position": icon_position,
-                                "x": 100 + icon_position,
-                                "y": 200 + icon_position,
-                            },
-                        },
-                    )
-                )
-            for operator_id, icon_position in ((0, 1), (1, 3)):
-                second_wave.append(
-                    (
-                        "distributed",
-                        {
-                            "path": "/distribution/answer",
-                            "json": {
-                                "captcha_id": captcha_id,
-                                "operator_id": operator_id,
-                                "icon_position": icon_position,
-                                "x": 100 + icon_position,
-                                "y": 200 + icon_position,
+                                "variantIndex": 0,
+                                "api_key": api_key,
                             },
                         },
                     )
                 )
 
-        first_results, first_total_ms = run_wave(f"round_{round_index}_first_wave", first_wave)
-        second_results, second_total_ms = run_wave(f"round_{round_index}_second_wave", second_wave)
-        results.extend(first_results + second_results)
-        total_ms += first_total_ms + second_total_ms
+            for captcha_id in distributed_captchas:
+                for operator_id, icon_position in ((0, 0), (1, 4), (2, 2)):
+                    first_wave.append(
+                        (
+                            "distributed",
+                            {
+                                "path": "/distribution/answer",
+                                "json": {
+                                    "captcha_id": captcha_id,
+                                    "operator_id": operator_id,
+                                    "icon_position": icon_position,
+                                    "x": 100 + icon_position,
+                                    "y": 200 + icon_position,
+                                },
+                            },
+                        )
+                    )
+                for operator_id, icon_position in ((0, 1), (1, 3)):
+                    second_wave.append(
+                        (
+                            "distributed",
+                            {
+                                "path": "/distribution/answer",
+                                "json": {
+                                    "captcha_id": captcha_id,
+                                    "operator_id": operator_id,
+                                    "icon_position": icon_position,
+                                    "x": 100 + icon_position,
+                                    "y": 200 + icon_position,
+                                },
+                            },
+                        )
+                    )
 
-        for _api_key, _captcha_id, thread, holder in solo_captchas:
-            thread.join(timeout=5)
-            assert "response" in holder
-            assert holder["response"].status_code == 200, holder["response"].text
+            first_results, first_total_ms = run_wave(f"round_{round_index}_first_wave", first_wave)
+            second_results, second_total_ms = run_wave(f"round_{round_index}_second_wave", second_wave)
+            results.extend(first_results + second_results)
+            total_ms += first_total_ms + second_total_ms
 
-        wait_for_distribution_answer_archives(timeout=5)
-        queue_depths_before_drain = _queue_depths()
-        queue_depths_after_drain = (
-            _drain_realtime_queues()
-            if os.environ.get("EOPP_LOAD_DRAIN_SSE", "1") != "0"
-            else queue_depths_before_drain
-        )
-        round_state.append((_session_store.count(), len(distribution_states)))
-        current_bytes, peak_bytes = tracemalloc.get_traced_memory()
-        round_memory.append((current_bytes, peak_bytes))
-        round_queues.append(
-            {
-                "before_drain": queue_depths_before_drain,
-                "after_drain": queue_depths_after_drain,
-            }
-        )
+            for _api_key, _captcha_id, thread, holder in solo_captchas:
+                thread.join(timeout=5)
+                assert "response" in holder
+                assert holder["response"].status_code == 200, holder["response"].text
+
+            wait_for_distribution_answer_archives(timeout=5)
+            queue_depths_before_drain = _queue_depths()
+            queue_depths_after_drain = (
+                _drain_realtime_queues()
+                if os.environ.get("EOPP_LOAD_DRAIN_SSE", "1") != "0"
+                else queue_depths_before_drain
+            )
+            round_state.append((_session_store.count(), len(distribution_states)))
+            current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+            round_memory.append((current_bytes, peak_bytes))
+            round_queues.append(
+                {
+                    "before_drain": queue_depths_before_drain,
+                    "after_drain": queue_depths_after_drain,
+                    "rss_bytes": _rss_bytes(),
+                }
+            )
+    finally:
+        reader_stop.set()
+        for thread in reader_threads:
+            thread.join(timeout=1)
+
     memory_after = tracemalloc.take_snapshot()
     memory_delta = sum(stat.size_diff for stat in memory_after.compare_to(memory_before, "filename"))
     top_allocations = memory_after.compare_to(memory_before, "filename")[:5]
+    rss_after = _rss_bytes()
 
     solo_latencies = [elapsed for kind, status, elapsed, _ in results if kind == "solo" and status == 200]
     distributed_latencies = [elapsed for kind, status, elapsed, _ in results if kind == "distributed" and status == 200]
@@ -353,6 +451,12 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         "archive_backlog": _archive_backlog(),
         "memory_delta_bytes": memory_delta,
         "memory_current_peak_bytes": tracemalloc.get_traced_memory(),
+        "rss_before_after_delta": (
+            rss_before,
+            rss_after,
+            rss_after - rss_before if rss_before is not None and rss_after is not None else None,
+        ),
+        "realtime_reader_threads": len(reader_threads),
         "round_state": round_state,
         "round_memory": round_memory,
         "round_queues": round_queues,
@@ -375,7 +479,9 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         f"realtime_connections={evidence['realtime_connections']} "
         f"realtime_queue_depths={evidence['realtime_queue_depths']} "
         f"archive_backlog={evidence['archive_backlog']} "
-        f"memory_delta_bytes={memory_delta}"
+        f"memory_delta_bytes={memory_delta} "
+        f"rss_before_after_delta={evidence['rss_before_after_delta']} "
+        f"realtime_reader_threads={evidence['realtime_reader_threads']}"
     )
     print(f"round_state={round_state}")
     print(f"round_memory={_compact_series(round_memory)}")
