@@ -287,6 +287,62 @@ def test_distribution_answer_route_does_not_wait_for_archive_write(client, monke
     assert saved.is_set()
 
 
+def test_distribution_answer_lock_is_scoped_to_one_captcha():
+    import asyncio
+
+    from src.models import DistributionAnswerBody
+    from src.routes.distribution import (
+        distribution_states,
+        handle_distribution_answer,
+        init_distribution_state,
+        wait_for_distribution_answer_archives,
+    )
+
+    distribution_states.clear()
+    icons_cache = {
+        position: {"image": f"image-{position}", "icon": f"icon-{position}"}
+        for position in range(5)
+    }
+    for captcha_id in ("locked-captcha", "free-captcha"):
+        init_distribution_state(
+            captcha_id=captcha_id,
+            event=None,
+            usage_log_id=1,
+            api_key_id=1,
+            num_operators=2,
+            icons_cache=icons_cache,
+            captcha_data={"puzzle": {"imageBase64": "main", "iconsBase64": "icons"}},
+        )
+
+    async def answer_free_while_other_captcha_is_locked():
+        locked_state = distribution_states["locked-captcha"]
+        await locked_state["lock"].acquire()
+        try:
+            start = time.perf_counter()
+            response = await asyncio.wait_for(
+                handle_distribution_answer(
+                    DistributionAnswerBody(
+                        captcha_id="free-captcha",
+                        operator_id=1,
+                        icon_position=4,
+                        x=44,
+                        y=88,
+                    )
+                ),
+                timeout=0.2,
+            )
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            return response, elapsed_ms
+        finally:
+            locked_state["lock"].release()
+
+    response, elapsed_ms = asyncio.run(answer_free_while_other_captcha_is_locked())
+
+    assert response.status_code == 200
+    assert elapsed_ms < 150
+    wait_for_distribution_answer_archives(timeout=5)
+
+
 def test_distribution_answer_route_records_latency_breakdown(client):
     from src.platform.observability.metrics import reset_metrics, snapshot
     from src.routes.distribution import (

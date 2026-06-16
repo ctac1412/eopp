@@ -43,6 +43,50 @@ def _fmt(label: str, stats: dict[str, float]) -> str:
     )
 
 
+def _archive_backlog() -> int:
+    from src.routes import distribution as distribution_route
+
+    with distribution_route._answer_archive_futures_lock:
+        return len(distribution_route._answer_archive_futures)
+
+
+def _queue_depths() -> dict[str, float]:
+    from src.sse.manager import registry as realtime_registry
+
+    depths = [conn.queue.qsize() for conn in realtime_registry.snapshot()]
+    return {
+        "count": len(depths),
+        "max": max(depths, default=0),
+        "total": sum(depths),
+    }
+
+
+def _drain_realtime_queues() -> dict[str, float]:
+    from src.sse.manager import registry as realtime_registry
+
+    drained = 0
+    for conn in realtime_registry.snapshot():
+        while True:
+            try:
+                conn.queue.get_nowait()
+            except Exception:
+                break
+            drained += 1
+    depths = _queue_depths()
+    depths["drained"] = drained
+    return depths
+
+
+def _compact_series(values: list, edge: int = 5) -> dict[str, object]:
+    if len(values) <= edge * 2:
+        return {"count": len(values), "values": values}
+    return {
+        "count": len(values),
+        "first": values[:edge],
+        "last": values[-edge:],
+    }
+
+
 def _create_master(client, admin_token: str, index: int) -> tuple[str, int]:
     user = client.post(
         "/admin/users",
@@ -197,6 +241,8 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     results = []
     total_ms = 0.0
     round_state = []
+    round_memory = []
+    round_queues = []
     for round_index in range(rounds):
         offset = round_index * 100
         solo_captchas = [
@@ -270,9 +316,24 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
             assert holder["response"].status_code == 200, holder["response"].text
 
         wait_for_distribution_answer_archives(timeout=5)
+        queue_depths_before_drain = _queue_depths()
+        queue_depths_after_drain = (
+            _drain_realtime_queues()
+            if os.environ.get("EOPP_LOAD_DRAIN_SSE", "1") != "0"
+            else queue_depths_before_drain
+        )
         round_state.append((_session_store.count(), len(distribution_states)))
+        current_bytes, peak_bytes = tracemalloc.get_traced_memory()
+        round_memory.append((current_bytes, peak_bytes))
+        round_queues.append(
+            {
+                "before_drain": queue_depths_before_drain,
+                "after_drain": queue_depths_after_drain,
+            }
+        )
     memory_after = tracemalloc.take_snapshot()
     memory_delta = sum(stat.size_diff for stat in memory_after.compare_to(memory_before, "filename"))
+    top_allocations = memory_after.compare_to(memory_before, "filename")[:5]
 
     solo_latencies = [elapsed for kind, status, elapsed, _ in results if kind == "solo" and status == 200]
     distributed_latencies = [elapsed for kind, status, elapsed, _ in results if kind == "distributed" and status == 200]
@@ -288,8 +349,13 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         "pending_count": _session_store.count(),
         "distribution_states": len(distribution_states),
         "realtime_connections": len(realtime_registry.snapshot()),
+        "realtime_queue_depths": _queue_depths(),
+        "archive_backlog": _archive_backlog(),
         "memory_delta_bytes": memory_delta,
+        "memory_current_peak_bytes": tracemalloc.get_traced_memory(),
         "round_state": round_state,
+        "round_memory": round_memory,
+        "round_queues": round_queues,
         "metrics": snapshot(),
     }
     solve_submit_count = snapshot().get('eopp_captcha_solve_duration_ms_count{mode="submit"}', 0)
@@ -307,9 +373,26 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         f"pending={evidence['pending_count']} "
         f"distribution_states={evidence['distribution_states']} "
         f"realtime_connections={evidence['realtime_connections']} "
+        f"realtime_queue_depths={evidence['realtime_queue_depths']} "
+        f"archive_backlog={evidence['archive_backlog']} "
         f"memory_delta_bytes={memory_delta}"
     )
     print(f"round_state={round_state}")
+    print(f"round_memory={_compact_series(round_memory)}")
+    print(f"round_queues={_compact_series(round_queues, edge=3)}")
+    print(
+        "top_allocations="
+        + repr(
+            [
+                {
+                    "file": str(stat.traceback[0].filename),
+                    "size_diff": stat.size_diff,
+                    "count_diff": stat.count_diff,
+                }
+                for stat in top_allocations
+            ]
+        )
+    )
     print(
         "metrics: "
         f"solve_submit_count={solve_submit_count} "
@@ -321,4 +404,5 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     assert evidence["distributed"]["max_ms"] < float(os.environ.get("EOPP_LOAD_DISTRIBUTED_MAX_MS", "1000")), evidence
     assert evidence["pending_count"] == 0, evidence
     assert evidence["distribution_states"] == 0, evidence
+    assert evidence["archive_backlog"] == 0, evidence
     assert all(state == (0, 0) for state in round_state), evidence
