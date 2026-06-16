@@ -39,6 +39,7 @@ const adminPassword =
   "codex-local-admin-2026";
 const browserCount = Number(process.env.EOPP_SOLO_FRONTEND_BROWSERS || 4);
 const rounds = Number(process.env.EOPP_SOLO_FRONTEND_ROUNDS || 10);
+const captchasPerBrowser = Number(process.env.EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER || 1);
 const headless = process.env.EOPP_SOLO_FRONTEND_HEADLESS === "1";
 const solveDelayMinMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MIN_MS || 1000);
 const solveDelayMaxMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MAX_MS || 4000);
@@ -334,23 +335,24 @@ function loadIconClickPool() {
     pool.push({ row, payloadPath, payload });
   }
 
-  if (pool.length < browserCount) {
+  if (pool.length < browserCount * captchasPerBrowser) {
     throw new Error(
-      `not enough real icon-click payloads: found ${pool.length}, need ${browserCount}; db=${dbPath}; dir=${captchaDir}`,
+      `not enough real icon-click payloads: found ${pool.length}, need ${browserCount * captchasPerBrowser}; db=${dbPath}; dir=${captchaDir}`,
     );
   }
   return { rowsCount: rows.length, pool };
 }
 
-function payloadFor(pool, round, index) {
-  const selected = pool[(round * browserCount + index) % pool.length];
+function payloadFor(pool, round, index, slot) {
+  const poolIndex = (round * browserCount * captchasPerBrowser + index * captchasPerBrowser + slot) % pool.length;
+  const selected = pool[poolIndex];
   const body = cloneJson(selected.payload);
   body.api_key = undefined;
   body.auto_solve = false;
   body.auto_solve_rucaptcha = false;
   body.timeout_metadata = true;
   body.test_no_timeout = true;
-  body.reservation_id = `solo-icon-click-${round}-${index}`;
+  body.reservation_id = `solo-icon-click-${round}-${index}-${slot}`;
   return {
     body,
     source: {
@@ -464,7 +466,7 @@ async function solveCaptcha(identity, selected) {
   return { status: response.status, body, source: selected.source };
 }
 
-async function clickFrontendCaptcha(frontend, round, index, solveDelayMs) {
+async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) {
   const page = frontend.page;
   const started = performance.now();
   const image = page.locator('.captcha-click-surface__image, img[alt="Капча"]').first();
@@ -509,7 +511,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs) {
     throw error;
   }
   const solvedMs = performance.now() - started;
-  return { round, index, appearedMs, solveDelayMs, clickedMs, solvedMs };
+  return { round, index, slot, appearedMs, solveDelayMs, clickedMs, solvedMs };
 }
 
 async function main() {
@@ -547,30 +549,45 @@ async function main() {
     }
 
     for (let round = 0; round < rounds; round += 1) {
-      const selectedPayloads = identities.map((_, index) => payloadFor(pool, round, index));
-      const roundSolveDelayMs = randomInt(solveDelayMinMs, solveDelayMaxMs);
-      const solvePromises = identities.map((identity, index) => solveCaptcha(identity, selectedPayloads[index]));
-      const clickPromises = frontends.map((frontend, index) =>
-        clickFrontendCaptcha(frontend, round, index, roundSolveDelayMs),
+      const selectedPayloads = identities.map((_, index) =>
+        Array.from({ length: captchasPerBrowser }, (_, slot) => payloadFor(pool, round, index, slot)),
       );
-      const solveResults = await Promise.all(solvePromises);
-      const clickResults = await Promise.allSettled(clickPromises);
+      const solveJobs = identities.flatMap((identity, index) =>
+        selectedPayloads[index].map((selected, slot) =>
+          solveCaptcha(identity, selected).then((solveResult) => ({ round, index, slot, solveResult })),
+        ),
+      );
+      const solveResultsPromise = Promise.all(solveJobs);
+      const clickResultsBySlot = [];
 
-      for (const [index, solveResult] of solveResults.entries()) {
-        captchaSources.push({ round, index, ...solveResult.source });
+      for (let slot = 0; slot < captchasPerBrowser; slot += 1) {
+        const slotSolveDelayMs = randomInt(solveDelayMinMs, solveDelayMaxMs);
+        const clickPromises = frontends.map((frontend, index) =>
+          clickFrontendCaptcha(frontend, round, index, slotSolveDelayMs, slot),
+        );
+        clickResultsBySlot.push(...(await Promise.allSettled(clickPromises)));
+      }
+
+      const solveResults = await solveResultsPromise;
+
+      for (const { index, slot, solveResult } of solveResults) {
+        captchaSources.push({ round, index, slot, ...solveResult.source });
         if (solveResult.status !== 200) {
-          failures.push({ round, index, stage: "solve-captcha", solveResult });
+          failures.push({ round, index, slot, stage: "solve-captcha", solveResult });
         } else if (solveResult.body?.status === "timeout") {
-          failures.push({ round, index, stage: "solve-captcha-timeout", solveResult });
+          failures.push({ round, index, slot, stage: "solve-captcha-timeout", solveResult });
         }
       }
-      for (const [index, clickResult] of clickResults.entries()) {
+      for (const [resultIndex, clickResult] of clickResultsBySlot.entries()) {
+        const index = resultIndex % browserCount;
+        const slot = Math.floor(resultIndex / browserCount);
         if (clickResult.status === "fulfilled") {
           results.push(clickResult.value);
         } else {
           failures.push({
             round,
             index,
+            slot,
             stage: "frontend-icon-click",
             error: clickResult.reason?.message || String(clickResult.reason),
           });
@@ -588,7 +605,8 @@ async function main() {
       ignore_https_errors: ignoreHttpsErrors,
       browsers: browserCount,
       rounds,
-      total_expected: browserCount * rounds,
+      captchas_per_browser_per_round: captchasPerBrowser,
+      total_expected: browserCount * rounds * captchasPerBrowser,
       ok: results.length,
       failed: failures.length,
       captcha_type: "icon-click",

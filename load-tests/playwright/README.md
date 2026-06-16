@@ -34,6 +34,18 @@ The solve delay is randomized once per round and shared by every browser in
 that round. This keeps parallel users clicking at nearly the same time while
 still varying the delay between rounds.
 
+To imitate one scheduled worker submitting several captchas at once to the
+same user, keep `BROWSERS=1` and increase `CAPTCHAS_PER_BROWSER`. The harness
+sends those `/solve-captcha` requests concurrently, then solves the frontend
+queue one active captcha at a time:
+
+```powershell
+$env:EOPP_SOLO_FRONTEND_BROWSERS='1'
+$env:EOPP_SOLO_FRONTEND_ROUNDS='1'
+$env:EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER='3'
+node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
+```
+
 ```powershell
 $env:EOPP_SOLO_FRONTEND_REFRESH_AUTH='1'
 node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
