@@ -20,19 +20,20 @@ try {
     console.error(
       "Playwright is required. Install it globally:\n" +
         "  npm install -g playwright\n" +
-        "  node scripts/extension_captcha_load_repro.cjs",
+      "  node load-tests/playwright/extension_captcha_load_repro.cjs",
     );
     throw error;
   }
 }
 
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "..", "..");
+const artifactsDir = path.join(__dirname, "artifacts");
 const extensionDist = path.resolve(
   process.env.EOPP_EXTENSION_DIST || path.join(rootDir, "extension", "dist"),
 );
 const workDir = path.resolve(
   process.env.EOPP_EXTENSION_LOAD_WORKDIR ||
-    path.join(rootDir, "tmp", "extension-load-repro"),
+    path.join(artifactsDir, "extension-load-repro"),
 );
 const serverUrl = (process.env.EOPP_EXTENSION_LOAD_SERVER || "http://127.0.0.1:8766").replace(
   /\/+$/,
