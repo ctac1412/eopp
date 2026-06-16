@@ -130,8 +130,38 @@ def test_remote_compose_uses_shared_data_and_release_bound_plugins():
     assert "./shared/data:/app/data" in compose
     assert "./shared/certs:/app/certs" in compose
     assert "./current/plugins:/app/plugins" in compose
+    assert "127.0.0.1:8765:8765" in compose
+    assert '"8765:8765"' not in compose
     assert "EOPP_AUTO_MIGRATE=${EOPP_AUTO_MIGRATE:-0}" in compose
     assert "image: ${EOPP_IMAGE" in compose
+
+
+def test_nginx_removes_basic_auth_and_sets_noindex_perimeter():
+    nginx = (SERVER_DEPLOY_DIR / "nginx-default.conf").read_text(encoding="utf-8")
+
+    assert "auth_basic" not in nginx
+    assert "X-Robots-Tag" in nginx
+    assert "noindex, nofollow, noarchive, nosnippet" in nginx
+    assert "location = /robots.txt" in nginx
+    assert "User-agent: *\\nDisallow: /\\n" in nginx
+    assert "location /operators/" not in nginx
+    assert "location = /operators/test" in nginx
+    assert "location ~ ^/operators/[^/]+/(stream|masters|unlink)$" in nginx
+    for public_path in [
+        "/plugins/",
+        "/solve-captcha",
+        "/register-usage",
+        "/confirm-usage",
+        "/fail-usage",
+        "/validate-key",
+        "/api-key-status",
+        "/stream",
+        "/check-stream",
+        "/rucaptcha-callback",
+        "/.well-known/acme-challenge/",
+        "/rucaptcha.txt",
+    ]:
+        assert public_path in nginx
 
 
 def test_release_manifest_schema_example_is_valid_json():

@@ -1,4 +1,4 @@
-"""Operator routes — /operators/... (no auth) + admin CRUD."""
+"""Operator routes — /operators/... cookie session endpoints + admin CRUD."""
 
 import asyncio
 import json as _json
@@ -136,6 +136,12 @@ def _operator_out_of_scope(operator_id: int, company_id: int | None) -> bool:
     return company_id is not None and not operator_repo.operator_allows_company(operator_id, company_id)
 
 
+def _operator_session_guard(request: Request) -> JSONResponse | None:
+    if not user_repo.get_session_user(token_from_request(request)):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return None
+
+
 @router.post("/operators/{uuid}/link")
 async def operator_link(uuid: str, request: Request):
     op = operator_repo.get_operator_by_uuid(uuid)
@@ -150,6 +156,9 @@ async def operator_link(uuid: str, request: Request):
 
 @router.post("/operators/{uuid}/unlink")
 async def operator_unlink(uuid: str, request: Request):
+    unauthorized = _operator_session_guard(request)
+    if unauthorized:
+        return unauthorized
     op = operator_repo.get_operator_by_uuid(uuid)
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})
@@ -171,6 +180,9 @@ async def operator_unlink(uuid: str, request: Request):
 
 @router.get("/operators/{uuid}/stream")
 async def operator_sse(uuid: str, request: Request):
+    unauthorized = _operator_session_guard(request)
+    if unauthorized:
+        return unauthorized
     from src.sse.manager import (
         operator_api_key_id, register_sse_connection, unregister_sse_connection,
         replace_sse_connections,
@@ -349,7 +361,10 @@ async def operator_sse(uuid: str, request: Request):
 
 
 @router.get("/operators/{uuid}/masters")
-async def operator_masters(uuid: str):
+async def operator_masters(uuid: str, request: Request):
+    unauthorized = _operator_session_guard(request)
+    if unauthorized:
+        return unauthorized
     op = operator_repo.get_operator_by_uuid(uuid)
     if not op:
         return JSONResponse(status_code=404, content={"error": "Operator not found"})

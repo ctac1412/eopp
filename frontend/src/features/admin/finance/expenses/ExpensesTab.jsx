@@ -243,7 +243,7 @@ export function ExpensesTab({ expenses, total, users, onEdit, onDelete, onCreate
           data={filteredExpenses}
           columns={columns}
           emptyText="Нет расходов"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           onRow={(expense) => ({
             onClick: () => onEdit(expense),
             className: "expenses-table-row",

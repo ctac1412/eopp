@@ -271,6 +271,12 @@
   white-space: nowrap;
 }
 
+.usage-history__pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 .history-table {
   min-width: 0;
 }

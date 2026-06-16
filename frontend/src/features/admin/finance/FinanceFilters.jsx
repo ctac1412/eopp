@@ -35,17 +35,16 @@ export function FinanceFilters({
       className="finance-filters"
       actions={<Button size="small" onClick={reset}>Сбросить</Button>}
     >
-      <label className="form-label small mb-0">
+      <label className="form-label small mb-0 finance-filters__search">
         Поиск
         <TextInput
           size="small"
           value={filters.search || ""}
           onChange={(event) => setField("search", event.target.value)}
           placeholder="ID, компания, счёт, комментарий"
-          style={{ width: 220 }}
         />
       </label>
-      <label className="form-label small mb-0">
+      <label className="form-label small mb-0 finance-filters__company">
         Компания
         <SelectInput
           size="small"
@@ -53,11 +52,10 @@ export function FinanceFilters({
           onChange={(value) => setField("company_id", value)}
           options={companyOptions}
           allowClear={false}
-          style={{ width: 180 }}
         />
       </label>
       {showKind && (
-        <label className="form-label small mb-0">
+        <label className="form-label small mb-0 finance-filters__kind">
           Тип
           <SelectInput
             size="small"
@@ -65,12 +63,11 @@ export function FinanceFilters({
             onChange={(value) => setField("kind", value)}
             options={kindOptions}
             allowClear={false}
-            style={{ width: 170 }}
           />
         </label>
       )}
       {showEditState && (
-        <label className="form-label small mb-0">
+        <label className="form-label small mb-0 finance-filters__state">
           Состояние
           <SelectInput
             size="small"
@@ -78,12 +75,11 @@ export function FinanceFilters({
             onChange={(value) => setField("edit_state", value)}
             options={editOptions}
             allowClear={false}
-            style={{ width: 132 }}
           />
         </label>
       )}
       {showStatus && (
-        <label className="form-label small mb-0">
+        <label className="form-label small mb-0 finance-filters__state">
           Статус
           <SelectInput
             size="small"
@@ -91,40 +87,36 @@ export function FinanceFilters({
             onChange={(value) => setField("status", value)}
             options={[ALL_OPTION, ...statusOptions]}
             allowClear={false}
-            style={{ width: 132 }}
           />
         </label>
       )}
-      <label className="form-label small mb-0">
+      <label className="form-label small mb-0 finance-filters__id">
         Счёт
         <TextInput
           size="small"
           value={filters.invoice_id || ""}
           onChange={(event) => setField("invoice_id", event.target.value)}
           inputMode="numeric"
-          style={{ width: 96 }}
         />
       </label>
       {showPayout && (
-        <label className="form-label small mb-0">
+        <label className="form-label small mb-0 finance-filters__id">
           Выплата
           <TextInput
             size="small"
             value={filters.payout_id || ""}
             onChange={(event) => setField("payout_id", event.target.value)}
             inputMode="numeric"
-            style={{ width: 96 }}
           />
         </label>
       )}
-      <label className="form-label small mb-0">
+      <label className="form-label small mb-0 finance-filters__id">
         Usage
         <TextInput
           size="small"
           value={filters.usage_log_id || ""}
           onChange={(event) => setField("usage_log_id", event.target.value)}
           inputMode="numeric"
-          style={{ width: 96 }}
         />
       </label>
     </FilterBar>

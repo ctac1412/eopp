@@ -352,7 +352,7 @@ export function PluginChannelTab({ adminToken, onError }) {
           columns={columns}
           loading={loading}
           emptyText="Нет открытых channel-сессий"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
           rowClassName={(session) => (session.id === selectedSession?.id ? "is-selected" : "")}
           onRow={(session) => ({
             onClick: () => setSelectedSessionId(session.id),

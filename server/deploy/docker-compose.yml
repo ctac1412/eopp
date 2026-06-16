@@ -2,7 +2,7 @@ services:
   eopp-prod:
     image: ${EOPP_IMAGE:-eopp:latest}
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
     volumes:
       - ./shared/data:/app/data
       - ./shared/certs:/app/certs

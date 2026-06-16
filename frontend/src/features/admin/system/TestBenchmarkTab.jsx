@@ -233,7 +233,7 @@ export function TestBenchmarkTab({
           data={skippedRows}
           columns={skippedColumns}
           emptyText="Нет пропущенных файлов"
-          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 25, 50] }}
+          pagination
         />
       </Card>
     </div>

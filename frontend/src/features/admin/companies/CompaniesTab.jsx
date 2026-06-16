@@ -887,7 +887,7 @@ export function CompaniesTab({ adminToken, onError }) {
           emptyText="Нет компаний"
           scroll={false}
           tableLayout="fixed"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           onRow={(company) => ({
             onClick: () => openTariff(company),
             className: "companies-table-row",

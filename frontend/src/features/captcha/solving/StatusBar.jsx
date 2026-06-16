@@ -49,7 +49,6 @@ function StatusBar() {
   const [testCourseId, setTestCourseId] = useState(() => loadPersisted("test_course_id", ""));
   const [courses, setCourses] = useState([]);
   const [testNoTimeout, setTestNoTimeout] = useState(() => loadPersisted("test_no_timeout", "0") === "1");
-  const [sequentialIcons, setSequentialIcons] = useState(() => loadPersisted("click_sequential_icons", "0") === "1");
   const [autoSolveRucaptcha, setAutoSolveRucaptcha] = useState(() => loadPersisted("auto_solve_rucaptcha", "0") === "1");
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
@@ -121,11 +120,6 @@ function StatusBar() {
   const handleNoTimeoutChange = (val) => {
     setTestNoTimeout(val);
     savePersisted("test_no_timeout", val ? "1" : "0");
-  };
-
-  const handleSequentialIconsChange = (val) => {
-    setSequentialIcons(val);
-    savePersisted("click_sequential_icons", val ? "1" : "0");
   };
 
   const handleAutoSolveRucaptchaChange = (val) => {
@@ -288,7 +282,8 @@ function StatusBar() {
                   savePersisted("test_course_id", nextValue);
                 }}
                 options={courseOptions}
-                allowClear={false}
+                allowClear
+                getPopupContainer={(trigger) => trigger.parentElement}
               />
               <div className="status-bar__settings-checks">
                 <CheckboxField
@@ -296,12 +291,6 @@ function StatusBar() {
                   onChange={(event) => handleNoTimeoutChange(event.target.checked)}
                 >
                   Без таймаута
-                </CheckboxField>
-                <CheckboxField
-                  checked={sequentialIcons}
-                  onChange={(event) => handleSequentialIconsChange(event.target.checked)}
-                >
-                  Иконки по очереди
                 </CheckboxField>
                 <CheckboxField
                   checked={autoSolveRucaptcha}

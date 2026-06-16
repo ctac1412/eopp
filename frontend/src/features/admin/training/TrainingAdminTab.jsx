@@ -233,7 +233,7 @@ export function TrainingAdminTab({ adminToken, onError }) {
           data={filteredCourses}
           columns={courseColumns}
           emptyText="Нет курсов"
-          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
           scroll={false}
         />
       </Card>
@@ -266,7 +266,7 @@ export function TrainingAdminTab({ adminToken, onError }) {
           data={filteredRuns}
           columns={runColumns}
           emptyText="Нет прогонов"
-          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 30, 50] }}
+          pagination
           scroll={false}
         />
       </Card>

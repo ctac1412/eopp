@@ -361,7 +361,7 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
           columns={streamColumns}
           loading={streamsLoading}
           emptyText="Нет активных подключений"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
         />
       </Card>
 
@@ -399,7 +399,7 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
           data={filteredEvents}
           columns={eventColumns}
           emptyText={connected ? "Ожидание событий" : "Нет подключения к slot stream"}
-          pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+          pagination
         />
       </Card>
     </div>

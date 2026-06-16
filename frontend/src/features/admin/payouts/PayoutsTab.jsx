@@ -393,7 +393,7 @@ export function PayoutsTab({ payouts, onDelete, onRecalculate, onStatusChange, o
           data={filteredPayouts}
           columns={columns}
           emptyText="Нет выплат"
-          pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [10, 15, 30, 50] }}
+          pagination
           scroll={false}
           expandable={{
             expandedRowRender: (payout) => <PayoutDetails payout={payout} />,

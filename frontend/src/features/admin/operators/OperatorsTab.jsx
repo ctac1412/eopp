@@ -42,7 +42,6 @@ const MASTER_ACCESS_MODES = [
 ];
 
 const DEFAULT_ANSWERS_PAGE_SIZE = 25;
-const ANSWERS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 function formatTime(iso) {
   if (!iso) return "—";
@@ -683,10 +682,7 @@ export function OperatorsTab({ adminToken, onError }) {
             current: answersPage,
             pageSize: answersPageSize,
             total: answersTotal,
-            showSizeChanger: true,
-            pageSizeOptions: ANSWERS_PAGE_SIZE_OPTIONS,
             onChange: (page, pageSize) => loadAnswers(pageSize !== answersPageSize ? 1 : page, pageSize),
-            showTotal: (total) => `${total} всего`,
           }}
         />
         <div className="small text-muted mt-2">Страница {answersPage} из {answersTotalPages}</div>
@@ -959,7 +955,7 @@ export function OperatorsTab({ adminToken, onError }) {
                 data={operatorDashboardRows}
                 columns={dashboardColumns}
                 emptyText="Нет операторов"
-                pagination={{ pageSize: 15, showSizeChanger: true, pageSizeOptions: [15, 30, 50] }}
+                pagination
               />
             </Card>
     </div>

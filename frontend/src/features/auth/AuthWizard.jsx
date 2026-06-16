@@ -4,7 +4,7 @@ import { Alert } from "antd";
 import useCaptchaStore from "../../store/useCaptchaStore";
 import { Button, TextInput } from "../../ui";
 
-function AuthWizard() {
+function AuthWizard({ onSuccess, requireApiKey = true } = {}) {
   const setApiKey = useCaptchaStore((s) => s.setApiKey);
   const setApiKeyInfo = useCaptchaStore((s) => s.setApiKeyInfo);
   const [login, setLogin] = useState("");
@@ -35,6 +35,11 @@ function AuthWizard() {
       localStorage.setItem("admin_sections", JSON.stringify(loginData.sections || []));
       localStorage.setItem("admin_permissions", JSON.stringify(loginData.permissions || []));
 
+      if (!requireApiKey) {
+        onSuccess?.(loginData);
+        return;
+      }
+
       const keysResp = await authService.pluginKeys();
       const keysData = await keysResp.json();
       if (!keysResp.ok) {
@@ -51,6 +56,7 @@ function AuthWizard() {
 
       setApiKey(firstKey.key);
       setApiKeyInfo(firstKey.id, firstKey.label || "");
+      onSuccess?.(loginData);
     } catch {
       setError("Не удалось подключиться к серверу");
     } finally {

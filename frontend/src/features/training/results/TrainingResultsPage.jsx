@@ -213,7 +213,7 @@ export default function TrainingResultsPage() {
           data={results}
           columns={columns}
           emptyText="Нет результатов"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           scroll={{ x: 860 }}
         />
       </Card>

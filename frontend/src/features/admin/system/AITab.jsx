@@ -268,7 +268,7 @@ export function AITab({ adminToken }) {
           data={runs}
           columns={runColumns}
           emptyText="Нет прогонов"
-          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
           scroll={false}
         />
       </Card>
@@ -315,7 +315,7 @@ export function AITab({ adminToken }) {
             columns={resultColumns}
             rowClassName={(row) => (row.kind !== expectedKind(row) ? "ai-result-row--changed" : "")}
             emptyText="Нет результатов"
-            pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+            pagination
             scroll={false}
           />
         </Card>

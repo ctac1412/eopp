@@ -93,6 +93,7 @@ const openFrontendTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_OPEN_TIMEOUT
 const solveCaptchaTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_CAPTCHA_TIMEOUT_MS || 30000);
 const imageVisibleTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_IMAGE_TIMEOUT_MS || 10000);
 const solveResponseTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_RESPONSE_TIMEOUT_MS || 10000);
+const testNoTimeout = process.env.EOPP_SOLO_FRONTEND_TEST_NO_TIMEOUT === "1";
 const runId = process.env.EOPP_SOLO_FRONTEND_RUN_ID || `solo-${Date.now().toString(36)}`;
 const artifactsDir = path.join(__dirname, "artifacts");
 const workDir = path.resolve(
@@ -559,7 +560,7 @@ function payloadFor(pool, round, index, slot) {
   body.auto_solve = false;
   body.auto_solve_rucaptcha = false;
   body.timeout_metadata = true;
-  body.test_no_timeout = true;
+  body.test_no_timeout = testNoTimeout;
   body.reservation_id = `${runId}-icon-click-${round}-${index}-${slot}`;
   return {
     body,
@@ -917,7 +918,7 @@ function distributedPayloadFor(pool, round, groupIndex, slot) {
   body.auto_solve = false;
   body.auto_solve_rucaptcha = false;
   body.timeout_metadata = true;
-  body.test_no_timeout = true;
+  body.test_no_timeout = testNoTimeout;
   body.reservation_id = `${runId}-distributed-icon-click-${round}-${groupIndex}-${slot}`;
   return {
     body,
@@ -1212,6 +1213,7 @@ async function mainMasterOperators() {
       participant_click_flows_ok: results.length,
       failed: failures.length,
       captcha_type: "icon-click",
+      test_no_timeout: testNoTimeout,
       distributed_queue_mode: distributedQueueMode,
       icon_click_clicks_per_captcha: clickCount,
       hold_after_ms: holdAfterMs,
@@ -1361,6 +1363,7 @@ async function main() {
       ok: results.length,
       failed: failures.length,
       captcha_type: "icon-click",
+      test_no_timeout: testNoTimeout,
       icon_click_clicks_per_captcha: clickCount,
       hold_after_ms: holdAfterMs,
       icon_click_interval_ms: clickIntervalMs,

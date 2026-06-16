@@ -256,7 +256,7 @@ export function PrepaidPackagesTab({
           data={filteredPackages}
           columns={packageColumns}
           emptyText="Нет пакетов"
-          pagination={{ pageSize: 12, showSizeChanger: true, pageSizeOptions: [10, 12, 25, 50] }}
+          pagination
           scroll={false}
         />
       </Card>
@@ -292,7 +292,7 @@ export function PrepaidPackagesTab({
           data={filteredDeductions}
           columns={deductionColumns}
           emptyText="Списаний пока нет"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           scroll={false}
         />
       </Card>

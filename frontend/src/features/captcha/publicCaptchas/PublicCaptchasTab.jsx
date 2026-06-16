@@ -175,7 +175,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
         columns={columns}
         loading={loading}
         emptyText="Нет капч"
-        pagination={{ pageSize: 15, showSizeChanger: false }}
+        pagination
         scroll={false}
         tableLayout="fixed"
       />

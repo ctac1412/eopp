@@ -232,7 +232,7 @@ export function UsersTab({ users, onCreate, onEdit, onDelete }) {
           data={filteredUsers}
           columns={columns}
           emptyText="Нет пользователей"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
           onRow={(user) => ({
             onClick: () => openUser(user),
             className: "users-table-row",

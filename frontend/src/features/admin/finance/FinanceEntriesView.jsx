@@ -267,7 +267,7 @@ export function FinanceEntriesView({
           loading={loading}
           error={error}
           emptyText="Нет проводок"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           onRow={(entry) => ({
             onClick: () => canEditEntry(entry) && openEdit(entry),
             className: canEditEntry(entry) ? "finance-table-row" : "finance-table-row finance-table-row--locked",

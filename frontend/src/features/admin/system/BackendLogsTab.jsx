@@ -425,7 +425,7 @@ export function BackendLogsTab({ adminToken, onError }) {
           columns={jobsColumns}
           loading={jobsLoading}
           emptyText="Очередь пуста"
-          pagination={{ pageSize: 25, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+          pagination
         />
       </Card>
 

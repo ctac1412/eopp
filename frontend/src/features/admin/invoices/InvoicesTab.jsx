@@ -536,7 +536,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
           data={companyRows}
           columns={companyColumns}
           emptyText="Компаний пока нет"
-          pagination={{ pageSize: 8, showSizeChanger: false }}
+          pagination
           scroll={false}
         />
         <form data-eopp-component="InvoiceAliasForm" className="invoice-alias-form" onSubmit={saveAlias}>
@@ -634,7 +634,7 @@ export function InvoicesTab({ adminToken, onError, users, focusInvoiceId }) {
           data={filteredInvoices}
           columns={invoiceColumns}
           emptyText="Нет счетов по выбранным фильтрам"
-          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
+          pagination
           scroll={false}
           onRow={(invoice) => ({
             onClick: () => setEditingInvoice(invoice),

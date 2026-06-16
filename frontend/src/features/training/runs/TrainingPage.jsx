@@ -336,7 +336,7 @@ export default function TrainingPage() {
           columns={columns}
           loading={runsLoading}
           emptyText="Нет прогонов"
-          pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50] }}
+          pagination
           scroll={{ x: 840 }}
           onRow={(run) => ({
             onClick: () => navigate(`/training/run/${run.id}/results`),

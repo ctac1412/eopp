@@ -2,6 +2,13 @@ import React from "react";
 import { Alert, Table } from "antd";
 import { EmptyState } from "./EmptyState";
 
+export const DATA_TABLE_DEFAULT_PAGE_SIZE = 25;
+export const DATA_TABLE_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+export function dataTableShowTotal(total, range) {
+  return `${range[0]}-${range[1]} из ${total}`;
+}
+
 export function DataTable({
   columns,
   data,
@@ -21,10 +28,15 @@ export function DataTable({
     return <Alert type="error" showIcon message="Ошибка загрузки" description={error} />;
   }
 
+  const paginationConfig = typeof pagination === "object" ? pagination : {};
   const normalizedPagination = pagination
     ? {
-        ...(typeof pagination === "object" ? pagination : {}),
-        position: pagination.position || ["topRight", "bottomRight"],
+        pageSize: DATA_TABLE_DEFAULT_PAGE_SIZE,
+        showSizeChanger: true,
+        pageSizeOptions: DATA_TABLE_PAGE_SIZE_OPTIONS,
+        showTotal: dataTableShowTotal,
+        ...paginationConfig,
+        position: paginationConfig.position || ["topRight", "bottomRight"],
       }
     : false;
 

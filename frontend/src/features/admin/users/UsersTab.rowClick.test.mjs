@@ -14,6 +14,9 @@ test("users table opens edit on row click without modal navigation", async () =>
   assert.match(usersTab, /onClick: \(\) => openUser\(user\)/);
   assert.match(usersTab, /className: "users-table-row"/);
   assert.match(usersTab, /event\.stopPropagation\(\);[\s\S]*confirmDelete\(user\)/);
+  assert.match(usersTab, /pagination\s*$/m);
+  assert.doesNotMatch(usersTab, /USERS_PAGE_SIZE_OPTIONS/);
+  assert.doesNotMatch(usersTab, /pageSizeOptions: \[10, 20, 50\]/);
   assert.match(adminContainer, /const openEditUser = useCallback\(\(user\) =>/);
   assert.doesNotMatch(adminContainer, /userModalSequence/);
   assert.doesNotMatch(adminContainer, /openAdjacentUser/);

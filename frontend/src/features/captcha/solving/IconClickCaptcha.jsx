@@ -9,14 +9,6 @@ import {
 } from "./CaptchaClickSurface";
 import { CaptchaPanelHeader } from "./CaptchaPanelHeader";
 
-function isSequentialEnabled() {
-  try {
-    return localStorage.getItem("click_sequential_icons") === "1";
-  } catch {
-    return false;
-  }
-}
-
 function IconClickCaptcha({ entry }) {
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
@@ -43,7 +35,6 @@ function IconClickCaptcha({ entry }) {
 
 function NormalIconClick({ entry, apiKey, superKioskMode }) {
   const [markers, setMarkers] = useState([]);
-  const [sequential] = useState(() => isSequentialEnabled());
 
   const mainImage = entry.images?.["0"] || "";
   const iconsImage = entry.iconsImage || "";
@@ -112,7 +103,7 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
         {iconsImage && (
           <IconsStrip
             iconsImage={iconsImage}
-            currentPosition={sequential ? markers.length : -1}
+            currentPosition={markers.length}
           />
         )}
       </div>
