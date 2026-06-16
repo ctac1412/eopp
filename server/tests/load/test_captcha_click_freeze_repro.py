@@ -3,8 +3,7 @@
 Run directly when investigating click freezes:
     uv run pytest server/tests/load/test_captcha_click_freeze_repro.py -q -s
 
-For soak runs above the default /solve-captcha rate limit:
-    $env:EOPP_RATE_LIMIT_CAPTCHA='10000'
+For soak runs:
     $env:EOPP_LOAD_ROUNDS='20'
     uv run pytest server/tests/load/test_captcha_click_freeze_repro.py -q -s
 """

@@ -124,10 +124,6 @@ def create_app() -> FastAPI:
 
     app.add_middleware(RequestLoggingMiddleware)
 
-    from src.middleware.rate_limit import RateLimitMiddleware
-
-    app.add_middleware(RateLimitMiddleware)
-
     register_all_routes(app)
 
     configure_logging()

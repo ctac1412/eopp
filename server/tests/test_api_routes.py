@@ -706,15 +706,18 @@ class TestAdmin:
 
         assert response.status_code == 403
 
-    def test_rate_limit_respects_env_configuration(self, monkeypatch):
+    def test_captcha_and_key_validation_are_not_rate_limited(self, monkeypatch):
         monkeypatch.setenv("EOPP_RATE_LIMIT_VALIDATE", "1")
+        monkeypatch.setenv("EOPP_RATE_LIMIT_CAPTCHA", "1")
 
         from src.app import create_app
 
         local_client = TestClient(create_app())
 
         assert local_client.get("/validate-key?api_key=missing").status_code == 200
-        assert local_client.get("/validate-key?api_key=missing").status_code == 429
+        assert local_client.get("/validate-key?api_key=missing").status_code == 200
+        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 403
+        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 403
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
