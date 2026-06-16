@@ -30,9 +30,11 @@ The solo repro caches its test users, API keys, and auth cookies under
 do not log in again while `/auth/me` still accepts the cookie. To force a fresh
 login/cache refresh:
 
-The solve delay is randomized once per round and shared by every browser in
-that round. This keeps parallel users clicking at nearly the same time while
-still varying the delay between rounds.
+The solve delay is fixed and shared by every browser. It defaults to `0ms` so
+latency checks measure the frontend/backend path, not harness sleep time. Set
+`EOPP_SOLO_FRONTEND_SOLVE_DELAY_MS` when a deliberate operator pause is needed.
+The delay between icon clicks is fixed at `1000ms` by default; override it with
+`EOPP_SOLO_FRONTEND_CLICK_INTERVAL_MS`.
 
 To imitate one scheduled worker submitting several captchas at once to the
 same user, keep `BROWSERS=1` and increase `CAPTCHAS_PER_BROWSER`. The harness

@@ -41,8 +41,8 @@ const browserCount = Number(process.env.EOPP_SOLO_FRONTEND_BROWSERS || 4);
 const rounds = Number(process.env.EOPP_SOLO_FRONTEND_ROUNDS || 10);
 const captchasPerBrowser = Number(process.env.EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER || 1);
 const headless = process.env.EOPP_SOLO_FRONTEND_HEADLESS === "1";
-const solveDelayMinMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MIN_MS || 1000);
-const solveDelayMaxMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MAX_MS || 4000);
+const solveDelayMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MS || 0);
+const clickIntervalMs = Number(process.env.EOPP_SOLO_FRONTEND_CLICK_INTERVAL_MS || 1000);
 const artifactsDir = path.join(__dirname, "artifacts");
 const workDir = path.resolve(
   process.env.EOPP_SOLO_FRONTEND_WORKDIR ||
@@ -482,27 +482,39 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
 
   const box = await image.boundingBox();
   if (!box) throw new Error(`icon-click image has no box for browser ${index}`);
+  const initialImageSrc = await image.evaluate((node) => node.getAttribute("src") || "");
   const beforeMarkers = await page.locator(".captcha-click-surface__marker").count().catch(() => 0);
+  const solveResponsePromise = page.waitForResponse(
+    (response) => response.url().includes("/solve") && response.request().method() === "POST",
+    { timeout: 10000 },
+  );
 
   for (let clickIndex = 0; clickIndex < clickCount; clickIndex += 1) {
     const x = box.x + randomInt(Math.floor(box.width * 0.12), Math.floor(box.width * 0.88));
     const y = box.y + randomInt(Math.floor(box.height * 0.12), Math.floor(box.height * 0.88));
     await page.mouse.click(x, y);
-    await delay(randomInt(50, 140));
+    if (clickIntervalMs > 0) {
+      await delay(clickIntervalMs);
+    }
   }
 
   const clickedMs = performance.now() - started;
   try {
+    const solveResponse = await solveResponsePromise;
+    if (!solveResponse.ok()) {
+      const body = await solveResponse.text().catch(() => "");
+      throw new Error(`/solve returned ${solveResponse.status()}: ${body.slice(0, 500)}`);
+    }
     await page.waitForFunction(
-      (markerCount) =>
-        document.querySelectorAll('.captcha-click-surface__image, img[alt="Капча"]').length === 0 ||
-        document.querySelectorAll(".captcha-click-surface__marker").length > markerCount,
-      beforeMarkers,
-      { timeout: 10000 },
-    );
-    await page.waitForFunction(
-      () => document.querySelectorAll('.captcha-click-surface__image, img[alt="Капча"]').length === 0,
-      null,
+      ({ markerCount, imageSrc }) => {
+        const activeImage = document.querySelector('.captcha-click-surface__image, img[alt="Капча"]');
+        return (
+          !activeImage ||
+          activeImage.getAttribute("src") !== imageSrc ||
+          document.querySelectorAll(".captcha-click-surface__marker").length > markerCount
+        );
+      },
+      { markerCount: beforeMarkers, imageSrc: initialImageSrc },
       { timeout: 10000 },
     );
   } catch (error) {
@@ -561,9 +573,8 @@ async function main() {
       const clickResultsBySlot = [];
 
       for (let slot = 0; slot < captchasPerBrowser; slot += 1) {
-        const slotSolveDelayMs = randomInt(solveDelayMinMs, solveDelayMaxMs);
         const clickPromises = frontends.map((frontend, index) =>
-          clickFrontendCaptcha(frontend, round, index, slotSolveDelayMs, slot),
+          clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot),
         );
         clickResultsBySlot.push(...(await Promise.allSettled(clickPromises)));
       }
@@ -611,9 +622,10 @@ async function main() {
       failed: failures.length,
       captcha_type: "icon-click",
       icon_click_clicks_per_captcha: clickCount,
+      icon_click_interval_ms: clickIntervalMs,
       captcha_pool: captchaPoolInfo,
       captcha_sources: captchaSources.slice(0, 40),
-      solve_delay_range_ms: [solveDelayMinMs, solveDelayMaxMs],
+      solve_delay_ms: solveDelayMs,
       identities_created: identitiesCreated,
       auth_cache: frontends.reduce((acc, item) => {
         acc[item.authCache] = (acc[item.authCache] || 0) + 1;
