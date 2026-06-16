@@ -32,10 +32,10 @@ Confirm-ProductionAction -Prompt "Run Alembic migrations for release $ReleaseId?
 $cmd = @"
 set -e
 cd '$script:RemoteDir'
-before=`$(EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=0 docker compose run --rm eopp-prod python -m alembic current 2>/dev/null || true)
+before=`$(EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=0 docker compose run --rm eopp-prod python -m alembic -c server/alembic.ini current 2>/dev/null || true)
 printf '%s\n' "`$before" > '$releaseDir/migration_before.txt'
-EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=1 docker compose run --rm eopp-prod python -m alembic upgrade heads
-after=`$(EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=0 docker compose run --rm eopp-prod python -m alembic current)
+EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=1 docker compose run --rm eopp-prod python -m alembic -c server/alembic.ini upgrade heads
+after=`$(EOPP_IMAGE='$Image' EOPP_AUTO_MIGRATE=0 docker compose run --rm eopp-prod python -m alembic -c server/alembic.ini current)
 printf '%s\n' "`$after" > '$releaseDir/migration_after.txt'
 "@
 

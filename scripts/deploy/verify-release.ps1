@@ -59,7 +59,7 @@ if db.exists():
         conn.close()
 print('current/release.json and /version ok')
 PY
-docker compose run --rm -e EOPP_AUTO_MIGRATE=0 eopp-prod python -m alembic current
+docker compose run --rm -e EOPP_AUTO_MIGRATE=0 eopp-prod python -m alembic -c server/alembic.ini current
 "@
 
 $output = Remote-Exec $cmd
