@@ -96,6 +96,7 @@ class CaptchaRuntime:
         body = _to_payload(request)
         api_key = body.get("api_key")
         auto = bool(body.get("auto_solve", False))
+        effective_timeout = _effective_timeout(body, self.dependencies.captcha_timeout)
         captcha_id = None
         rid = f"usage:{body.get('usage_log_id')}" if body.get("usage_log_id") else "usage:new"
 
@@ -147,6 +148,7 @@ class CaptchaRuntime:
             event=event,
             auto_solve_rucaptcha=bool(body.get("auto_solve_rucaptcha", False)),
         )
+        presentation.session.extra["timeout"] = effective_timeout
         session, is_duplicate = self.sessions.add_or_get(presentation.session)
         gauge_set("captcha_pending_count", self.sessions.count())
         saved = self.dependencies.save_captcha_payload(captcha_id, data)
@@ -183,8 +185,7 @@ class CaptchaRuntime:
             duplicate=is_duplicate,
         )
 
-        timeout = 3600 if body.get("test_no_timeout") else self.dependencies.captcha_timeout
-        await _wait_for_session_event(session, timeout)
+        await _wait_for_session_event(session, effective_timeout)
 
         if session.result is None:
             await self._handle_timeout(session, owner_label, body)
@@ -368,7 +369,7 @@ class CaptchaRuntime:
     ) -> dict[str, Any]:
         """Wait on an existing duplicate session and shape its response."""
 
-        await _wait_for_session_event(session, self.dependencies.captcha_timeout)
+        await _wait_for_session_event(session, session.get("timeout", self.dependencies.captcha_timeout))
         result = session.result
         if result is None:
             result = {
@@ -402,7 +403,7 @@ class CaptchaRuntime:
             "top3": top3,
             "confident": confident,
             "created_at": time.time(),
-            "timeout": self.dependencies.captcha_timeout,
+            "timeout": session.get("timeout", self.dependencies.captcha_timeout),
             "owner_label": owner_label,
             "owner_api_key_id": session.api_key_id,
         }
@@ -494,6 +495,12 @@ def _captcha_payload(body: dict[str, Any]) -> dict[str, Any]:
         }
         and value is not None
     }
+
+
+def _effective_timeout(body: dict[str, Any], default_timeout: int | float) -> int | float:
+    """Return the actual server wait timeout advertised to frontend clients."""
+
+    return 3600 if body.get("test_no_timeout") else default_timeout
 
 
 def _saved_data(saved: Any, default: dict[str, Any]) -> dict[str, Any]:

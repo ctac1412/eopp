@@ -70,7 +70,7 @@ def _pending_snapshot_events(
             "top3": [],
             "confident": False,
             "created_at": created_at,
-            "timeout": timeout,
+            "timeout": entry.get("timeout", timeout),
             "owner_label": owner_label,
             "owner_api_key_id": api_key_id,
         }

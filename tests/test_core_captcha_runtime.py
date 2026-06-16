@@ -120,6 +120,56 @@ async def _run_runtime_manual_flow():
     return solve_status, solve_body, handle_status, handle_body, published, events
 
 
+async def _run_runtime_test_no_timeout_display_flow():
+    from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies
+    from src.core.captcha_runtime.sessions import CaptchaSessionStore
+
+    published = []
+
+    class KeyRecord:
+        id = 11
+
+    deps = CaptchaRuntimeDependencies(
+        validate_api_key=lambda api_key: KeyRecord(),
+        get_or_create_usage_log=lambda usage_log_id, api_key, reservation_id, captcha_id: 77,
+        save_captcha_payload=lambda captcha_id, data: data,
+        captcha_hash=lambda data: "captcha-test-no-timeout",
+        assemble_captchas=lambda tiles, variants, valid_index: [
+            {"index": index, "image": f"image-{index}"} for index, _ in enumerate(variants)
+        ],
+        push_sse=lambda message, api_key_id=None: published.append((message, api_key_id)),
+        get_owner_label=lambda api_key_id: "owner",
+        next_result_id=lambda: 123,
+        publish_event=lambda event: None,
+        captcha_timeout=1,
+    )
+    runtime = CaptchaRuntime(deps, CaptchaSessionStore())
+
+    payload = {
+        "api_key": "secret",
+        "auto_solve": False,
+        "timeout_metadata": True,
+        "test_no_timeout": True,
+        "reservation_id": "reservation-1",
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["a"]],
+        },
+    }
+
+    pending_task = asyncio.create_task(runtime.handle_captcha(payload))
+    for _ in range(100):
+        if runtime.sessions.get("captcha-test-no-timeout") is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    await runtime.submit_solution(
+        {"captcha_id": "captcha-test-no-timeout", "variantIndex": 1, "api_key": "secret"}
+    )
+    await pending_task
+    return published
+
+
 def test_runtime_handles_manual_captcha_flow():
     solve_status, solve_body, handle_status, handle_body, published, events = asyncio.run(
         _run_runtime_manual_flow()
@@ -140,6 +190,13 @@ def test_runtime_handles_manual_captcha_flow():
         "CaptchaDisplayed",
         "CaptchaSolved",
     ]
+
+
+def test_runtime_publishes_effective_test_no_timeout_to_frontend():
+    published = asyncio.run(_run_runtime_test_no_timeout_display_flow())
+
+    new_captcha = next(message for message, _ in published if message["type"] == "new_captcha")
+    assert new_captcha["timeout"] == 3600
 
 
 async def _run_runtime_cancel_flow():

@@ -45,6 +45,30 @@ def test_pending_snapshot_messages_restore_current_master_captchas():
     ]
 
 
+def test_pending_snapshot_messages_restore_session_specific_timeout():
+    pending = {
+        "own": CaptchaSession(
+            captcha_id="own",
+            variants=[["a"]],
+            images={"0": "image-0"},
+            usage_log_id=10,
+            api_key_id=7,
+            extra={"timeout": 3600},
+        ),
+    }
+
+    messages = _pending_snapshot_events(
+        pending,
+        {},
+        api_key_id=7,
+        owner_label="master",
+        timeout=10,
+        now=123.0,
+    )
+
+    assert messages[0]["timeout"] == 3600
+
+
 def test_pending_snapshot_messages_keep_icon_distribution_fields():
     session = CaptchaSession(
         captcha_id="icon",
