@@ -59,10 +59,38 @@ function MoneyCell({ value, tone = "" }) {
   return <span className={`font-monospace text-nowrap ${tone}`}>{formatMoney(value)}</span>;
 }
 
+function payoutTransferTotal(payout) {
+  return (payout.shares || []).reduce((sum, share) => sum + (Number(share.total) || 0), 0);
+}
+
+function payoutSettlementTotal(payout) {
+  return (payout.settlement?.transfers || []).reduce((sum, transfer) => sum + (Number(transfer.amount) || 0), 0);
+}
+
 function PayoutDetails({ payout }) {
   const invoices = payout.invoices || [];
   const expenses = payout.expenses || [];
   const shares = payout.shares || [];
+  const settlementTransfers = payout.settlement?.transfers || [];
+  const transferRows = shares.filter((share) => Number(share.total || 0) !== 0);
+  const transferTotal = transferRows.reduce((sum, share) => sum + (Number(share.total) || 0), 0);
+
+  const settlementColumns = [
+    { title: "От кого", dataIndex: "from_user_name", ellipsis: true, render: (value, row) => value || `#${row.from_user_id}` },
+    { title: "Кому", dataIndex: "to_user_name", ellipsis: true, render: (value, row) => value || `#${row.to_user_id}` },
+    { title: "Сумма", dataIndex: "amount", align: "right", render: (value) => <MoneyCell value={value} /> },
+  ];
+
+  const transferColumns = [
+    { title: "Получатель", dataIndex: "user_name", ellipsis: true, render: (value, row) => value || `#${row.user_id}` },
+    { title: "Комиссия", dataIndex: "commission_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Налог", dataIndex: "tax_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
+    { title: "Расходы", dataIndex: "expenses_compensation", align: "right", render: (value) => <MoneyCell value={value} tone="text-danger" /> },
+    { title: "Операторы", dataIndex: "operator_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Исполнители", dataIndex: "executor_amount", align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
+    { title: "Прибыль", dataIndex: "profit_share", align: "right", render: (value) => <MoneyCell value={value} tone="text-success" /> },
+    { title: "К переводу", dataIndex: "total", align: "right", render: (value) => <MoneyCell value={value} /> },
+  ];
 
   const invoiceColumns = [
     { title: "Счёт", dataIndex: "invoice_number", render: (value, row) => <span className="font-monospace">{value || row.invoice_id || row.id}</span> },
@@ -92,6 +120,39 @@ function PayoutDetails({ payout }) {
 
   return (
     <div data-eopp-component="PayoutDetails" className="payout-details">
+      <Card
+        className="payout-transfer-card"
+        size="small"
+        title="Итоговые переводы"
+      >
+        <DataTable
+          rowKey={(row) => `${row.from_user_id}-${row.to_user_id}-${row.amount}`}
+          data={settlementTransfers}
+          columns={settlementColumns}
+          pagination={false}
+          emptyText="Переводы не нужны"
+          scroll={false}
+        />
+      </Card>
+      <Card
+        className="payout-transfer-card"
+        size="small"
+        title={
+          <div className="payout-transfer-title">
+            <span>К переводу</span>
+            <strong>{formatMoney(transferTotal)}</strong>
+          </div>
+        }
+      >
+        <DataTable
+          rowKey={(row) => `${row.user_id}-${row.user_name}-transfer`}
+          data={transferRows}
+          columns={transferColumns}
+          pagination={false}
+          emptyText="Нет начислений к переводу"
+          scroll={false}
+        />
+      </Card>
       <div className="payout-details-grid">
         <Card size="small" title={`Счета (${invoices.length})`}>
           <DataTable rowKey={(row) => row.invoice_id || row.id} data={invoices} columns={invoiceColumns} pagination={false} emptyText="Нет счетов" scroll={false} />
@@ -107,7 +168,7 @@ function PayoutDetails({ payout }) {
   );
 }
 
-export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusChange, onCreate, onRefresh, onConfigureDefaultSplits }) {
+export function PayoutsTab({ payouts, onDelete, onRecalculate, onStatusChange, onCreate, onConfigureDefaultSplits }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
@@ -220,6 +281,8 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
     { title: "Комис.", dataIndex: "total_commission", width: 96, align: "right", render: (value) => <MoneyCell value={value} tone="text-info" /> },
     { title: "Налог", dataIndex: "total_tax", width: 92, align: "right", render: (value) => <MoneyCell value={value} tone="text-warning" /> },
     { title: "Net", dataIndex: "net_amount", width: 104, align: "right", render: (value) => <MoneyCell value={value} /> },
+    { title: "К переводу", width: 112, align: "right", render: (_, payout) => <MoneyCell value={payoutTransferTotal(payout)} /> },
+    { title: "Переводы", width: 112, align: "right", render: (_, payout) => <MoneyCell value={payoutSettlementTotal(payout)} /> },
     {
       title: "",
       width: 160,
@@ -228,10 +291,8 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
         <Space size={4} wrap>
           {payout.status === "pending" && (
             <>
-              <Button size="small" onClick={() => onEdit(payout)}>Изм.</Button>
               <Button size="small" onClick={() => onRecalculate(payout.id)}>↻</Button>
               <Button size="small" variant="primary" onClick={() => onStatusChange(payout.id, "completed")}>✓</Button>
-              <Button size="small" onClick={() => onStatusChange(payout.id, "cancelled")}>×</Button>
             </>
           )}
           <Button size="small" variant="danger" onClick={() => confirmDelete(payout)}>Удал.</Button>
@@ -254,7 +315,6 @@ export function PayoutsTab({ payouts, onEdit, onDelete, onRecalculate, onStatusC
         }
         right={
           <Space wrap>
-            <Button size="small" onClick={onRefresh}>Обновить</Button>
             <Button size="small" onClick={onConfigureDefaultSplits}>Дефолтные доли</Button>
             <Button size="small" variant="primary" onClick={onCreate}>Новая выплата</Button>
           </Space>

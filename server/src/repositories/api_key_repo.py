@@ -57,18 +57,21 @@ def _is_executor(access: dict) -> bool:
     return bool(access.get("all_companies") or access.get("company_ids"))
 
 
-def list_keys(company_id: int | None = None) -> list[dict]:
+def list_keys(company_id: int | None = None, *, include_test_users: bool = True) -> list[dict]:
     from sqlalchemy.orm import joinedload
+
+    from src.entities import User
 
     with get_session() as session:
         query = (
             session.query(ApiKey)
             .options(joinedload(ApiKey.company), joinedload(ApiKey.user))
+            .outerjoin(User, User.id == ApiKey.user_id)
         )
         if company_id is not None:
-            from src.entities import User
-
-            query = query.join(User, User.id == ApiKey.user_id).filter(User.company_id == company_id)
+            query = query.filter(User.company_id == company_id)
+        if not include_test_users:
+            query = query.filter((ApiKey.user_id.is_(None)) | (User.is_test.is_(False)))
         keys = query.order_by(ApiKey.created_at.desc()).all()
         result = []
         for k in keys:
@@ -187,6 +190,21 @@ def list_keys_for_operator(
 def get_key_by_id(key_id: int) -> ApiKey | None:
     with get_session() as session:
         return session.get(ApiKey, key_id)
+
+
+def is_test_user_key(key_id: int | None) -> bool:
+    if key_id is None:
+        return False
+    from src.entities import User
+
+    with get_session() as session:
+        row = (
+            session.query(User.is_test)
+            .join(ApiKey, ApiKey.user_id == User.id)
+            .filter(ApiKey.id == key_id)
+            .first()
+        )
+        return bool(row and row[0])
 
 
 def get_key_record(api_key: str) -> ApiKey | None:

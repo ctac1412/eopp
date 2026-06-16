@@ -197,7 +197,7 @@ def _share_total(share: dict) -> float:
 def _ensure_profit_lots_for_invoices(invoice_ids: list[int]) -> None:
     if not invoice_ids:
         return
-    from src.db.finance import rebuild_profit_lots
+    from src.db.finance import rebuild_profit_lots, sync_invoice_item_finance_entries
 
     conn = get_connection()
     try:
@@ -226,6 +226,7 @@ def _ensure_profit_lots_for_invoices(invoice_ids: list[int]) -> None:
                     usage_log_ids.append(int(usage_log_id))
             if usage_log_ids:
                 rebuild_profit_lots(conn, invoice_id, usage_log_ids)
+            sync_invoice_item_finance_entries(conn, invoice_id)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -364,7 +365,7 @@ def _release_finance_entries_for_pending_payout(payout_id: int) -> None:
     now = datetime.now(UTC).isoformat()
     try:
         conn.execute(
-            "DELETE FROM finance_entries WHERE payout_id = ? AND kind = 'director_profit'",
+            "DELETE FROM finance_entries WHERE payout_id = ? AND kind IN ('director_profit', 'expense_repayment')",
             (payout_id,),
         )
         conn.execute(
@@ -403,7 +404,9 @@ def _unlink_expenses(payout_id: int) -> None:
 def _get_linked_invoices(payout_id: int) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        """SELECT pi.*, i.invoice_number, i.company, i.debt_amount, i.percent_amount, i.tax_amount, i.total_amount, i.comment, i.paid, i.created_at as invoice_created_at
+        """SELECT pi.*, i.invoice_number, i.company, i.debt_amount, i.percent_amount, i.tax_amount,
+                  i.total_amount, i.comment, i.paid, i.commission_user_id, i.tax_user_id,
+                  i.created_at as invoice_created_at
            FROM payout_invoices pi
            LEFT JOIN invoices i ON pi.invoice_id = i.id
            WHERE pi.payout_id = ?""",
@@ -413,19 +416,136 @@ def _get_linked_invoices(payout_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def _user_names(user_ids: set[int]) -> dict[int, str]:
+    if not user_ids:
+        return {}
+    conn = get_connection()
+    placeholders = ",".join("?" * len(user_ids))
+    rows = conn.execute(
+        f"SELECT id, name FROM users WHERE id IN ({placeholders})",
+        list(user_ids),
+    ).fetchall()
+    conn.close()
+    return {int(row["id"]): row["name"] for row in rows}
+
+
+def _calculate_payout_transfers(payout: dict) -> dict:
+    received: dict[int, float] = {}
+    owed: dict[int, float] = {}
+    user_ids: set[int] = set()
+
+    for invoice in payout["invoices"]:
+        holder_id = invoice.get("commission_user_id") or invoice.get("tax_user_id")
+        if holder_id is None:
+            continue
+        holder_id = int(holder_id)
+        user_ids.add(holder_id)
+        received[holder_id] = received.get(holder_id, 0.0) + float(invoice.get("total_amount") or invoice.get("amount") or 0)
+
+    for share in payout["shares"]:
+        user_id = share.get("user_id")
+        if user_id is None:
+            continue
+        user_id = int(user_id)
+        user_ids.add(user_id)
+        owed[user_id] = owed.get(user_id, 0.0) + float(share.get("total") or 0)
+
+    names = _user_names(user_ids)
+    balances = []
+    for user_id in sorted(user_ids):
+        got = round(received.get(user_id, 0.0), 2)
+        should_get = round(owed.get(user_id, 0.0), 2)
+        balance = round(got - should_get, 2)
+        balances.append(
+            {
+                "user_id": user_id,
+                "user_name": names.get(user_id),
+                "received_amount": got,
+                "owed_amount": should_get,
+                "balance": balance,
+            }
+        )
+
+    debtors = [
+        {"user_id": item["user_id"], "amount": item["balance"]}
+        for item in balances
+        if item["balance"] > 0.01
+    ]
+    creditors = [
+        {"user_id": item["user_id"], "amount": -item["balance"]}
+        for item in balances
+        if item["balance"] < -0.01
+    ]
+    transfers = []
+    debtor_index = 0
+    creditor_index = 0
+    while debtor_index < len(debtors) and creditor_index < len(creditors):
+        debtor = debtors[debtor_index]
+        creditor = creditors[creditor_index]
+        amount = round(min(debtor["amount"], creditor["amount"]), 2)
+        if amount > 0:
+            transfers.append(
+                {
+                    "from_user_id": debtor["user_id"],
+                    "from_user_name": names.get(debtor["user_id"]),
+                    "to_user_id": creditor["user_id"],
+                    "to_user_name": names.get(creditor["user_id"]),
+                    "amount": amount,
+                }
+            )
+        debtor["amount"] = round(debtor["amount"] - amount, 2)
+        creditor["amount"] = round(creditor["amount"] - amount, 2)
+        if debtor["amount"] <= 0.01:
+            debtor_index += 1
+        if creditor["amount"] <= 0.01:
+            creditor_index += 1
+
+    return {"balances": balances, "transfers": transfers}
+
+
 def _get_linked_expenses(payout_id: int) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        """SELECT pe.*, e.user_id, u.company_id
-           FROM payout_expenses pe
-           LEFT JOIN expenses e ON pe.expense_id = e.id
-           LEFT JOIN users u ON e.user_id = u.id
-           WHERE pe.payout_id = ?""",
-        (payout_id,),
+        """
+        WITH linked AS (
+            SELECT
+                pe.id AS id,
+                pe.payout_id AS payout_id,
+                pe.expense_id AS expense_id,
+                pe.amount AS amount
+            FROM payout_expenses pe
+            WHERE pe.payout_id = ?
+            UNION ALL
+            SELECT
+                MIN(fe.id) AS id,
+                fe.payout_id AS payout_id,
+                fe.expense_id AS expense_id,
+                SUM(ABS(fe.amount)) AS amount
+            FROM finance_entries fe
+            WHERE fe.payout_id = ?
+              AND fe.kind = 'expense_repayment'
+              AND fe.expense_id IS NOT NULL
+            GROUP BY fe.payout_id, fe.expense_id
+        )
+        SELECT
+            MIN(linked.id) AS id,
+            linked.payout_id,
+            linked.expense_id,
+            SUM(linked.amount) AS amount,
+            e.amount AS expense_amount,
+            e.reason,
+            e.user_id,
+            u.company_id
+        FROM linked
+        LEFT JOIN expenses e ON linked.expense_id = e.id
+        LEFT JOIN users u ON e.user_id = u.id
+        GROUP BY linked.payout_id, linked.expense_id
+        ORDER BY MIN(linked.id)
+        """,
+        (payout_id, payout_id),
     ).fetchall()
     conn.close()
     return [_row_to_dict(r) for r in rows]
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Расчёт выплаты (FIFO для расходов)
@@ -1154,6 +1274,7 @@ def _build_payout_response(payout: dict) -> dict:
 
     # Копируем shares в удобном формате
     shares = payout["shares"]
+    settlement = _calculate_payout_transfers(payout)
 
     return {
         **payout,
@@ -1165,6 +1286,7 @@ def _build_payout_response(payout: dict) -> dict:
         "total_expenses": original_expenses_total,
         "net_amount": net_amount,
         "shares": shares,
+        "settlement": settlement,
     }
 
 
@@ -1262,10 +1384,16 @@ def set_payout_status(payout_id: int, status: str) -> dict | None:
 
 def delete_payout(payout_id: int) -> bool:
     conn = get_connection()
-    row = conn.execute("SELECT id FROM payouts WHERE id = ?", (payout_id,)).fetchone()
+    row = conn.execute("SELECT id, status FROM payouts WHERE id = ?", (payout_id,)).fetchone()
     if not row:
         conn.close()
         return False
+    if row["status"] != "pending":
+        conn.close()
+        return False
+    conn.close()
+    _release_finance_entries_for_pending_payout(payout_id)
+    conn = get_connection()
     _unlink_invoices(payout_id)
     _unlink_expenses(payout_id)
     _delete_shares(payout_id)

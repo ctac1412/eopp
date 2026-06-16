@@ -17,7 +17,6 @@ class Operator(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     uuid: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    nickname: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     icon_display_mode: Mapped[str] = mapped_column(
         Text, nullable=False, default="own_then_foreign"

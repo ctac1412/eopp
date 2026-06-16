@@ -664,18 +664,19 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   };
 
   const fileColumns = [
-    { title: "ID", dataIndex: "id", width: 56, render: (value) => <span className="text-muted">#{value}</span> },
-    { title: "Captcha ID", dataIndex: "captcha_id", width: 112, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
-    { title: "Тип", dataIndex: "captcha_type", width: 92, render: (value) => value || "unknown" },
+    { title: "ID", dataIndex: "id", width: 48, render: (value) => <span className="text-muted">#{value}</span> },
+    { title: "Captcha ID", dataIndex: "captcha_id", width: 108, ellipsis: true, render: (value) => <span className="font-monospace" title={value}>{value}</span> },
+    { title: "Тип", dataIndex: "captcha_type", width: 72, render: (value) => value || "unknown" },
     {
       title: "Класс",
       dataIndex: "classification",
-      width: 118,
+      width: 102,
       render: (value, captcha) => (
         <SelectInput
           size="small"
           value={value || ""}
           onChange={(next) => setFileClassification(captcha.captcha_id, next || null)}
+          style={{ width: "100%" }}
           options={[
             { value: "", label: "—" },
             { value: "digit", label: "Цифры" },
@@ -687,10 +688,10 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
         />
       ),
     },
-    { title: "Rank", dataIndex: "solver_valid_rank", width: 70, align: "center", render: solverRankBadge },
+    { title: "Rank", dataIndex: "solver_valid_rank", width: 54, align: "center", render: solverRankBadge },
     {
       title: "Вариант",
-      width: 76,
+      width: 66,
       align: "center",
       render: (_, captcha) => captcha.valid_index != null
         ? captcha.valid_index
@@ -698,19 +699,19 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           ? <span className="text-danger fw-semibold">{captcha.no_valid_index}</span>
           : "—",
     },
-    { title: "Разм.", width: 118, align: "center", render: (_, captcha) => labelingStatus(captcha) },
-    { title: "Hash", dataIndex: "tiles_hash", width: 120, ellipsis: true, render: (value) => <span className="font-monospace" title={value || "—"}>{value || "—"}</span> },
-    { title: "Usage", width: 130, ellipsis: true, render: (_, captcha) => <span className="font-monospace">{captchaToUsageLogs.get(captcha.captcha_id)?.join(", ") || "—"}</span> },
-    { title: "Размер", dataIndex: "file_size", width: 88, render: (value) => (value ? `${Math.round(value / 1024)} KB` : "—") },
-    { title: "Превью", width: 90, render: (_, captcha) => renderFilePreview(captcha) },
-    { title: "Статус", dataIndex: "file_status", width: 98, align: "center", render: (value) => <StatusTag status={value === "labeled" ? "confirmed" : "failed"} label={value === "labeled" ? "Решена" : "Не решена"} /> },
-    { title: "Дата", dataIndex: "file_mtime", width: 132, render: formatDate },
+    { title: "Разм.", width: 88, align: "center", render: (_, captcha) => labelingStatus(captcha) },
+    { title: "Hash", dataIndex: "tiles_hash", width: 112, ellipsis: true, render: (value) => <span className="font-monospace" title={value || "—"}>{value || "—"}</span> },
+    { title: "Usage", width: 74, ellipsis: true, render: (_, captcha) => <span className="font-monospace">{captchaToUsageLogs.get(captcha.captcha_id)?.join(", ") || "—"}</span> },
+    { title: "Размер", dataIndex: "file_size", width: 72, render: (value) => (value ? `${Math.round(value / 1024)} KB` : "—") },
+    { title: "Превью", width: 66, render: (_, captcha) => renderFilePreview(captcha) },
+    { title: "Статус", dataIndex: "file_status", width: 82, align: "center", render: (value) => <StatusTag status={value === "labeled" ? "confirmed" : "failed"} label={value === "labeled" ? "Решена" : "Не реш."} /> },
+    { title: "Дата", dataIndex: "file_mtime", width: 112, render: formatDate },
     {
       title: "",
-      width: 104,
+      width: 86,
       align: "right",
       render: (_, captcha) => (
-        <Button size="small" onClick={() => openLabelingPopup(captcha.captcha_id)}>Разметка</Button>
+        <Button size="small" onClick={() => openLabelingPopup(captcha.captcha_id)}>Разм.</Button>
       ),
     },
   ];
@@ -995,7 +996,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
             columns={fileColumns}
             emptyText="Нет файлов капч"
             pagination={false}
-            scroll={{ x: 1320 }}
+            scroll={{ x: 1120 }}
             rowSelection={{
               selectedRowKeys: [...selectedFileIds],
               onChange: (keys) => setSelectedFileIds(new Set(keys)),

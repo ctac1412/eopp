@@ -47,7 +47,7 @@ def get_scheduled_events_for_masters(master_ids: list[int]) -> list[dict]:
 
 
 @router.get("/admin/scheduled-events")
-async def admin_scheduled_events(request: Request):
+async def admin_scheduled_events(request: Request, include_test: bool = True):
     """Return active scheduled events for the admin operations dashboard."""
     raw_master_ids = request.query_params.get("master_ids", "")
     if raw_master_ids.strip():
@@ -61,6 +61,14 @@ async def admin_scheduled_events(request: Request):
             return JSONResponse(status_code=400, content={"error": "Invalid master_ids"})
     else:
         master_ids = list(_scheduled_events.keys())
+    if not include_test:
+        from src.repositories import api_key_repo
+
+        master_ids = [
+            master_id
+            for master_id in master_ids
+            if not api_key_repo.is_test_user_key(master_id)
+        ]
 
     return JSONResponse(content=get_scheduled_events_for_masters(master_ids))
 

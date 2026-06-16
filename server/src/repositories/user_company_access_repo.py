@@ -99,7 +99,6 @@ def _ensure_operator_runtime(session, user: User, payload: dict) -> None:
 
         operator = Operator(
             uuid=_uuid.uuid4().hex[:12],
-            nickname=user.name or user.login or "operator",
             created_at=now,
             company_id=company_id,
         )

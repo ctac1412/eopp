@@ -61,7 +61,7 @@ def _membership_to_dict(membership: CompanyMembership) -> dict:
     }
 
 
-def _operator_profile_to_dict(profile: OperatorProfile | None) -> dict | None:
+def _operator_profile_to_dict(profile: OperatorProfile | None, *, display_name: str | None = None) -> dict | None:
     if not profile:
         return None
     operator = profile.operator
@@ -73,7 +73,7 @@ def _operator_profile_to_dict(profile: OperatorProfile | None) -> dict | None:
         "company_ids": company_ids,
         "operator_id": profile.operator_id,
         "uuid": operator.uuid if operator else None,
-        "nickname": operator.nickname if operator else None,
+        "nickname": display_name,
         "active": profile.active,
     }
 
@@ -101,6 +101,7 @@ def user_to_dict(user: User) -> dict:
         "system_role": user.system_role,
         "active": user.active,
         "is_director": bool(getattr(user, "is_director", False)),
+        "is_test": bool(getattr(user, "is_test", False)),
         "company_id": user.company_id,
         "company_name": user.company.name if user.company else None,
         "created_at": user.created_at,
@@ -109,7 +110,10 @@ def user_to_dict(user: User) -> dict:
             for membership in getattr(user, "company_memberships", [])
             if membership.active
         ],
-        "operator_profile": _operator_profile_to_dict(getattr(user, "operator_profile", None)),
+        "operator_profile": _operator_profile_to_dict(
+            getattr(user, "operator_profile", None),
+            display_name=user.name or user.login,
+        ),
         "finance_profile": _finance_profile_to_dict(getattr(user, "finance_profile", None)),
         "finance_access": access.get("finance", {"all_companies": False, "company_ids": []}),
         "operator_access": access.get("operator", {"all_companies": False, "company_ids": []}),
@@ -263,7 +267,6 @@ def _sync_operator_profile(session, user: User, payload: dict | None, fallback_c
         return
     company_ids = _normalize_company_ids(payload.get("company_ids"), int(company_id))
     active = payload.get("active", True) is not False
-    nickname = payload.get("nickname") or user.name or "operator"
     profile = user.operator_profile
     operator = profile.operator if profile else None
     if operator is None:
@@ -271,14 +274,12 @@ def _sync_operator_profile(session, user: User, payload: dict | None, fallback_c
 
         operator = Operator(
             uuid=_uuid.uuid4().hex[:12],
-            nickname=nickname,
             created_at=now,
             company_id=int(company_id),
         )
         session.add(operator)
         session.flush()
     else:
-        operator.nickname = nickname
         operator.company_id = int(company_id)
     if profile:
         profile.company_id = int(company_id)
@@ -307,6 +308,7 @@ def create_user(
     system_role=UNSET,
     active: bool = True,
     is_director: bool = False,
+    is_test: bool = False,
     company_id: int | None = None,
     company_memberships: list[dict] | None = None,
     operator_profile: dict | None = None,
@@ -329,6 +331,7 @@ def create_user(
             system_role=(system_role if system_role is not UNSET else None),
             active=active,
             is_director=is_director,
+            is_test=is_test,
             company_id=company_id,
             created_at=now,
         )
@@ -368,6 +371,7 @@ def update_user(
     system_role=UNSET,
     active: bool | None = None,
     is_director: bool | None = None,
+    is_test: bool | None = None,
     company_id=UNSET,
     company_memberships: list[dict] | None = None,
     operator_profile: dict | None = None,
@@ -398,6 +402,8 @@ def update_user(
             user.active = active
         if is_director is not None:
             user.is_director = is_director
+        if is_test is not None:
+            user.is_test = is_test
         if company_id is not UNSET:
             user.company_id = company_id
         session.flush()

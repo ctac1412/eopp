@@ -47,7 +47,6 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
     if not invoice_ids:
         return {}
     placeholders = ",".join("?" * len(invoice_ids))
-    result: dict[int, dict] = {}
     ledger_rows = conn.execute(
         f"""
         SELECT
@@ -63,6 +62,7 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
         """,
         invoice_ids,
     ).fetchall()
+    result: dict[int, dict] = {}
     for row in ledger_rows:
         invoice_id = int(row["invoice_id"])
         result[invoice_id] = {
@@ -71,92 +71,6 @@ def _side_payment_map(conn, invoice_ids: list[int]) -> dict[int, dict]:
             "executor_count": int(row["executor_count"] or 0),
             "executor_amount": float(row["executor_amount"] or 0),
         }
-    fallback_invoice_ids = [invoice_id for invoice_id in invoice_ids if int(invoice_id) not in result]
-    if not fallback_invoice_ids:
-        return result
-    placeholders = ",".join("?" * len(fallback_invoice_ids))
-    operator_rows = conn.execute(
-        f"""
-        WITH log_executor AS (
-            SELECT
-                ul.id AS usage_log_id,
-                ul.invoice_id AS invoice_id,
-                MIN(uec.user_id) AS executor_user_id
-            FROM usage_log ul
-            LEFT JOIN user_executor_companies uec
-              ON ul.company_id IS NOT NULL
-             AND uec.active = 1
-             AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
-            WHERE ul.invoice_id IN ({placeholders})
-            GROUP BY ul.id, ul.invoice_id
-        )
-        SELECT
-            le.invoice_id AS invoice_id,
-            COUNT(*) AS operator_icons,
-            SUM(
-                CASE
-                    WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
-                        THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
-                    ELSE COALESCE(ct.operator_amount, 0)
-                END
-            ) AS operator_amount
-        FROM distribution_answers da
-        JOIN log_executor le ON le.usage_log_id = da.usage_log_id
-        JOIN usage_log ul ON ul.id = le.usage_log_id
-        JOIN operators o ON o.id = da.operator_id
-        LEFT JOIN operator_company_billing_overrides obo
-          ON obo.operator_id = o.id
-         AND obo.company_id = ul.company_id
-        LEFT JOIN company_tariffs ct ON ct.company_id = ul.company_id
-        JOIN operator_profiles op ON op.operator_id = o.id AND op.active = 1
-        WHERE ul.invoice_id IN ({placeholders})
-          AND COALESCE(obo.billing_mode, o.billing_mode, 'company') != 'free'
-          AND CASE
-                WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
-                    THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
-                ELSE COALESCE(ct.operator_amount, 0)
-              END > 0
-          AND (le.executor_user_id IS NULL OR op.user_id != le.executor_user_id)
-        GROUP BY le.invoice_id
-        """,
-        [*fallback_invoice_ids, *fallback_invoice_ids],
-    ).fetchall()
-    for row in operator_rows:
-        invoice_id = int(row["invoice_id"])
-        result.setdefault(invoice_id, {})
-        result[invoice_id]["operator_icons"] = int(row["operator_icons"] or 0)
-        result[invoice_id]["operator_amount"] = float(row["operator_amount"] or 0)
-
-    executor_rows = conn.execute(
-        f"""
-        WITH log_executor AS (
-            SELECT
-                ul.id AS usage_log_id,
-                ul.invoice_id AS invoice_id,
-                MIN(uec.user_id) AS user_id,
-                COALESCE(ct.executor_amount, 0) AS executor_amount
-            FROM usage_log ul
-            JOIN company_tariffs ct ON ct.company_id = ul.company_id
-            JOIN user_executor_companies uec
-              ON uec.active = 1
-             AND (uec.company_id = ul.company_id OR uec.company_id IS NULL)
-            WHERE ul.invoice_id IN ({placeholders})
-              AND ul.company_id IS NOT NULL
-              AND COALESCE(ct.executor_amount, 0) > 0
-            GROUP BY ul.id, ul.invoice_id, ct.executor_amount
-        )
-        SELECT invoice_id, COUNT(*) AS executor_count, SUM(executor_amount) AS executor_amount
-        FROM log_executor
-        WHERE user_id IS NOT NULL
-        GROUP BY invoice_id
-        """,
-        fallback_invoice_ids,
-    ).fetchall()
-    for row in executor_rows:
-        invoice_id = int(row["invoice_id"])
-        result.setdefault(invoice_id, {})
-        result[invoice_id]["executor_count"] = int(row["executor_count"] or 0)
-        result[invoice_id]["executor_amount"] = float(row["executor_amount"] or 0)
     return result
 
 
@@ -295,6 +209,10 @@ def insert_invoice_with_items(
                 sort_order=item.get("sort_order", i),
             )
     conn.close()
+    if paid:
+        from src.db.finance import sync_invoice_item_finance
+
+        sync_invoice_item_finance(invoice_id)
 
     result = get_invoice(invoice_id)
     result["items"] = items or []
@@ -557,6 +475,8 @@ def update_invoice(
 
 def set_invoice_paid(invoice_id: int, paid: bool) -> dict | None:
     """Toggle paid status on an invoice and cascade to associated usage logs."""
+    from src.db.finance import sync_invoice_item_finance_entries
+
     conn = get_connection()
     row = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
     if not row:
@@ -569,6 +489,7 @@ def set_invoice_paid(invoice_id: int, paid: bool) -> dict | None:
     conn.execute(
         "UPDATE usage_log SET paid = ? WHERE invoice_id = ?", (1 if paid else 0, invoice_id)
     )
+    sync_invoice_item_finance_entries(conn, invoice_id)
 
     conn.commit()
     conn.close()

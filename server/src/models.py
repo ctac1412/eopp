@@ -183,6 +183,7 @@ class CreateUserBody(BaseModel):
     system_role: str | None = None
     active: bool = True
     is_director: bool = False
+    is_test: bool = False
     company_id: int | None = None
     company_memberships: list[dict] | None = None
     operator_profile: dict | None = None
@@ -200,6 +201,7 @@ class UpdateUserBody(BaseModel):
     system_role: str | None = None
     active: bool | None = None
     is_director: bool | None = None
+    is_test: bool | None = None
     company_id: int | None = None
     company_memberships: list[dict] | None = None
     operator_profile: dict | None = None

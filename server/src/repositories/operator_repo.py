@@ -62,6 +62,12 @@ def _operator_access_scope(op: Operator) -> dict:
     }
 
 
+def _operator_display_name(op: Operator) -> str:
+    if op.profile and op.profile.user:
+        return op.profile.user.name or op.profile.user.login or f"#{op.id}"
+    return f"#{op.id}"
+
+
 def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None) -> dict:
     company_ids = _profile_company_ids(op.profile, op.company_id)
     access_scope = _operator_access_scope(op)
@@ -70,7 +76,8 @@ def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None)
     data = {
         "id": op.id,
         "uuid": op.uuid,
-        "nickname": op.nickname,
+        "nickname": _operator_display_name(op),
+        "user_name": _operator_display_name(op),
         "created_at": op.created_at,
         "icon_display_mode": op.icon_display_mode,
         "icon_rate": int(getattr(op, "icon_rate", 0) or 0),
@@ -180,7 +187,6 @@ def create_operator(nickname: str, company_id: int | None = None) -> dict:
         now = datetime.now(UTC).isoformat()
         op = Operator(
             uuid=_uuid.uuid4().hex[:12],
-            nickname=nickname,
             created_at=now,
             icon_rate=0,
             billing_mode="company",
@@ -233,13 +239,16 @@ def create_operator(nickname: str, company_id: int | None = None) -> dict:
         return _operator_to_dict(op)
 
 
-def list_operators(company_id: int | None = None) -> list[dict]:
+def list_operators(company_id: int | None = None, *, include_test_users: bool = True) -> list[dict]:
     from sqlalchemy.orm import joinedload
 
     with get_session() as session:
         ops = (
             session.query(Operator)
-            .options(joinedload(Operator.company), joinedload(Operator.profile))
+            .options(
+                joinedload(Operator.company),
+                joinedload(Operator.profile).joinedload(OperatorProfile.user),
+            )
             .order_by(Operator.created_at.desc())
             .all()
         )
@@ -261,6 +270,13 @@ def list_operators(company_id: int | None = None) -> list[dict]:
         } if all_company_ids else {}
         rows = []
         for op in ops:
+            if (
+                not include_test_users
+                and op.profile
+                and op.profile.user
+                and bool(getattr(op.profile.user, "is_test", False))
+            ):
+                continue
             op_company_ids = _profile_company_ids(op.profile, op.company_id)
             access_scope = _operator_access_scope(op)
             access_company_ids = access_scope["company_ids"]
@@ -286,7 +302,7 @@ def get_operator_by_uuid(uuid: str) -> dict | None:
     with get_session() as session:
         op = (
             session.query(Operator)
-            .options(joinedload(Operator.profile))
+            .options(joinedload(Operator.profile).joinedload(OperatorProfile.user))
             .filter(Operator.uuid == uuid)
             .first()
         )
@@ -301,7 +317,7 @@ def get_operator_by_id(operator_id: int) -> dict | None:
     with get_session() as session:
         op = (
             session.query(Operator)
-            .options(joinedload(Operator.profile))
+            .options(joinedload(Operator.profile).joinedload(OperatorProfile.user))
             .filter(Operator.id == operator_id)
             .first()
         )
@@ -317,6 +333,7 @@ def update_operator(operator_id: int, **kwargs) -> dict | None:
             return None
         company_ids = kwargs.pop("company_ids", None)
         billing_overrides = kwargs.pop("billing_overrides", None)
+        kwargs.pop("nickname", None)
         for attr, value in kwargs.items():
             if value is not None and hasattr(op, attr):
                 setattr(op, attr, value)
@@ -512,7 +529,7 @@ def get_subscribed_operators(master_key_id: int) -> list[int]:
         return [r.operator_id for r in rows]
 
 
-def get_active_links(company_id: int | None = None) -> list[dict]:
+def get_active_links(company_id: int | None = None, *, include_test_users: bool = True) -> list[dict]:
     """Return all active operator-master links with operator nickname and master label."""
     with get_session() as session:
         rows = (
@@ -525,6 +542,18 @@ def get_active_links(company_id: int | None = None) -> list[dict]:
         )
         result = []
         for link, op, key in rows:
+            if not include_test_users:
+                operator_is_test = bool(
+                    op.profile
+                    and op.profile.user
+                    and getattr(op.profile.user, "is_test", False)
+                )
+                master_is_test = bool(
+                    key.user
+                    and getattr(key.user, "is_test", False)
+                )
+                if operator_is_test or master_is_test:
+                    continue
             op_company_ids = _profile_company_ids(op.profile, op.company_id)
             if company_id is not None and int(company_id) not in op_company_ids:
                 continue
@@ -532,7 +561,7 @@ def get_active_links(company_id: int | None = None) -> list[dict]:
                 {
                     "link_id": link.id,
                     "operator_id": op.id,
-                    "operator_nickname": op.nickname,
+                    "operator_nickname": _operator_display_name(op),
                     "operator_uuid": op.uuid,
                     "operator_online": op.online,
                     "master_key_id": key.id,

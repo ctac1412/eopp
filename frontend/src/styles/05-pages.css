@@ -1546,6 +1546,18 @@
   padding: 0.35rem 0;
 }
 
+.payout-transfer-card {
+  margin-bottom: 0.75rem;
+}
+
+.payout-transfer-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
 .payout-details-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
@@ -1959,6 +1971,11 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface) 90%, var(--surface-sunken) 10%);
+}
+
+.invoice-finance-summary-stack {
+  display: grid;
+  gap: 0.45rem;
 }
 
 .invoice-finance-summary__row {
@@ -3021,6 +3038,15 @@
 .captchas-files-table,
 .captchas-operations-table {
   font-size: 0.75rem;
+}
+
+.captchas-files-table .ant-table-cell {
+  padding-inline: 5px !important;
+}
+
+.captchas-files-table .captchas-preview {
+  width: 52px;
+  height: 38px;
 }
 
 .captchas-preview {

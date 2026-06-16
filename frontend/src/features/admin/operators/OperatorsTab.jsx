@@ -115,7 +115,6 @@ export function OperatorsTab({ adminToken, onError }) {
   const [selectedOperatorId, setSelectedOperatorId] = useState(null);
   const [reviewCaptcha, setReviewCaptcha] = useState(null);
   const [editForm, setEditForm] = useState({
-    nickname: "",
     icon_display_mode: "own_then_foreign",
     billing_mode: "company",
     icon_rate: 0,
@@ -245,7 +244,7 @@ export function OperatorsTab({ adminToken, onError }) {
     return operators.filter((op) =>
       [
         op.id,
-        op.nickname,
+        op.user_name || op.nickname,
         op.uuid,
         op.company_name,
         Array.isArray(op.company_names) ? op.company_names.join(" ") : "",
@@ -275,7 +274,6 @@ export function OperatorsTab({ adminToken, onError }) {
     if (!selectedOperator) return;
     const allowed = normalizeAllowedMasters(selectedOperator.allowed_master_keys);
     setEditForm({
-      nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
       billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
@@ -316,7 +314,6 @@ export function OperatorsTab({ adminToken, onError }) {
     setSaving(true);
     try {
       const body = {
-        nickname: editForm.nickname,
         icon_display_mode: editForm.icon_display_mode,
         billing_mode: editForm.billing_mode || "company",
         allowed_master_keys: serializeAllowedMasters(
@@ -346,7 +343,6 @@ export function OperatorsTab({ adminToken, onError }) {
     if (!selectedOperator) return;
     const allowed = normalizeAllowedMasters(selectedOperator.allowed_master_keys);
     setEditForm({
-      nickname: selectedOperator.nickname || "",
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
       billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
@@ -741,7 +737,7 @@ export function OperatorsTab({ adminToken, onError }) {
                 >
                   <span className="operator-list-item__status" aria-hidden="true" data-online={op.online ? "true" : "false"} />
                   <span className="operator-list-item__name">
-                    {op.nickname || `#${op.id}`}
+                    {op.user_name || op.nickname || `#${op.id}`}
                   </span>
                   <a
                     className="operator-list-item__uuid font-monospace"
@@ -775,7 +771,7 @@ export function OperatorsTab({ adminToken, onError }) {
                 <div className="operators-detail-head">
                   <div>
                     <div className="small text-muted">Оператор #{selectedOperator.id}</div>
-                    <h3 className="fs-6 fw-semibold mb-0">{selectedOperator.nickname || "Без имени"}</h3>
+                    <h3 className="fs-6 fw-semibold mb-0">{selectedOperator.user_name || selectedOperator.nickname || "Без имени"}</h3>
                   </div>
                   <Space size={6} wrap>
                     <a href={`${baseUrl}/operators/${selectedOperator.uuid}`} target="_blank" rel="noreferrer">
@@ -786,13 +782,6 @@ export function OperatorsTab({ adminToken, onError }) {
                 </div>
 
                 <div className="operators-detail-form">
-                  <label className="form-label small mb-0">
-                    Никнейм
-                    <TextInput
-                      value={editForm.nickname}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, nickname: event.target.value }))}
-                    />
-                  </label>
                   <label className="form-label small mb-0">
                     Режим иконок
                     <SelectInput

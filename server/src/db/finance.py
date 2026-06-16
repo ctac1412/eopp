@@ -347,6 +347,141 @@ def link_usage_entries_to_invoice(
     rebuild_profit_lots(conn, invoice_id, usage_log_ids)
 
 
+def sync_invoice_item_finance(invoice_id: int) -> None:
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        sync_invoice_item_finance_entries(conn, invoice_id)
+        conn.commit()
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
+
+
+def sync_invoice_item_finance_entries(conn, invoice_id: int) -> None:
+    invoice = conn.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+    if not invoice:
+        return
+
+    protected = conn.execute(
+        """
+        SELECT 1
+        FROM finance_entries
+        WHERE invoice_id = ?
+          AND source = 'invoice_item'
+          AND (payout_id IS NOT NULL OR edit_state != 'open')
+        LIMIT 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    linked_lot = conn.execute(
+        """
+        SELECT 1
+        FROM profit_lots pl
+        JOIN finance_entries fe ON fe.profit_lot_id = pl.id
+        WHERE pl.invoice_id = ?
+          AND pl.usage_log_id IS NULL
+        LIMIT 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if protected or linked_lot:
+        return
+
+    conn.execute(
+        """
+        DELETE FROM finance_entries
+        WHERE invoice_id = ?
+          AND source = 'invoice_item'
+          AND edit_state = 'open'
+          AND payout_id IS NULL
+        """,
+        (invoice_id,),
+    )
+    conn.execute(
+        """
+        DELETE FROM profit_lots
+        WHERE invoice_id = ?
+          AND usage_log_id IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM finance_entries fe
+              WHERE fe.profit_lot_id = profit_lots.id
+          )
+        """,
+        (invoice_id,),
+    )
+
+    if int(invoice["paid"] or 0) != 1:
+        return
+
+    items = conn.execute(
+        """
+        SELECT id, description, amount
+        FROM invoice_items
+        WHERE invoice_id = ?
+        ORDER BY sort_order, id
+        """,
+        (invoice_id,),
+    ).fetchall()
+    if not items:
+        return
+
+    company_id = None
+    if invoice["company"]:
+        company = conn.execute("SELECT id FROM companies WHERE name = ?", (invoice["company"],)).fetchone()
+        company_id = int(company["id"]) if company else None
+
+    for item in items:
+        upsert_finance_entry(
+            conn,
+            kind="customer_income",
+            amount=int(item["amount"] or 0),
+            company_id=company_id,
+            invoice_id=invoice_id,
+            source="invoice_item",
+            source_key=f"invoice-item:{item['id']}:income",
+            comment=item["description"] or "Invoice line income",
+        )
+
+    charge_sign = -1 if invoice["tax_commission_mode"] == "included" else 1
+    for kind, amount, suffix, user_id in (
+        ("invoice_commission", charge_sign * int(invoice["percent_amount"] or 0), "commission", invoice["commission_user_id"]),
+        ("invoice_tax", charge_sign * int(invoice["tax_amount"] or 0), "tax", invoice["tax_user_id"]),
+    ):
+        for item, split_amount in zip(items, _split_amount(amount, len(items)), strict=True):
+            if split_amount == 0:
+                continue
+            upsert_finance_entry(
+                conn,
+                kind=kind,
+                amount=split_amount,
+                company_id=company_id,
+                invoice_id=invoice_id,
+                user_id=user_id,
+                source="invoice_item",
+                source_key=f"invoice-item:{item['id']}:{suffix}",
+                comment=f"Invoice line {suffix}",
+            )
+
+    charge_profit = 0
+    if invoice["tax_commission_mode"] == "included":
+        charge_profit = -int(invoice["percent_amount"] or 0) - int(invoice["tax_amount"] or 0)
+    gross_amount = sum(int(item["amount"] or 0) for item in items) + charge_profit
+    if gross_amount <= 0:
+        return
+
+    now = _now()
+    conn.execute(
+        """
+        INSERT INTO profit_lots (company_id, usage_log_id, invoice_id, gross_amount, created_at, updated_at)
+        VALUES (?, NULL, ?, ?, ?, ?)
+        """,
+        (company_id, invoice_id, gross_amount, now, now),
+    )
+
+
 def _create_invoice_charge_entries(
     conn,
     invoice_id: int,

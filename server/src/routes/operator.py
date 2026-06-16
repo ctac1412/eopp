@@ -384,11 +384,11 @@ async def admin_create_operator(request: Request):
 
 
 @router.get("/admin/operators")
-async def admin_list_operators(request: Request):
+async def admin_list_operators(request: Request, include_test: bool = True):
     from src.policies.access_policy import is_admin_token
     if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    return JSONResponse(content=operator_repo.list_operators(_tenant_company_id(request)))
+    return JSONResponse(content=operator_repo.list_operators(_tenant_company_id(request), include_test_users=include_test))
 
 
 @router.post("/admin/operator-assignments/bulk")
@@ -439,8 +439,6 @@ async def admin_update_operator(operator_id: int, request: Request):
         return JSONResponse(status_code=403, content={"error": "Operator out of company scope"})
 
     kwargs = {}
-    if "nickname" in body:
-        kwargs["nickname"] = body["nickname"]
     if "icon_display_mode" in body:
         kwargs["icon_display_mode"] = body["icon_display_mode"]
     if "icon_rate" in body:
@@ -555,11 +553,11 @@ async def admin_delete_operator(operator_id: int, request: Request):
 
 
 @router.get("/admin/operator-links")
-async def admin_active_links(request: Request):
+async def admin_active_links(request: Request, include_test: bool = True):
     from src.policies.access_policy import is_admin_token
     if not is_admin_token(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    return JSONResponse(content=operator_repo.get_active_links(_tenant_company_id(request)))
+    return JSONResponse(content=operator_repo.get_active_links(_tenant_company_id(request), include_test_users=include_test))
 
 
 @router.post("/admin/operator-distribution/active/round-robin")

@@ -321,6 +321,14 @@ export function UserModal({
               onChange={(checked) => setForm((prev) => ({ ...prev, isDirector: checked }))}
             />
           </div>
+          <div className="users-modal-form__active">
+            <span className="users-modal-active-toggle__label">Test</span>
+            <Switch
+              className="users-modal-active-toggle"
+              checked={form.isTest === true}
+              onChange={(checked) => setForm((prev) => ({ ...prev, isTest: checked }))}
+            />
+          </div>
         </div>
         <div className="users-modal-form__access">
           <PersonalApiKeyBlock

@@ -311,6 +311,10 @@ def update_invoice(invoice_id: int, body) -> tuple[int, dict]:
         if not result:
             return 404, {"error": "Invoice not found"}
         invoice_repo.replace_invoice_items(invoice_id, body.items)
+        if result.get("paid"):
+            from src.db.finance import sync_invoice_item_finance
+
+            sync_invoice_item_finance(invoice_id)
         result["items"] = body.items
         return 200, result
 

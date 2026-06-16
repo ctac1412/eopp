@@ -220,6 +220,84 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
     { title: "Комментарий", dataIndex: "comment", ellipsis: true, render: (value) => value || "-" },
   ];
   const financeEntriesTotal = financeEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+  const participantSummaryRows = Object.values(
+    financeEntries.reduce((acc, entry) => {
+      if (!entry.user_id && !entry.user_name && !entry.user_login) return acc;
+      const amount = Math.abs(Number(entry.amount) || 0);
+      if (!amount) return acc;
+      const key = entry.user_id || entry.user_name || entry.user_login;
+      if (!acc[key]) {
+        acc[key] = {
+          key,
+          user_name: entry.user_name || entry.user_login || (entry.user_id ? `#${entry.user_id}` : "-"),
+          commission: 0,
+          tax: 0,
+          operator: 0,
+          operator_count: 0,
+          executor: 0,
+          executor_count: 0,
+          director_profit: 0,
+          total: 0,
+        };
+      }
+      if (entry.kind === "invoice_commission") acc[key].commission += amount;
+      if (entry.kind === "invoice_tax") acc[key].tax += amount;
+      if (entry.kind === "operator_salary") {
+        acc[key].operator += amount;
+        acc[key].operator_count += 1;
+      }
+      if (entry.kind === "executor_salary") {
+        acc[key].executor += amount;
+        acc[key].executor_count += 1;
+      }
+      if (entry.kind === "director_profit") acc[key].director_profit += amount;
+      acc[key].total += amount;
+      return acc;
+    }, {}),
+  ).sort((left, right) => right.total - left.total);
+  const participantSummaryTotals = participantSummaryRows.reduce(
+    (totals, row) => ({
+      commission: totals.commission + row.commission,
+      tax: totals.tax + row.tax,
+      operator: totals.operator + row.operator,
+      operator_count: totals.operator_count + row.operator_count,
+      executor: totals.executor + row.executor,
+      executor_count: totals.executor_count + row.executor_count,
+      director_profit: totals.director_profit + row.director_profit,
+      total: totals.total + row.total,
+    }),
+    {
+      commission: 0,
+      tax: 0,
+      operator: 0,
+      operator_count: 0,
+      executor: 0,
+      executor_count: 0,
+      director_profit: 0,
+      total: 0,
+    },
+  );
+  const participantSummaryColumns = [
+    { title: "Участник", dataIndex: "user_name", ellipsis: true },
+    { title: "Ком.", dataIndex: "commission", width: 82, align: "right", render: formatMoney },
+    { title: "Налог", dataIndex: "tax", width: 82, align: "right", render: formatMoney },
+    {
+      title: "Опер.",
+      dataIndex: "operator",
+      width: 96,
+      align: "right",
+      render: (value, row) => `${formatMoney(value)} / ${row.operator_count}`,
+    },
+    {
+      title: "Исп.",
+      dataIndex: "executor",
+      width: 96,
+      align: "right",
+      render: (value, row) => `${formatMoney(value)} / ${row.executor_count}`,
+    },
+    { title: "Дир.", dataIndex: "director_profit", width: 86, align: "right", render: formatMoney },
+    { title: "Итого", dataIndex: "total", width: 92, align: "right", render: (value) => <strong>{formatMoney(value)}</strong> },
+  ];
 
   const preview = (
     <div className="invoice-modal__screen-preview">
@@ -387,44 +465,62 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
                   />
                 </div>
                 {profitView === "summary" ? (
-                  <div className="invoice-finance-summary">
-                    <div className="invoice-finance-summary__row">
-                      <span>Долг</span>
-                      <strong>{formatMoney(editDebt)}</strong>
-                    </div>
-                    <div className="invoice-finance-summary__row">
-                      <span>Итого к оплате</span>
-                      <strong>{formatMoney(editTotal)}</strong>
-                    </div>
-                    {taxCommissionMode === "included" && (
-                      <>
-                        <div className="invoice-finance-summary__row is-deduction">
-                          <span>Минус комиссия</span>
-                          <strong>{formatMoney(editPercent)}</strong>
-                        </div>
-                        <div className="invoice-finance-summary__row is-deduction">
-                          <span>Минус налог</span>
-                          <strong>{formatMoney(editTax)}</strong>
-                        </div>
-                      </>
-                    )}
-                    <div className="invoice-finance-summary__row is-deduction">
-                      <span>Минус операторы</span>
-                      <strong>{formatMoney(operatorAmount)}</strong>
-                    </div>
-                    <div className="invoice-finance-summary__row is-deduction">
-                      <span>Минус исполнители</span>
-                      <strong>{formatMoney(executorAmount)}</strong>
-                    </div>
-                    {sidePayoutAmount !== operatorAmount + executorAmount && (
-                      <div className="invoice-finance-summary__row is-deduction">
-                        <span>Минус операторы/исполнители</span>
-                        <strong>{formatMoney(sidePayoutAmount)}</strong>
+                  <div className="invoice-finance-summary-stack">
+                    <div className="invoice-finance-summary">
+                      <div className="invoice-finance-summary__row">
+                        <span>Долг</span>
+                        <strong>{formatMoney(editDebt)}</strong>
                       </div>
-                    )}
-                    <div className="invoice-finance-summary__row invoice-finance-summary__row--profit">
-                      <span>Прибыль</span>
-                      <strong>{formatMoney(profitAmount)}</strong>
+                      <div className="invoice-finance-summary__row">
+                        <span>Итого к оплате</span>
+                        <strong>{formatMoney(editTotal)}</strong>
+                      </div>
+                      {taxCommissionMode === "included" && (
+                        <>
+                          <div className="invoice-finance-summary__row is-deduction">
+                            <span>Минус комиссия</span>
+                            <strong>{formatMoney(editPercent)}</strong>
+                          </div>
+                          <div className="invoice-finance-summary__row is-deduction">
+                            <span>Минус налог</span>
+                            <strong>{formatMoney(editTax)}</strong>
+                          </div>
+                        </>
+                      )}
+                      <div className="invoice-finance-summary__row is-deduction">
+                        <span>Минус операторы</span>
+                        <strong>{formatMoney(operatorAmount)}</strong>
+                      </div>
+                      <div className="invoice-finance-summary__row is-deduction">
+                        <span>Минус исполнители</span>
+                        <strong>{formatMoney(executorAmount)}</strong>
+                      </div>
+                      {sidePayoutAmount !== operatorAmount + executorAmount && (
+                        <div className="invoice-finance-summary__row is-deduction">
+                          <span>Минус операторы/исполнители</span>
+                          <strong>{formatMoney(sidePayoutAmount)}</strong>
+                        </div>
+                      )}
+                      <div className="invoice-finance-summary__row invoice-finance-summary__row--profit">
+                        <span>Прибыль</span>
+                        <strong>{formatMoney(profitAmount)}</strong>
+                      </div>
+                    </div>
+                    <DataTable
+                      className="invoice-modal__table invoice-modal__table--compact"
+                      rowKey="key"
+                      data={participantSummaryRows}
+                      columns={participantSummaryColumns}
+                      loading={financeEntriesLoading}
+                      emptyText="Нет итогов по участникам"
+                      pagination={false}
+                      scroll={{ x: 720, y: 160 }}
+                    />
+                    <div className="invoice-finance-entries__total">
+                      <span>Итого по участникам</span>
+                      <strong>
+                        {formatMoney(participantSummaryTotals.total)}
+                      </strong>
                     </div>
                   </div>
                 ) : (

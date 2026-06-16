@@ -421,7 +421,7 @@ def test_user_create_exposes_memberships_and_function_profiles(client, admin_tok
     assert "master" + "_profile" not in body
     assert body["executor_access"] == {"all_companies": False, "company_ids": [company_id]}
     assert body["operator_profile"]["active"] is True
-    assert body["operator_profile"]["nickname"] == "profile-operator"
+    assert body["operator_profile"]["nickname"] == "Profile Owner"
     assert body["finance_profile"]["active"] is True
 
 
@@ -581,10 +581,10 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
 
     assert operators.status_code == 200
     names = {row["nickname"] for row in operators.json()}
-    assert "visible-op" in names
-    assert "hidden-op" not in names
+    assert "Visible Operator" in names
+    assert "Hidden Operator" not in names
     assert links.status_code == 200
-    assert {row["operator_nickname"] for row in links.json()} == {"visible-op"}
+    assert {row["operator_nickname"] for row in links.json()} == {"Visible Operator"}
 
 
 def test_bulk_operator_assignments_save_company_and_master_combinations(client, admin_token):
@@ -703,6 +703,107 @@ def test_admin_created_operator_has_profile_for_company_matrix(client, admin_tok
 
     assert saved.status_code == 200
     assert saved.json()["operators"][0]["company_ids"] == [alpha["id"], beta["id"]]
+
+
+def test_operator_profile_serializes_user_name_after_login_and_update(client, admin_token):
+    company = client.post(
+        "/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "OperatorProfileSerialization"},
+    ).json()
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Serialized Operator",
+            "login": "serialized.operator",
+            "password": "secret",
+            "role": "manager",
+            "company_id": company["id"],
+            "operator_access": {"all_companies": False, "company_ids": [company["id"]]},
+        },
+    ).json()
+
+    login = client.post("/auth/login", json={"login": "serialized.operator", "password": "secret"})
+    assert login.status_code == 200
+    assert login.json()["user"]["operator_profile"]["nickname"] == "Serialized Operator"
+
+    client.cookies.clear()
+    client.cookies.set("eopp_admin_session", admin_token)
+    operator_id = user["operator_profile"]["operator_id"]
+    updated = client.put(
+        f"/admin/operators/{operator_id}",
+        headers={"X-Admin-Token": admin_token},
+        json={"billing_mode": "free", "billing_overrides": []},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["billing_mode"] == "free"
+    assert updated.json()["nickname"] == "Serialized Operator"
+
+
+def test_test_users_are_excluded_from_operational_key_list(client, admin_token):
+    test_user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Operational Test User",
+            "login": "operational.test.user",
+            "password": "secret",
+            "role": "manager",
+            "is_test": True,
+        },
+    )
+    assert test_user.status_code == 200
+    user_id = test_user.json()["id"]
+    assert test_user.json()["is_test"] is True
+
+    key = client.post(
+        "/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json={"label": "operational-test-key", "user_id": user_id},
+    )
+    assert key.status_code == 200
+
+    all_keys = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+    assert any(row["user_id"] == user_id for row in all_keys.json())
+
+    operational_keys = client.get("/api-keys?include_test=0", headers={"X-Admin-Token": admin_token})
+    assert operational_keys.status_code == 200
+    assert all(row["user_id"] != user_id for row in operational_keys.json())
+
+    users = client.get("/admin/users", headers={"X-Admin-Token": admin_token})
+    listed = next(row for row in users.json() if row["id"] == user_id)
+    assert listed["is_test"] is True
+
+
+def test_test_user_operators_are_excluded_from_operational_operator_list(client, admin_token):
+    company = client.post(
+        "/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "Operational Test Operators"},
+    ).json()
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Operational Test Operator",
+            "login": "operational.test.operator",
+            "password": "secret",
+            "role": "manager",
+            "company_id": company["id"],
+            "is_test": True,
+            "operator_access": {"all_companies": False, "company_ids": [company["id"]]},
+        },
+    )
+    assert user.status_code == 200
+    operator_id = user.json()["operator_profile"]["operator_id"]
+
+    all_operators = client.get("/admin/operators", headers={"X-Admin-Token": admin_token})
+    assert any(row["id"] == operator_id for row in all_operators.json())
+
+    operational_operators = client.get("/admin/operators?include_test=0", headers={"X-Admin-Token": admin_token})
+    assert operational_operators.status_code == 200
+    assert all(row["id"] != operator_id for row in operational_operators.json())
 
 
 def test_executor_plugin_keys_require_executor_access(client, admin_token):

@@ -137,8 +137,8 @@ async def create_api_key(body: CreateApiKeyBody, request: Request):
 
 
 @router.get("/api-keys")
-async def list_api_keys(request: Request):
-    keys = api_key_repo.list_keys(_tenant_company_id(request))
+async def list_api_keys(request: Request, include_test: bool = True):
+    keys = api_key_repo.list_keys(_tenant_company_id(request), include_test_users=include_test)
     masked = []
     for k in keys:
         key_val = k["key"]

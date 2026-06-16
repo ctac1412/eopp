@@ -1,6 +1,12 @@
 from datetime import UTC, datetime
 
-from src.entities import ApiKey, DistributionAnswer, Operator, UsageLog, get_session
+from src.entities import ApiKey, DistributionAnswer, Operator, OperatorProfile, UsageLog, User, get_session
+
+
+def _operator_display_name(operator_id: int, user: User | None) -> str:
+    if user:
+        return user.name or user.login or f"#{operator_id}"
+    return f"#{operator_id}"
 
 
 def save_distribution_answer(
@@ -36,8 +42,10 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
         page = max(1, min(page, pages))
 
         rows = (
-            session.query(DistributionAnswer, Operator, ApiKey)
+            session.query(DistributionAnswer, Operator, User, ApiKey)
             .outerjoin(Operator, Operator.id == DistributionAnswer.operator_id)
+            .outerjoin(OperatorProfile, OperatorProfile.operator_id == Operator.id)
+            .outerjoin(User, User.id == OperatorProfile.user_id)
             .outerjoin(UsageLog, UsageLog.id == DistributionAnswer.usage_log_id)
             .outerjoin(ApiKey, ApiKey.id == UsageLog.api_key_id)
             .order_by(DistributionAnswer.created_at.desc())
@@ -54,7 +62,7 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
                 "operator_nickname": (
                     (apikey.label if apikey else "Мастер")
                     if a.operator_id == 0
-                    else (op.nickname if op else f"#{a.operator_id}")
+                    else _operator_display_name(a.operator_id, user)
                 ),
                 "master_key_id": apikey.id if apikey else None,
                 "master_label": apikey.label if apikey else None,
@@ -64,7 +72,7 @@ def get_distribution_answers(page: int = 1, per_page: int = 50) -> dict:
                 "duration_ms": a.duration_ms,
                 "created_at": a.created_at,
             }
-            for a, op, apikey in rows
+            for a, op, user, apikey in rows
         ]
         return {"items": items, "total": total, "page": page, "pages": pages, "per_page": per_page}
 
@@ -76,8 +84,10 @@ def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]
     unique_ids = list(dict.fromkeys(captcha_ids))
     with get_session() as session:
         rows = (
-            session.query(DistributionAnswer, Operator, ApiKey)
+            session.query(DistributionAnswer, Operator, User, ApiKey)
             .outerjoin(Operator, Operator.id == DistributionAnswer.operator_id)
+            .outerjoin(OperatorProfile, OperatorProfile.operator_id == Operator.id)
+            .outerjoin(User, User.id == OperatorProfile.user_id)
             .outerjoin(UsageLog, UsageLog.id == DistributionAnswer.usage_log_id)
             .outerjoin(ApiKey, ApiKey.id == UsageLog.api_key_id)
             .filter(DistributionAnswer.captcha_id.in_(unique_ids))
@@ -85,7 +95,7 @@ def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]
             .all()
         )
     grouped: dict[str, list[dict]] = {captcha_id: [] for captcha_id in unique_ids}
-    for answer, operator, api_key in rows:
+    for answer, operator, user, api_key in rows:
         grouped.setdefault(answer.captcha_id, []).append(
             {
                 "id": answer.id,
@@ -95,7 +105,7 @@ def get_answers_for_captcha_ids(captcha_ids: list[str]) -> dict[str, list[dict]]
                 "operator_nickname": (
                     (api_key.label if api_key else "Мастер")
                     if answer.operator_id == 0
-                    else (operator.nickname if operator else f"#{answer.operator_id}")
+                    else _operator_display_name(answer.operator_id, user)
                 ),
                 "master_key_id": api_key.id if api_key else None,
                 "master_label": api_key.label if api_key else None,

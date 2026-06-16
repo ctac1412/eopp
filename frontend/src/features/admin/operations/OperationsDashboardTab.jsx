@@ -119,11 +119,11 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const loadAll = useCallback(async () => {
     try {
       const [operatorsRes, linksRes, keysRes, streamsRes, scheduledRes] = await Promise.all([
-        adminRequest("/admin/operators", { headers: adminHeaders(adminToken) }),
-        adminRequest("/admin/operator-links", { headers: adminHeaders(adminToken) }),
-        adminRequest("/api-keys", { headers: adminHeaders(adminToken) }),
-        adminRequest("/admin/streams", { headers: adminHeaders(adminToken) }),
-        adminRequest("/admin/scheduled-events", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/operators?include_test=0", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/operator-links?include_test=0", { headers: adminHeaders(adminToken) }),
+        adminRequest("/api-keys?include_test=0", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/streams?include_test=0", { headers: adminHeaders(adminToken) }),
+        adminRequest("/admin/scheduled-events?include_test=0", { headers: adminHeaders(adminToken) }),
       ]);
       const [operatorsData, linksData, keysData, streamsData, scheduledData] = await Promise.all([
         operatorsRes.json(),

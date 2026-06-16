@@ -34,8 +34,8 @@ def test_billing_job_creates_idempotent_finance_entries(isolated_api_db, monkeyp
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?, ?)",
-        ("operator-ledger", "Operator", _now(), 75, "custom", company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-ledger", _now(), 75, "custom", company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -164,8 +164,8 @@ def test_operator_salary_uses_company_amount_when_operator_rate_missing(isolated
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
-        ("operator-fallback", "Operator", _now(), 0, company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?)",
+        ("operator-fallback", _now(), 0, company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -238,8 +238,8 @@ def test_operator_salary_uses_custom_operator_billing_mode(isolated_api_db):
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?, ?)",
-        ("operator-custom-billing", "Operator", _now(), 90, "custom", company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-custom-billing", _now(), 90, "custom", company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -312,8 +312,8 @@ def test_operator_salary_skips_free_operator_billing_mode(isolated_api_db):
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?, ?)",
-        ("operator-free-billing", "Operator", _now(), 120, "free", company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-free-billing", _now(), 120, "free", company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -398,8 +398,8 @@ def test_operator_company_billing_override_wins_over_global_mode(isolated_api_db
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?, ?)",
-        ("operator-company-override", "Buffalo", _now(), 0, "company", company_ids["Arttrans"]),
+        "INSERT INTO operators (uuid, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-company-override", _now(), 0, "company", company_ids["Arttrans"]),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -483,8 +483,8 @@ def test_operator_salary_is_not_paid_to_usage_executor_for_own_clicks(isolated_a
         (user_id, company_id, _now()),
     )
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
-        ("operator-own-clicks", "Executor Operator", _now(), 70, company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?)",
+        ("operator-own-clicks", _now(), 70, company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -557,8 +557,8 @@ def test_operator_salary_is_created_only_for_successful_captcha_answers(isolated
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
-        ("operator-passed-only", "Operator", _now(), 0, company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?)",
+        ("operator-passed-only", _now(), 0, company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -637,8 +637,8 @@ def test_recalculate_removes_open_operator_salary_for_failed_captcha_answers(iso
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?, ?)",
-        ("operator-recalc-passed", "Operator", _now(), 0, company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, company_id) VALUES (?, ?, ?, ?)",
+        ("operator-recalc-passed", _now(), 0, company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -724,8 +724,8 @@ def test_recalculate_removes_open_operator_salary_for_free_operator(isolated_api
     )
     operator_user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
-        "INSERT INTO operators (uuid, nickname, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?, ?)",
-        ("operator-recalc-free", "Operator", _now(), 120, "free", company_id),
+        "INSERT INTO operators (uuid, created_at, icon_rate, billing_mode, company_id) VALUES (?, ?, ?, ?, ?)",
+        ("operator-recalc-free", _now(), 120, "free", company_id),
     )
     operator_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -999,6 +999,120 @@ def test_invoice_links_all_usage_entries_and_creates_profit_lot(isolated_api_db)
 
     assert linked["cnt"] == 5
     assert lot["gross_amount"] == 2080
+
+
+def test_paid_invoice_item_creates_income_lot_for_expense_repayment(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.payouts import create_payout_with_calculation, delete_payout, validate_expense_repayments_available_profit, preview_payout
+    from src.models import CreateInvoiceBody
+    from src.services.invoice_service import create_invoice, update_invoice
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Manual Line Co", _now()))
+    conn.execute(
+        "INSERT INTO users (name, role, active, is_director, created_at) VALUES (?, 'manager', 1, 0, ?)",
+        ("Admin", _now()),
+    )
+    user_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO expenses (amount, reason, user_id, created_at)
+        VALUES (40000, 'Manual project cost', ?, ?)
+        """,
+        (user_id, _now()),
+    )
+    expense_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, invoice = create_invoice(
+        CreateInvoiceBody(
+            company="Manual Line Co",
+            tax_rate=0,
+            percent_rate=0,
+            items=[{"description": "Development work", "amount": 40000}],
+        )
+    )
+    assert status == 200
+    invoice_id = invoice["id"]
+
+    update_status, _ = update_invoice(invoice_id, SimpleNamespace(paid=True))
+    assert update_status == 200
+
+    ok, requested, available = validate_expense_repayments_available_profit(
+        [invoice_id],
+        [{"expense_id": expense_id, "amount": 40000}],
+    )
+    assert ok is True
+    assert requested == 40000
+    assert available == 40000
+
+    preview = preview_payout(
+        [invoice_id],
+        [],
+        [{"user_id": user_id, "split_pct": 100}],
+        [{"expense_id": expense_id, "amount": 40000}],
+    )
+
+    assert preview["total_income"] == 40000
+    assert preview["total_expenses"] == 40000
+    assert preview["net_amount"] == 0
+
+    payout = create_payout_with_calculation(
+        "Manual line payout",
+        [invoice_id],
+        [],
+        [{"user_id": user_id, "split_pct": 100}],
+        [{"expense_id": expense_id, "amount": 40000}],
+    )
+
+    assert [(expense["expense_id"], expense["amount"]) for expense in payout["expenses"]] == [
+        (expense_id, 40000)
+    ]
+    assert payout["total_expenses"] == 40000
+
+    assert delete_payout(payout["id"]) is True
+
+    conn = get_connection()
+    deleted = conn.execute("SELECT 1 FROM payouts WHERE id = ?", (payout["id"],)).fetchone()
+    lingering = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM finance_entries WHERE payout_id = ?",
+        (payout["id"],),
+    ).fetchone()
+    repayment = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM finance_entries WHERE kind = 'expense_repayment' AND expense_id = ?",
+        (expense_id,),
+    ).fetchone()
+    item = conn.execute(
+        "SELECT id FROM invoice_items WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    entry = conn.execute(
+        """
+        SELECT kind, amount, source, source_key, invoice_id
+        FROM finance_entries
+        WHERE invoice_id = ? AND source = 'invoice_item'
+        """,
+        (invoice_id,),
+    ).fetchone()
+    lot = conn.execute(
+        "SELECT usage_log_id, invoice_id, gross_amount FROM profit_lots WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchone()
+    conn.close()
+
+    assert deleted is None
+    assert lingering["cnt"] == 0
+    assert repayment["cnt"] == 0
+    assert dict(entry) == {
+        "kind": "customer_income",
+        "amount": 40000,
+        "source": "invoice_item",
+        "source_key": f"invoice-item:{item['id']}:income",
+        "invoice_id": invoice_id,
+    }
+    assert lot["usage_log_id"] is None
+    assert lot["gross_amount"] == 40000
 
 
 def test_added_invoice_records_positive_commission_and_tax_entries(isolated_api_db):

@@ -359,8 +359,15 @@ async def admin_logout():
 
 
 @router.get("/streams")
-async def admin_streams():
-    return JSONResponse(content=get_connected_streams())
+async def admin_streams(include_test: bool = True):
+    streams = get_connected_streams()
+    if not include_test:
+        streams = [
+            stream
+            for stream in streams
+            if not api_key_repo.is_test_user_key(stream.get("api_key_id"))
+        ]
+    return JSONResponse(content=streams)
 
 
 @router.get("/audit")

@@ -40,6 +40,7 @@ const EMPTY_USER_FORM = {
   systemRole: "",
   active: true,
   isDirector: false,
+  isTest: false,
   companyId: "",
   financeAccess: emptyAccess(),
   operatorAccess: emptyAccess(),
@@ -410,7 +411,7 @@ export function PayoutsTabContainer({ adminToken, onError }) {
     }
   };
 
-  const preview = async (invoiceIds, expenseIds, splits, expenseRepayments = []) => {
+  const preview = useCallback(async (invoiceIds, expenseIds, splits, expenseRepayments = []) => {
     setPayoutPreviewLoading(true);
     try {
       const res = await adminRequest("/admin/payouts/preview", {
@@ -424,7 +425,7 @@ export function PayoutsTabContainer({ adminToken, onError }) {
     } finally {
       setPayoutPreviewLoading(false);
     }
-  };
+  }, [adminToken]);
 
   const savePayout = async (event) => {
     event.preventDefault();
@@ -539,18 +540,6 @@ export function PayoutsTabContainer({ adminToken, onError }) {
             onError?.(`Не удалось загрузить дефолтные доли выплаты: ${err.message}`);
           }
         }}
-        onEdit={(payout) => {
-          setPayoutForm({
-            id: payout.id,
-            name: payout.name,
-            invoice_ids: (payout.invoices || []).map((invoice) => invoice.invoice_id || invoice.id),
-            expense_ids: (payout.expenses || []).map((expense) => expense.expense_id || expense.id),
-            expense_repayments: {},
-            splits: (payout.shares || []).map((share) => ({ user_id: share.user_id, split_pct: share.split_pct || 0 })),
-          });
-          fetchAllResources();
-          setShowPayoutModal(true);
-        }}
         onDelete={deletePayout}
         onRecalculate={recalculatePayout}
         onStatusChange={setPayoutStatus}
@@ -625,6 +614,7 @@ export function UsersTabContainer({ adminToken, adminRole, adminSystemRole, onEr
         system_role: userForm.systemRole || null,
         active: userForm.active !== false,
         is_director: userForm.isDirector === true,
+        is_test: userForm.isTest === true,
         company_id: companyId,
         finance_access: accessPayloadFromForm(userForm.financeAccess),
         operator_access: accessPayloadFromForm(userForm.operatorAccess),
@@ -666,6 +656,7 @@ export function UsersTabContainer({ adminToken, adminRole, adminSystemRole, onEr
       systemRole: user.system_role || "",
       active: user.active !== false,
       isDirector: user.is_director === true,
+      isTest: user.is_test === true,
       companyId: user.company_id ? String(user.company_id) : "",
       financeAccess: normalizeAccess(user.finance_access),
       operatorAccess: normalizeAccess(user.operator_access),
