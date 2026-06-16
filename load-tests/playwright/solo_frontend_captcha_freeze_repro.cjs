@@ -23,6 +23,15 @@ try {
 
 const rootDir = path.resolve(__dirname, "..", "..");
 const baseUrl = (process.env.EOPP_SOLO_FRONTEND_BASE_URL || "http://127.0.0.1:8766").replace(/\/+$/, "");
+const authMode = process.env.EOPP_SOLO_FRONTEND_AUTH_MODE || "session";
+const apiKeyList = (process.env.EOPP_SOLO_FRONTEND_API_KEYS || "")
+  .split(",")
+  .map((key) => key.trim())
+  .filter(Boolean);
+const ignoreHttpsErrors = process.env.EOPP_SOLO_FRONTEND_IGNORE_HTTPS_ERRORS === "1";
+if (ignoreHttpsErrors) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 const adminLogin = process.env.EOPP_SOLO_FRONTEND_ADMIN_LOGIN || process.env.EOPP_TECH_USER_LOGIN || "codex";
 const adminPassword =
   process.env.EOPP_SOLO_FRONTEND_ADMIN_PASSWORD ||
@@ -202,6 +211,22 @@ async function setupIdentity(index, adminCookie) {
 }
 
 async function loadOrCreateIdentities() {
+  if (authMode === "api-key-only") {
+    if (apiKeyList.length < browserCount) {
+      throw new Error(
+        `EOPP_SOLO_FRONTEND_API_KEYS must contain at least ${browserCount} key(s) in api-key-only mode`,
+      );
+    }
+    return {
+      identities: apiKeyList.slice(0, browserCount).map((key, index) => ({
+        login: `api-key-only-${index}`,
+        user: null,
+        key: { key, id: null, label: `api-key-only-${index}` },
+      })),
+      identitiesCreated: false,
+    };
+  }
+
   if (!refreshAuth && fs.existsSync(identitiesPath)) {
     const cached = readJson(identitiesPath);
     if (Array.isArray(cached.identities) && cached.identities.length >= browserCount) {
@@ -219,6 +244,10 @@ async function loadOrCreateIdentities() {
 }
 
 async function ensureUserCookie(identity, index) {
+  if (authMode === "api-key-only") {
+    return { cookie: "", authCache: "api-key-only" };
+  }
+
   const statePath = path.join(workDir, `auth-state-${index}.json`);
   if (!refreshAuth && fs.existsSync(statePath)) {
     const state = readJson(statePath);
@@ -337,13 +366,10 @@ async function openFrontend(identity, index) {
   const userDataDir = path.join(workDir, `profile-${index}`);
   fs.rmSync(userDataDir, { force: true, recursive: true });
   const { cookie, authCache } = await ensureUserCookie(identity, index);
-  const sessionValue = parseCookiePair(cookie, "eopp_admin_session");
-  if (!sessionValue) {
-    throw new Error(`missing eopp_admin_session cookie for ${identity.login}`);
-  }
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless,
+    ignoreHTTPSErrors: ignoreHttpsErrors,
     viewport: { width: 1280, height: 900 },
     args: [
       "--disable-background-timer-throttling",
@@ -351,15 +377,21 @@ async function openFrontend(identity, index) {
       "--no-first-run",
     ],
   });
-  await context.addCookies([
-    {
-      name: "eopp_admin_session",
-      value: sessionValue,
-      url: baseUrl,
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
+  if (authMode !== "api-key-only") {
+    const sessionValue = parseCookiePair(cookie, "eopp_admin_session");
+    if (!sessionValue) {
+      throw new Error(`missing eopp_admin_session cookie for ${identity.login}`);
+    }
+    await context.addCookies([
+      {
+        name: "eopp_admin_session",
+        value: sessionValue,
+        url: baseUrl,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+  }
   await context.addInitScript((apiKey) => {
     localStorage.setItem("kiosk_api_key", apiKey);
     localStorage.setItem("admin_session_active", "1");
@@ -378,7 +410,7 @@ async function openFrontend(identity, index) {
   });
   page.on("response", async (response) => {
     const url = response.url();
-    if (!url.includes("/solve") && !url.includes("/stream") && !url.includes("/auth/me")) return;
+    if (!url.includes("/solve") && !url.includes("/stream") && !url.includes("/auth/me") && !url.includes("/validate-key")) return;
     let body = "";
     if (!url.includes("/stream")) {
       try {
@@ -391,7 +423,8 @@ async function openFrontend(identity, index) {
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-eopp-component="StatusBar"]', { timeout: 15000 });
+  await page.waitForFunction(() => document.body && document.body.innerText.length > 0, null, { timeout: 15000 });
+  await delay(500);
 
   return { context, page, consoleMessages, requestFailures, apiResponses, authCache };
 }
@@ -407,7 +440,8 @@ async function pageDiagnostics(page) {
     clickSurfaceCount: document.querySelectorAll(".captcha-click-surface__image").length,
     markerCount: document.querySelectorAll(".captcha-click-surface__marker").length,
     cardCount: document.querySelectorAll(".captcha-card").length,
-    imageCount: document.querySelectorAll(".captcha-click-surface__image, .captcha-card img").length,
+    legacyIconImageCount: document.querySelectorAll('img[alt="Капча"]').length,
+    imageCount: document.querySelectorAll('.captcha-click-surface__image, .captcha-card img, img[alt="Капча"]').length,
   }));
 }
 
@@ -433,7 +467,7 @@ async function solveCaptcha(identity, selected) {
 async function clickFrontendCaptcha(frontend, round, index) {
   const page = frontend.page;
   const started = performance.now();
-  const image = page.locator(".captcha-click-surface__image").first();
+  const image = page.locator('.captcha-click-surface__image, img[alt="Капча"]').first();
   try {
     await image.waitFor({ state: "visible", timeout: 10000 });
   } catch (error) {
@@ -460,13 +494,13 @@ async function clickFrontendCaptcha(frontend, round, index) {
   try {
     await page.waitForFunction(
       (markerCount) =>
-        document.querySelectorAll(".captcha-click-surface__image").length === 0 ||
+        document.querySelectorAll('.captcha-click-surface__image, img[alt="Капча"]').length === 0 ||
         document.querySelectorAll(".captcha-click-surface__marker").length > markerCount,
       beforeMarkers,
       { timeout: 10000 },
     );
     await page.waitForFunction(
-      () => document.querySelectorAll(".captcha-click-surface__image").length === 0,
+      () => document.querySelectorAll('.captcha-click-surface__image, img[alt="Капча"]').length === 0,
       null,
       { timeout: 10000 },
     );
@@ -548,6 +582,8 @@ async function main() {
     const solved = results.map((item) => item.solvedMs);
     const summary = {
       base_url: baseUrl,
+      auth_mode: authMode,
+      ignore_https_errors: ignoreHttpsErrors,
       browsers: browserCount,
       rounds,
       total_expected: browserCount * rounds,
