@@ -464,7 +464,7 @@ async function solveCaptcha(identity, selected) {
   return { status: response.status, body, source: selected.source };
 }
 
-async function clickFrontendCaptcha(frontend, round, index) {
+async function clickFrontendCaptcha(frontend, round, index, solveDelayMs) {
   const page = frontend.page;
   const started = performance.now();
   const image = page.locator('.captcha-click-surface__image, img[alt="Капча"]').first();
@@ -476,7 +476,6 @@ async function clickFrontendCaptcha(frontend, round, index) {
     throw error;
   }
   const appearedMs = performance.now() - started;
-  const solveDelayMs = randomInt(solveDelayMinMs, solveDelayMaxMs);
   await delay(solveDelayMs);
 
   const box = await image.boundingBox();
@@ -549,8 +548,11 @@ async function main() {
 
     for (let round = 0; round < rounds; round += 1) {
       const selectedPayloads = identities.map((_, index) => payloadFor(pool, round, index));
+      const roundSolveDelayMs = randomInt(solveDelayMinMs, solveDelayMaxMs);
       const solvePromises = identities.map((identity, index) => solveCaptcha(identity, selectedPayloads[index]));
-      const clickPromises = frontends.map((frontend, index) => clickFrontendCaptcha(frontend, round, index));
+      const clickPromises = frontends.map((frontend, index) =>
+        clickFrontendCaptcha(frontend, round, index, roundSolveDelayMs),
+      );
       const solveResults = await Promise.all(solvePromises);
       const clickResults = await Promise.allSettled(clickPromises);
 

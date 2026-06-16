@@ -30,6 +30,10 @@ The solo repro caches its test users, API keys, and auth cookies under
 do not log in again while `/auth/me` still accepts the cookie. To force a fresh
 login/cache refresh:
 
+The solve delay is randomized once per round and shared by every browser in
+that round. This keeps parallel users clicking at nearly the same time while
+still varying the delay between rounds.
+
 ```powershell
 $env:EOPP_SOLO_FRONTEND_REFRESH_AUTH='1'
 node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
