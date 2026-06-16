@@ -43,6 +43,19 @@ const captchasPerBrowser = Number(process.env.EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BR
 const headless = process.env.EOPP_SOLO_FRONTEND_HEADLESS === "1";
 const solveDelayMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MS || 0);
 const clickIntervalMs = Number(process.env.EOPP_SOLO_FRONTEND_CLICK_INTERVAL_MS || 1000);
+const windowLayout = process.env.EOPP_SOLO_FRONTEND_WINDOW_LAYOUT || "grid";
+const windowWidth = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_WIDTH || 1280);
+const windowHeight = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_HEIGHT || 516);
+const windowStartX = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_START_X || 0);
+const windowStartY = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_START_Y || 0);
+const windowGap = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_GAP || 0);
+const devtools = process.env.EOPP_SOLO_FRONTEND_DEVTOOLS === "1";
+const openFrontendStaggerMs = Number(process.env.EOPP_SOLO_FRONTEND_OPEN_STAGGER_MS || 0);
+const openFrontendTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_OPEN_TIMEOUT_MS || 20000);
+const solveCaptchaTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_CAPTCHA_TIMEOUT_MS || 30000);
+const imageVisibleTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_IMAGE_TIMEOUT_MS || 10000);
+const solveResponseTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_RESPONSE_TIMEOUT_MS || 10000);
+const runId = process.env.EOPP_SOLO_FRONTEND_RUN_ID || `solo-${Date.now().toString(36)}`;
 const artifactsDir = path.join(__dirname, "artifacts");
 const workDir = path.resolve(
   process.env.EOPP_SOLO_FRONTEND_WORKDIR ||
@@ -89,6 +102,21 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function windowBoundsForIndex(index) {
+  if (headless || windowLayout === "off") return null;
+  if (windowLayout !== "grid") return null;
+
+  const columns = Math.min(2, Math.max(1, browserCount));
+  const row = Math.floor(index / columns);
+  const column = index % columns;
+  return {
+    x: windowStartX + column * (windowWidth + windowGap),
+    y: windowStartY + row * (windowHeight + windowGap),
+    width: windowWidth,
+    height: windowHeight,
+  };
+}
+
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
@@ -100,6 +128,22 @@ function writeJson(filePath, value) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function errorDetails(error) {
+  const details = {
+    message: error?.message || String(error),
+  };
+  if (error?.name) details.name = error.name;
+  if (error?.code) details.code = error.code;
+  if (error?.cause) {
+    details.cause = {
+      message: error.cause.message || String(error.cause),
+      name: error.cause.name,
+      code: error.cause.code,
+    };
+  }
+  return details;
 }
 
 async function request(pathname, options = {}) {
@@ -352,7 +396,7 @@ function payloadFor(pool, round, index, slot) {
   body.auto_solve_rucaptcha = false;
   body.timeout_metadata = true;
   body.test_no_timeout = true;
-  body.reservation_id = `solo-icon-click-${round}-${index}-${slot}`;
+  body.reservation_id = `${runId}-icon-click-${round}-${index}-${slot}`;
   return {
     body,
     source: {
@@ -368,15 +412,26 @@ async function openFrontend(identity, index) {
   const userDataDir = path.join(workDir, `profile-${index}`);
   fs.rmSync(userDataDir, { force: true, recursive: true });
   const { cookie, authCache } = await ensureUserCookie(identity, index);
+  const windowBounds = windowBoundsForIndex(index);
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless,
+    devtools,
     ignoreHTTPSErrors: ignoreHttpsErrors,
-    viewport: { width: 1280, height: 900 },
+    viewport: windowBounds
+      ? { width: Math.max(640, windowBounds.width - 16), height: Math.max(480, windowBounds.height - 96) }
+      : { width: 1280, height: 900 },
     args: [
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
       "--no-first-run",
+      ...(devtools ? ["--auto-open-devtools-for-tabs"] : []),
+      ...(windowBounds
+        ? [
+            `--window-position=${windowBounds.x},${windowBounds.y}`,
+            `--window-size=${windowBounds.width},${windowBounds.height}`,
+          ]
+        : []),
     ],
   });
   if (authMode !== "api-key-only") {
@@ -424,8 +479,22 @@ async function openFrontend(identity, index) {
     apiResponses.push({ url, status: response.status(), body });
   });
 
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => document.body && document.body.innerText.length > 0, null, { timeout: 15000 });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: openFrontendTimeoutMs });
+  await page.waitForFunction(
+    () => document.body && document.body.innerText.length > 0,
+    null,
+    { timeout: openFrontendTimeoutMs },
+  );
+  const takeoverButton = page.locator('[data-eopp-component="StatusBarForceReconnectButton"]').first();
+  if (await takeoverButton.isVisible({ timeout: 1500 }).catch(() => false)) {
+    await takeoverButton.click();
+    await takeoverButton.waitFor({ state: "hidden", timeout: openFrontendTimeoutMs }).catch(() => {});
+    await page.waitForFunction(
+      () => !document.querySelector('[data-eopp-component="StatusBarForceReconnectButton"]'),
+      null,
+      { timeout: openFrontendTimeoutMs },
+    ).catch(() => {});
+  }
   await delay(500);
 
   return { context, page, consoleMessages, requestFailures, apiResponses, authCache };
@@ -451,6 +520,7 @@ async function solveCaptcha(identity, selected) {
   const response = await fetch(`${baseUrl}/solve-captcha`, {
     method: "POST",
     headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(solveCaptchaTimeoutMs),
     body: JSON.stringify({
       ...selected.body,
       api_key: identity.key.key,
@@ -471,7 +541,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
   const started = performance.now();
   const image = page.locator('.captcha-click-surface__image, img[alt="Капча"]').first();
   try {
-    await image.waitFor({ state: "visible", timeout: 10000 });
+    await image.waitFor({ state: "visible", timeout: imageVisibleTimeoutMs });
   } catch (error) {
     const diagnostics = await pageDiagnostics(page);
     error.message += ` diagnostics=${JSON.stringify(diagnostics)}`;
@@ -486,7 +556,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
   const beforeMarkers = await page.locator(".captcha-click-surface__marker").count().catch(() => 0);
   const solveResponsePromise = page.waitForResponse(
     (response) => response.url().includes("/solve") && response.request().method() === "POST",
-    { timeout: 10000 },
+    { timeout: solveResponseTimeoutMs },
   );
 
   for (let clickIndex = 0; clickIndex < clickCount; clickIndex += 1) {
@@ -515,7 +585,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
         );
       },
       { markerCount: beforeMarkers, imageSrc: initialImageSrc },
-      { timeout: 10000 },
+      { timeout: solveResponseTimeoutMs },
     );
   } catch (error) {
     const diagnostics = await pageDiagnostics(page);
@@ -555,18 +625,40 @@ async function main() {
     const identities = identityState.identities;
 
     for (let index = 0; index < browserCount; index += 1) {
-      const frontend = await openFrontend(identities[index], index);
-      frontends.push(frontend);
-      contexts.push(frontend.context);
+      try {
+        const frontend = await openFrontend(identities[index], index);
+        frontends.push(frontend);
+        contexts.push(frontend.context);
+      } catch (error) {
+        failures.push({
+          round: null,
+          index,
+          slot: null,
+          stage: "open-frontend",
+          error: errorDetails(error),
+        });
+        break;
+      }
+      if (openFrontendStaggerMs > 0 && index < browserCount - 1) {
+        await delay(openFrontendStaggerMs);
+      }
     }
 
-    for (let round = 0; round < rounds; round += 1) {
+    for (let round = 0; round < (frontends.length === browserCount ? rounds : 0); round += 1) {
       const selectedPayloads = identities.map((_, index) =>
         Array.from({ length: captchasPerBrowser }, (_, slot) => payloadFor(pool, round, index, slot)),
       );
       const solveJobs = identities.flatMap((identity, index) =>
         selectedPayloads[index].map((selected, slot) =>
-          solveCaptcha(identity, selected).then((solveResult) => ({ round, index, slot, solveResult })),
+          solveCaptcha(identity, selected)
+            .then((solveResult) => ({ round, index, slot, solveResult }))
+            .catch((error) => ({
+              round,
+              index,
+              slot,
+              solveError: errorDetails(error),
+              source: selected.source,
+            })),
         ),
       );
       const solveResultsPromise = Promise.all(solveJobs);
@@ -581,8 +673,12 @@ async function main() {
 
       const solveResults = await solveResultsPromise;
 
-      for (const { index, slot, solveResult } of solveResults) {
-        captchaSources.push({ round, index, slot, ...solveResult.source });
+      for (const { index, slot, solveResult, solveError, source } of solveResults) {
+        captchaSources.push({ round, index, slot, ...(solveResult?.source || source || {}) });
+        if (solveError) {
+          failures.push({ round, index, slot, stage: "solve-captcha-exception", error: solveError, source });
+          continue;
+        }
         if (solveResult.status !== 200) {
           failures.push({ round, index, slot, stage: "solve-captcha", solveResult });
         } else if (solveResult.body?.status === "timeout") {
@@ -612,6 +708,7 @@ async function main() {
     const solved = results.map((item) => item.solvedMs);
     const summary = {
       base_url: baseUrl,
+      run_id: runId,
       auth_mode: authMode,
       ignore_https_errors: ignoreHttpsErrors,
       browsers: browserCount,
@@ -623,6 +720,11 @@ async function main() {
       captcha_type: "icon-click",
       icon_click_clicks_per_captcha: clickCount,
       icon_click_interval_ms: clickIntervalMs,
+      open_frontend_stagger_ms: openFrontendStaggerMs,
+      open_frontend_timeout_ms: openFrontendTimeoutMs,
+      solve_captcha_timeout_ms: solveCaptchaTimeoutMs,
+      image_visible_timeout_ms: imageVisibleTimeoutMs,
+      solve_response_timeout_ms: solveResponseTimeoutMs,
       captcha_pool: captchaPoolInfo,
       captcha_sources: captchaSources.slice(0, 40),
       solve_delay_ms: solveDelayMs,
