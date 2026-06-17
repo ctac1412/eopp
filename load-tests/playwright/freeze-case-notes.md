@@ -44,12 +44,12 @@ node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
 - Current local branch did not reproduce the freeze reliably after backend
   restart and repeated `4 browsers x 3 captchas` runs.
 - A previous local headed run did reproduce a frontend-side stall: one captcha
-  stayed active at `4/5`; no `/solve` request was observed for that captcha.
+  stayed active at `4/5`; no `/api/solve` request was observed for that captcha.
 - The marker overlay was checked and already has `pointer-events: none`, so
   marker interception is not the confirmed root cause.
 - Production direct `:8765` should be closed from outside. Nginx proxies
   `443 -> 127.0.0.1:8765`.
-- Production nginx has SSE-friendly `/stream` settings:
+- Production nginx has SSE-friendly `/api/stream` settings:
   `proxy_buffering off`, `proxy_read_timeout 1h`, `proxy_send_timeout 1h`.
 - Production uvicorn appears to run as a single app process with
   `limit_concurrency=100` unless `EOPP_CONCURRENCY` is set.
@@ -58,7 +58,7 @@ node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
 - Stale Playwright Chromium processes can keep SSE open. Confirm with:
 
 ```powershell
-curl.exe -k -b cookies.txt -c cookies.txt "https://45.12.75.110/check-stream"
+curl.exe -k -b cookies.txt -c cookies.txt "https://45.12.75.110/api/check-stream"
 ```
 
 If `has_active_stream=true`, the frontend should show the force reconnect

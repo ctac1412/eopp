@@ -21,7 +21,7 @@ def test_admin_tab_html_navigation_serves_spa(monkeypatch, tmp_path, isolated_ap
 
 
 def test_admin_operator_api_without_session_still_returns_json_401(client):
-    response = client.get("/admin/operators")
+    response = client.get("/api/admin/operators")
 
     assert response.status_code == 401
     assert response.json() == {"error": "Unauthorized"}

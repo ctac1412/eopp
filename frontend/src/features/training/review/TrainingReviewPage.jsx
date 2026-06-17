@@ -4,8 +4,6 @@ import { Alert, Card, Spin } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button, StatusTag, Toolbar } from "../../../ui";
 
-const API = "";
-
 const COLORS = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
 
 function formatMs(ms) {

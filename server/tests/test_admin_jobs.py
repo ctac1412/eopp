@@ -1,5 +1,5 @@
 def test_admin_jobs_requires_admin(client):
-    response = client.get("/admin/jobs")
+    response = client.get("/api/admin/jobs")
 
     assert response.status_code == 401
 
@@ -9,7 +9,7 @@ def test_admin_jobs_overview_lists_queue_counts(client, admin_token):
 
     job = enqueue_deferred_job("crm.enrich_usage", {"usage_log_id": 589})
 
-    response = client.get("/admin/jobs", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/admin/jobs", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     data = response.json()
@@ -30,7 +30,7 @@ def test_admin_job_detail_returns_parsed_payload(client, admin_token):
 
     job = enqueue_deferred_job("billing.calculate_usage_price", {"usage_log_id": 42})
 
-    response = client.get(f"/admin/jobs/{job.id}", headers={"X-Admin-Token": admin_token})
+    response = client.get(f"/api/admin/jobs/{job.id}", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     data = response.json()
@@ -44,7 +44,7 @@ def test_admin_run_jobs_drains_due_jobs(client, admin_token):
     enqueue_deferred_job("unknown.admin_test_job", {"value": 1})
 
     response = client.post(
-        "/admin/jobs/run",
+        "/api/admin/jobs/run",
         headers={"X-Admin-Token": admin_token},
         json={"max_jobs": 10},
     )
@@ -58,7 +58,7 @@ def test_admin_run_jobs_drains_due_jobs(client, admin_token):
 
 def test_admin_requeue_usage_allows_known_usage_jobs(client, admin_token):
     response = client.post(
-        "/admin/jobs/requeue-usage",
+        "/api/admin/jobs/requeue-usage",
         headers={"X-Admin-Token": admin_token},
         json={"usage_log_id": 589, "jobs": ["crm.enrich_usage", "billing.calculate_usage_price"]},
     )
@@ -74,7 +74,7 @@ def test_admin_requeue_usage_allows_known_usage_jobs(client, admin_token):
 
 def test_admin_requeue_usage_rejects_unknown_jobs(client, admin_token):
     response = client.post(
-        "/admin/jobs/requeue-usage",
+        "/api/admin/jobs/requeue-usage",
         headers={"X-Admin-Token": admin_token},
         json={"usage_log_id": 589, "jobs": ["danger.clear_all"]},
     )

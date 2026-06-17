@@ -61,7 +61,7 @@ def legacy_admin_api_key(isolated_api_db):
 @pytest.fixture
 def admin_token(client, legacy_admin_api_key):
     response = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "admin", "password": legacy_admin_api_key},
     )
     assert response.status_code == 200
@@ -72,19 +72,19 @@ def admin_token(client, legacy_admin_api_key):
 @pytest.fixture
 def api_key(client, admin_token):
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Pytest Key Owner", "login": "pytest.key.owner", "password": "strong-password"},
     )
     assert user.status_code == 200
     response = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "pytest_key", "max_uses": 1000, "user_id": user.json()["id"]},
     )
     assert response.status_code == 200
     login = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "pytest.key.owner", "password": "strong-password"},
     )
     assert login.status_code == 200
@@ -93,7 +93,7 @@ def api_key(client, admin_token):
 
 @pytest.fixture
 def active_sse(api_key):
-    """Populate sse_queues so /register-usage passes the active-stream check."""
+    """Populate sse_queues so /api/register-usage passes the active-stream check."""
     from src.repositories import api_key_repo
     from src.sse.manager import lock, sse_queues
 

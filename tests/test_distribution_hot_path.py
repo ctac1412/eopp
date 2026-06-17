@@ -217,7 +217,7 @@ def test_distribution_answer_route_handles_four_parallel_operators_without_secon
 
     def submit(payload):
         start = time.perf_counter()
-        response = client.post("/distribution/answer", json=payload)
+        response = client.post("/api/distribution/answer", json=payload)
         elapsed_ms = (time.perf_counter() - start) * 1000
         return response.status_code, elapsed_ms, response.json()
 
@@ -268,7 +268,7 @@ def test_distribution_answer_route_does_not_wait_for_archive_write(client, monke
 
     start = time.perf_counter()
     response = client.post(
-        "/distribution/answer",
+        "/api/distribution/answer",
         json={
             "captcha_id": "slow-archive-captcha",
             "operator_id": 1,
@@ -364,7 +364,7 @@ def test_distribution_answer_route_records_latency_breakdown(client):
     )
 
     response = client.post(
-        "/distribution/answer",
+        "/api/distribution/answer",
         json={
             "captcha_id": "metrics-captcha",
             "operator_id": 1,

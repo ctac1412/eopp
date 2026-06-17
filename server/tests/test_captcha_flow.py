@@ -1,6 +1,6 @@
 def test_solve_captcha_invalid_key(client):
     response = client.post(
-        "/solve-captcha",
+        "/api/solve-captcha",
         json={
             "api_key": "invalid",
             "auto_solve": True,
@@ -12,6 +12,6 @@ def test_solve_captcha_invalid_key(client):
 
 
 def test_broadcast_requires_admin(client):
-    response = client.post("/broadcast", json={"type": "test"})
+    response = client.post("/api/broadcast", json={"type": "test"})
 
     assert response.status_code == 401

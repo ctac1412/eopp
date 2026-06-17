@@ -30,7 +30,7 @@ for attempt in `$(seq 1 $script:HealthCheckRetries); do
   sleep $script:HealthCheckInterval
 done
 case "`$http_code" in 200|301|302) ;; *) echo "bad http code: `$http_code"; exit 20 ;; esac
-version_json=`$(curl -sk https://localhost:8765/version || true)
+version_json=`$(curl -sk https://localhost:8765/api/version || true)
 plugins_code=`$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8765/plugins/update.xml || true)
 case "`$plugins_code" in 200|404) ;; *) echo "bad plugins/update.xml code: `$plugins_code"; exit 21 ;; esac
 VERSION_JSON="`$version_json" python3 - <<'PY'
@@ -42,13 +42,13 @@ if expected and manifest.get('release_id') != expected:
 try:
     version = json.loads(os.environ.get('VERSION_JSON') or '{}')
 except json.JSONDecodeError as exc:
-    raise SystemExit('/version returned invalid json: {}'.format(exc)) from exc
+    raise SystemExit('/api/version returned invalid json: {}'.format(exc)) from exc
 if version.get('release_id') != manifest.get('release_id'):
-    raise SystemExit('release_id mismatch: /version {} != manifest {}'.format(version.get('release_id'), manifest.get('release_id')))
+    raise SystemExit('release_id mismatch: /api/version {} != manifest {}'.format(version.get('release_id'), manifest.get('release_id')))
 if version.get('git_sha') != manifest.get('git_sha'):
-    raise SystemExit('git_sha mismatch: /version {} != manifest {}'.format(version.get('git_sha'), manifest.get('git_sha')))
+    raise SystemExit('git_sha mismatch: /api/version {} != manifest {}'.format(version.get('git_sha'), manifest.get('git_sha')))
 if version.get('image') != manifest.get('image'):
-    raise SystemExit('image mismatch: /version {} != manifest {}'.format(version.get('image'), manifest.get('image')))
+    raise SystemExit('image mismatch: /api/version {} != manifest {}'.format(version.get('image'), manifest.get('image')))
 db_backup = manifest.get('db_backup')
 if not db_backup:
     raise SystemExit('db_backup missing from release.json')
@@ -62,7 +62,7 @@ if db.exists():
         conn.execute('PRAGMA integrity_check').fetchone()
     finally:
         conn.close()
-print('current/release.json and /version ok')
+print('current/release.json and /api/version ok')
 PY
 docker compose run --rm -e EOPP_AUTO_MIGRATE=0 eopp-prod python -m alembic -c server/alembic.ini current
 "@

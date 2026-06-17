@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "antd";
+import { apiRequest } from "../../../shared/api/httpClient";
 
 function formatActionTime(value) {
   if (!value) return "";
@@ -35,7 +36,7 @@ export function CaptchaReviewModal({ captcha, open, onClose }) {
     if (!open || !encodedCaptchaId) return;
 
     let cancelled = false;
-    fetch(`/admin/captcha-label/${encodedCaptchaId}`)
+    apiRequest(`/admin/captcha-label/${encodedCaptchaId}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!cancelled) setLabelPreview(data);

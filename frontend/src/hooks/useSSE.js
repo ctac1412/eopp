@@ -18,6 +18,7 @@
 import { useEffect } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
 import { playNewCaptchaSound, playChatSound, playScheduledNew } from "../utils/sounds";
+import { API_BASE_URL } from "../shared/api/endpoints";
 
 const sounded = new Set();
 
@@ -44,7 +45,7 @@ function useSSE(enabled = true) {
       if (closed) return;
       const store = useCaptchaStore.getState();
       const useForce = store.pendingForceReconnect;
-      let url = "/stream";
+      let url = `${API_BASE_URL}/stream`;
       if (apiKey) {
         const params = new URLSearchParams();
         if (superKioskMode) {

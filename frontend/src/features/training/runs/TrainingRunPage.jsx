@@ -4,8 +4,6 @@ import { Alert, Card, Progress, Spin } from "antd";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, MetricsStrip, StatusTag, Toolbar } from "../../../ui";
 
-const API = "";
-
 function randomInterval(min, max) {
   return Math.floor((min + Math.random() * (max - min)) * 1000);
 }

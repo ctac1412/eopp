@@ -22,12 +22,12 @@ def req(method, path, body=None):
 
 # 1. Get all captcha files
 print("Getting captcha list...")
-files = req("GET", "/admin/captcha-files")
+files = req("GET", "/api/admin/captcha-files")
 print(f"  {len(files)} captchas")
 
 # 2. Run classifier
 print("Running chain classifier...")
-result = req("POST", "/admin/ai/classify", {"classifier": "chain"})
+result = req("POST", "/api/admin/ai/classify", {"classifier": "chain"})
 results = result.get("results", [])
 print(f"  Total: {len(results)}, Figures: {result.get('figure_count',0)}, Digit: {result.get('digit_count',0)}, Puzzle: {result.get('puzzle_count',0)}")
 
@@ -40,7 +40,7 @@ for r in results:
     classification = kind if kind != "default" else "puzzle"
     if gt != classification:
         print(f"  Updating {cid[:8]}: {gt} -> {classification}")
-        req("PUT", f"/admin/captcha-files/{cid}/classification", {"classification": classification})
+        req("PUT", f"/api/admin/captcha-files/{cid}/classification", {"classification": classification})
         updated += 1
 
 print(f"\nUpdated {updated} classifications")

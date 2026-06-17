@@ -1,12 +1,12 @@
 def test_admin_company_tariff_crud(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Admin Billing Tariff Co"},
     ).json()
 
     create = client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={"price_create": 100, "price_reschedule": 50},
     )
@@ -14,13 +14,13 @@ def test_admin_company_tariff_crud(client, admin_token):
     assert create.json()["price_create"] == 100
 
     get = client.get(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
     )
     assert get.status_code == 200
 
     delete = client.delete(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
     )
     assert delete.status_code == 200
@@ -28,18 +28,18 @@ def test_admin_company_tariff_crud(client, admin_token):
 
 def test_admin_default_payout_splits_crud(client, admin_token):
     first_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Default Payout One", "login": "default.payout.one", "role": "manager"},
     ).json()
     second_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Default Payout Two", "login": "default.payout.two", "role": "manager"},
     ).json()
 
     saved = client.put(
-        "/admin/default-payout-splits",
+        "/api/admin/default-payout-splits",
         headers={"X-Admin-Token": admin_token},
         json={
             "splits": [
@@ -56,7 +56,7 @@ def test_admin_default_payout_splits_crud(client, admin_token):
     ]
 
     loaded = client.get(
-        "/admin/default-payout-splits",
+        "/api/admin/default-payout-splits",
         headers={"X-Admin-Token": admin_token},
     )
     assert loaded.status_code == 200
@@ -64,7 +64,7 @@ def test_admin_default_payout_splits_crud(client, admin_token):
 
 
 def test_admin_expenses_empty_list(client, admin_token):
-    response = client.get("/admin/expenses", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/admin/expenses", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     assert response.json() == {"expenses": [], "total": 0}

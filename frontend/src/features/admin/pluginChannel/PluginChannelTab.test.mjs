@@ -3,18 +3,14 @@ import { readFile } from "node:fs/promises";
 
 const adminPage = await readFile(new URL("../AdminPage.jsx", import.meta.url), "utf8");
 const tabs = await readFile(new URL("../shared/tabs.js", import.meta.url), "utf8");
-const permissions = await readFile(new URL("../../../../../server/src/modules/access/permissions.py", import.meta.url), "utf8");
-const component = await readFile(new URL("./PluginChannelTab.jsx", import.meta.url), "utf8");
+const permissions = await readFile(
+  new URL("../../../../../server/src/modules/access/permissions.py", import.meta.url),
+  "utf8",
+);
 
-assert.match(tabs, /id:\s*"channels"/);
-assert.match(tabs, /path:\s*"channels"/);
-assert.match(permissions, /"channels"/);
-assert.match(tabs, /PluginChannelTab/);
-assert.match(tabs, /component:\s*PluginChannelTabContainer/);
-assert.match(component, /Панель управления сессией/);
-assert.match(component, /Исполнитель/);
-assert.match(component, /executor_token/);
-assert.match(component, /\/admin\/plugin-channel\/sessions/);
-assert.match(component, /\/claim/);
-assert.match(component, /\/commands/);
-assert.match(component, /\/close/);
+assert.doesNotMatch(tabs, /id:\s*"channels"/);
+assert.doesNotMatch(tabs, /path:\s*"channels"/);
+assert.doesNotMatch(tabs, /PluginChannelTab/);
+assert.doesNotMatch(tabs, /component:\s*PluginChannelTabContainer/);
+assert.doesNotMatch(adminPage, /channels/);
+assert.doesNotMatch(permissions, /"channels"/);

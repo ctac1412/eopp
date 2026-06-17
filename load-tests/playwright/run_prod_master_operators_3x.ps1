@@ -74,8 +74,8 @@ function Wait-EoppPreflightClean {
   try {
     if ($logins.Count -gt 0 -and $passwords.Count -gt 0) {
       $body = @{ login = $logins[0]; password = $passwords[0] } | ConvertTo-Json -Compress
-      Invoke-EoppCurlJson -Url "$base/auth/login" -CookieFile $cookieFile -Method "POST" -Body $body | Out-Null
-      $dashboard = Invoke-EoppCurlJson -Url "$base/admin/dashboard" -CookieFile $cookieFile
+      Invoke-EoppCurlJson -Url "$base/api/auth/login" -CookieFile $cookieFile -Method "POST" -Body $body | Out-Null
+      $dashboard = Invoke-EoppCurlJson -Url "$base/api/admin/dashboard" -CookieFile $cookieFile
     }
   } catch {
     Write-Host "PREFLIGHT_DASHBOARD unavailable: $($_.Exception.Message)"
@@ -101,8 +101,8 @@ function Wait-EoppPreflightClean {
         $masterCookieFile = Join-Path $artifactDir "preflight-master-$i-cookies.txt"
         Remove-Item -Force $masterCookieFile -ErrorAction SilentlyContinue
         $loginBody = @{ login = $logins[$i]; password = $passwords[$i] } | ConvertTo-Json -Compress
-        Invoke-EoppCurlJson -Url "$base/auth/login" -CookieFile $masterCookieFile -Method "POST" -Body $loginBody | Out-Null
-        $state = Invoke-EoppCurlJson -Url "$base/check-stream" -CookieFile $masterCookieFile
+        Invoke-EoppCurlJson -Url "$base/api/auth/login" -CookieFile $masterCookieFile -Method "POST" -Body $loginBody | Out-Null
+        $state = Invoke-EoppCurlJson -Url "$base/api/check-stream" -CookieFile $masterCookieFile
         if ($state -and $state.has_active_stream) {
           $active += $logins[$i]
         }

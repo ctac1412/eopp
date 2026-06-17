@@ -68,7 +68,7 @@ def admin_token(client):
     admin_key = next((k for k in keys if k["is_admin"]), None)
     assert admin_key is not None, "Admin key not found in test DB"
     response = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "admin", "password": admin_key["key"]},
     )
     assert response.status_code == 200
@@ -80,7 +80,7 @@ def admin_token(client):
 def api_key(client, admin_token):
     """doc"""
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Pytest Key Owner",
@@ -91,13 +91,13 @@ def api_key(client, admin_token):
     )
     assert user.status_code == 200
     response = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "pytest_key", "max_uses": 1000, "user_id": user.json()["id"]},
     )
     assert response.status_code == 200
     login = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "pytest.key.owner", "password": "strong-password"},
     )
     assert login.status_code == 200
@@ -112,7 +112,7 @@ def login_as_key_owner(client, api_key):
     user = user_repo.get_user(record.user_id)
     assert user is not None and user["login"]
     response = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": user["login"], "password": "strong-password"},
     )
     assert response.status_code == 200
@@ -169,7 +169,7 @@ def attach_api_key_to_company(api_key_id, company_id):
 def create_api_key_for_company(client, admin_token, label, company_id, *, max_uses=None):
     suffix = datetime.now(UTC).timestamp()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": f"{label} owner",
@@ -184,7 +184,7 @@ def create_api_key_for_company(client, admin_token, label, company_id, *, max_us
     if max_uses is not None:
         payload["max_uses"] = max_uses
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json=payload,
     )
@@ -207,7 +207,7 @@ class TestAPIKeys:
     def test_create_key(self, client, admin_token):
         """doc"""
         response = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "test", "max_uses": 10},
         )
@@ -219,21 +219,21 @@ class TestAPIKeys:
     def test_user_can_have_only_one_personal_key(self, client, admin_token):
         """doc"""
         user = client.post(
-            "/admin/users",
+            "/api/admin/users",
             headers={"X-Admin-Token": admin_token},
             json={"name": "Key Owner", "login": "key.owner", "password": "strong-password"},
         )
         assert user.status_code == 200
         user_id = user.json()["id"]
         first = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "owner-key", "user_id": user_id},
         )
         assert first.status_code == 200
 
         second = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "owner-key-2", "user_id": user_id},
         )
@@ -244,19 +244,19 @@ class TestAPIKeys:
     def test_disabled_user_personal_key_is_invalid(self, client, admin_token):
         """doc"""
         user = client.post(
-            "/admin/users",
+            "/api/admin/users",
             headers={"X-Admin-Token": admin_token},
             json={"name": "Disabled Owner", "login": "disabled.owner", "password": "strong-password"},
         )
         assert user.status_code == 200
         user_id = user.json()["id"]
         key = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "disabled-owner-key", "user_id": user_id},
         ).json()
         disabled = client.put(
-            f"/admin/users/{user_id}",
+            f"/api/admin/users/{user_id}",
             headers={"X-Admin-Token": admin_token},
             json={"name": "Disabled Owner", "login": "disabled.owner", "role": "manager", "active": False},
         )
@@ -270,19 +270,19 @@ class TestAPIKeys:
 
     def test_list_keys(self, client, admin_token):
         """doc"""
-        client.post("/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "test2"})
-        response = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+        client.post("/api/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "test2"})
+        response = client.get("/api/api-keys", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
         assert isinstance(response.json(), list)
 
     def test_public_key_list_does_not_expose_secret_keys(self, client, admin_token):
         created = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "public_safe"},
         ).json()
 
-        response = client.get("/api-keys/public")
+        response = client.get("/api/api-keys/public")
 
         assert response.status_code == 200
         public_key = next(item for item in response.json() if item["label"] == "public_safe")
@@ -304,7 +304,7 @@ class TestAPIKeys:
         create = create_api_key_for_company(client, admin_token, "validate_peak", company["id"])
         login_as_key_owner(client, create["key"])
 
-        response = client.get("/validate-key")
+        response = client.get("/api/validate-key")
 
         assert response.status_code == 200
         data = response.json()
@@ -315,11 +315,11 @@ class TestAPIKeys:
     def test_update_key(self, client, admin_token):
         """doc"""
         create = client.post(
-            "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "upd"}
+            "/api/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "upd"}
         )
         kid = create.json()["id"]
         response = client.put(
-            f"/api-keys/{kid}",
+            f"/api/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
             json={"label": "updated"},
         )
@@ -329,27 +329,27 @@ class TestAPIKeys:
     def test_delete_key(self, client, admin_token):
         """doc"""
         create = client.post(
-            "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "del"}
+            "/api/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "del"}
         )
         kid = create.json()["id"]
-        response = client.delete(f"/api-keys/{kid}", headers={"X-Admin-Token": admin_token})
+        response = client.delete(f"/api/api-keys/{kid}", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_validate_key_valid(self, client, admin_token, api_key):
         """doc"""
-        response = client.get("/validate-key")
+        response = client.get("/api/validate-key")
         assert response.status_code == 200
         assert response.json()["valid"] is True
 
     def test_validate_key_invalid(self, client):
         """doc"""
         client.cookies.clear()
-        response = client.get("/validate-key?api_key=invalid")
+        response = client.get("/api/validate-key?api_key=invalid")
         assert response.status_code == 401
 
     def test_key_status(self, client, admin_token, api_key):
         """doc"""
-        response = client.get("/api-key-status")
+        response = client.get("/api/api-key-status")
         assert response.status_code == 200
         data = response.json()
         assert "remaining" in data
@@ -358,11 +358,11 @@ class TestAPIKeys:
     def test_reset_usage(self, client, admin_token):
         """doc"""
         create = client.post(
-            "/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "rst"}
+            "/api/api-keys", headers={"X-Admin-Token": admin_token}, json={"label": "rst"}
         )
         kid = create.json()["id"]
         response = client.post(
-            f"/api-keys/{kid}/reset-usage", headers={"X-Admin-Token": admin_token}
+            f"/api/api-keys/{kid}/reset-usage", headers={"X-Admin-Token": admin_token}
         )
         assert response.status_code == 200
         assert response.json()["usage_count"] == 0
@@ -375,7 +375,7 @@ class TestUsage:
     def test_register_usage(self, client, api_key, active_sse):
         """doc"""
         response = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={
                 "reservation_id": "res-123",
                 "captcha_id": "capt-123",
@@ -387,7 +387,7 @@ class TestUsage:
     def test_register_usage_with_config(self, client, api_key, active_sse):
         """doc"""
         response = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={
                 "reservation_id": "res-456",
                 "config_json": {"facilityId": "APP1", "slotDate": "2026-01-01"},
@@ -401,13 +401,13 @@ class TestUsage:
         """doc"""
         # comment
         reg = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"reservation_id": "res-conf"},
         )
         uid = reg.json()["usage_log_id"]
 
         # comment
-        response = client.post("/confirm-usage", json={"usage_log_id": uid})
+        response = client.post("/api/confirm-usage", json={"usage_log_id": uid})
         assert response.status_code == 200
 
     def test_confirm_usage_does_not_exceed_max_uses(self, client, admin_token):
@@ -415,7 +415,7 @@ class TestUsage:
         from src.sse.manager import lock, sse_queues
 
         user = client.post(
-            "/admin/users",
+            "/api/admin/users",
             headers={"X-Admin-Token": admin_token},
             json={
                 "name": "Limited Confirm Owner",
@@ -426,7 +426,7 @@ class TestUsage:
         )
         assert user.status_code == 200
         created = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "limited_confirm", "max_uses": 1, "user_id": user.json()["id"]},
         ).json()
@@ -437,23 +437,23 @@ class TestUsage:
 
         try:
             first = client.post(
-                "/register-usage",
+                "/api/register-usage",
                 json={"reservation_id": "limited-1"},
             ).json()["usage_log_id"]
             second = client.post(
-                "/register-usage",
+                "/api/register-usage",
                 json={"reservation_id": "limited-2"},
             ).json()["usage_log_id"]
 
             assert client.post(
-                "/confirm-usage", json={"usage_log_id": first}
+                "/api/confirm-usage", json={"usage_log_id": first}
             ).status_code == 200
             response = client.post(
-                "/confirm-usage", json={"usage_log_id": second}
+                "/api/confirm-usage", json={"usage_log_id": second}
             )
 
             assert response.status_code == 429
-            status = client.get("/api-key-status").json()
+            status = client.get("/api/api-key-status").json()
             assert status["remaining"] == 0
         finally:
             with lock:
@@ -495,12 +495,12 @@ class TestUsage:
         )
 
         response = client.post(
-            "/confirm-usage", json={"usage_log_id": uid}
+            "/api/confirm-usage", json={"usage_log_id": uid}
         )
 
         assert response.status_code == 200
         run_billing_jobs_for_usage(uid)
-        logs = client.get("/usage-log").json()
+        logs = client.get("/api/usage-log").json()
         entry = next(item for item in logs if item["id"] == uid)
         assert entry["price"] == 9000
 
@@ -537,25 +537,25 @@ class TestUsage:
         )
 
         response = client.post(
-            "/confirm-usage", json={"usage_log_id": uid}
+            "/api/confirm-usage", json={"usage_log_id": uid}
         )
 
         assert response.status_code == 200
         run_billing_jobs_for_usage(uid)
-        logs = client.get("/usage-log").json()
+        logs = client.get("/api/usage-log").json()
         entry = next(item for item in logs if item["id"] == uid)
         assert entry["price"] == 7000
 
     def test_fail_usage(self, client, api_key, active_sse):
         """doc"""
         reg = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"reservation_id": "res-fail"},
         )
         uid = reg.json()["usage_log_id"]
 
         response = client.post(
-            "/fail-usage",
+            "/api/fail-usage",
             json={
                 "usage_log_id": uid,
                 "error_message": "Error",
@@ -566,27 +566,27 @@ class TestUsage:
 
     def test_usage_log_requires_scope(self, client):
         """doc"""
-        response = client.get("/usage-log")
+        response = client.get("/api/usage-log")
         assert response.status_code == 401
 
     def test_usage_log_filter(self, client, api_key):
         """doc"""
-        response = client.get("/usage-log")
+        response = client.get("/api/usage-log")
         assert response.status_code == 200
 
     def test_usage_log_invalid_key(self, client):
         """doc"""
-        response = client.get("/usage-log?api_key=invalid")
+        response = client.get("/api/usage-log?api_key=invalid")
         assert response.status_code == 401
 
     def test_usage_log_api_key_id_requires_admin(self, client):
         """doc"""
-        response = client.get("/usage-log?api_key_id=1")
+        response = client.get("/api/usage-log?api_key_id=1")
         assert response.status_code == 401
 
     def test_usage_log_admin_scope(self, client, admin_token):
         """doc"""
-        response = client.get("/usage-log", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/usage-log", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
 
@@ -597,7 +597,7 @@ class TestMock:
     def test_set_mock_config(self, client, admin_token):
         """doc"""
         response = client.post(
-            "/mock-config",
+            "/api/mock-config",
             headers={"X-Admin-Token": admin_token},
             json={"endpoints": {"/test": {"mode": "429"}}},
         )
@@ -606,22 +606,22 @@ class TestMock:
     def test_get_mock_config(self, client, admin_token):
         """doc"""
         client.post(
-            "/mock-config",
+            "/api/mock-config",
             headers={"X-Admin-Token": admin_token},
             json={"endpoints": {"/test": {"mode": "success"}}},
         )
-        response = client.get("/mock-config")
+        response = client.get("/api/mock-config")
         assert response.status_code == 200
 
     def test_reset_mock_config(self, client, admin_token):
         """doc"""
-        response = client.delete("/mock-config", headers={"X-Admin-Token": admin_token})
+        response = client.delete("/api/mock-config", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_mock_captcha(self, client):
         """doc"""
         response = client.post(
-            "/reservations-api/v1/captcha",
+            "/api/reservations-api/v1/captcha",
             json={"payload": {"facilityId": "f1", "timeSlotData": "data"}},
         )
         assert response.status_code == 200
@@ -634,7 +634,7 @@ class TestMock:
     def test_mock_captcha_validate(self, client):
         """doc"""
         response = client.post(
-            "/reservations-api/v1/captcha-validate",
+            "/api/reservations-api/v1/captcha-validate",
             json={
                 "captchaToken": "token",
                 "answer": ["tile-1"],
@@ -654,20 +654,20 @@ class TestMock:
     def test_mock_slots(self, client):
         """doc"""
         response = client.get(
-            "/reservations-api/v1/timeslot/AvailableSlots?facilityId=f1&date=2026-01-01"
+            "/api/reservations-api/v1/timeslot/AvailableSlots?facilityId=f1&date=2026-01-01"
         )
         assert response.status_code == 200
         assert "slots" in response.json()
 
     def test_mock_reschedule(self, client):
         """doc"""
-        response = client.post("/reservations-api/v1/Reschedule", json={"reservationId": "r1"})
+        response = client.post("/api/reservations-api/v1/Reschedule", json={"reservationId": "r1"})
         assert response.status_code == 200
         assert response.json()["isSuccess"] is True
 
     def test_mock_submit_draft(self, client):
         """doc"""
-        response = client.post("/reservations-api/v1/SubmitDraft", json={"facilityId": "f1"})
+        response = client.post("/api/reservations-api/v1/SubmitDraft", json={"facilityId": "f1"})
         assert response.status_code == 200
         assert response.json()["isSuccess"] is True
 
@@ -679,13 +679,13 @@ class TestAdmin:
     @pytest.mark.parametrize(
         "path",
         [
-            "/admin/invoices",
-            "/admin/expenses",
-            "/admin/payouts",
-            "/admin/users",
-            "/admin/captchas",
-            "/admin/captcha-files",
-            "/admin/backend-logs",
+            "/api/admin/invoices",
+            "/api/admin/expenses",
+            "/api/admin/payouts",
+            "/api/admin/users",
+            "/api/admin/captchas",
+            "/api/admin/captcha-files",
+            "/api/admin/backend-logs",
         ],
     )
     def test_admin_routes_unauthorized(self, client, path):
@@ -695,12 +695,12 @@ class TestAdmin:
     @pytest.mark.parametrize(
         "path",
         [
-            "/admin/invoices",
-            "/admin/expenses",
-            "/admin/payouts",
-            "/admin/users",
-            "/admin/captchas",
-            "/admin/captcha-files",
+            "/api/admin/invoices",
+            "/api/admin/expenses",
+            "/api/admin/payouts",
+            "/api/admin/users",
+            "/api/admin/captchas",
+            "/api/admin/captcha-files",
         ],
     )
     def test_admin_routes_authorized(self, client, admin_token, path):
@@ -713,7 +713,7 @@ class TestAdmin:
 
         admin_key = next(key for key in list_keys() if key["is_admin"])
         response = client.post(
-            "/admin/auth",
+            "/api/auth/login",
             json={"login": "admin", "password": admin_key["key"]},
         )
         assert response.status_code == 200
@@ -721,20 +721,20 @@ class TestAdmin:
 
     def test_admin_auth_fail(self, client):
         """doc"""
-        response = client.post("/admin/auth", json={"token": "wrong"})
+        response = client.post("/api/auth/login", json={"token": "wrong"})
         assert response.status_code == 401
 
     def test_admin_auth_non_admin_key(self, client, admin_token):
         """doc"""
         # comment
         resp = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "non_admin_key"},
         )
         normal_key = resp.json()["key"]
 
-        response = client.post("/admin/auth", json={"token": normal_key})
+        response = client.post("/api/auth/login", json={"token": normal_key})
         assert response.status_code == 401
 
     def test_backend_logs_tail(self, client, admin_token, tmp_path, monkeypatch):
@@ -743,7 +743,7 @@ class TestAdmin:
         monkeypatch.setenv("EOPP_BACKEND_LOG_PATH", str(log_file))
 
         response = client.get(
-            "/admin/backend-logs?lines=3",
+            "/api/admin/backend-logs?lines=3",
             headers={"X-Admin-Token": admin_token},
         )
 
@@ -756,13 +756,13 @@ class TestAdmin:
         from src.db.audit_log import list_audit_log
 
         created = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "audit_target"},
         ).json()
 
         response = client.patch(
-            f"/admin/api-keys/{created['id']}",
+            f"/api/admin/api-keys/{created['id']}",
             headers={"X-Admin-Token": admin_token},
             json={"label": "audit_target_updated"},
         )
@@ -796,7 +796,7 @@ class TestAdmin:
     @pytest.mark.skip(reason="plugin-channel routers are intentionally disabled until consumers exist")
     def test_plugin_channel_admin_router_is_disabled(self, client, admin_token):
         response = client.post(
-            "/admin/plugin-channel/sessions/1/claim",
+            "/api/admin/plugin-channel/sessions/1/claim",
             headers={"X-Admin-Token": admin_token},
         )
 
@@ -810,10 +810,10 @@ class TestAdmin:
 
         local_client = TestClient(create_app())
 
-        assert local_client.get("/validate-key?api_key=missing").status_code == 401
-        assert local_client.get("/validate-key?api_key=missing").status_code == 401
-        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 401
-        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 401
+        assert local_client.get("/api/validate-key?api_key=missing").status_code == 401
+        assert local_client.get("/api/validate-key?api_key=missing").status_code == 401
+        assert local_client.post("/api/solve-captcha", json={"api_key": "missing"}).status_code == 401
+        assert local_client.post("/api/solve-captcha", json={"api_key": "missing"}).status_code == 401
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
@@ -823,7 +823,7 @@ class TestAdmin:
             client,
             admin_token,
             "ООО API Open",
-            {"price_create": 1500, "price_reschedule": 7000},
+            {"price_create": 1500, "price_reschedule": 7000, "price_create_peak": 1500},
         )
         created = create_api_key_for_company(client, admin_token, "api_open_issue", company["id"])
         log_id = log_usage(
@@ -836,12 +836,12 @@ class TestAdmin:
             },
         )
         client.put(
-            "/admin/company-billing-settings/ООО API Open",
+            "/api/admin/company-billing-settings/ООО API Open",
             headers={"X-Admin-Token": admin_token},
             json={"auto_invoice_reopen": True},
         )
         client.post(
-            "/admin/auto-invoices/open",
+            "/api/admin/auto-invoices/open",
             headers={"X-Admin-Token": admin_token},
             json={"company": "ООО API Open"},
         )
@@ -849,7 +849,7 @@ class TestAdmin:
         run_billing_jobs_for_usage(log_id)
 
         response = client.post(
-            "/admin/open-invoices/issue",
+            "/api/admin/open-invoices/issue",
             headers={"X-Admin-Token": admin_token},
             json={"company": "ООО API Open"},
         )
@@ -864,11 +864,11 @@ class TestAdmin:
         from src.db import list_keys
 
         admin_key = next(key for key in list_keys() if key["is_admin"])
-        login = client.post("/admin/auth", json={"login": "admin", "password": admin_key["key"]})
+        login = client.post("/api/auth/login", json={"login": "admin", "password": admin_key["key"]})
         assert login.status_code == 200
 
         old_payload = client.put(
-            "/admin/company-billing-settings/Mode API Co",
+            "/api/admin/company-billing-settings/Mode API Co",
             headers={"X-Admin-Token": admin_token},
             json={"auto_invoice_reopen": True},
         )
@@ -881,7 +881,7 @@ class TestAdmin:
         assert old_payload.json()["default_tax_user_id"] is None
 
         response = client.put(
-            "/admin/company-billing-settings/Mode API Co",
+            "/api/admin/company-billing-settings/Mode API Co",
             headers={"X-Admin-Token": admin_token},
             json={
                 "auto_invoice_reopen": False,
@@ -902,39 +902,43 @@ class TestAdmin:
 
     def test_admin_streams(self, client, admin_token):
         """doc"""
-        response = client.get("/admin/streams", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/admin/streams", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_admin_streams_unauthorized(self, client):
         """doc"""
-        response = client.get("/admin/streams")
+        response = client.get("/api/admin/streams")
         assert response.status_code == 401
 
     def test_admin_test_stats(self, client, admin_token):
         """doc"""
-        response = client.get("/admin/test-stats", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/admin/test-stats", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
         assert response.json() is not None
 
-    def test_admin_benchmark(self, client, admin_token):
+    def test_admin_benchmark(self, client, admin_token, monkeypatch):
         """doc"""
-        response = client.get("/admin/benchmark", headers={"X-Admin-Token": admin_token})
+        import src.routes.admin as admin_routes
+
+        monkeypatch.setattr(admin_routes, "run_benchmark_cached", lambda: {"ok": True})
+        response = client.post("/api/admin/benchmark", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
+        assert response.json()["ok"] is True
 
     def test_daily_report_and_text(self, client, admin_token):
-        report = client.get("/admin/daily-report", headers={"X-Admin-Token": admin_token})
+        report = client.get("/api/admin/daily-report", headers={"X-Admin-Token": admin_token})
         assert report.status_code == 200
         payload = report.json()
         assert "date" in payload
         assert "revenue_total" in payload
 
-        text = client.get("/admin/daily-report-text", headers={"X-Admin-Token": admin_token})
+        text = client.get("/api/admin/daily-report-text", headers={"X-Admin-Token": admin_token})
         assert text.status_code == 200
         assert "text" in text.json()
 
     def test_telegram_preview(self, client, admin_token):
         preview = client.post(
-            "/admin/telegram/preview",
+            "/api/admin/telegram/preview",
             headers={"X-Admin-Token": admin_token},
             json={"command": "/status"},
         )
@@ -946,19 +950,19 @@ class TestCaptchaRecords:
     """doc"""
 
     def test_captchas_require_admin(self, client):
-        response = client.get("/captchas")
+        response = client.get("/api/captchas")
         assert response.status_code == 401
 
     def test_captchas_allow_admin(self, client, admin_token):
-        response = client.get("/captchas", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/captchas", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
 
     def test_delete_captcha_requires_admin(self, client):
-        response = client.delete("/captchas/1")
+        response = client.delete("/api/captchas/1")
         assert response.status_code == 401
 
     def test_delete_usage_log_requires_admin(self, client):
-        response = client.delete("/usage-log/1")
+        response = client.delete("/api/usage-log/1")
         assert response.status_code == 401
 
     def test_public_captchas_show_limited_anonymized_records(self, client, api_key):
@@ -981,7 +985,7 @@ class TestCaptchaRecords:
         conn.commit()
         conn.close()
 
-        response = client.get("/public/captchas")
+        response = client.get("/api/public/captchas")
 
         assert response.status_code == 200
         assert response.json() == [
@@ -1021,7 +1025,7 @@ class TestCaptchaRecords:
         monkeypatch.setattr(captcha_service, "replay_captchas", lambda *args, **kwargs: called.append(args) or 1)
 
         response = client.post(
-            "/public/captchas/send-selected",
+            "/api/public/captchas/send-selected",
             json={"captcha_ids": ["foreign-captcha"]},
         )
 
@@ -1035,7 +1039,7 @@ class TestCaptchaRecords:
         monkeypatch.setattr(captcha_service, "replay_captchas", lambda *args, **kwargs: 0)
 
         response = client.post(
-            "/public/captchas/send-selected",
+            "/api/public/captchas/send-selected",
             json={"captcha_ids": ["missing-payload-captcha"]},
         )
 
@@ -1107,6 +1111,8 @@ class TestCaptchaRecords:
         all_dir = tmp_path / "all"
         all_dir.mkdir()
         monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED", "1")
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_SOLVER_METADATA_ENABLED", "1")
         monkeypatch.setattr(captchas_db, "CAPTCHA_ALL_DIR", str(all_dir))
 
         captcha_id = "48fef3307bde851f"
@@ -1193,7 +1199,7 @@ class TestCaptchaRecords:
         monkeypatch.setattr(captcha_routes, "captcha_timeout", 0.01)
 
         response = client.post(
-            "/solve-captcha",
+            "/api/solve-captcha",
             json={
                 "auto_solve": False,
                 "timeout_metadata": True,
@@ -1214,7 +1220,7 @@ class TestCaptchaRecords:
         monkeypatch.setattr(captcha_routes, "captcha_timeout", 0.01)
 
         response = client.post(
-            "/solve-captcha",
+            "/api/solve-captcha",
             json={
                 "auto_solve": False,
                 "reservation_id": "real-reservation",
@@ -1266,7 +1272,7 @@ class TestCaptchaRecords:
             encoding="utf-8",
         )
 
-        response = client.get("/admin/captcha-files", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/admin/captcha-files", headers={"X-Admin-Token": admin_token})
 
         assert response.status_code == 200
         data = response.json()
@@ -1330,7 +1336,7 @@ class TestCaptcha:
         """doc"""
         client.cookies.clear()
         response = client.post(
-            "/solve-captcha",
+            "/api/solve-captcha",
             json={
                 "api_key": "invalid",
                 "auto_solve": True,
@@ -1342,7 +1348,7 @@ class TestCaptcha:
     def test_broadcast(self, client, admin_token):
         """doc"""
         response = client.post(
-            "/broadcast",
+            "/api/broadcast",
             headers={"X-Admin-Token": admin_token},
             json={"type": "test"},
         )
@@ -1350,7 +1356,7 @@ class TestCaptcha:
 
     def test_broadcast_unauthorized(self, client):
         """doc"""
-        response = client.post("/broadcast", json={"type": "test"})
+        response = client.post("/api/broadcast", json={"type": "test"})
         assert response.status_code == 401
 
 
@@ -1361,13 +1367,13 @@ class TestTariffs:
     def test_api_key_tariff_endpoints_are_removed(self, client, admin_token):
         """doc"""
         headers = {"X-Admin-Token": admin_token}
-        assert client.get("/admin/tariffs/999", headers=headers).status_code == 404
+        assert client.get("/api/admin/tariffs/999", headers=headers).status_code == 404
         assert client.put(
-            "/admin/tariffs/999",
+            "/api/admin/tariffs/999",
             headers=headers,
             json={"price_create": 100, "price_reschedule": 50},
         ).status_code == 404
-        assert client.delete("/admin/tariffs/999", headers=headers).status_code == 404
+        assert client.delete("/api/admin/tariffs/999", headers=headers).status_code == 404
 
 
 # === Update API Key Tests ===
@@ -1377,13 +1383,13 @@ class TestUpdateApiKey:
     def test_update_api_key_comment(self, client, admin_token):
         """doc"""
         create = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "comment_test"},
         )
         kid = create.json()["id"]
         response = client.patch(
-            f"/admin/api-keys/{kid}",
+            f"/api/admin/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
             json={"comment": "Test comment"},
         )
@@ -1394,7 +1400,7 @@ class TestUpdateApiKey:
     def test_update_api_key_is_admin(self, client, admin_token):
         """doc"""
         create = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "admin_test"},
         )
@@ -1403,7 +1409,7 @@ class TestUpdateApiKey:
 
         # comment
         response = client.patch(
-            f"/admin/api-keys/{kid}",
+            f"/api/admin/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
             json={"is_admin": True},
         )
@@ -1413,12 +1419,12 @@ class TestUpdateApiKey:
 
         # comment
         new_key = create.json()["key"]
-        auth_resp = client.post("/admin/auth", json={"token": new_key})
+        auth_resp = client.post("/api/auth/login", json={"token": new_key})
         assert auth_resp.status_code == 401
 
         # comment
         response = client.patch(
-            f"/admin/api-keys/{kid}",
+            f"/api/admin/api-keys/{kid}",
             headers={"X-Admin-Token": admin_token},
             json={"is_admin": False},
         )
@@ -1426,7 +1432,7 @@ class TestUpdateApiKey:
         assert response.json()["is_admin"] is False
 
         # comment
-        auth_resp = client.post("/admin/auth", json={"token": new_key})
+        auth_resp = client.post("/api/auth/login", json={"token": new_key})
         assert auth_resp.status_code == 401
 
 
@@ -1437,14 +1443,14 @@ class TestUpdateUsageLog:
     def test_update_usage_log_price(self, client, api_key, admin_token, active_sse):
         """doc"""
         reg = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"reservation_id": "res-price"},
         )
         uid = reg.json()["usage_log_id"]
         client.cookies.clear()
         restore_admin_session(client, admin_token)
         response = client.patch(
-            f"/admin/usage-log/{uid}",
+            f"/api/admin/usage-log/{uid}",
             headers={"X-Admin-Token": admin_token},
             json={"price": 500},
         )
@@ -1455,14 +1461,14 @@ class TestUpdateUsageLog:
     def test_update_usage_log_paid(self, client, api_key, admin_token, active_sse):
         """doc"""
         reg = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"reservation_id": "res-paid"},
         )
         uid = reg.json()["usage_log_id"]
         client.cookies.clear()
         restore_admin_session(client, admin_token)
         response = client.patch(
-            f"/admin/usage-log/{uid}",
+            f"/api/admin/usage-log/{uid}",
             headers={"X-Admin-Token": admin_token},
             json={"paid": True},
         )
@@ -1478,7 +1484,7 @@ class TestGenerateInvoice:
     def test_generate_invoice_missing_data(self, client, admin_token):
         """doc"""
         response = client.post(
-            "/admin/generate-invoice",
+            "/api/admin/generate-invoice",
             headers={"X-Admin-Token": admin_token},
             json={"api_key_id": 999, "usage_log_ids": [], "withdrawal_id": 999},
         )
@@ -1490,25 +1496,25 @@ class TestPrepaidPackagesApi:
 
     def test_prepaid_package_crud(self, client, admin_token):
         key = client.post(
-            "/api-keys",
+            "/api/api-keys",
             headers={"X-Admin-Token": admin_token},
             json={"label": "prepaid_api_key"},
         ).json()
 
         created = client.post(
-            "/admin/prepaid-packages",
+            "/api/admin/prepaid-packages",
             headers={"X-Admin-Token": admin_token},
             json={"api_key_id": key["id"], "balance_amount": 3000, "active": True},
         )
         assert created.status_code == 200
         package_id = created.json()["id"]
 
-        listed = client.get("/admin/prepaid-packages", headers={"X-Admin-Token": admin_token})
+        listed = client.get("/api/admin/prepaid-packages", headers={"X-Admin-Token": admin_token})
         assert listed.status_code == 200
         assert any(p["id"] == package_id for p in listed.json())
 
         updated = client.patch(
-            f"/admin/prepaid-packages/{package_id}",
+            f"/api/admin/prepaid-packages/{package_id}",
             headers={"X-Admin-Token": admin_token},
             json={"balance_amount": 5000, "active": False},
         )
@@ -1517,7 +1523,7 @@ class TestPrepaidPackagesApi:
         assert updated.json()["active"] is False
 
         deleted = client.delete(
-            f"/admin/prepaid-packages/{package_id}",
+            f"/api/admin/prepaid-packages/{package_id}",
             headers={"X-Admin-Token": admin_token},
         )
         assert deleted.status_code == 200
@@ -1529,17 +1535,17 @@ class TestPrepaidPackagesApi:
             client,
             admin_token,
             "Prepaid Top Up Co",
-            {"price_create": 200, "price_reschedule": 100},
+            {"price_create": 200, "price_reschedule": 100, "price_create_peak": 200},
         )
         key = create_api_key_for_company(client, admin_token, "prepaid_top_up_key", company["id"])
         created = client.post(
-            "/admin/prepaid-packages",
+            "/api/admin/prepaid-packages",
             headers={"X-Admin-Token": admin_token},
             json={"api_key_id": key["id"], "balance_amount": 300, "active": True},
         ).json()
 
         topped_up = client.post(
-            f"/admin/prepaid-packages/{created['id']}/top-up",
+            f"/api/admin/prepaid-packages/{created['id']}/top-up",
             headers={"X-Admin-Token": admin_token},
             json={"amount": 500},
         )
@@ -1552,7 +1558,7 @@ class TestPrepaidPackagesApi:
         confirm_usage(log_id)
         run_billing_jobs_for_usage(log_id)
 
-        deductions = client.get("/admin/prepaid-deductions", headers={"X-Admin-Token": admin_token})
+        deductions = client.get("/api/admin/prepaid-deductions", headers={"X-Admin-Token": admin_token})
         assert deductions.status_code == 200
         assert any(
             item["usage_log_id"] == log_id and item["amount"] == 200 for item in deductions.json()
@@ -1572,7 +1578,7 @@ class TestCompanyBillingApi:
         key = create_api_key_for_company(client, admin_token, "company_alias_key", company["id"])
 
         created_alias = client.post(
-            "/admin/company-aliases",
+            "/api/admin/company-aliases",
             headers={"X-Admin-Token": admin_token},
             json={"alias": "ООО Тест", "company": "ООО Тестовая Компания"},
         )
@@ -1592,7 +1598,7 @@ class TestCompanyBillingApi:
         log = get_usage_log_entry(log_id)
         assert log["company"] == "ООО Тестовая Компания"
 
-        listed = client.get("/admin/company-aliases", headers={"X-Admin-Token": admin_token})
+        listed = client.get("/api/admin/company-aliases", headers={"X-Admin-Token": admin_token})
         assert listed.status_code == 200
         assert any(item["alias"] == "ООО Тест" for item in listed.json())
 
@@ -1616,7 +1622,7 @@ class TestCaptchaLabelingApi:
         all_dir.mkdir()
         monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
 
-        response = client.get("/admin/captcha-label/next", headers={"X-Admin-Token": admin_token})
+        response = client.get("/api/admin/captcha-label/next", headers={"X-Admin-Token": admin_token})
         assert response.status_code == 404
 
     def test_captcha_label_get_by_id_returns_variants(self, client, admin_token, tmp_path, monkeypatch):
@@ -1641,7 +1647,7 @@ class TestCaptchaLabelingApi:
             json.dump(payload, f)
 
         response = client.get(
-            f"/admin/captcha-label/{captcha_id}",
+            f"/api/admin/captcha-label/{captcha_id}",
             headers={"X-Admin-Token": admin_token},
         )
 
@@ -1674,7 +1680,7 @@ class TestCaptchaLabelingApi:
             json.dump(payload, f)
 
         save = client.post(
-            "/admin/captcha-label/save",
+            "/api/admin/captcha-label/save",
             headers={"X-Admin-Token": admin_token},
             json={"captcha_id": captcha_id, "variant_index": 1},
         )
@@ -1691,6 +1697,8 @@ class TestCaptchaLabelingApi:
         all_dir = tmp_path / "all"
         all_dir.mkdir()
         monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED", "1")
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_SOLVER_METADATA_ENABLED", "1")
         monkeypatch.setattr(
             captcha_file_service,
             "calculate_solver_results",
@@ -1739,7 +1747,7 @@ class TestCaptchaLabelingApi:
         with open(all_dir / "rank_match.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
 
-        rows = client.get("/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
+        rows = client.get("/api/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
 
         assert any(
             row["captcha_id"] == "rank_match"
@@ -1778,7 +1786,7 @@ class TestCaptchaLabelingApi:
             json.dump(payload, f)
 
         response = client.post(
-            "/admin/captcha-files/backfill-analysis-metadata",
+            "/api/admin/captcha-files/backfill-analysis-metadata",
             headers={"X-Admin-Token": admin_token},
         )
 
@@ -1794,7 +1802,7 @@ class TestCaptchaLabelingApi:
         assert saved["manual_labeled"] is False
         assert saved["label_source"] is None
 
-        rows = client.get("/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
+        rows = client.get("/api/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
         assert any(
             row["captcha_id"] == "backfill_rank"
             and row["solver_valid_rank"] == 2
@@ -1821,7 +1829,7 @@ class TestCaptchaLabelingApi:
             json.dump(payload, f)
 
         save = client.post(
-            "/admin/captcha-label/save",
+            "/api/admin/captcha-label/save",
             headers={"X-Admin-Token": admin_token},
             json={"captcha_id": captcha_id, "variant_index": 2},
         )
@@ -1834,7 +1842,7 @@ class TestCaptchaLabelingApi:
         assert saved["manual_labeled"] is True
         assert saved["label_source"] == "manual"
 
-        rows = client.get("/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
+        rows = client.get("/api/admin/captcha-files", headers={"X-Admin-Token": admin_token}).json()
         assert any(
             row["captcha_id"] == captcha_id
             and row["valid_index"] == 2
@@ -1853,7 +1861,7 @@ class TestSlotsGroup:
     def test_master_claims_and_slave_waits_for_slots(self, client, api_key):
         group_key = "available-slots:test"
         master = client.post(
-            "/slots-group/claim",
+            "/api/slots-group/claim",
             json={"group_key": group_key, "client_id": "master-1"},
         )
         assert master.status_code == 200
@@ -1861,7 +1869,7 @@ class TestSlotsGroup:
         assert master.json()["status"] == "claimed"
 
         slave = client.post(
-            "/slots-group/claim",
+            "/api/slots-group/claim",
             json={"group_key": group_key, "client_id": "slave-1"},
         )
         assert slave.status_code == 200
@@ -1880,7 +1888,7 @@ class TestSlotsGroup:
             ]
         }
         publish = client.post(
-            "/slots-group/publish",
+            "/api/slots-group/publish",
             json={
                 "group_key": group_key,
                 "client_id": "master-1",
@@ -1891,7 +1899,7 @@ class TestSlotsGroup:
         assert publish.json()["status"] == "ready"
 
         waited = client.post(
-            "/slots-group/wait",
+            "/api/slots-group/wait",
             json={"group_key": group_key, "client_id": "slave-1", "wait_ms": 10},
         )
         assert waited.status_code == 200
@@ -1901,11 +1909,11 @@ class TestSlotsGroup:
     def test_non_master_cannot_publish(self, client, api_key):
         group_key = "available-slots:not-master"
         client.post(
-            "/slots-group/claim",
+            "/api/slots-group/claim",
             json={"group_key": group_key, "client_id": "master-1"},
         )
         response = client.post(
-            "/slots-group/publish",
+            "/api/slots-group/publish",
             json={
                 "group_key": group_key,
                 "client_id": "slave-1",
@@ -1950,9 +1958,9 @@ class TestIconClickCaptcha:
         return base64.b64encode(buf.getvalue()).decode()
 
     def test_solve_captcha_type1_creates_entry(self, client, api_key):
-        """POST /solve-captcha with type=1 creates pending entry, returns on timeout."""
+        """POST /api/solve-captcha with type=1 creates pending entry, returns on timeout."""
         response = client.post(
-            "/solve-captcha",
+            "/api/solve-captcha",
             json={
                 "auto_solve": False,
                 "timeout_metadata": True,
@@ -1988,7 +1996,7 @@ class TestIconClickCaptcha:
         results = []
 
         def post_captcha():
-            results.append(client.post("/solve-captcha", json=payload))
+            results.append(client.post("/api/solve-captcha", json=payload))
 
         threads = [threading.Thread(target=post_captcha) for _ in range(2)]
         for thread in threads:
@@ -2003,7 +2011,7 @@ class TestIconClickCaptcha:
         assert all(body.get("status") == "timeout" for body in bodies)
 
     def test_solve_type1_with_coordinates(self, client, api_key):
-        """POST /solve with coordinates marks type=1 captcha as solved."""
+        """POST /api/solve with coordinates marks type=1 captcha as solved."""
         import threading, time
         from src.sse import lock, pending
 
@@ -2013,7 +2021,7 @@ class TestIconClickCaptcha:
         def send_captcha():
             nonlocal captcha_id
             resp = client.post(
-                "/solve-captcha",
+                "/api/solve-captcha",
                 json={
                     "auto_solve": False,
                     "timeout_metadata": True,
@@ -2045,7 +2053,7 @@ class TestIconClickCaptcha:
 
         # Now solve with coordinates
         solve_resp = client.post(
-            "/solve",
+            "/api/solve",
             json={
                 "captcha_id": captcha_id,
                 "variantIndex": 0,
@@ -2088,10 +2096,13 @@ class TestIconClickCaptcha:
             assert isinstance(item["x"], int)
             assert isinstance(item["y"], int)
 
-    def test_type1_captcha_saved_to_json(self, client, api_key):
+    def test_type1_captcha_saved_to_json(self, client, api_key, monkeypatch):
         """Type=1 captcha JSON is persisted with correct fields."""
         from src.captcha_assembly import captcha_hash, is_icon_click_type
         from src.services.captcha_file_service import save_captcha_payload_detailed
+
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED", "1")
+        monkeypatch.setenv("EOPP_CAPTCHA_SYNC_SOLVER_METADATA_ENABLED", "1")
 
         data = {
             "type": 1,
@@ -2137,7 +2148,7 @@ class TestIconClickCaptcha:
         with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
         response = client.get(
-            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=main",
+            f"/api/admin/captcha-files/{captcha_id}/thumbnail?mode=main",
         )
 
         assert response.status_code == 200
@@ -2145,7 +2156,7 @@ class TestIconClickCaptcha:
         assert image.size == (30, 20)
 
         icons_response = client.get(
-            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
+            f"/api/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
         )
 
         assert icons_response.status_code == 200
@@ -2153,7 +2164,7 @@ class TestIconClickCaptcha:
         assert icons_image.size == (15, 5)
 
         combined_response = client.get(
-            f"/admin/captcha-files/{captcha_id}/thumbnail",
+            f"/api/admin/captcha-files/{captcha_id}/thumbnail",
         )
 
         assert combined_response.status_code == 200
@@ -2183,7 +2194,7 @@ class TestIconClickCaptcha:
         with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
         response = client.get(
-            f"/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
+            f"/api/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
         )
 
         assert response.status_code == 200

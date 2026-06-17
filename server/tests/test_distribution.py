@@ -79,7 +79,7 @@ def admin_token(client):
     admin_key = next((key for key in list_keys() if key["is_admin"]), None)
     assert admin_key is not None
     response = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "admin", "password": admin_key["key"]},
     )
     assert response.status_code == 200
@@ -89,7 +89,7 @@ def admin_token(client):
 @pytest.fixture
 def company_id(client, admin_token):
     response = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Distribution Company"},
     )
@@ -100,7 +100,7 @@ def company_id(client, admin_token):
 @pytest.fixture
 def key_owner_id(client, admin_token, company_id):
     response = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Distribution Key Owner",
@@ -120,7 +120,7 @@ def key_owner_id(client, admin_token, company_id):
 @pytest.fixture
 def master_key(client, admin_token, key_owner_id):
     r = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "master", "max_uses": 1000, "user_id": key_owner_id},
     )
@@ -131,7 +131,7 @@ def master_key(client, admin_token, key_owner_id):
 @pytest.fixture
 def operator_key(client, admin_token, key_owner_id):
     r = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "operator", "max_uses": 1000, "user_id": key_owner_id},
     )
@@ -141,7 +141,7 @@ def operator_key(client, admin_token, key_owner_id):
 
 def _login_key_owner(client):
     response = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "distribution.key.owner", "password": "strong-password"},
     )
     assert response.status_code == 200
@@ -150,19 +150,32 @@ def _login_key_owner(client):
 class TestDistributionFlow:
     def test_register_usage_with_distribution(self, client, master_key, admin_token):
         """Register usage with parallel_operators=2 should create distribution."""
+        from src.repositories import api_key_repo
+        from src.sse.manager import lock, sse_queues
+
         _login_key_owner(client)
-        r = client.post("/register-usage", json={
-            "reservation_id": "test-res-001",
-            "captcha_id": "test-captcha",
-            "parallel_operators": 2,
-        })
-        assert r.status_code == 200
+        key_record = api_key_repo.get_key_record(master_key)
+        assert key_record is not None
+        with lock:
+            sse_queues.setdefault(key_record.id, []).append(object())
+        try:
+            r = client.post("/api/register-usage", json={
+                "reservation_id": "test-res-001",
+                "captcha_id": "test-captcha",
+                "parallel_operators": 2,
+            })
+            assert r.status_code == 200
+        finally:
+            with lock:
+                sse_queues[key_record.id].pop()
+                if not sse_queues[key_record.id]:
+                    del sse_queues[key_record.id]
 
     def test_solve_captcha_creates_distribution_state(self, client, master_key, admin_token):
         """Icon-click captcha with distribution should create state."""
         _login_key_owner(client)
         captcha = _make_icon_click_captcha()
-        r = client.post("/solve-captcha", json={
+        r = client.post("/api/solve-captcha", json={
             "auto_solve": False,
             "reservation_id": "test-res-001",
             "puzzle": captcha["puzzle"],
@@ -173,7 +186,7 @@ class TestDistributionFlow:
     def test_distribution_answer_404_without_state(self, client, master_key):
         """Answer for non-existent captcha should 404."""
         _login_key_owner(client)
-        r = client.post("/distribution/answer", json={
+        r = client.post("/api/distribution/answer", json={
             "captcha_id": "fake_captcha",
             "operator_id": 0,
             "icon_position": 0,
@@ -187,7 +200,7 @@ class TestDistributionFlow:
         from src.repositories import api_key_repo
 
         r = client.post(
-            "/admin/users",
+            "/api/admin/users",
             headers={"X-Admin-Token": admin_token},
             json={
                 "name": "Distribution Operator",
@@ -210,7 +223,7 @@ class TestDistributionFlow:
         assert master is not None
 
         r2 = client.put(
-            f"/admin/operators/{op['operator_id']}/link",
+            f"/api/admin/operators/{op['operator_id']}/link",
             headers={"X-Admin-Token": admin_token},
             json={"master_key_id": master.id},
         )
@@ -300,7 +313,7 @@ class TestDistributionWithSSE:
         assert state["operators"][0]["assigned"] == [0, 1, 2]
 
         # Operator 0 answers icon 0
-        r = client.post("/distribution/answer", json={
+        r = client.post("/api/distribution/answer", json={
             "captcha_id": cid,
             "operator_id": 0,
             "icon_position": 0,
@@ -313,7 +326,7 @@ class TestDistributionWithSSE:
         assert data["icon_position"] == 1  # next icon for master
 
         # Operator 1 answers icon 4
-        r = client.post("/distribution/answer", json={
+        r = client.post("/api/distribution/answer", json={
             "captcha_id": cid,
             "operator_id": 1,
             "icon_position": 4,
@@ -327,7 +340,7 @@ class TestDistributionWithSSE:
 
         # Answer remaining icons
         for pos in [1, 2, 3]:
-            r = client.post("/distribution/answer", json={
+            r = client.post("/api/distribution/answer", json={
                 "captcha_id": cid,
                 "operator_id": 0 if pos <= 2 else 1,
                 "icon_position": pos,

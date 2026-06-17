@@ -24,7 +24,7 @@ DEFAULT_BILLING = {
 
 def _put_default_tariff(client, admin_token, payload=None):
     return client.put(
-        "/admin/default-company-tariff",
+        "/api/admin/default-company-tariff",
         headers={"X-Admin-Token": admin_token},
         json=payload or DEFAULT_TARIFF,
     )
@@ -35,7 +35,7 @@ def test_manual_company_creation_copies_default_tariff(client, admin_token):
     assert default_response.status_code == 200
 
     create_response = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Manual Default Tariff LLC"},
     )
@@ -126,7 +126,7 @@ def test_manual_company_creation_copies_default_billing_settings(client, admin_t
     }
 
     create_response = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Manual Default Billing LLC"},
     )
@@ -144,12 +144,12 @@ def test_apply_default_tariff_overwrites_existing_company_tariff(client, admin_t
     default_response = _put_default_tariff(client, admin_token)
     assert default_response.status_code == 200
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Overwrite Default Tariff LLC"},
     ).json()
     client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={
             "price_create": 1,
@@ -162,7 +162,7 @@ def test_apply_default_tariff_overwrites_existing_company_tariff(client, admin_t
     )
 
     apply_response = client.post(
-        f"/admin/company-tariffs/{company['id']}/apply-default",
+        f"/api/admin/company-tariffs/{company['id']}/apply-default",
         headers={"X-Admin-Token": admin_token},
     )
 

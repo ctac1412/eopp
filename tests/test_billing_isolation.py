@@ -35,7 +35,7 @@ def _wait_for_pending(captcha_id: str, timeout: float = 2.0) -> None:
 
 
 def test_broken_tariff_does_not_break_captcha_solve(client, api_key, monkeypatch):
-    """A broken tariff repository must not affect captcha receive/solve."""
+    """A broken tariff repository must not affect captcha receive/api/solve."""
 
     from src import captcha_assembly
     from src.routes import captcha as captcha_route
@@ -60,7 +60,7 @@ def test_broken_tariff_does_not_break_captcha_solve(client, api_key, monkeypatch
     payload["auto_solve"] = True
     captcha_id = captcha_assembly.captcha_hash({"puzzle": payload["puzzle"]})
 
-    response = client.post("/solve-captcha", json=payload)
+    response = client.post("/api/solve-captcha", json=payload)
 
     assert response.status_code == 200
     assert response.json()["variantIndex"] == 1
@@ -93,7 +93,7 @@ def test_broken_invoice_link_does_not_break_confirm_core(
     )
 
     response = client.post(
-        "/confirm-usage",
+        "/api/confirm-usage",
         json={
             "api_key": api_key,
             "usage_log_id": usage_log_id,
@@ -121,7 +121,7 @@ def test_broken_company_parsing_does_not_break_register_core(
     )
 
     response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "api_key": api_key,
             "reservation_id": "reservation-crm-isolation",

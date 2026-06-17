@@ -133,6 +133,8 @@ def register_frontend_routes(app):
     if os.path.isdir(FRONTEND_DIST):
         @frontend_router.get("/{full_path:path}")
         async def serve_frontend(full_path: str = ""):
+            if full_path == "api" or full_path.startswith("api/"):
+                return JSONResponse(status_code=404, content={"detail": "Not Found"})
             if not full_path:
                 full_path = "index.html"
             file_path = os.path.join(FRONTEND_DIST, full_path)
@@ -142,6 +144,8 @@ def register_frontend_routes(app):
     else:
         @frontend_router.get("/{full_path:path}")
         async def serve_frontend_fallback(full_path: str = ""):
+            if full_path == "api" or full_path.startswith("api/"):
+                return JSONResponse(status_code=404, content={"detail": "Not Found"})
             index_path = os.path.join(FRONTEND_DIST, "index.html")
             if os.path.exists(index_path):
                 return FileResponse(index_path)

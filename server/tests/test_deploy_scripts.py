@@ -113,7 +113,7 @@ def test_verify_release_checks_manifest_backup_db_plugins_and_alembic():
     for token in [
         "current/release.json",
         "docker compose ps",
-        "/version",
+        "/api/version",
         "/plugins/update.xml",
         "sqlite3",
         "alembic -c server/alembic.ini current",
@@ -144,20 +144,16 @@ def test_nginx_removes_basic_auth_and_sets_noindex_perimeter():
     assert "noindex, nofollow, noarchive, nosnippet" in nginx
     assert "location = /robots.txt" in nginx
     assert "User-agent: *\\nDisallow: /\\n" in nginx
-    assert "location /operators/" not in nginx
+    assert "location /api/operators/" not in nginx
+    assert "location /api/" in nginx
+    assert "location /api/stream" in nginx
+    assert "location /api/admin/stream/slots" in nginx
+    assert "location ~ ^/api/operators/[^/]+/stream$" in nginx
     assert "location = /operators/test" in nginx
-    assert "location ~ ^/operators/[^/]+/(stream|masters|unlink)$" in nginx
     assert "location ~ ^/operators/[^/]+$" in nginx
     for public_path in [
         "/plugins/",
-        "/solve-captcha",
-        "/register-usage",
-        "/confirm-usage",
-        "/fail-usage",
-        "/validate-key",
-        "/api-key-status",
-        "/stream",
-        "/check-stream",
+        "/api/stream",
         "/rucaptcha-callback",
         "/.well-known/acme-challenge/",
         "/rucaptcha.txt",

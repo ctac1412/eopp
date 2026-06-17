@@ -10,21 +10,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/stream": {
+      "/api": {
         target: "http://127.0.0.1:8765",
         ws: false,
-      },
-      "/solve-captcha": {
-        target: "http://127.0.0.1:8765",
-      },
-      "/solve": {
-        target: "http://127.0.0.1:8765",
-      },
-      "/broadcast": {
-        target: "http://127.0.0.1:8765",
-      },
-      "/public": {
-        target: "http://127.0.0.1:8765",
+        changeOrigin: true,
       },
     },
   },

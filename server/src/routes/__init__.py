@@ -63,30 +63,32 @@ def register_all_routes(app):
 
     admin_auth_middleware_factory(app)
 
-    app.include_router(health_router)
-    app.include_router(sse_router)
+    api_prefix = "/api"
+
+    app.include_router(health_router, prefix=api_prefix)
+    app.include_router(sse_router, prefix=api_prefix)
     # Rucaptcha pingback is disabled for the release perimeter until auto-solver
     # traffic is intentionally re-enabled.
     app.include_router(callback_txt_router)
-    app.include_router(auth_router)
-    app.include_router(captcha_router)
-    app.include_router(distribution_router)
-    app.include_router(api_keys_router)
-    app.include_router(usage_router)
-    app.include_router(slots_router)
-    app.include_router(captchas_router)
-    app.include_router(operator_router)
+    app.include_router(auth_router, prefix=api_prefix)
+    app.include_router(captcha_router, prefix=api_prefix)
+    app.include_router(distribution_router, prefix=api_prefix)
+    app.include_router(api_keys_router, prefix=api_prefix)
+    app.include_router(usage_router, prefix=api_prefix)
+    app.include_router(slots_router, prefix=api_prefix)
+    app.include_router(captchas_router, prefix=api_prefix)
+    app.include_router(operator_router, prefix=api_prefix)
     # Plugin-channel API is disabled until the channel plugin has active consumers.
-    app.include_router(chat_router)
-    app.include_router(scheduled_router)
-    app.include_router(mock_router)
-    app.include_router(admin_router)
-    app.include_router(admin_jobs_router)
+    app.include_router(chat_router, prefix=api_prefix)
+    app.include_router(scheduled_router, prefix=api_prefix)
+    app.include_router(mock_router, prefix=api_prefix)
+    app.include_router(admin_router, prefix=api_prefix)
+    app.include_router(admin_jobs_router, prefix=api_prefix)
 
     if os.path.isdir(PLUGINS_DIR):
         app.include_router(plugin_router)
 
-    register_modules(app, _configured_module_manifests())
+    register_modules(app, _configured_module_manifests(), prefix=api_prefix)
 
     register_test_pages(app)
     register_frontend_routes(app)

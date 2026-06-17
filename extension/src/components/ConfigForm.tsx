@@ -349,7 +349,7 @@ const ConfigForm = React.memo(function ConfigForm() {
     if (!isLocalhost) return;
     setMockLoading(true);
     const serverUrl = getServerUrl();
-    fetch(`${serverUrl}/mock-config`, { method: "GET" })
+    fetch(`${serverUrl}/api/mock-config`, { method: "GET", credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
         const parsed: Record<string, MockMode[]> = {};
@@ -416,8 +416,9 @@ const ConfigForm = React.memo(function ConfigForm() {
     if (mockCaptchaType !== "auto") {
       body["captcha_type"] = mockCaptchaType;
     }
-    fetch(`${serverUrl}/mock-config`, {
+    fetch(`${serverUrl}/api/mock-config`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
@@ -449,8 +450,9 @@ const ConfigForm = React.memo(function ConfigForm() {
     if (!isLocalhost) return;
     setMockSending(true);
     const serverUrl = getServerUrl();
-    fetch(`${serverUrl}/mock-config`, {
+    fetch(`${serverUrl}/api/mock-config`, {
       method: "DELETE",
+      credentials: "include",
     })
       .then(() => {
         setMockConfig({});

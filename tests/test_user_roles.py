@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 def _create_executor_key(client, admin_token, *, label: str, company_id: int, login_suffix: str):
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": f"Executor {label}",
@@ -17,7 +17,7 @@ def _create_executor_key(client, admin_token, *, label: str, company_id: int, lo
     )
     assert user.status_code == 200
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": label, "company_id": company_id, "user_id": user.json()["id"]},
     )
@@ -27,7 +27,7 @@ def _create_executor_key(client, admin_token, *, label: str, company_id: int, lo
 
 def test_password_user_login_returns_cookie_permissions_and_company(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "RoleCo", "aliases": ["roleco"]},
     )
@@ -35,7 +35,7 @@ def test_password_user_login_returns_cookie_permissions_and_company(client, admi
     company_id = company.json()["id"]
 
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Ops Manager",
@@ -54,7 +54,7 @@ def test_password_user_login_returns_cookie_permissions_and_company(client, admi
     assert "password_hash" not in body
 
     login = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "ops.manager", "password": "strong-password"},
     )
 
@@ -63,16 +63,16 @@ def test_password_user_login_returns_cookie_permissions_and_company(client, admi
     assert session["ok"] is True
     assert session["role"] == "manager"
     assert "token" not in session
-    assert "eopp_admin_session" in login.cookies
+    assert "eopp_session" in login.cookies
     assert "billing.view" in session["permissions"]
     assert "admin.users.manage" not in session["permissions"]
-    assert "channels" in session["sections"]
+    assert "channels" not in session["sections"]
     assert session["user"]["company_id"] == company_id
 
 
 def test_common_auth_login_me_and_logout_use_site_session(client, admin_token):
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Site Manager",
@@ -85,33 +85,33 @@ def test_common_auth_login_me_and_logout_use_site_session(client, admin_token):
     assert created.status_code == 200
 
     login = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "site.manager", "password": "strong-password"},
     )
     assert login.status_code == 200
     assert "token" not in login.json()
-    assert "eopp_admin_session" in login.cookies
+    assert "eopp_session" in login.cookies
 
-    me = client.get("/auth/me")
+    me = client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["user"]["login"] == "site.manager"
     assert me.json()["role"] == "manager"
 
-    logout = client.post("/auth/logout")
+    logout = client.post("/api/auth/logout")
     assert logout.status_code == 200
-    assert client.get("/auth/me").status_code == 401
+    assert client.get("/api/auth/me").status_code == 401
 
 
 def test_api_key_remains_plugin_token_bound_to_user_and_company(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "PluginCo", "aliases": ["pluginco"]},
     )
     assert company.status_code == 201
     company_id = company.json()["id"]
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Plugin User",
@@ -126,7 +126,7 @@ def test_api_key_remains_plugin_token_bound_to_user_and_company(client, admin_to
     user_id = user.json()["id"]
 
     created = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "plugin-token", "company_id": company_id, "user_id": user_id},
     )
@@ -136,11 +136,11 @@ def test_api_key_remains_plugin_token_bound_to_user_and_company(client, admin_to
     assert key_body["user_id"] == user_id
     assert key_body["company_id"] == company_id
 
-    validated = client.get("/validate-key", params={"api_key": plugin_token})
+    validated = client.get("/api/validate-key", params={"key": plugin_token})
     assert validated.status_code == 200
     assert validated.json()["valid"] is True
 
-    keys = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+    keys = client.get("/api/api-keys", headers={"X-Admin-Token": admin_token})
     assert keys.status_code == 200
     row = next(item for item in keys.json() if item["id"] == key_body["id"])
     assert row["user_id"] == user_id
@@ -150,14 +150,14 @@ def test_api_key_remains_plugin_token_bound_to_user_and_company(client, admin_to
 
 def test_common_auth_exposes_only_current_user_plugin_tokens(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "MainLoginCo", "aliases": ["mainloginco"]},
     )
     assert company.status_code == 201
     company_id = company.json()["id"]
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Main Login User",
@@ -171,21 +171,21 @@ def test_common_auth_exposes_only_current_user_plugin_tokens(client, admin_token
     assert user.status_code == 200
     user_id = user.json()["id"]
     owned = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "owned-plugin-token", "company_id": company_id, "user_id": user_id},
     )
     assert owned.status_code == 200
     other = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "other-plugin-token"},
     )
     assert other.status_code == 200
 
-    login = client.post("/auth/login", json={"login": "main.login", "password": "strong-password"})
+    login = client.post("/api/auth/login", json={"login": "main.login", "password": "strong-password"})
     assert login.status_code == 200
-    tokens = client.get("/auth/plugin-keys")
+    tokens = client.get("/api/auth/plugin-keys")
 
     assert tokens.status_code == 200
     rows = tokens.json()["keys"]
@@ -196,7 +196,7 @@ def test_common_auth_exposes_only_current_user_plugin_tokens(client, admin_token
 
 def test_password_user_session_authorizes_requests_by_role(client, admin_token):
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Read Manager",
@@ -209,12 +209,12 @@ def test_password_user_session_authorizes_requests_by_role(client, admin_token):
     assert created.status_code == 200
 
     login = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "read.manager", "password": "strong-password"},
     )
-    view = client.get("/admin/invoices")
+    view = client.get("/api/admin/invoices")
     edit = client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={"name": "Blocked", "login": "blocked", "password": "strong-password", "role": "operator"},
     )
 
@@ -225,7 +225,7 @@ def test_password_user_session_authorizes_requests_by_role(client, admin_token):
 def test_legacy_admin_api_key_is_migrated_to_user_account_but_not_used_as_admin_token(
     client, admin_token, legacy_admin_api_key
 ):
-    users = client.get("/admin/users", headers={"X-Admin-Token": admin_token})
+    users = client.get("/api/admin/users", headers={"X-Admin-Token": admin_token})
 
     assert users.status_code == 200
     rows = users.json()
@@ -234,7 +234,7 @@ def test_legacy_admin_api_key_is_migrated_to_user_account_but_not_used_as_admin_
     assert admin_users[0]["role"] == "super_admin"
 
     password_login = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "admin", "password": legacy_admin_api_key},
     )
 
@@ -242,29 +242,29 @@ def test_legacy_admin_api_key_is_migrated_to_user_account_but_not_used_as_admin_
     assert password_login.json()["role"] == "super_admin"
 
     fresh_client = client.__class__(client.app)
-    token_login = fresh_client.post("/admin/auth", json={"token": legacy_admin_api_key})
-    header_access = fresh_client.get("/admin/users", headers={"X-Admin-Token": legacy_admin_api_key})
+    token_login = fresh_client.post("/api/auth/login", json={"token": legacy_admin_api_key})
+    header_access = fresh_client.get("/api/admin/users", headers={"X-Admin-Token": legacy_admin_api_key})
 
     assert token_login.status_code == 401
     assert header_access.status_code == 401
 
 
 def test_roles_endpoint_exposes_section_access_for_admin_ui(client, admin_token):
-    response = client.get("/admin/roles", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/admin/roles", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     roles = {role["id"]: role for role in response.json()["roles"]}
     assert set(roles) == {"super_admin", "administrator", "manager", "operator"}
     assert "users" in roles["super_admin"]["sections"]
-    assert "channels" in roles["super_admin"]["sections"]
-    assert "channels" in roles["manager"]["sections"]
+    assert "channels" not in roles["super_admin"]["sections"]
+    assert "channels" not in roles["manager"]["sections"]
     assert "users" not in roles["manager"]["sections"]
     assert roles["operator"]["permissions"] == ["operator.answer"]
 
 
 def test_password_login_sets_cookie_that_authorizes_closed_requests(client, admin_token):
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Cookie Admin",
@@ -277,13 +277,13 @@ def test_password_login_sets_cookie_that_authorizes_closed_requests(client, admi
     assert created.status_code == 200
 
     login = client.post(
-        "/admin/auth",
+        "/api/auth/login",
         json={"login": "cookie.admin", "password": "strong-password"},
     )
 
     assert login.status_code == 200
-    assert "eopp_admin_session" in login.cookies
-    response = client.get("/admin/invoices")
+    assert "eopp_session" in login.cookies
+    response = client.get("/api/admin/invoices")
     assert response.status_code == 200
 
 
@@ -291,14 +291,14 @@ def test_user_statistics_endpoint_summarizes_company_usage_expenses_and_payouts(
     from src.entities import ApiKey, Expense, Payout, PayoutShare, UsageLog, get_session
 
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "StatsCo", "aliases": ["statsco"]},
     )
     assert company.status_code == 201
     company_id = company.json()["id"]
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Stats User",
@@ -362,7 +362,7 @@ def test_user_statistics_endpoint_summarizes_company_usage_expenses_and_payouts(
         )
         session.commit()
 
-    response = client.get(f"/admin/users/{user_id}/stats", headers={"X-Admin-Token": admin_token})
+    response = client.get(f"/api/admin/users/{user_id}/stats", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     stats = response.json()
@@ -379,7 +379,7 @@ def test_user_statistics_endpoint_summarizes_company_usage_expenses_and_payouts(
 
 def test_user_create_exposes_memberships_and_function_profiles(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "ProfilesCo", "aliases": ["profilesco"]},
     )
@@ -387,7 +387,7 @@ def test_user_create_exposes_memberships_and_function_profiles(client, admin_tok
     company_id = company.json()["id"]
 
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Profile Owner",
@@ -427,22 +427,22 @@ def test_user_create_exposes_memberships_and_function_profiles(client, admin_tok
 
 def test_operator_profile_supports_multiple_companies_and_scoped_links(client, admin_token):
     alpha = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OperatorAlpha"},
     ).json()
     beta = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OperatorBeta"},
     ).json()
     gamma = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OperatorGamma"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Multi Operator",
@@ -467,25 +467,25 @@ def test_operator_profile_supports_multiple_companies_and_scoped_links(client, a
     beta_key = _create_executor_key(client, admin_token, label="operator-beta-key", company_id=beta["id"], login_suffix="operator.beta")
     gamma_key = _create_executor_key(client, admin_token, label="operator-gamma-key", company_id=gamma["id"], login_suffix="operator.gamma")
 
-    operators = client.get("/admin/operators", headers={"X-Admin-Token": admin_token})
+    operators = client.get("/api/admin/operators", headers={"X-Admin-Token": admin_token})
     assert operators.status_code == 200
     row = next(item for item in operators.json() if item["id"] == operator_id)
     assert row["company_ids"] == [alpha["id"], beta["id"]]
     assert row["company_names"] == ["OperatorAlpha", "OperatorBeta"]
 
     assert client.put(
-        f"/admin/operators/{operator_id}/link",
+        f"/api/admin/operators/{operator_id}/link",
         headers={"X-Admin-Token": admin_token},
         json={"master_key_id": beta_key["id"]},
     ).status_code == 200
     blocked = client.put(
-        f"/admin/operators/{operator_id}/link",
+        f"/api/admin/operators/{operator_id}/link",
         headers={"X-Admin-Token": admin_token},
         json={"master_key_id": gamma_key["id"]},
     )
     assert blocked.status_code == 403
 
-    masters = client.get(f"/operators/{operator_uuid}/masters")
+    masters = client.get(f"/api/operators/{operator_uuid}/masters")
     assert masters.status_code == 200
     labels = {row["label"] for row in masters.json()}
     assert {"operator-alpha-key", "operator-beta-key"} <= labels
@@ -494,22 +494,22 @@ def test_operator_profile_supports_multiple_companies_and_scoped_links(client, a
 
 def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_token):
     own = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OwnOperatorTenant"},
     ).json()
     shared = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "SharedOperatorTenant"},
     ).json()
     other = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OtherOperatorTenant"},
     ).json()
     tenant_admin = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Operator Tenant Admin",
@@ -525,7 +525,7 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
     )
     assert tenant_admin.status_code == 200
     visible = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Visible Operator",
@@ -541,7 +541,7 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
         },
     )
     hidden = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Hidden Operator",
@@ -561,23 +561,23 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
     own_key = _create_executor_key(client, admin_token, label="own-operator-link-key", company_id=own["id"], login_suffix="own.operator.link")
     other_key = _create_executor_key(client, admin_token, label="other-operator-link-key", company_id=other["id"], login_suffix="other.operator.link")
     assert client.put(
-        f"/admin/operators/{visible.json()['operator_profile']['operator_id']}/link",
+        f"/api/admin/operators/{visible.json()['operator_profile']['operator_id']}/link",
         headers={"X-Admin-Token": admin_token},
         json={"master_key_id": own_key["id"]},
     ).status_code == 200
     assert client.put(
-        f"/admin/operators/{hidden.json()['operator_profile']['operator_id']}/link",
+        f"/api/admin/operators/{hidden.json()['operator_profile']['operator_id']}/link",
         headers={"X-Admin-Token": admin_token},
         json={"master_key_id": other_key["id"]},
     ).status_code == 200
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "operator.tenant.admin", "password": "strong-password"},
     ).status_code == 200
-    operators = tenant_client.get("/admin/operators")
-    links = tenant_client.get("/admin/operator-links")
+    operators = tenant_client.get("/api/admin/operators")
+    links = tenant_client.get("/api/admin/operator-links")
 
     assert operators.status_code == 200
     names = {row["nickname"] for row in operators.json()}
@@ -589,22 +589,22 @@ def test_company_admin_lists_only_operators_for_own_company_scope(client, admin_
 
 def test_bulk_operator_assignments_save_company_and_master_combinations(client, admin_token):
     alpha = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "BulkOperatorAlpha"},
     ).json()
     beta = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "BulkOperatorBeta"},
     ).json()
     gamma = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "BulkOperatorGamma"},
     ).json()
     operator_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Bulk Operator",
@@ -625,7 +625,7 @@ def test_bulk_operator_assignments_save_company_and_master_combinations(client, 
     gamma_key = _create_executor_key(client, admin_token, label="bulk-gamma-key", company_id=gamma["id"], login_suffix="bulk.gamma")
 
     blocked = client.post(
-        "/admin/operator-assignments/bulk",
+        "/api/admin/operator-assignments/bulk",
         headers={"X-Admin-Token": admin_token},
         json={
             "assignments": [
@@ -640,7 +640,7 @@ def test_bulk_operator_assignments_save_company_and_master_combinations(client, 
     assert blocked.status_code == 403
 
     saved = client.post(
-        "/admin/operator-assignments/bulk",
+        "/api/admin/operator-assignments/bulk",
         headers={"X-Admin-Token": admin_token},
         json={
             "assignments": [
@@ -659,7 +659,7 @@ def test_bulk_operator_assignments_save_company_and_master_combinations(client, 
     assert row["company_ids"] == [alpha["id"], beta["id"]]
     assert row["allowed_master_keys"] == [alpha_key["id"], beta_key["id"]]
 
-    operators = client.get("/admin/operators", headers={"X-Admin-Token": admin_token})
+    operators = client.get("/api/admin/operators", headers={"X-Admin-Token": admin_token})
     updated = next(item for item in operators.json() if item["id"] == operator_id)
     assert updated["company_ids"] == [alpha["id"], beta["id"]]
     assert updated["allowed_master_keys"] == [alpha_key["id"], beta_key["id"]]
@@ -667,18 +667,18 @@ def test_bulk_operator_assignments_save_company_and_master_combinations(client, 
 
 def test_admin_created_operator_has_profile_for_company_matrix(client, admin_token):
     alpha = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CreatedOperatorAlpha"},
     ).json()
     beta = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CreatedOperatorBeta"},
     ).json()
 
     created = client.post(
-        "/admin/operators",
+        "/api/admin/operators",
         headers={"X-Admin-Token": admin_token},
         json={"nickname": "created-op", "company_id": alpha["id"]},
     )
@@ -688,7 +688,7 @@ def test_admin_created_operator_has_profile_for_company_matrix(client, admin_tok
     assert operator["user_id"] is not None
 
     saved = client.post(
-        "/admin/operator-assignments/bulk",
+        "/api/admin/operator-assignments/bulk",
         headers={"X-Admin-Token": admin_token},
         json={
             "assignments": [
@@ -707,12 +707,12 @@ def test_admin_created_operator_has_profile_for_company_matrix(client, admin_tok
 
 def test_operator_profile_serializes_user_name_after_login_and_update(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OperatorProfileSerialization"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Serialized Operator",
@@ -724,15 +724,15 @@ def test_operator_profile_serializes_user_name_after_login_and_update(client, ad
         },
     ).json()
 
-    login = client.post("/auth/login", json={"login": "serialized.operator", "password": "secret"})
+    login = client.post("/api/auth/login", json={"login": "serialized.operator", "password": "secret"})
     assert login.status_code == 200
     assert login.json()["user"]["operator_profile"]["nickname"] == "Serialized Operator"
 
     client.cookies.clear()
-    client.cookies.set("eopp_admin_session", admin_token)
+    client.cookies.set("eopp_session", admin_token)
     operator_id = user["operator_profile"]["operator_id"]
     updated = client.put(
-        f"/admin/operators/{operator_id}",
+        f"/api/admin/operators/{operator_id}",
         headers={"X-Admin-Token": admin_token},
         json={"billing_mode": "free", "billing_overrides": []},
     )
@@ -743,7 +743,7 @@ def test_operator_profile_serializes_user_name_after_login_and_update(client, ad
 
 def test_test_users_are_excluded_from_operational_key_list(client, admin_token):
     test_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Operational Test User",
@@ -758,32 +758,32 @@ def test_test_users_are_excluded_from_operational_key_list(client, admin_token):
     assert test_user.json()["is_test"] is True
 
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "operational-test-key", "user_id": user_id},
     )
     assert key.status_code == 200
 
-    all_keys = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+    all_keys = client.get("/api/api-keys", headers={"X-Admin-Token": admin_token})
     assert any(row["user_id"] == user_id for row in all_keys.json())
 
-    operational_keys = client.get("/api-keys?include_test=0", headers={"X-Admin-Token": admin_token})
+    operational_keys = client.get("/api/api-keys?include_test=0", headers={"X-Admin-Token": admin_token})
     assert operational_keys.status_code == 200
     assert all(row["user_id"] != user_id for row in operational_keys.json())
 
-    users = client.get("/admin/users", headers={"X-Admin-Token": admin_token})
+    users = client.get("/api/admin/users", headers={"X-Admin-Token": admin_token})
     listed = next(row for row in users.json() if row["id"] == user_id)
     assert listed["is_test"] is True
 
 
 def test_test_user_operators_are_excluded_from_operational_operator_list(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Operational Test Operators"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Operational Test Operator",
@@ -798,23 +798,23 @@ def test_test_user_operators_are_excluded_from_operational_operator_list(client,
     assert user.status_code == 200
     operator_id = user.json()["operator_profile"]["operator_id"]
 
-    all_operators = client.get("/admin/operators", headers={"X-Admin-Token": admin_token})
+    all_operators = client.get("/api/admin/operators", headers={"X-Admin-Token": admin_token})
     assert any(row["id"] == operator_id for row in all_operators.json())
 
-    operational_operators = client.get("/admin/operators?include_test=0", headers={"X-Admin-Token": admin_token})
+    operational_operators = client.get("/api/admin/operators?include_test=0", headers={"X-Admin-Token": admin_token})
     assert operational_operators.status_code == 200
     assert all(row["id"] != operator_id for row in operational_operators.json())
 
 
 def test_executor_plugin_keys_require_executor_access(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "MasterScopeCo", "aliases": ["masterscopeco"]},
     )
     company_id = company.json()["id"]
     master = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Scoped Master",
@@ -825,7 +825,7 @@ def test_executor_plugin_keys_require_executor_access(client, admin_token):
         },
     )
     regular = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Regular User",
@@ -835,7 +835,7 @@ def test_executor_plugin_keys_require_executor_access(client, admin_token):
         },
     )
     master_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={
             "label": "master-owned-token",
@@ -846,10 +846,10 @@ def test_executor_plugin_keys_require_executor_access(client, admin_token):
 
     master_client = client.__class__(client.app)
     assert master_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "scoped.master", "password": "strong-password"},
     ).status_code == 200
-    master_tokens = master_client.get("/auth/plugin-keys")
+    master_tokens = master_client.get("/api/auth/plugin-keys")
     assert master_tokens.status_code == 200
     assert [row["label"] for row in master_tokens.json()["keys"]] == [
         "master-owned-token",
@@ -857,23 +857,23 @@ def test_executor_plugin_keys_require_executor_access(client, admin_token):
 
     regular_client = client.__class__(client.app)
     assert regular_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "regular.user", "password": "strong-password"},
     ).status_code == 200
-    regular_tokens = regular_client.get("/auth/plugin-keys")
+    regular_tokens = regular_client.get("/api/auth/plugin-keys")
     assert regular_tokens.status_code == 200
     assert regular_tokens.json()["keys"] == []
 
 
 def test_finance_participant_endpoint_excludes_non_finance_users(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "FinanceScopeCo", "aliases": ["financescopeco"]},
     )
     company_id = company.json()["id"]
     finance_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Finance Participant",
@@ -884,7 +884,7 @@ def test_finance_participant_endpoint_excludes_non_finance_users(client, admin_t
         },
     )
     plain_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Plain User",
@@ -897,7 +897,7 @@ def test_finance_participant_endpoint_excludes_non_finance_users(client, admin_t
     assert plain_user.status_code == 200
 
     response = client.get(
-        "/admin/finance-participants",
+        "/api/admin/finance-participants",
         headers={"X-Admin-Token": admin_token},
     )
 
@@ -909,17 +909,17 @@ def test_finance_participant_endpoint_excludes_non_finance_users(client, admin_t
 
 def test_company_admin_lists_only_own_company_users_and_keys(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OwnTenantCo", "aliases": ["owntenantco"]},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OtherTenantCo", "aliases": ["othertenantco"]},
     ).json()
     admin = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Admin",
@@ -934,7 +934,7 @@ def test_company_admin_lists_only_own_company_users_and_keys(client, admin_token
         },
     ).json()
     client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Other Tenant User",
@@ -944,25 +944,25 @@ def test_company_admin_lists_only_own_company_users_and_keys(client, admin_token
         },
     )
     own_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "own-tenant-key", "company_id": own_company["id"], "user_id": admin["id"]},
     ).json()
     client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "other-tenant-key", "company_id": other_company["id"]},
     )
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.admin", "password": "strong-password"},
     ).status_code == 200
 
-    users = tenant_client.get("/admin/users")
-    keys = tenant_client.get("/api-keys")
-    companies = tenant_client.get("/admin/companies")
+    users = tenant_client.get("/api/admin/users")
+    keys = tenant_client.get("/api/api-keys")
+    companies = tenant_client.get("/api/admin/companies")
 
     assert users.status_code == 200
     assert {row["company_id"] for row in users.json()} == {own_company["id"]}
@@ -975,17 +975,17 @@ def test_company_admin_lists_only_own_company_users_and_keys(client, admin_token
 
 def test_company_admin_cannot_mutate_companies_or_company_tariffs(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantMutationOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantMutationOther"},
     ).json()
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Mutation Admin",
@@ -1003,46 +1003,46 @@ def test_company_admin_cannot_mutate_companies_or_company_tariffs(client, admin_
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.mutation.admin", "password": "strong-password"},
     ).status_code == 200
 
     assert tenant_client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         json={"name": "TenantCreatedCompany"},
     ).status_code == 403
     assert tenant_client.put(
-        f"/admin/companies/{other_company['id']}",
+        f"/api/admin/companies/{other_company['id']}",
         json={"name": "TenantChangedOther"},
     ).status_code == 403
-    assert tenant_client.delete(f"/admin/companies/{other_company['id']}").status_code == 403
+    assert tenant_client.delete(f"/api/admin/companies/{other_company['id']}").status_code == 403
     assert tenant_client.put(
-        f"/admin/company-tariffs/{own_company['id']}",
+        f"/api/admin/company-tariffs/{own_company['id']}",
         json={"price_create": 1, "price_reschedule": 2},
     ).status_code == 403
     assert tenant_client.put(
-        f"/admin/company-tariffs/{other_company['id']}",
+        f"/api/admin/company-tariffs/{other_company['id']}",
         json={"price_create": 1, "price_reschedule": 2},
     ).status_code == 403
 
-    companies = client.get("/admin/companies", headers={"X-Admin-Token": admin_token})
+    companies = client.get("/api/admin/companies", headers={"X-Admin-Token": admin_token})
     assert {row["name"] for row in companies.json()} >= {"TenantMutationOwn", "TenantMutationOther"}
     assert "TenantCreatedCompany" not in {row["name"] for row in companies.json()}
 
 
 def test_company_admin_can_manage_only_own_company_users_without_system_role(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantUserOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantUserOther"},
     ).json()
     created_admin = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant User Admin",
@@ -1060,12 +1060,12 @@ def test_company_admin_can_manage_only_own_company_users_without_system_role(cli
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.user.admin", "password": "strong-password"},
     ).status_code == 200
 
     own_user = tenant_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={
             "name": "Own Tenant Worker",
             "login": "own.tenant.worker",
@@ -1081,7 +1081,7 @@ def test_company_admin_can_manage_only_own_company_users_without_system_role(cli
     assert own_user.json()["company_id"] == own_company["id"]
 
     assert tenant_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={
             "name": "Other Tenant Worker",
             "login": "other.tenant.worker.direct",
@@ -1091,7 +1091,7 @@ def test_company_admin_can_manage_only_own_company_users_without_system_role(cli
         },
     ).status_code == 403
     assert tenant_client.post(
-        "/admin/users",
+        "/api/admin/users",
         json={
             "name": "Escalated Tenant Worker",
             "login": "tenant.escalated.worker",
@@ -1102,14 +1102,14 @@ def test_company_admin_can_manage_only_own_company_users_without_system_role(cli
         },
     ).status_code == 403
     assert tenant_client.put(
-        f"/admin/users/{own_user.json()['id']}",
+        f"/api/admin/users/{own_user.json()['id']}",
         json={
             "name": "Moved Tenant Worker",
             "company_id": other_company["id"],
         },
     ).status_code == 403
 
-    users = tenant_client.get("/admin/users")
+    users = tenant_client.get("/api/admin/users")
     assert users.status_code == 200
     assert {row["company_id"] for row in users.json()} == {own_company["id"]}
     assert "Other Tenant Worker" not in [row["name"] for row in users.json()]
@@ -1117,17 +1117,17 @@ def test_company_admin_can_manage_only_own_company_users_without_system_role(cli
 
 def test_company_admin_can_manage_only_own_company_api_keys(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantKeyOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantKeyOther"},
     ).json()
     admin = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Key Admin",
@@ -1142,7 +1142,7 @@ def test_company_admin_can_manage_only_own_company_api_keys(client, admin_token)
         },
     ).json()
     other_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Other Key User",
@@ -1152,19 +1152,19 @@ def test_company_admin_can_manage_only_own_company_api_keys(client, admin_token)
         },
     ).json()
     other_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "other-owned-key", "company_id": other_company["id"]},
     ).json()
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.key.admin", "password": "strong-password"},
     ).status_code == 200
 
     own_key = tenant_client.post(
-        "/api-keys",
+        "/api/api-keys",
         json={"label": "own-created-key", "company_id": own_company["id"], "user_id": admin["id"]},
     )
     assert own_key.status_code == 200
@@ -1172,42 +1172,42 @@ def test_company_admin_can_manage_only_own_company_api_keys(client, admin_token)
     assert own_key.json()["user_id"] == admin["id"]
 
     assert tenant_client.post(
-        "/api-keys",
+        "/api/api-keys",
         json={"label": "other-company-key", "company_id": other_company["id"]},
     ).status_code == 403
     assert tenant_client.post(
-        "/api-keys",
+        "/api/api-keys",
         json={"label": "other-user-key", "company_id": own_company["id"], "user_id": other_user["id"]},
     ).status_code == 403
     assert tenant_client.put(
-        f"/api-keys/{own_key.json()['id']}",
+        f"/api/api-keys/{own_key.json()['id']}",
         json={"company_id": other_company["id"]},
     ).status_code == 403
     assert tenant_client.put(
-        f"/api-keys/{other_key['id']}",
+        f"/api/api-keys/{other_key['id']}",
         json={"label": "tenant touched other key"},
     ).status_code == 403
-    assert tenant_client.post(f"/api-keys/{other_key['id']}/reset-usage").status_code == 403
-    assert tenant_client.delete(f"/api-keys/{other_key['id']}").status_code == 403
+    assert tenant_client.post(f"/api/api-keys/{other_key['id']}/reset-usage").status_code == 403
+    assert tenant_client.delete(f"/api/api-keys/{other_key['id']}").status_code == 403
 
-    keys = tenant_client.get("/api-keys")
+    keys = tenant_client.get("/api/api-keys")
     assert keys.status_code == 200
     assert [row["id"] for row in keys.json()] == [own_key.json()["id"]]
 
 
 def test_company_admin_cannot_read_other_company_user_stats_or_finance_participants(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantStatsOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantStatsOther"},
     ).json()
     client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Stats Admin",
@@ -1223,7 +1223,7 @@ def test_company_admin_cannot_read_other_company_user_stats_or_finance_participa
         },
     )
     other_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Other Stats User",
@@ -1236,32 +1236,32 @@ def test_company_admin_cannot_read_other_company_user_stats_or_finance_participa
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.stats.admin", "password": "strong-password"},
     ).status_code == 200
 
-    assert tenant_client.get(f"/admin/users/{other_user['id']}/stats").status_code == 403
-    own_finance = tenant_client.get(f"/admin/finance-participants?company_id={own_company['id']}")
+    assert tenant_client.get(f"/api/admin/users/{other_user['id']}/stats").status_code == 403
+    own_finance = tenant_client.get(f"/api/admin/finance-participants?company_id={own_company['id']}")
     assert own_finance.status_code == 200
     assert [row["company_id"] for row in own_finance.json()] == [own_company["id"]]
-    assert tenant_client.get(f"/admin/finance-participants?company_id={other_company['id']}").status_code == 403
+    assert tenant_client.get(f"/api/admin/finance-participants?company_id={other_company['id']}").status_code == 403
 
 
 def test_company_admin_cannot_mutate_other_company_invoices(client, admin_token):
     from src.db.invoices import insert_invoice
 
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantInvoiceOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantInvoiceOther"},
     ).json()
     client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Invoice Admin",
@@ -1280,42 +1280,42 @@ def test_company_admin_cannot_mutate_other_company_invoices(client, admin_token)
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.invoice.admin", "password": "strong-password"},
     ).status_code == 200
 
     assert tenant_client.patch(
-        f"/admin/invoices/{own_invoice_id}",
+        f"/api/admin/invoices/{own_invoice_id}",
         json={"comment": "own update"},
     ).status_code == 200
     assert tenant_client.patch(
-        f"/admin/invoices/{other_invoice_id}",
+        f"/api/admin/invoices/{other_invoice_id}",
         json={"comment": "blocked update"},
     ).status_code == 403
-    assert tenant_client.delete(f"/admin/invoices/{other_invoice_id}").status_code == 403
+    assert tenant_client.delete(f"/api/admin/invoices/{other_invoice_id}").status_code == 403
     assert tenant_client.post(
-        "/admin/open-invoices/ensure",
+        "/api/admin/open-invoices/ensure",
         json={"company": other_company["name"]},
     ).status_code == 403
     assert tenant_client.post(
-        "/admin/open-invoices/issue",
+        "/api/admin/open-invoices/issue",
         json={"company": other_company["name"]},
     ).status_code == 403
 
 
 def test_company_admin_can_manage_only_own_company_prepaid_packages(client, admin_token):
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantPrepaidOwn"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "TenantPrepaidOther"},
     ).json()
     client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Tenant Prepaid Admin",
@@ -1330,47 +1330,47 @@ def test_company_admin_can_manage_only_own_company_prepaid_packages(client, admi
         },
     )
     own_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "own-prepaid-key", "company_id": own_company["id"]},
     ).json()
     other_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "other-prepaid-key", "company_id": other_company["id"]},
     ).json()
     other_package = client.post(
-        "/admin/prepaid-packages",
+        "/api/admin/prepaid-packages",
         headers={"X-Admin-Token": admin_token},
         json={"api_key_id": other_key["id"], "balance_amount": 1000},
     ).json()
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "tenant.prepaid.admin", "password": "strong-password"},
     ).status_code == 200
 
     own_package = tenant_client.post(
-        "/admin/prepaid-packages",
+        "/api/admin/prepaid-packages",
         json={"api_key_id": own_key["id"], "balance_amount": 500},
     )
     assert own_package.status_code == 200
     assert tenant_client.post(
-        "/admin/prepaid-packages",
+        "/api/admin/prepaid-packages",
         json={"api_key_id": other_key["id"], "balance_amount": 500},
     ).status_code == 403
     assert tenant_client.patch(
-        f"/admin/prepaid-packages/{other_package['id']}",
+        f"/api/admin/prepaid-packages/{other_package['id']}",
         json={"balance_amount": 777},
     ).status_code == 403
     assert tenant_client.post(
-        f"/admin/prepaid-packages/{other_package['id']}/top-up",
+        f"/api/admin/prepaid-packages/{other_package['id']}/top-up",
         json={"amount": 100},
     ).status_code == 403
-    assert tenant_client.delete(f"/admin/prepaid-packages/{other_package['id']}").status_code == 403
+    assert tenant_client.delete(f"/api/admin/prepaid-packages/{other_package['id']}").status_code == 403
 
-    packages = tenant_client.get("/admin/prepaid-packages")
+    packages = tenant_client.get("/api/admin/prepaid-packages")
     assert packages.status_code == 200
     assert [row["id"] for row in packages.json()] == [own_package.json()["id"]]
 
@@ -1379,17 +1379,17 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
     from src.db.invoices import insert_invoice
 
     own_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OwnFinanceTenant"},
     ).json()
     other_company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "OtherFinanceTenant"},
     ).json()
     own_admin = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Finance Tenant Admin",
@@ -1404,7 +1404,7 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
         },
     ).json()
     other_user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Other Finance User",
@@ -1427,27 +1427,27 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
         total_amount=2000,
     )
     assert client.patch(
-        f"/admin/invoices/{own_invoice_id}",
+        f"/api/admin/invoices/{own_invoice_id}",
         headers={"X-Admin-Token": admin_token},
         json={"paid": True},
     ).status_code == 200
     assert client.patch(
-        f"/admin/invoices/{other_invoice_id}",
+        f"/api/admin/invoices/{other_invoice_id}",
         headers={"X-Admin-Token": admin_token},
         json={"paid": True},
     ).status_code == 200
     own_expense = client.post(
-        "/admin/expenses",
+        "/api/admin/expenses",
         headers={"X-Admin-Token": admin_token},
         json={"amount": 100, "reason": "own expense", "user_id": own_admin["id"]},
     ).json()
     other_expense = client.post(
-        "/admin/expenses",
+        "/api/admin/expenses",
         headers={"X-Admin-Token": admin_token},
         json={"amount": 200, "reason": "other expense", "user_id": other_user["id"]},
     ).json()
     own_payout = client.post(
-        "/admin/payouts",
+        "/api/admin/payouts",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Own finance payout",
@@ -1458,7 +1458,7 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
     )
     assert own_payout.status_code == 200
     other_payout = client.post(
-        "/admin/payouts",
+        "/api/admin/payouts",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Other finance payout",
@@ -1471,13 +1471,13 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
 
     tenant_client = client.__class__(client.app)
     assert tenant_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "finance.tenant.admin", "password": "strong-password"},
     ).status_code == 200
 
-    invoices = tenant_client.get("/admin/invoices")
-    expenses = tenant_client.get("/admin/expenses")
-    payouts = tenant_client.get("/admin/payouts")
+    invoices = tenant_client.get("/api/admin/invoices")
+    expenses = tenant_client.get("/api/admin/expenses")
+    payouts = tenant_client.get("/api/admin/payouts")
 
     assert invoices.status_code == 200
     assert expenses.status_code == 200
@@ -1489,17 +1489,17 @@ def test_company_admin_lists_only_own_company_finance_rows(client, admin_token):
 
 def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
     alpha = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "SuperMasterAlpha"},
     ).json()
     beta = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "SuperMasterBeta"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Global Master",
@@ -1512,12 +1512,12 @@ def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
     )
     assert user.status_code == 200
     client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "alpha-master-token", "company_id": alpha["id"], "user_id": user.json()["id"]},
     )
     duplicate_key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "beta-master-token", "company_id": beta["id"], "user_id": user.json()["id"]},
     )
@@ -1525,10 +1525,10 @@ def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
 
     master_client = client.__class__(client.app)
     assert master_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "global.master", "password": "strong-password"},
     ).status_code == 200
-    response = master_client.get("/auth/plugin-keys")
+    response = master_client.get("/api/auth/plugin-keys")
 
     assert response.status_code == 200
     assert {row["label"] for row in response.json()["keys"]} == {"alpha-master-token"}
@@ -1537,12 +1537,12 @@ def test_global_executor_access_marks_plugin_keys_global(client, admin_token):
 
 def test_admin_user_update_preserves_executor_access(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "MasterScopeUpdateCo"},
     ).json()
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Scope Editable Master",
@@ -1556,7 +1556,7 @@ def test_admin_user_update_preserves_executor_access(client, admin_token):
     user_id = created.json()["id"]
 
     updated = client.put(
-        f"/admin/users/{user_id}",
+        f"/api/admin/users/{user_id}",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Scope Editable Master",
@@ -1579,17 +1579,17 @@ def test_admin_user_update_preserves_executor_access(client, admin_token):
 
 def test_company_executor_access_exposes_own_plugin_keys(client, admin_token):
     own = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CompanyMasterOwn"},
     ).json()
     other = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CompanyMasterOther"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Company Master",
@@ -1600,22 +1600,22 @@ def test_company_executor_access_exposes_own_plugin_keys(client, admin_token):
         },
     )
     client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "own-company-token", "company_id": own["id"], "user_id": user.json()["id"]},
     )
     client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "other-company-token", "company_id": other["id"], "user_id": user.json()["id"]},
     )
 
     master_client = client.__class__(client.app)
     assert master_client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "company.master", "password": "strong-password"},
     ).status_code == 200
-    response = master_client.get("/auth/plugin-keys")
+    response = master_client.get("/api/auth/plugin-keys")
 
     assert response.status_code == 200
     assert {row["label"] for row in response.json()["keys"]} == {"own-company-token"}
@@ -1624,18 +1624,18 @@ def test_company_executor_access_exposes_own_plugin_keys(client, admin_token):
 
 def test_company_tariff_is_returned_for_keys_without_specific_tariff(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CompanyTariffCo"},
     ).json()
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "company-tariff-key", "company_id": company["id"]},
     ).json()
 
     tariff = client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={
             "price_create": 111,
@@ -1646,7 +1646,7 @@ def test_company_tariff_is_returned_for_keys_without_specific_tariff(client, adm
     )
     assert tariff.status_code == 200
 
-    keys = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+    keys = client.get("/api/api-keys", headers={"X-Admin-Token": admin_token})
     row = next(item for item in keys.json() if item["id"] == key["id"])
 
     assert row["tariff"] == {
@@ -1666,17 +1666,17 @@ def test_company_tariff_prices_confirmed_usage_without_key_tariff(client, admin_
     from src.modules.billing.jobs import calculate_usage_price
 
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "CompanyTariffBillingCo"},
     ).json()
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "company-tariff-billing-key", "company_id": company["id"]},
     ).json()
     tariff = client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={
             "price_create": 111,

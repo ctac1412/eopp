@@ -168,7 +168,7 @@ def _create_master(client, admin_token: str, index: int) -> tuple[str, int, str]
     login = f"load.master.{index}"
     password = "strong-password"
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": f"Load Master {index}",
@@ -178,7 +178,7 @@ def _create_master(client, admin_token: str, index: int) -> tuple[str, int, str]
     )
     assert user.status_code == 200, user.text
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": f"load-master-{index}", "max_uses": 10000, "user_id": user.json()["id"]},
     )
@@ -206,7 +206,7 @@ def _start_solo_pending(client, session_token: str, index: int) -> tuple[str, th
 
     def post_solve_captcha() -> None:
         result_holder["response"] = client.post(
-            "/solve-captcha",
+            "/api/solve-captcha",
             headers=_session_cookie(session_token),
             json={
                 "auto_solve": False,
@@ -365,7 +365,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
                     (
                         "solo",
                         {
-                            "path": "/solve",
+                            "path": "/api/solve",
                             "session_token": session_token,
                             "json": {
                                 "captcha_id": captcha_id,
@@ -382,7 +382,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
                         (
                             "distributed",
                             {
-                                "path": "/distribution/answer",
+                                "path": "/api/distribution/answer",
                                 "session_token": session_token,
                                 "json": {
                                     "captcha_id": captcha_id,
@@ -399,7 +399,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
                         (
                             "distributed",
                             {
-                                "path": "/distribution/answer",
+                                "path": "/api/distribution/answer",
                                 "session_token": session_token,
                                 "json": {
                                     "captcha_id": captcha_id,
@@ -486,8 +486,8 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     print(f"rounds={rounds}")
     print(f"total_ms={total_ms:.1f}")
     print(f"statuses={statuses}")
-    print(_fmt("solo /solve", evidence["solo"]))
-    print(_fmt("distributed /distribution/answer", evidence["distributed"]))
+    print(_fmt("solo /api/solve", evidence["solo"]))
+    print(_fmt("distributed /api/distribution/answer", evidence["distributed"]))
     print(
         "state: "
         f"pending={evidence['pending_count']} "

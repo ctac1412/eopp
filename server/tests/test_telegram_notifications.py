@@ -54,7 +54,7 @@ def create_api_key_for_company(label, company_id):
 
 def create_login_api_key_for_company(client, admin_token, label, company_id):
     response = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": f"{label} owner",
@@ -66,7 +66,7 @@ def create_login_api_key_for_company(client, admin_token, label, company_id):
     assert response.status_code == 200
     user_id = response.json()["id"]
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": label, "max_uses": 1000, "user_id": user_id},
     )
@@ -83,12 +83,12 @@ def login_key_owner(client, key):
     assert record is not None
     user = user_repo.get_user(record.user_id)
     assert user is not None
-    response = client.post("/auth/login", json={"login": user["login"], "password": key})
+    response = client.post("/api/auth/login", json={"login": user["login"], "password": key})
     assert response.status_code == 200
 
 
 def login_with_password(client, login, password):
-    response = client.post("/auth/login", json={"login": login, "password": password})
+    response = client.post("/api/auth/login", json={"login": login, "password": password})
     assert response.status_code == 200
 
 
@@ -209,7 +209,7 @@ def test_confirm_usage_does_not_trigger_telegram_synchronously(client, admin_tok
     login_with_password(client, key_data["login"], key_data["password"])
 
     response = client.post(
-        "/confirm-usage", json={"usage_log_id": uid}
+        "/api/confirm-usage", json={"usage_log_id": uid}
     )
 
     assert response.status_code == 200
@@ -229,7 +229,7 @@ def test_confirm_usage_does_not_trigger_telegram_for_test_record(client, monkeyp
         config_json={"mode": "create", "runUpTo": 2},
     )
 
-    response = client.post("/confirm-usage", json={"usage_log_id": uid})
+    response = client.post("/api/confirm-usage", json={"usage_log_id": uid})
 
     assert response.status_code == 200
     assert sent == []

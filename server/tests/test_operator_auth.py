@@ -3,12 +3,12 @@ from datetime import UTC, datetime
 
 def _create_operator_profile(client, admin_token):
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Operator Auth Co"},
     ).json()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Cookie Operator",
@@ -30,11 +30,11 @@ def _create_operator_profile(client, admin_token):
 def _create_master_key(client, admin_token, operator_id):
     from src.repositories import api_key_repo
 
-    operator = client.get("/admin/operators", headers={"X-Admin-Token": admin_token}).json()
+    operator = client.get("/api/admin/operators", headers={"X-Admin-Token": admin_token}).json()
     operator_row = next(row for row in operator if row["id"] == operator_id)
     company_id = operator_row["company_ids"][0]
     executor = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Operator Auth Executor",
@@ -46,7 +46,7 @@ def _create_master_key(client, admin_token, operator_id):
     )
     assert executor.status_code == 200
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={
             "label": f"operator-auth-master-{datetime.now(UTC).timestamp()}",
@@ -58,7 +58,7 @@ def _create_master_key(client, admin_token, operator_id):
     record = api_key_repo.get_key_record(key.json()["key"])
     assert record is not None
     linked = client.put(
-        f"/admin/operators/{operator_id}/link",
+        f"/api/admin/operators/{operator_id}/link",
         headers={"X-Admin-Token": admin_token},
         json={"master_key_id": record.id},
     )
@@ -70,7 +70,7 @@ def test_operator_masters_requires_cookie_session(client, admin_token):
     operator = _create_operator_profile(client, admin_token)
     client.cookies.clear()
 
-    anonymous = client.get(f"/operators/{operator['uuid']}/masters")
+    anonymous = client.get(f"/api/operators/{operator['uuid']}/masters")
 
     assert anonymous.status_code == 401
     assert anonymous.json() == {"error": "Unauthorized"}
@@ -80,7 +80,7 @@ def test_operator_masters_accepts_cookie_session_without_owner_check(client, adm
     operator = _create_operator_profile(client, admin_token)
     _create_master_key(client, admin_token, operator["operator_id"])
 
-    response = client.get(f"/operators/{operator['uuid']}/masters")
+    response = client.get(f"/api/operators/{operator['uuid']}/masters")
 
     assert response.status_code == 200
     assert any(row["assigned"] for row in response.json())
@@ -92,7 +92,7 @@ def test_operator_unlink_requires_cookie_session(client, admin_token):
     client.cookies.clear()
 
     response = client.post(
-        f"/operators/{operator['uuid']}/unlink",
+        f"/api/operators/{operator['uuid']}/unlink",
         json={"master_id": master.id},
     )
 
@@ -104,7 +104,7 @@ def test_operator_stream_requires_cookie_session(client, admin_token):
     operator = _create_operator_profile(client, admin_token)
     client.cookies.clear()
 
-    response = client.get(f"/operators/{operator['uuid']}/stream")
+    response = client.get(f"/api/operators/{operator['uuid']}/stream")
 
     assert response.status_code == 401
     assert response.json() == {"error": "Unauthorized"}

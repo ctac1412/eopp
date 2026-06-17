@@ -14,7 +14,7 @@ def test_create_app_ensures_env_tech_user_login(isolated_api_db, monkeypatch):
     app = create_app()
     client = TestClient(app)
 
-    login = client.post("/auth/login", json={"login": "codex", "password": "codex-password"})
+    login = client.post("/api/auth/login", json={"login": "codex", "password": "codex-password"})
 
     assert login.status_code == 200
     assert login.json()["role"] == "super_admin"
@@ -46,8 +46,8 @@ def test_create_app_updates_existing_env_tech_user_password(isolated_api_db, mon
     app = create_app()
     client = TestClient(app)
 
-    old_login = client.post("/auth/login", json={"login": "codex", "password": "old-password"})
-    new_login = client.post("/auth/login", json={"login": "codex", "password": "new-password"})
+    old_login = client.post("/api/auth/login", json={"login": "codex", "password": "old-password"})
+    new_login = client.post("/api/auth/login", json={"login": "codex", "password": "new-password"})
 
     assert old_login.status_code == 401
     assert new_login.status_code == 200

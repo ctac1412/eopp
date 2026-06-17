@@ -119,7 +119,7 @@ def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api
     monkeypatch.setenv("PEAK_FAST_MODE", "1")
 
     register_response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "api_key": api_key,
             "reservation_id": "reservation-1",
@@ -137,7 +137,7 @@ def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api
     monkeypatch.setattr("src.services.usage_service.enqueue_deferred_job", explode)
 
     confirm_response = client.post(
-        "/confirm-usage",
+        "/api/confirm-usage",
         json={"api_key": api_key, "usage_log_id": usage_log_id, "slot_date": "2026-06-11"},
     )
 
@@ -155,7 +155,7 @@ def test_confirm_usage_defers_telegram_even_when_sync_flag_enabled(
     monkeypatch.setenv("EOPP_USAGE_SYNC_BILLING_ENABLED", "1")
 
     register_response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "api_key": api_key,
             "reservation_id": "reservation-telegram-deferred",
@@ -172,7 +172,7 @@ def test_confirm_usage_defers_telegram_even_when_sync_flag_enabled(
     )
 
     confirm_response = client.post(
-        "/confirm-usage",
+        "/api/confirm-usage",
         json={"api_key": api_key, "usage_log_id": usage_log_id, "slot_date": "2026-06-15"},
     )
 
@@ -195,7 +195,7 @@ def test_fail_usage_defers_captcha_record_parsing(monkeypatch, client, api_key, 
     from src.db.connection import get_connection
 
     register_response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "api_key": api_key,
             "reservation_id": "reservation-failed-captcha",
@@ -212,7 +212,7 @@ def test_fail_usage_defers_captcha_record_parsing(monkeypatch, client, api_key, 
     monkeypatch.setattr("src.db.captchas.create_captcha_records", explode)
 
     fail_response = client.post(
-        "/fail-usage",
+        "/api/fail-usage",
         json={
             "api_key": api_key,
             "usage_log_id": usage_log_id,

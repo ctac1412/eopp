@@ -45,7 +45,7 @@ def test_access_service_maps_password_sessions_to_permissions(client, admin_toke
 def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
     """RBAC must allow read-only admin work without allowing finance mutation."""
     client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Manager",
@@ -55,18 +55,18 @@ def test_manager_can_view_billing_but_cannot_edit_tariffs(client, admin_token):
         },
     )
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "RBAC Tariff Denied Co"},
     ).json()
     client.post(
-        "/admin/logout",
+        "/api/admin/logout",
     )
-    client.post("/admin/auth", json={"login": "manager.rbac", "password": "strong-password"})
+    client.post("/api/auth/login", json={"login": "manager.rbac", "password": "strong-password"})
 
-    view = client.get("/admin/invoices")
+    view = client.get("/api/admin/invoices")
     edit = client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         json={"price_create": 100, "price_reschedule": 50},
     )
 
@@ -80,7 +80,7 @@ def test_plugin_token_owner_change_is_audited_with_actor_permission_and_target(c
     from src.modules.audit.repository import AuditRepository
 
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Token Owner",
@@ -92,13 +92,13 @@ def test_plugin_token_owner_change_is_audited_with_actor_permission_and_target(c
     )
     assert user.status_code == 200
     created = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "audit_rbac_target"},
     ).json()
 
     response = client.patch(
-        f"/admin/api-keys/{created['id']}",
+        f"/api/admin/api-keys/{created['id']}",
         headers={"X-Admin-Token": admin_token},
         json={"user_id": user.json()["id"]},
     )
@@ -120,8 +120,8 @@ def test_admin_auth_success_and_failure_are_audited(client, admin_token, legacy_
     """Login attempts are security events even when the token is invalid."""
     from src.modules.audit.repository import AuditRepository
 
-    ok = client.post("/admin/auth", json={"login": "admin", "password": legacy_admin_api_key})
-    failed = client.post("/admin/auth", json={"login": "admin", "password": "definitely-not-valid"})
+    ok = client.post("/api/auth/login", json={"login": "admin", "password": legacy_admin_api_key})
+    failed = client.post("/api/auth/login", json={"login": "admin", "password": "definitely-not-valid"})
 
     assert ok.status_code == 200
     assert failed.status_code == 401
@@ -133,9 +133,9 @@ def test_admin_auth_success_and_failure_are_audited(client, admin_token, legacy_
 
 def test_audit_log_endpoint_requires_audit_view(client, admin_token, legacy_admin_api_key):
     """Authorized admins can inspect audit rows through a dedicated endpoint."""
-    client.post("/admin/auth", json={"login": "admin", "password": legacy_admin_api_key})
+    client.post("/api/auth/login", json={"login": "admin", "password": legacy_admin_api_key})
 
-    response = client.get("/admin/audit", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/admin/audit", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     assert any(row["action"] == "admin.login.succeeded" for row in response.json())
@@ -146,13 +146,13 @@ def test_tariff_change_emits_business_audit_outbox_event(client, admin_token):
     from src.platform.outbox.publisher import queued_events
 
     company = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Tariff Audit Co"},
     ).json()
 
     response = client.put(
-        f"/admin/company-tariffs/{company['id']}",
+        f"/api/admin/company-tariffs/{company['id']}",
         headers={"X-Admin-Token": admin_token},
         json={"price_create": 100, "price_reschedule": 50},
     )
@@ -171,26 +171,26 @@ def test_invoice_and_payout_actions_emit_business_audit_events(client, admin_tok
     from src.platform.outbox.publisher import queued_events
 
     invoice = client.post(
-        "/admin/invoices",
+        "/api/admin/invoices",
         headers={"X-Admin-Token": admin_token},
         json={"invoice_number": "INV-RBAC-AUDIT", "debt_amount": 100, "total_amount": 100},
     )
     assert invoice.status_code == 200
     invoice_id = invoice.json()["id"]
     paid = client.patch(
-        f"/admin/invoices/{invoice_id}",
+        f"/api/admin/invoices/{invoice_id}",
         headers={"X-Admin-Token": admin_token},
         json={"paid": True},
     )
     assert paid.status_code == 200
     participant = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={"name": "RBAC Audit Payee", "login": "rbac.audit.payee", "password": "strong-password"},
     )
     assert participant.status_code == 200
     payout = client.post(
-        "/admin/payouts",
+        "/api/admin/payouts",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "RBAC audit payout",

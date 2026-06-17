@@ -3,7 +3,7 @@
 
 def _create_company(client, admin_token, name, aliases=None):
     response = client.post(
-        "/admin/companies",
+        "/api/admin/companies",
         headers={"X-Admin-Token": admin_token},
         json={"name": name, "aliases": aliases or []},
     )
@@ -18,7 +18,7 @@ def _create_master(client, admin_token, *, name, login, company_id, scope="own_c
         else {"all_companies": False, "company_ids": [company_id]}
     )
     response = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": name,
@@ -36,7 +36,7 @@ def _create_master(client, admin_token, *, name, login, company_id, scope="own_c
 
 def _create_master_key(client, admin_token, *, label, user_id):
     response = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": label, "user_id": user_id},
     )
@@ -46,7 +46,7 @@ def _create_master_key(client, admin_token, *, label, user_id):
 
 def _login(client, login):
     response = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": login, "password": "strong-password"},
     )
     assert response.status_code == 200
@@ -97,7 +97,7 @@ def test_open_channel_resolves_existing_company_and_is_visible_to_company_master
     assert opened["executor_token"] == "executor-test-token"
 
     _login(client, "company.master.channel")
-    sessions = client.get("/admin/plugin-channel/sessions")
+    sessions = client.get("/api/admin/plugin-channel/sessions")
     assert sessions.status_code == 200
     assert [row["id"] for row in sessions.json()["sessions"]] == [opened["session_id"]]
     assert sessions.json()["sessions"][0]["executor_token"] == "executor-test-token"
@@ -128,13 +128,13 @@ def test_open_channel_creates_missing_company_visible_only_to_global_master(clie
     assert opened["visibility"] == "global_masters"
 
     _login(client, "local.master.channel")
-    local_sessions = client.get("/admin/plugin-channel/sessions")
+    local_sessions = client.get("/api/admin/plugin-channel/sessions")
     assert local_sessions.status_code == 200
     assert local_sessions.json()["sessions"] == []
 
-    client.post("/auth/logout")
+    client.post("/api/auth/logout")
     _login(client, "global.master.channel")
-    global_sessions = client.get("/admin/plugin-channel/sessions")
+    global_sessions = client.get("/api/admin/plugin-channel/sessions")
     assert global_sessions.status_code == 200
     assert [row["id"] for row in global_sessions.json()["sessions"]] == [opened["session_id"]]
 
@@ -143,7 +143,7 @@ def test_super_admin_without_executor_access_does_not_see_channel_sessions(clien
     opened = _open_channel(client, company_name="Admin Visible Company")
 
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Channel Super Admin",
@@ -155,10 +155,10 @@ def test_super_admin_without_executor_access_does_not_see_channel_sessions(clien
     )
     assert created.status_code == 200
 
-    login = client.post("/auth/login", json={"login": "channel.super.admin", "password": "strong-password"})
+    login = client.post("/api/auth/login", json={"login": "channel.super.admin", "password": "strong-password"})
     assert login.status_code == 200
 
-    sessions = client.get("/admin/plugin-channel/sessions")
+    sessions = client.get("/api/admin/plugin-channel/sessions")
     assert sessions.status_code == 200
     assert sessions.json()["sessions"] == []
 
@@ -207,11 +207,11 @@ def test_root_channel_opens_without_reservation_id_and_rejects_unknown_command(c
     assert refreshed.json()["session"]["reservation_id"] == "card-42"
 
     _login(client, "root.master.channel")
-    claim = client.post(f"/admin/plugin-channel/sessions/{body['session_id']}/claim")
+    claim = client.post(f"/api/admin/plugin-channel/sessions/{body['session_id']}/claim")
     assert claim.status_code == 200
 
     accepted = client.post(
-        f"/admin/plugin-channel/sessions/{body['session_id']}/commands",
+        f"/api/admin/plugin-channel/sessions/{body['session_id']}/commands",
         json={"type": "refresh_snapshot", "payload": {}},
     )
     assert accepted.status_code == 200
@@ -227,13 +227,13 @@ def test_root_channel_opens_without_reservation_id_and_rejects_unknown_command(c
     assert polled.json()["commands"][0]["allowed_session_states"] == ["claimed", "open"]
 
     rejected = client.post(
-        f"/admin/plugin-channel/sessions/{body['session_id']}/commands",
+        f"/api/admin/plugin-channel/sessions/{body['session_id']}/commands",
         json={"type": "run_arbitrary_js", "payload": {}},
     )
     assert rejected.status_code == 400
     assert rejected.json()["error"] == "unknown_command"
 
-    closed = client.post(f"/admin/plugin-channel/sessions/{body['session_id']}/close")
+    closed = client.post(f"/api/admin/plugin-channel/sessions/{body['session_id']}/close")
     assert closed.status_code == 200
     assert closed.json()["session"]["status"] == "closed"
 
@@ -257,19 +257,19 @@ def test_channel_can_be_assigned_to_master_key_and_released(client, admin_token)
 
     _login(client, "dispatch.master.channel")
     assigned = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/assign",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/assign",
         json={"master_key_id": master_key["id"]},
     )
     assert assigned.status_code == 200
     assert assigned.json()["session"]["status"] == "claimed"
     assert assigned.json()["session"]["claimed_master_key_id"] == master_key["id"]
 
-    sessions = client.get("/admin/plugin-channel/sessions")
+    sessions = client.get("/api/admin/plugin-channel/sessions")
     assert sessions.status_code == 200
     assert sessions.json()["sessions"][0]["claimed_master_key_id"] == master_key["id"]
 
     released = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/release",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/release",
     )
     assert released.status_code == 200
     assert released.json()["session"]["status"] == "open"
@@ -309,7 +309,7 @@ def test_channel_cannot_be_assigned_to_master_key_from_another_company(client, a
 
     _login(client, "channel.master.channel")
     assigned = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/assign",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/assign",
         json={"master_key_id": other_key["id"]},
     )
 
@@ -349,14 +349,14 @@ def test_channel_can_be_reassigned_between_master_keys_in_same_company(client, a
 
     _login(client, "first.channel.master")
     first_assignment = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/assign",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/assign",
         json={"master_key_id": first_key["id"]},
     )
     assert first_assignment.status_code == 200
     assert first_assignment.json()["session"]["claimed_master_key_id"] == first_key["id"]
 
     second_assignment = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/assign",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/assign",
         json={"master_key_id": second_key["id"]},
     )
     assert second_assignment.status_code == 200
@@ -380,7 +380,7 @@ def test_api_keys_response_includes_executor_scope_for_channel_dispatch(client, 
         user_id=master["id"],
     )
 
-    response = client.get("/api-keys", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/api-keys", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     row = next(item for item in response.json() if item["id"] == key["id"])
@@ -394,7 +394,7 @@ def test_global_executor_master_key_can_be_assigned_channel_from_any_company(cli
     admin_company = _create_company(client, admin_token, "Admin Home Company")
     channel_company = _create_company(client, admin_token, "Admin Foreign Channel Company")
     created = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Dispatch Super Admin",
@@ -417,7 +417,7 @@ def test_global_executor_master_key_can_be_assigned_channel_from_any_company(cli
 
     _login(client, "dispatch.super.admin")
     assigned = client.post(
-        f"/admin/plugin-channel/sessions/{opened['session_id']}/assign",
+        f"/api/admin/plugin-channel/sessions/{opened['session_id']}/assign",
         json={"master_key_id": key["id"]},
     )
 

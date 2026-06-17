@@ -20,7 +20,6 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from src.benchmark import run_benchmark_cached
 from src.constants import FRONTEND_DIST
 from src.models import (
-    AdminAuthBody,
     CaptchaLabelSaveBody,
     CompanyAliasBody,
     CompanyBillingSettingBody,
@@ -62,7 +61,6 @@ from src.policies.access_policy import (
     token_from_request,
 )
 from src.repositories import api_key_repo, company_repo, usage_log_repo, user_company_access_repo, user_repo
-from src.routes.auth import login_response
 
 logger = logging.getLogger("eopp.admin")
 from src.services import billing_service, captcha_service, reporting_service
@@ -88,7 +86,6 @@ ADMIN_SPA_TAB_PATHS = {
     "/admin/streams",
     "/admin/backend-logs",
     "/admin/prepaid",
-    "/admin/channels",
     "/admin/ai",
 }
 
@@ -339,11 +336,6 @@ def _tail_lines(path: Path, limit: int) -> list[str]:
         return []
     with path.open("r", encoding="utf-8", errors="replace") as file:
         return file.readlines()[-limit:]
-
-
-@router.post("/auth")
-async def admin_auth(body: AdminAuthBody):
-    return login_response(body)
 
 
 @router.get("/roles")

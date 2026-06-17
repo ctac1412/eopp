@@ -4,8 +4,6 @@ import { Alert, Card, Spin } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button, DataTable, MetricsStrip, StatusTag, Toolbar } from "../../../ui";
 
-const API = "";
-
 function formatMs(ms) {
   if (ms == null) return "—";
   return `${(ms / 1000).toFixed(2)}с`;

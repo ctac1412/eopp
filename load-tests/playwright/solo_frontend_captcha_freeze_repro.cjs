@@ -257,7 +257,7 @@ function parseCookiePair(cookieHeader, name) {
 }
 
 async function setupAdminCookie() {
-  const response = await fetch(`${baseUrl}/auth/login`, {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
@@ -273,7 +273,7 @@ async function setupAdminCookie() {
 }
 
 async function loginUser(identity) {
-  const response = await fetch(`${baseUrl}/auth/login`, {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
@@ -291,7 +291,7 @@ async function loginUser(identity) {
 async function isCookieAlive(cookieHeader) {
   if (!cookieHeader) return false;
   try {
-    const response = await fetch(`${baseUrl}/auth/me`, {
+    const response = await fetch(`${baseUrl}/api/auth/me`, {
       headers: { cookie: cookieHeader },
       signal: AbortSignal.timeout(openFrontendTimeoutMs),
     });
@@ -305,7 +305,7 @@ async function setupIdentity(index, adminCookie) {
   const suffix = `${Date.now()}-${index}`;
   const login = `solo-load-${suffix}`;
   const password = "solo-load-password";
-  const user = await request("/admin/users", {
+  const user = await request("/api/admin/users", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -317,7 +317,7 @@ async function setupIdentity(index, adminCookie) {
       password,
     }),
   });
-  const key = await request("/api-keys", {
+  const key = await request("/api/api-keys", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -412,7 +412,7 @@ async function ensureUserCookie(identity, index) {
 }
 
 async function authMe(cookieHeader) {
-  const response = await fetch(`${baseUrl}/auth/me`, {
+  const response = await fetch(`${baseUrl}/api/auth/me`, {
     headers: { cookie: cookieHeader },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
   });
@@ -424,7 +424,7 @@ async function authMe(cookieHeader) {
     body = text;
   }
   if (!response.ok) {
-    throw new Error(`/auth/me failed ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(`/api/auth/me failed ${response.status}: ${text.slice(0, 500)}`);
   }
   return body;
 }
@@ -436,14 +436,14 @@ async function resolveOperatorUuid(login, password, explicitUuid) {
   const operatorProfile = me?.user?.operator_profile;
   const uuid = operatorProfile?.uuid;
   if (!uuid) {
-    throw new Error(`user ${login} has no active operator_profile.uuid in /auth/me`);
+    throw new Error(`user ${login} has no active operator_profile.uuid in /api/auth/me`);
   }
   return { uuid, cookie, authCache: "miss" };
 }
 
 async function validateMasterKey(master) {
   const cookie = await loginUser(master);
-  const response = await fetch(`${baseUrl}/validate-key`, {
+  const response = await fetch(`${baseUrl}/api/validate-key`, {
     headers: { cookie },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
   });
@@ -455,13 +455,13 @@ async function validateMasterKey(master) {
     body = text;
   }
   if (!response.ok || !body?.valid) {
-    throw new Error(`/validate-key failed for distributed master: ${response.status} ${text.slice(0, 500)}`);
+    throw new Error(`/api/validate-key failed for distributed master: ${response.status} ${text.slice(0, 500)}`);
   }
   return body;
 }
 
 async function listOperatorMasters(uuid, cookie) {
-  const response = await fetch(`${baseUrl}/operators/${encodeURIComponent(uuid)}/masters`, {
+  const response = await fetch(`${baseUrl}/api/operators/${encodeURIComponent(uuid)}/masters`, {
     headers: { cookie },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
   });
@@ -473,7 +473,7 @@ async function listOperatorMasters(uuid, cookie) {
     body = text;
   }
   if (!response.ok || !Array.isArray(body)) {
-    throw new Error(`/operators/${uuid}/masters failed: ${response.status} ${text.slice(0, 500)}`);
+    throw new Error(`/api/operators/${uuid}/masters failed: ${response.status} ${text.slice(0, 500)}`);
   }
   return body;
 }
@@ -635,9 +635,9 @@ async function openFrontend(identity, index) {
   });
   page.on("response", async (response) => {
     const url = response.url();
-    if (!url.includes("/solve") && !url.includes("/stream") && !url.includes("/auth/me") && !url.includes("/validate-key")) return;
+    if (!url.includes("/api/solve") && !url.includes("/api/stream") && !url.includes("/api/auth/me") && !url.includes("/api/validate-key")) return;
     let body = "";
-    if (!url.includes("/stream")) {
+    if (!url.includes("/api/stream")) {
       try {
         body = (await response.text()).slice(0, 500);
       } catch {
@@ -709,14 +709,14 @@ async function openOperatorFrontend(operator, index) {
   page.on("response", async (response) => {
     const url = response.url();
     if (
-      !url.includes("/distribution/answer") &&
-      !url.includes("/operators/") &&
-      !url.includes("/stream")
+      !url.includes("/api/distribution/answer") &&
+      !url.includes("/api/operators/") &&
+      !url.includes("/api/stream")
     ) {
       return;
     }
     let body = "";
-    if (!url.includes("/stream")) {
+    if (!url.includes("/api/stream")) {
       try {
         body = (await response.text()).slice(0, 500);
       } catch {
@@ -726,7 +726,7 @@ async function openOperatorFrontend(operator, index) {
     apiResponses.push({ url, status: response.status(), body });
   });
 
-  await page.goto(`${baseUrl}/operators/${encodeURIComponent(operator.uuid)}`, {
+  await page.goto(`${baseUrl}/api/operators/${encodeURIComponent(operator.uuid)}`, {
     waitUntil: "domcontentloaded",
     timeout: openFrontendTimeoutMs,
   });
@@ -757,7 +757,7 @@ async function pageDiagnostics(page) {
 }
 
 async function solveCaptcha(identity, selected) {
-  const response = await fetch(`${baseUrl}/solve-captcha`, {
+  const response = await fetch(`${baseUrl}/api/solve-captcha`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(solveCaptchaTimeoutMs),
@@ -795,7 +795,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
   const initialImageSrc = await image.evaluate((node) => node.getAttribute("src") || "");
   const beforeMarkers = await page.locator(".captcha-click-surface__marker").count().catch(() => 0);
   const solveResponsePromise = page.waitForResponse(
-    (response) => response.url().includes("/solve") && response.request().method() === "POST",
+    (response) => response.url().includes("/api/solve") && response.request().method() === "POST",
     { timeout: solveResponseTimeoutMs },
   );
 
@@ -813,7 +813,7 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
     const solveResponse = await solveResponsePromise;
     if (!solveResponse.ok()) {
       const body = await solveResponse.text().catch(() => "");
-      throw new Error(`/solve returned ${solveResponse.status()}: ${body.slice(0, 500)}`);
+      throw new Error(`/api/solve returned ${solveResponse.status()}: ${body.slice(0, 500)}`);
     }
     await page.waitForFunction(
       ({ markerCount, imageSrc }) => {
@@ -857,7 +857,7 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
     if (!box) break;
     const answerPromise = page.waitForResponse(
       (response) =>
-        response.url().includes("/distribution/answer") &&
+        response.url().includes("/api/distribution/answer") &&
         response.request().method() === "POST",
       { timeout: solveResponseTimeoutMs },
     );
@@ -877,7 +877,7 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
       if (answer.status() === 404 && body.includes("Distribution state not found")) {
         break;
       }
-      throw new Error(`/distribution/answer returned ${answer.status()}: ${body.slice(0, 500)}`);
+      throw new Error(`/api/distribution/answer returned ${answer.status()}: ${body.slice(0, 500)}`);
     }
     let body = null;
     try {

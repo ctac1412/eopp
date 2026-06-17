@@ -30,7 +30,7 @@ def test_admin_chat_broadcast_reaches_active_masters_and_their_operators(
     )
 
     response = client.post(
-        "/admin/chat/broadcast",
+        "/api/admin/chat/broadcast",
         headers={"X-Admin-Token": admin_token},
         json={"message": "Проверка связи", "sender_label": "Администратор"},
     )

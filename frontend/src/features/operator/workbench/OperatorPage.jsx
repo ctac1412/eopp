@@ -2,6 +2,7 @@ import { operatorWorkbenchService } from "./api/operatorWorkbenchService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
+import { API_BASE_URL } from "../../../shared/api/endpoints";
 import OperatorHeader from "./OperatorHeader";
 import CaptchaArea from "./CaptchaArea";
 import OperatorSidebar from "./OperatorSidebar";
@@ -146,7 +147,7 @@ export function OperatorPage() {
     disconnect();
     setConnecting(true);
     addLog("Подключение к SSE...", "info");
-    const es = new EventSource(`/operators/${uuid}/stream`);
+    const es = new EventSource(`${API_BASE_URL}/operators/${uuid}/stream`);
     esRef.current = es;
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data);

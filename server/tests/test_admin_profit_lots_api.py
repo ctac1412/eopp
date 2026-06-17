@@ -59,7 +59,7 @@ def test_admin_profit_lots_lists_allocations(client, admin_token, isolated_api_d
     conn.commit()
     conn.close()
 
-    response = client.get("/admin/profit-lots", headers={"X-Admin-Token": admin_token})
+    response = client.get("/api/admin/profit-lots", headers={"X-Admin-Token": admin_token})
 
     assert response.status_code == 200
     rows = response.json()

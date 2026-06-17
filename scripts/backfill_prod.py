@@ -23,12 +23,12 @@ def request(method, path, body=None):
 
 # 1. Backfill analysis metadata
 print("1. backfill-analysis-metadata...")
-s, d = request("POST", "/admin/captcha-files/backfill-analysis-metadata")
+s, d = request("POST", "/api/admin/captcha-files/backfill-analysis-metadata")
 print(f"   {s}: {d}")
 
 # 2. Run Chain classifier via AI endpoint, save results
 print("2. Classifying all captchas...")
-s, d = request("POST", "/admin/ai/classify", {"classifier": "chain"})
+s, d = request("POST", "/api/admin/ai/classify", {"classifier": "chain"})
 print(f"   {s}: total={d.get('total')} digit={d.get('digit_count')} figures={d.get('figure_count',0)} puzzle={d.get('puzzle_count')}")
 if d.get('stats'):
     print(f"   TP={d['stats']['tp']} FP={d['stats']['fp']} FN={d['stats']['fn']} acc={d['stats']['accuracy']}")

@@ -68,7 +68,12 @@ class ModuleStatus:
         }
 
 
-def register_modules(app: FastAPI, manifest_paths: Iterable[str]) -> tuple[ModuleStatus, ...]:
+def register_modules(
+    app: FastAPI,
+    manifest_paths: Iterable[str],
+    *,
+    prefix: str = "",
+) -> tuple[ModuleStatus, ...]:
     """Import manifests, attach routers, and store defensive status on ``app``.
 
     Import errors, malformed manifests, failing lifecycle hooks, or router
@@ -80,7 +85,7 @@ def register_modules(app: FastAPI, manifest_paths: Iterable[str]) -> tuple[Modul
     startup_hooks: list[LifecycleHook] = []
     shutdown_hooks: list[LifecycleHook] = []
     for manifest_path in manifest_paths:
-        status, startup, shutdown = _register_one_module(app, manifest_path)
+        status, startup, shutdown = _register_one_module(app, manifest_path, prefix=prefix)
         statuses.append(status)
         startup_hooks.extend(startup)
         shutdown_hooks.extend(shutdown)
@@ -94,13 +99,15 @@ def register_modules(app: FastAPI, manifest_paths: Iterable[str]) -> tuple[Modul
 def _register_one_module(
     app: FastAPI,
     manifest_path: str,
+    *,
+    prefix: str = "",
 ) -> tuple[ModuleStatus, tuple[LifecycleHook, ...], tuple[LifecycleHook, ...]]:
     """Load one manifest and include its routers without leaking failures."""
 
     try:
         manifest = load_manifest(manifest_path)
         for router in manifest.routers:
-            app.include_router(router)
+            app.include_router(router, prefix=prefix)
         _run_sync_hooks(manifest.startup, manifest.name, "startup")
     except Exception as exc:
         logger.exception("module_disabled name=%s error=%s", manifest_path, exc)

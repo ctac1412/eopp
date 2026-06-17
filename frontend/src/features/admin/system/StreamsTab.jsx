@@ -1,6 +1,7 @@
 import { adminRequest } from "../shared/adminClient";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Space } from "antd";
+import { API_BASE_URL } from "../../../shared/api/endpoints";
 import {
   Button,
   DataTable,
@@ -132,7 +133,7 @@ export function StreamsTab({ streams, streamsLoading, adminToken }) {
   useEffect(() => {
     if (!adminToken) return undefined;
 
-    const url = "/admin/stream/slots";
+    const url = `${API_BASE_URL}/admin/stream/slots`;
     const es = new EventSource(url);
 
     es.onopen = () => setConnected(true);

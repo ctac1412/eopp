@@ -27,7 +27,7 @@ node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
 
 The solo repro caches its test users, API keys, and auth cookies under
 `load-tests/playwright/artifacts/solo-frontend-freeze-repro/` so repeated runs
-do not log in again while `/auth/me` still accepts the cookie. To force a fresh
+do not log in again while `/api/auth/me` still accepts the cookie. To force a fresh
 login/cache refresh:
 
 The solve delay is fixed and shared by every browser. It defaults to `0ms` so
@@ -38,7 +38,7 @@ The delay between icon clicks is fixed at `1000ms` by default; override it with
 
 To imitate one scheduled worker submitting several captchas at once to the
 same user, keep `BROWSERS=1` and increase `CAPTCHAS_PER_BROWSER`. The harness
-sends those `/solve-captcha` requests concurrently, then solves the frontend
+sends those `/api/solve-captcha` requests concurrently, then solves the frontend
 queue one active captcha at a time:
 
 ```powershell

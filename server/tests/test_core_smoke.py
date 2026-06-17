@@ -47,14 +47,14 @@ def test_manual_captcha_flow_solves_pending_session(client, api_key, monkeypatch
     result_holder = {}
 
     def call_solve_captcha():
-        result_holder["response"] = client.post("/solve-captcha", json=payload)
+        result_holder["response"] = client.post("/api/solve-captcha", json=payload)
 
     worker = threading.Thread(target=call_solve_captcha)
     worker.start()
     _wait_for_pending(captcha_id)
 
     solve_response = client.post(
-        "/solve",
+        "/api/solve",
         json={"captcha_id": captcha_id, "variantIndex": 1},
     )
     worker.join(timeout=2)
@@ -92,13 +92,13 @@ def test_cancel_captcha_by_usage_log_wakes_pending_request(client, api_key, monk
     result_holder = {}
 
     worker = threading.Thread(
-        target=lambda: result_holder.update(response=client.post("/solve-captcha", json=payload))
+        target=lambda: result_holder.update(response=client.post("/api/solve-captcha", json=payload))
     )
     worker.start()
     _wait_for_pending(captcha_id)
 
     cancelled = client.post(
-        "/cancel-captcha",
+        "/api/cancel-captcha",
         json={"usage_log_id": 404},
     )
     worker.join(timeout=2)
@@ -148,12 +148,12 @@ def test_solve_captcha_core_mode_survives_archive_and_metadata_failures(
     result_holder = {}
 
     worker = threading.Thread(
-        target=lambda: result_holder.update(response=client.post("/solve-captcha", json=payload))
+        target=lambda: result_holder.update(response=client.post("/api/solve-captcha", json=payload))
     )
     worker.start()
     _wait_for_pending(captcha_id)
 
-    client.post("/solve", json={"captcha_id": captcha_id, "variantIndex": 0})
+    client.post("/api/solve", json={"captcha_id": captcha_id, "variantIndex": 0})
     worker.join(timeout=2)
 
     assert result_holder["response"].status_code == 200
@@ -173,7 +173,7 @@ def test_register_usage_core_mode_skips_config_enrichment(
     )
 
     response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "reservation_id": "reservation-core-fast",
             "captcha_id": "captcha-core-fast",
@@ -213,13 +213,13 @@ def test_register_usage_enqueues_after_usage_row_is_committed(
     from src.sse.manager import lock, sse_queues
 
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={"name": "Usage Owner", "login": "usage.owner", "password": "strong-password"},
     )
     assert user.status_code == 200
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": "usage-owner-key", "user_id": user.json()["id"]},
     )
@@ -237,13 +237,13 @@ def test_register_usage_enqueues_after_usage_row_is_committed(
         sse_queues.setdefault(api_key_id, []).append(object())
 
     login = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": "usage.owner", "password": "strong-password"},
     )
     assert login.status_code == 200
 
     response = client.post(
-        "/register-usage",
+        "/api/register-usage",
         json={
             "reservation_id": "reservation-enqueue-after-commit",
             "captcha_id": "captcha-enqueue-after-commit",
@@ -298,7 +298,7 @@ def test_confirm_usage_core_mode_survives_billing_captcha_records_and_telegram_f
     )
 
     response = client.post(
-        "/confirm-usage",
+        "/api/confirm-usage",
         json={
             "usage_log_id": usage_log_id,
             "slot_date": "2026-06-11T12:00:00+03:00",

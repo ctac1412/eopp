@@ -180,7 +180,7 @@ function prepareDiagnosticExtension() {
 function startMockServer() {
   const parsed = new URL(serverUrl);
   const server = http.createServer((request, response) => {
-    if (request.method === "POST" && request.url === "/solve-captcha") {
+    if (request.method === "POST" && request.url === "/api/solve-captcha") {
       let body = "";
       request.setEncoding("utf8");
       request.on("data", (chunk) => {

@@ -59,7 +59,7 @@ def test_module_health_reports_disabled_side_modules(client, monkeypatch):
     )
     monkeypatch.setattr(client.app.state, "module_statuses", module_statuses, raising=False)
 
-    response = client.get("/health/modules")
+    response = client.get("/api/health/modules")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -90,7 +90,7 @@ def test_module_health_reports_disabled_side_modules(client, monkeypatch):
 def test_default_module_health_reports_pilot_manifests(client):
     """The default app exposes pilot billing and training module manifests."""
 
-    response = client.get("/health/modules")
+    response = client.get("/api/health/modules")
 
     assert response.status_code == 200
     body = response.json()
@@ -113,9 +113,9 @@ def test_app_starts_core_routes_when_configured_side_module_is_broken(
     monkeypatch.setenv("EOPP_MODULE_MANIFESTS", "tests.fake_missing_manifest")
     client = TestClient(create_app())
 
-    assert client.get("/health").status_code == 200
+    assert client.get("/api/health").status_code == 200
 
-    modules_response = client.get("/health/modules")
+    modules_response = client.get("/api/health/modules")
     assert modules_response.status_code == 200
     assert modules_response.json()["status"] == "degraded"
     assert modules_response.json()["modules"][0]["name"] == "tests.fake_missing_manifest"

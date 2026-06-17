@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 def _create_executor_key(client, admin_token):
     suffix = datetime.now(UTC).timestamp()
     user = client.post(
-        "/admin/users",
+        "/api/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": "Cookie Extension User",
@@ -15,7 +15,7 @@ def _create_executor_key(client, admin_token):
     )
     assert user.status_code == 200
     key = client.post(
-        "/api-keys",
+        "/api/api-keys",
         headers={"X-Admin-Token": admin_token},
         json={"label": f"cookie-extension-key-{suffix}", "user_id": user.json()["id"]},
     )
@@ -26,7 +26,7 @@ def _create_executor_key(client, admin_token):
 def _login_as(client, login: str):
     client.cookies.clear()
     response = client.post(
-        "/auth/login",
+        "/api/auth/login",
         json={"login": login, "password": "strong-password"},
     )
     assert response.status_code == 200
@@ -61,27 +61,27 @@ def test_extension_usage_endpoints_require_cookie_not_api_key(client, admin_toke
     try:
         client.cookies.clear()
         old_register = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"api_key": key["key"], "reservation_id": "old-api-key-only"},
         )
         assert old_register.status_code == 401
 
         _login_as(client, user["login"])
         registered = client.post(
-            "/register-usage",
+            "/api/register-usage",
             json={"reservation_id": "cookie-session"},
         )
         assert registered.status_code == 200
         usage_log_id = registered.json()["usage_log_id"]
 
         confirmed = client.post(
-            "/confirm-usage",
+            "/api/confirm-usage",
             json={"usage_log_id": usage_log_id, "slot_date": "2026-06-17"},
         )
         assert confirmed.status_code == 200
 
         failed = client.post(
-            "/fail-usage",
+            "/api/fail-usage",
             json={
                 "usage_log_id": usage_log_id,
                 "error_message": "ignored-after-confirm",
@@ -98,19 +98,19 @@ def test_extension_status_and_stream_use_cookie_session_key(client, admin_token)
     stream_key_id, stream_queue = _attach_active_stream(key["key"])
     try:
         client.cookies.clear()
-        old_status = client.get(f"/api-key-status?key={key['key']}")
+        old_status = client.get(f"/api/api-key-status?key={key['key']}")
         assert old_status.status_code == 401
 
-        old_check = client.get(f"/check-stream?api_key={key['key']}")
+        old_check = client.get(f"/api/check-stream?api_key={key['key']}")
         assert old_check.status_code == 401
 
         _login_as(client, user["login"])
-        status = client.get("/api-key-status")
+        status = client.get("/api/api-key-status")
         assert status.status_code == 200
         assert status.json()["valid"] is True
         assert status.json()["label"] == key["label"]
 
-        check = client.get("/check-stream")
+        check = client.get("/api/check-stream")
         assert check.status_code == 200
         assert check.json()["valid"] is True
         assert check.json()["has_active_stream"] is True
@@ -123,7 +123,7 @@ def test_remaining_token_style_routes_require_cookie(client, admin_token):
     client.cookies.clear()
 
     solve = client.post(
-        "/solve",
+        "/api/solve",
         json={
             "captcha_id": "missing-captcha",
             "variantIndex": 0,
@@ -132,23 +132,23 @@ def test_remaining_token_style_routes_require_cookie(client, admin_token):
     )
     assert solve.status_code == 401
 
-    usage_log = client.get(f"/usage-log?api_key={key['key']}")
+    usage_log = client.get(f"/api/usage-log?api_key={key['key']}")
     assert usage_log.status_code == 401
 
     slots_group = client.post(
-        "/slots-group/claim",
+        "/api/slots-group/claim",
         json={"group_key": "reservation-1", "client_id": "client-1"},
     )
     assert slots_group.status_code == 401
 
     trigger_test = client.post(
-        "/trigger-test",
+        "/api/trigger-test",
         json={"api_key": key["key"], "captcha_id": "missing-captcha"},
     )
     assert trigger_test.status_code == 401
 
     answer = client.post(
-        "/distribution/answer",
+        "/api/distribution/answer",
         json={
             "captcha_id": "missing-captcha",
             "operator_id": 1,
