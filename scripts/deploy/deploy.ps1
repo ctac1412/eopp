@@ -90,7 +90,9 @@ $manifest = @{
 Write-ReleaseManifest -Path $manifestPath -Manifest $manifest
 
 Log-Info "Exporting Docker image..."
-$tmpTar = Join-Path $env:TEMP "eopp-$releaseId.tar"
+$releaseTmpDir = Join-Path (Join-Path $ProjectRoot "tmp") "release"
+New-Item -ItemType Directory -Force -Path $releaseTmpDir | Out-Null
+$tmpTar = Join-Path $releaseTmpDir "eopp-$releaseId.tar"
 docker save -o $tmpTar $imageFull
 Require-Success $LASTEXITCODE "Failed to export image"
 
