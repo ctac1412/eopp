@@ -1,23 +1,24 @@
 """Tests for classification + solver pipeline."""
-import json, os, sys, pytest
-import numpy as np
+import json
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.captcha_solver_engine.common import build_captcha_context
 from src.captcha_solver_engine.classifier import (
-    ChainClassifier,
     DIGIT_CLASSIFIER,
     FIGURES_CLASSIFIER,
+    ChainClassifier,
 )
+from src.captcha_solver_engine.common import build_captcha_context
+from src.captcha_solver_engine.metrics import _grid_neighbors
+from src.captcha_solver_engine.models import CaptchaClassification, CaptchaContext
 from src.captcha_solver_engine.solvers import (
-    FigureCaptchaSolver,
     DigitCaptchaSolver,
+    FigureCaptchaSolver,
     SeamMetricsSolver,
     solver_for_classification,
 )
-from src.captcha_solver_engine.models import CaptchaClassification
-from src.captcha_solver_engine.metrics import _grid_neighbors
 
 BASE = os.path.join(os.path.dirname(__file__), "..", "data", "captcha_examples", "all")
 
@@ -184,3 +185,19 @@ def test_solver_routing():
     assert solver_for_classification(
         CaptchaClassification(kind="unknown")
     ).name == "seam_metrics"
+
+
+def test_digit_classifier_rejects_context_without_decoded_tile_images():
+    ctx = CaptchaContext(
+        data={},
+        puzzle={},
+        tiles=[{"tileId": "0"}, {"tileId": "1"}],
+        variants=[],
+        images_dict={},
+    )
+
+    result = DIGIT_CLASSIFIER.classify(ctx)
+
+    assert result.kind == "default"
+    assert result.details["total_tiles"] == 0
+    assert result.details["tiles_with_digits"] == 0

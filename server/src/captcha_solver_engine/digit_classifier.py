@@ -71,6 +71,16 @@ def is_digit_captcha(context: CaptchaContext) -> DigitCaptchaReport:
             tile_arrays.append(gray)
 
     total = len(tile_arrays)
+    if total == 0:
+        return DigitCaptchaReport(
+            is_digit_captcha=False,
+            confidence=0.0,
+            method='hog_svm',
+            tiles_with_digits=0,
+            total_tiles=0,
+            detected_digits=[],
+        )
+
     preds = _classify_tiles(tile_arrays)
     digit_tiles = int(sum(preds))
 
