@@ -158,12 +158,14 @@ function Write-ReleaseManifest {
         [string]$Path,
         [hashtable]$Manifest
     )
-    $Manifest | ConvertTo-Json -Depth 8 | Set-Content -Path $Path -Encoding UTF8
+    $json = $Manifest | ConvertTo-Json -Depth 8
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
 }
 
 function Get-RemoteCurrentReleaseId {
     # Return the release_id from /opt/eopp/current/release.json when present.
-    $cmd = "python3 -c `"import json, pathlib; p=pathlib.Path('$script:RemoteCurrentLink/release.json'); print(json.load(open(p)).get('release_id','') if p.exists() else '')`""
+    $cmd = "python3 -c `"import json, pathlib; p=pathlib.Path('$script:RemoteCurrentLink/release.json'); print(json.load(open(p, encoding='utf-8-sig')).get('release_id','') if p.exists() else '')`""
     return (Remote-Exec $cmd 2>$null).Trim()
 }
 

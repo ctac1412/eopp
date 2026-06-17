@@ -50,7 +50,7 @@ case "$plugins_code" in 200|404) ;; *) echo "bad plugins/update.xml code: $plugi
 REMOTE_CURRENT_LINK="$REMOTE_CURRENT_LINK" REMOTE_SHARED_DIR="$REMOTE_SHARED_DIR" EXPECTED_RELEASE_ID="$EXPECTED_RELEASE_ID" VERSION_FILE="$version_file" python3 - <<'PY'
 import json, os, pathlib, sqlite3
 
-manifest = json.load(open(pathlib.Path(os.environ["REMOTE_CURRENT_LINK"]) / "release.json"))
+manifest = json.load(open(pathlib.Path(os.environ["REMOTE_CURRENT_LINK"]) / "release.json", encoding="utf-8-sig"))
 expected = os.environ.get("EXPECTED_RELEASE_ID") or ""
 if expected and manifest.get("release_id") != expected:
     raise SystemExit("release_id mismatch: {} != {}".format(manifest.get("release_id"), expected))
@@ -88,7 +88,7 @@ import json, os, pathlib
 
 manifest = pathlib.Path(os.environ["REMOTE_CURRENT_LINK"]) / "release.json"
 if manifest.exists():
-    print(json.load(open(manifest)).get("image") or os.environ["IMAGE_FALLBACK"])
+    print(json.load(open(manifest, encoding="utf-8-sig")).get("image") or os.environ["IMAGE_FALLBACK"])
 else:
     print(os.environ["IMAGE_FALLBACK"])
 PY

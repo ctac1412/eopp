@@ -24,7 +24,7 @@ function Resolve-RollbackReleaseId {
     # Resolve an explicit release id or the release pointed to by previous.
     param([string]$RequestedReleaseId)
     if ($RequestedReleaseId) { return $RequestedReleaseId }
-    $cmd = "python3 -c `"import json, pathlib; p=pathlib.Path('$script:RemotePreviousLink/release.json'); print(json.load(open(p))['release_id'] if p.exists() else '')`""
+    $cmd = "python3 -c `"import json, pathlib; p=pathlib.Path('$script:RemotePreviousLink/release.json'); print(json.load(open(p, encoding='utf-8-sig'))['release_id'] if p.exists() else '')`""
     $resolved = (Remote-Exec $cmd 2>$null).Trim()
     if (-not $resolved) {
         Log-Error "No previous release manifest found. Pass -ReleaseId explicitly."
