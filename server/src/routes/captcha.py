@@ -98,6 +98,63 @@ def _enqueue_metadata(captcha_id: str, reason: str) -> None:
         logger.exception("failed to enqueue captcha_metadata captcha=%s", captcha_id)
 
 
+def _prepare_display_metadata(
+    *,
+    session: CaptchaSession,
+    data: dict,
+    owner_label: str,
+    is_distributed: bool,
+    metadata: dict,
+) -> dict | None:
+    if session.captcha_type == 1 or not session.variants or session.api_key_id is None:
+        return None
+
+    from src.routes.distribution import init_puzzle_distribution_state
+    from src.sse.manager import get_master_operators, operator_api_key_id
+
+    extra_sse = []
+    op_ids = get_master_operators(session.api_key_id)
+    if not op_ids:
+        return None
+
+    operator_id_map = {index + 1: op_id for index, op_id in enumerate(op_ids)}
+    init_puzzle_distribution_state(
+        captcha_id=session.captcha_id,
+        event=session.event,
+        usage_log_id=session.usage_log_id,
+        api_key_id=session.api_key_id,
+        variants=session.variants,
+        captcha_data=data,
+        operator_id_map=operator_id_map,
+    )
+
+    for index, op_id in enumerate(op_ids):
+        operator_slot_id = index + 1
+        extra_sse.append(
+            (
+                build_new_captcha_message(
+                    session,
+                    timeout=captcha_timeout,
+                    owner_label=owner_label,
+                    owner_api_key_id=session.api_key_id,
+                    extra={"distribution": {"operator_id": operator_slot_id}},
+                ).to_dict(),
+                operator_api_key_id(op_id),
+            )
+        )
+    return {"extra_sse": extra_sse} if extra_sse else None
+
+
+def _cleanup_puzzle_distribution_state(captcha_id: str | None) -> None:
+    if not captcha_id:
+        return
+    from src.routes.distribution import distribution_states
+
+    state = distribution_states.get(captcha_id)
+    if state and state.get("kind") == "puzzle":
+        distribution_states.pop(captcha_id, None)
+
+
 def _runtime() -> CaptchaRuntime:
     deps = CaptchaRuntimeDependencies(
         validate_api_key=captcha_service.validate_captcha_api_key,
@@ -118,6 +175,7 @@ def _runtime() -> CaptchaRuntime:
         get_top3=get_top3_from_solver,
         sync_solver_metadata=_sync_solver_metadata,
         enqueue_metadata=_enqueue_metadata,
+        prepare_display_metadata=_prepare_display_metadata,
         publish_event=_publish_core_event,
         log_step=_log_solve_step,
     )
@@ -146,6 +204,8 @@ async def handle_solve(body: SolveRequest, request: Request):
         return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
     body = with_session_api_key(body, key_record.key)
     status, content = await _runtime().submit_solution(body)
+    if status == 200 and content and not content.get("already_solved"):
+        _cleanup_puzzle_distribution_state(body.captcha_id)
     return JSONResponse(status_code=status, content=content)
 
 

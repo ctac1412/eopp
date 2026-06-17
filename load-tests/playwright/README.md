@@ -25,6 +25,21 @@ $env:EOPP_SOLO_FRONTEND_ROUNDS='10'
 node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
 ```
 
+Run the master/operator puzzle-card smoke with one master and one operator. It
+uses the same `master-operators` harness, but selects payloads whose JSON has
+`puzzle.tiles` and `puzzle.variantsCapture`, waits for 15 cards in both
+frontends, and verifies the operator sends the real reversed `variantIndex`:
+
+```powershell
+$env:EOPP_FRONTEND_LOAD_SCENARIO='master-operators'
+$env:EOPP_SOLO_FRONTEND_CAPTCHA_PAYLOAD_TYPE='puzzle'
+$env:EOPP_DISTRIBUTED_MASTER_COUNT='1'
+$env:EOPP_DISTRIBUTED_OPERATORS_PER_MASTER='1'
+$env:EOPP_SOLO_FRONTEND_ROUNDS='1'
+$env:EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER='1'
+node load-tests/playwright/solo_frontend_captcha_freeze_repro.cjs
+```
+
 The solo repro caches its test users, API keys, and auth cookies under
 `load-tests/playwright/artifacts/solo-frontend-freeze-repro/` so repeated runs
 do not log in again while `/api/auth/me` still accepts the cookie. To force a fresh

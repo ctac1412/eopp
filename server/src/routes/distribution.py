@@ -163,6 +163,38 @@ def init_distribution_state(
     )
 
 
+def init_puzzle_distribution_state(
+    captcha_id: str,
+    event: asyncio.Event,
+    usage_log_id: int,
+    api_key_id: int,
+    variants: list,
+    captcha_data: dict,
+    operator_id_map: dict[int, int] | None = None,
+) -> None:
+    distribution_states[captcha_id] = {
+        "kind": "puzzle",
+        "lock": asyncio.Lock(),
+        "event": event,
+        "usage_log_id": usage_log_id,
+        "api_key_id": api_key_id,
+        "variants": variants,
+        "total_variants": len(variants),
+        "captcha_data": captcha_data,
+        "operator_id_map": operator_id_map or {},
+        "answered_at": {},
+        "created_at": time.time(),
+        "result": None,
+    }
+    logger.info(
+        "distribution_puzzle_state_init captcha=%s usage=%s variants=%s ops=%s",
+        captcha_id,
+        usage_log_id,
+        len(variants),
+        operator_id_map or {},
+    )
+
+
 def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
     op = state["operators"].get(operator_id)
     if not op:
@@ -203,6 +235,10 @@ async def handle_distribution_answer(body: DistributionAnswerBody, request: Requ
     try:
         state = distribution_states.get(captcha_id)
         if not state:
+            if body.variantIndex is not None:
+                return JSONResponse(
+                    content={"already_solved": True, "captcha_id": captcha_id}
+                )
             return JSONResponse(
                 status_code=404,
                 content={"error": "Distribution state not found for this captcha"},
@@ -215,6 +251,106 @@ async def handle_distribution_answer(body: DistributionAnswerBody, request: Requ
                 (time.perf_counter() - lock_wait_start) * 1000,
             )
             state_start = time.perf_counter()
+            if state.get("kind") == "puzzle":
+                variant_index = body.variantIndex
+                if variant_index is None:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "variantIndex is required for puzzle answer"},
+                    )
+                variants = state.get("variants") or []
+                if variant_index < 0 or variant_index >= len(variants):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": "variantIndex is out of range"},
+                    )
+                from src.sse import pending as sse_pending
+
+                entry = sse_pending.get(captcha_id)
+                existing_result = entry.get("result") if entry else None
+                if existing_result is not None:
+                    distribution_states.pop(captcha_id, None)
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "error": "Captcha already answered",
+                            "already_solved": True,
+                            **existing_result,
+                        },
+                    )
+                if state.get("result") is not None:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "error": "Captcha already answered",
+                            "already_solved": True,
+                            **state["result"],
+                        },
+                    )
+
+                answered_at = time.time()
+                duration_ms = int((answered_at - state.get("created_at", answered_at)) * 1000)
+                real_operator_id = state.get("operator_id_map", {}).get(
+                    body.operator_id,
+                    body.operator_id,
+                )
+                variant_tiles = variants[variant_index]
+                result = {
+                    "variantIndex": variant_index,
+                    "variantTiles": variant_tiles,
+                    "captcha_type": 0,
+                    "operator_id": real_operator_id,
+                }
+                state["result"] = result
+
+                if entry and entry.get("result") is None:
+                    entry["result"] = result
+                    entry["event"].set()
+
+                schedule_distribution_answer_archive(
+                    {
+                        "usage_log_id": state.get("usage_log_id"),
+                        "captcha_id": captcha_id,
+                        "operator_id": real_operator_id,
+                        "icon_position": variant_index,
+                        "x": 0,
+                        "y": 0,
+                        "duration_ms": duration_ms,
+                    }
+                )
+
+                owner_id = state["api_key_id"]
+                solved_event = {
+                    "type": "captcha_solved",
+                    "captcha_id": captcha_id,
+                    "solved_by_super": False,
+                    "solver_label": f"operator_{real_operator_id}",
+                    "owner_api_key_id": owner_id,
+                    "variantIndex": variant_index,
+                }
+                from src.sse.manager import push_sse_owner_and_operators
+
+                push_sse_owner_and_operators(solved_event, owner_id)
+                distribution_states.pop(captcha_id, None)
+                observe_latency_ms(
+                    "distribution.answer.state_ms",
+                    (time.perf_counter() - state_start) * 1000,
+                )
+                return JSONResponse(
+                    content={
+                        "complete": True,
+                        "variantIndex": variant_index,
+                        "variantTiles": variant_tiles,
+                        "operator_id": real_operator_id,
+                        "duration_ms": duration_ms,
+                    }
+                )
+
+            if body.icon_position is None or body.x is None or body.y is None:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "icon_position, x and y are required for icon answer"},
+                )
             if icon_position in state["all_answers"]:
                 next_pos = _find_next_unanswered(state, operator_id)
                 observe_latency_ms(

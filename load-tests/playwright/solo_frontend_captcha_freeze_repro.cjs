@@ -12,17 +12,25 @@ try {
   ({ chromium } = require("playwright"));
 } catch (error) {
   try {
-    const globalNodeModules = execSync("npm root -g", { encoding: "utf8" }).trim();
-    const globalRequire = createRequire(path.join(globalNodeModules, "noop.js"));
+    const globalNodeModules = execSync("npm root -g", {
+      encoding: "utf8",
+    }).trim();
+    const globalRequire = createRequire(
+      path.join(globalNodeModules, "noop.js"),
+    );
     ({ chromium } = globalRequire("playwright"));
   } catch {
-    console.error("Playwright is required. Install it globally: npm install -g playwright");
+    console.error(
+      "Playwright is required. Install it globally: npm install -g playwright",
+    );
     throw error;
   }
 }
 
 const rootDir = path.resolve(__dirname, "..", "..");
-const baseUrl = (process.env.EOPP_SOLO_FRONTEND_BASE_URL || "http://127.0.0.1:8766").replace(/\/+$/, "");
+const baseUrl = (
+  process.env.EOPP_SOLO_FRONTEND_BASE_URL || "http://127.0.0.1:8766"
+).replace(/\/+$/, "");
 const authMode = process.env.EOPP_SOLO_FRONTEND_AUTH_MODE || "session";
 const apiKeyList = (process.env.EOPP_SOLO_FRONTEND_API_KEYS || "")
   .split(",")
@@ -37,64 +45,120 @@ const userPasswordList = (process.env.EOPP_SOLO_FRONTEND_USER_PASSWORDS || "")
   .map((password) => password.trim())
   .filter(Boolean);
 const scenario = process.env.EOPP_FRONTEND_LOAD_SCENARIO || "solo";
-const distributedMasterLogins = (process.env.EOPP_DISTRIBUTED_MASTER_LOGINS || "")
+const distributedMasterLogins = (
+  process.env.EOPP_DISTRIBUTED_MASTER_LOGINS || ""
+)
   .split(",")
   .map((login) => login.trim())
   .filter(Boolean);
-const distributedMasterPasswords = (process.env.EOPP_DISTRIBUTED_MASTER_PASSWORDS || "")
+const distributedMasterPasswords = (
+  process.env.EOPP_DISTRIBUTED_MASTER_PASSWORDS || ""
+)
   .split(",")
   .map((password) => password.trim())
   .filter(Boolean);
-const distributedMasterApiKeys = (process.env.EOPP_DISTRIBUTED_MASTER_API_KEYS || "")
+const distributedMasterApiKeys = (
+  process.env.EOPP_DISTRIBUTED_MASTER_API_KEYS || ""
+)
   .split(",")
   .map((key) => key.trim())
   .filter(Boolean);
-const distributedOperatorLogins = (process.env.EOPP_DISTRIBUTED_OPERATOR_LOGINS || "")
+const distributedOperatorLogins = (
+  process.env.EOPP_DISTRIBUTED_OPERATOR_LOGINS || ""
+)
   .split(";")
-  .map((group) => group.split(",").map((login) => login.trim()).filter(Boolean))
+  .map((group) =>
+    group
+      .split(",")
+      .map((login) => login.trim())
+      .filter(Boolean),
+  )
   .filter((group) => group.length > 0);
-const distributedOperatorPasswords = (process.env.EOPP_DISTRIBUTED_OPERATOR_PASSWORDS || "")
+const distributedOperatorPasswords = (
+  process.env.EOPP_DISTRIBUTED_OPERATOR_PASSWORDS || ""
+)
   .split(";")
-  .map((group) => group.split(",").map((password) => password.trim()).filter(Boolean))
+  .map((group) =>
+    group
+      .split(",")
+      .map((password) => password.trim())
+      .filter(Boolean),
+  )
   .filter((group) => group.length > 0);
-const distributedOperatorUuids = (process.env.EOPP_DISTRIBUTED_OPERATOR_UUIDS || "")
+const distributedOperatorUuids = (
+  process.env.EOPP_DISTRIBUTED_OPERATOR_UUIDS || ""
+)
   .split(";")
-  .map((group) => group.split(",").map((uuid) => uuid.trim()).filter(Boolean))
+  .map((group) =>
+    group
+      .split(",")
+      .map((uuid) => uuid.trim())
+      .filter(Boolean),
+  )
   .filter((group) => group.length > 0);
-const ignoreHttpsErrors = process.env.EOPP_SOLO_FRONTEND_IGNORE_HTTPS_ERRORS === "1";
+const ignoreHttpsErrors =
+  process.env.EOPP_SOLO_FRONTEND_IGNORE_HTTPS_ERRORS === "1";
 if (ignoreHttpsErrors) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 }
-const adminLogin = process.env.EOPP_SOLO_FRONTEND_ADMIN_LOGIN || process.env.EOPP_TECH_USER_LOGIN || "codex";
+const adminLogin =
+  process.env.EOPP_SOLO_FRONTEND_ADMIN_LOGIN ||
+  process.env.EOPP_TECH_USER_LOGIN ||
+  "codex";
 const adminPassword =
   process.env.EOPP_SOLO_FRONTEND_ADMIN_PASSWORD ||
   process.env.EOPP_TECH_USER_PASSWORD ||
   "codex-local-admin-2026";
 const browserCount = Number(process.env.EOPP_SOLO_FRONTEND_BROWSERS || 4);
 const distributedMasterCount = Number(
-  process.env.EOPP_DISTRIBUTED_MASTER_COUNT || distributedMasterLogins.length || 1,
+  process.env.EOPP_DISTRIBUTED_MASTER_COUNT ||
+    distributedMasterLogins.length ||
+    1,
 );
-const distributedOperatorsPerMaster = Number(process.env.EOPP_DISTRIBUTED_OPERATORS_PER_MASTER || 3);
+const distributedOperatorsPerMaster = Number(
+  process.env.EOPP_DISTRIBUTED_OPERATORS_PER_MASTER || 3,
+);
 const rounds = Number(process.env.EOPP_SOLO_FRONTEND_ROUNDS || 10);
-const captchasPerBrowser = Number(process.env.EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER || 1);
+const captchasPerBrowser = Number(
+  process.env.EOPP_SOLO_FRONTEND_CAPTCHAS_PER_BROWSER || 1,
+);
 const headless = process.env.EOPP_SOLO_FRONTEND_HEADLESS === "1";
 const solveDelayMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_DELAY_MS || 0);
-const clickIntervalMs = Number(process.env.EOPP_SOLO_FRONTEND_CLICK_INTERVAL_MS || 1000);
+const clickIntervalMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_CLICK_INTERVAL_MS || 1000,
+);
 const windowLayout = process.env.EOPP_SOLO_FRONTEND_WINDOW_LAYOUT || "grid";
 const windowWidth = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_WIDTH || 1280);
-const windowHeight = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_HEIGHT || 516);
-const windowTotalWidth = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_TOTAL_WIDTH || 0);
+const windowHeight = Number(
+  process.env.EOPP_SOLO_FRONTEND_WINDOW_HEIGHT || 516,
+);
+const windowTotalWidth = Number(
+  process.env.EOPP_SOLO_FRONTEND_WINDOW_TOTAL_WIDTH || 0,
+);
 const windowStartX = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_START_X || 0);
 const windowStartY = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_START_Y || 0);
 const windowGap = Number(process.env.EOPP_SOLO_FRONTEND_WINDOW_GAP || 0);
 const devtools = process.env.EOPP_SOLO_FRONTEND_DEVTOOLS === "1";
-const openFrontendStaggerMs = Number(process.env.EOPP_SOLO_FRONTEND_OPEN_STAGGER_MS || 0);
-const openFrontendTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_OPEN_TIMEOUT_MS || 20000);
-const solveCaptchaTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_CAPTCHA_TIMEOUT_MS || 30000);
-const imageVisibleTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_IMAGE_TIMEOUT_MS || 10000);
-const solveResponseTimeoutMs = Number(process.env.EOPP_SOLO_FRONTEND_SOLVE_RESPONSE_TIMEOUT_MS || 10000);
+const openFrontendStaggerMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_OPEN_STAGGER_MS || 0,
+);
+const openFrontendTimeoutMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_OPEN_TIMEOUT_MS || 20000,
+);
+const solveCaptchaTimeoutMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_SOLVE_CAPTCHA_TIMEOUT_MS || 30000,
+);
+const imageVisibleTimeoutMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_IMAGE_TIMEOUT_MS || 10000,
+);
+const solveResponseTimeoutMs = Number(
+  process.env.EOPP_SOLO_FRONTEND_SOLVE_RESPONSE_TIMEOUT_MS || 10000,
+);
 const testNoTimeout = process.env.EOPP_SOLO_FRONTEND_TEST_NO_TIMEOUT === "1";
-const runId = process.env.EOPP_SOLO_FRONTEND_RUN_ID || `solo-${Date.now().toString(36)}`;
+const captchaPayloadType =
+  process.env.EOPP_SOLO_FRONTEND_CAPTCHA_PAYLOAD_TYPE || "icon-click";
+const runId =
+  process.env.EOPP_SOLO_FRONTEND_RUN_ID || `solo-${Date.now().toString(36)}`;
 const artifactsDir = path.join(__dirname, "artifacts");
 const workDir = path.resolve(
   process.env.EOPP_SOLO_FRONTEND_WORKDIR ||
@@ -111,9 +175,17 @@ const captchaDir = path.resolve(
 const identitiesPath = path.join(workDir, "identities.json");
 const refreshAuth = process.env.EOPP_SOLO_FRONTEND_REFRESH_AUTH === "1";
 const clickCount = Number(process.env.EOPP_SOLO_FRONTEND_ICON_CLICKS || 5);
-const captchaPoolOffset = Number(process.env.EOPP_SOLO_FRONTEND_CAPTCHA_POOL_OFFSET || 0);
+const captchaPoolOffset = Number(
+  process.env.EOPP_SOLO_FRONTEND_CAPTCHA_POOL_OFFSET || 0,
+);
 const holdAfterMs = Number(process.env.EOPP_SOLO_FRONTEND_HOLD_AFTER_MS || 0);
-const distributedQueueMode = process.env.EOPP_DISTRIBUTED_QUEUE_MODE || "sequential";
+const distributedQueueMode =
+  process.env.EOPP_DISTRIBUTED_QUEUE_MODE || "sequential";
+const puzzleDistributedClickMode =
+  process.env.EOPP_PUZZLE_DISTRIBUTED_CLICK_MODE || "all";
+const puzzleDistributedClickDelayMs = Number(
+  process.env.EOPP_PUZZLE_DISTRIBUTED_CLICK_DELAY_MS || 0,
+);
 const distributedClickLayouts = {
   2: [3, 2],
   3: [2, 2, 1],
@@ -123,7 +195,10 @@ const distributedClickLayouts = {
 function percentile(values, pct) {
   if (!values.length) return 0;
   const ordered = [...values].sort((a, b) => a - b);
-  const index = Math.max(0, Math.min(ordered.length - 1, Math.ceil((pct / 100) * ordered.length) - 1));
+  const index = Math.max(
+    0,
+    Math.min(ordered.length - 1, Math.ceil((pct / 100) * ordered.length) - 1),
+  );
   return ordered[index];
 }
 
@@ -167,8 +242,13 @@ function windowBoundsForIndex(index) {
   const windowCount = distributedWindowCount();
   if (scenario === "master-operators") {
     const totalGap = Math.max(0, windowCount - 1) * windowGap;
-    const availableWidth = Math.max(windowCount, (windowTotalWidth || windowWidth) - totalGap);
-    const participantWidth = Math.floor(availableWidth / Math.max(1, windowCount));
+    const availableWidth = Math.max(
+      windowCount,
+      (windowTotalWidth || windowWidth) - totalGap,
+    );
+    const participantWidth = Math.floor(
+      availableWidth / Math.max(1, windowCount),
+    );
     return {
       x: windowStartX + index * (participantWidth + windowGap),
       y: windowStartY,
@@ -233,7 +313,9 @@ async function request(pathname, options = {}) {
     body = text;
   }
   if (!response.ok) {
-    throw new Error(`${options.method || "GET"} ${pathname} -> ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `${options.method || "GET"} ${pathname} -> ${response.status}: ${text.slice(0, 500)}`,
+    );
   }
   return body;
 }
@@ -265,7 +347,9 @@ async function setupAdminCookie() {
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`admin login failed ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `admin login failed ${response.status}: ${text.slice(0, 500)}`,
+    );
   }
   const cookie = cookieHeaderFrom(response);
   if (!cookie) throw new Error("admin login did not return a session cookie");
@@ -277,14 +361,22 @@ async function loginUser(identity) {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
-    body: JSON.stringify({ login: identity.login, password: identity.password }),
+    body: JSON.stringify({
+      login: identity.login,
+      password: identity.password,
+    }),
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`user login failed ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `user login failed ${response.status}: ${text.slice(0, 500)}`,
+    );
   }
   const cookie = cookieHeaderFrom(response);
-  if (!cookie) throw new Error(`user login did not return a session cookie for ${identity.login}`);
+  if (!cookie)
+    throw new Error(
+      `user login did not return a session cookie for ${identity.login}`,
+    );
   return cookie;
 }
 
@@ -349,7 +441,11 @@ async function loadOrCreateIdentities() {
     };
   }
 
-  if (userLoginList.length > 0 || userPasswordList.length > 0 || apiKeyList.length > 0) {
+  if (
+    userLoginList.length > 0 ||
+    userPasswordList.length > 0 ||
+    apiKeyList.length > 0
+  ) {
     if (
       userLoginList.length < browserCount ||
       userPasswordList.length < browserCount ||
@@ -373,8 +469,14 @@ async function loadOrCreateIdentities() {
 
   if (!refreshAuth && fs.existsSync(identitiesPath)) {
     const cached = readJson(identitiesPath);
-    if (Array.isArray(cached.identities) && cached.identities.length >= browserCount) {
-      return { identities: cached.identities.slice(0, browserCount), identitiesCreated: false };
+    if (
+      Array.isArray(cached.identities) &&
+      cached.identities.length >= browserCount
+    ) {
+      return {
+        identities: cached.identities.slice(0, browserCount),
+        identitiesCreated: false,
+      };
     }
   }
 
@@ -383,7 +485,11 @@ async function loadOrCreateIdentities() {
   for (let index = 0; index < browserCount; index += 1) {
     identities.push(await setupIdentity(index, adminCookie));
   }
-  writeJson(identitiesPath, { created_at: new Date().toISOString(), base_url: baseUrl, identities });
+  writeJson(identitiesPath, {
+    created_at: new Date().toISOString(),
+    base_url: baseUrl,
+    identities,
+  });
   return { identities, identitiesCreated: true };
 }
 
@@ -395,7 +501,7 @@ async function ensureUserCookie(identity, index) {
   const statePath = path.join(workDir, `auth-state-${index}.json`);
   if (!refreshAuth && fs.existsSync(statePath)) {
     const state = readJson(statePath);
-    if (state.login === identity.login && await isCookieAlive(state.cookie)) {
+    if (state.login === identity.login && (await isCookieAlive(state.cookie))) {
       return { cookie: state.cookie, authCache: "hit" };
     }
   }
@@ -424,19 +530,24 @@ async function authMe(cookieHeader) {
     body = text;
   }
   if (!response.ok) {
-    throw new Error(`/api/auth/me failed ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `/api/auth/me failed ${response.status}: ${text.slice(0, 500)}`,
+    );
   }
   return body;
 }
 
 async function resolveOperatorUuid(login, password, explicitUuid) {
   const cookie = await loginUser({ login, password });
-  if (explicitUuid) return { uuid: explicitUuid, cookie, authCache: "uuid-env" };
+  if (explicitUuid)
+    return { uuid: explicitUuid, cookie, authCache: "uuid-env" };
   const me = await authMe(cookie);
   const operatorProfile = me?.user?.operator_profile;
   const uuid = operatorProfile?.uuid;
   if (!uuid) {
-    throw new Error(`user ${login} has no active operator_profile.uuid in /api/auth/me`);
+    throw new Error(
+      `user ${login} has no active operator_profile.uuid in /api/auth/me`,
+    );
   }
   return { uuid, cookie, authCache: "miss" };
 }
@@ -455,16 +566,21 @@ async function validateMasterKey(master) {
     body = text;
   }
   if (!response.ok || !body?.valid) {
-    throw new Error(`/api/validate-key failed for distributed master: ${response.status} ${text.slice(0, 500)}`);
+    throw new Error(
+      `/api/validate-key failed for distributed master: ${response.status} ${text.slice(0, 500)}`,
+    );
   }
   return body;
 }
 
 async function listOperatorMasters(uuid, cookie) {
-  const response = await fetch(`${baseUrl}/api/operators/${encodeURIComponent(uuid)}/masters`, {
-    headers: { cookie },
-    signal: AbortSignal.timeout(openFrontendTimeoutMs),
-  });
+  const response = await fetch(
+    `${baseUrl}/api/operators/${encodeURIComponent(uuid)}/masters`,
+    {
+      headers: { cookie },
+      signal: AbortSignal.timeout(openFrontendTimeoutMs),
+    },
+  );
   const text = await response.text();
   let body = null;
   try {
@@ -473,7 +589,9 @@ async function listOperatorMasters(uuid, cookie) {
     body = text;
   }
   if (!response.ok || !Array.isArray(body)) {
-    throw new Error(`/api/operators/${uuid}/masters failed: ${response.status} ${text.slice(0, 500)}`);
+    throw new Error(
+      `/api/operators/${uuid}/masters failed: ${response.status} ${text.slice(0, 500)}`,
+    );
   }
   return body;
 }
@@ -525,7 +643,27 @@ function isIconClickPayload(payload) {
   return Boolean(puzzle.imageBase64 && puzzle.iconsBase64);
 }
 
-function loadIconClickPool() {
+function isPuzzlePayload(payload) {
+  const puzzle = payload?.puzzle || {};
+  return (
+    Array.isArray(puzzle.tiles) &&
+    Array.isArray(puzzle.variantsCapture) &&
+    !puzzle.iconsBase64
+  );
+}
+
+function payloadMatchesType(payload, type) {
+  if (type === "icon-click") return isIconClickPayload(payload);
+  if (type === "puzzle") return isPuzzlePayload(payload);
+  throw new Error(
+    `unsupported EOPP_SOLO_FRONTEND_CAPTCHA_PAYLOAD_TYPE=${type}`,
+  );
+}
+
+function loadCaptchaPool(
+  type = captchaPayloadType,
+  minimumPayloads = browserCount * captchasPerBrowser,
+) {
   const rows = queryCaptchaFilesFromDb();
   const pool = [];
   const seen = new Set();
@@ -540,22 +678,29 @@ function loadIconClickPool() {
     } catch {
       continue;
     }
-    if (!isIconClickPayload(payload)) continue;
+    if (!payloadMatchesType(payload, type)) continue;
     seen.add(row.captcha_id);
     pool.push({ row, payloadPath, payload });
   }
 
-  if (pool.length < browserCount * captchasPerBrowser) {
+  if (pool.length < minimumPayloads) {
     throw new Error(
-      `not enough real icon-click payloads: found ${pool.length}, need ${browserCount * captchasPerBrowser}; db=${dbPath}; dir=${captchaDir}`,
+      `not enough real ${type} payloads: found ${pool.length}, need ${minimumPayloads}; db=${dbPath}; dir=${captchaDir}`,
     );
   }
   return { rowsCount: rows.length, pool };
 }
 
+function loadIconClickPool() {
+  return loadCaptchaPool("icon-click");
+}
+
 function payloadFor(pool, round, index, slot) {
   const poolIndex =
-    (captchaPoolOffset + round * browserCount * captchasPerBrowser + index * captchasPerBrowser + slot) %
+    (captchaPoolOffset +
+      round * browserCount * captchasPerBrowser +
+      index * captchasPerBrowser +
+      slot) %
     pool.length;
   const selected = pool[poolIndex];
   const body = cloneJson(selected.payload);
@@ -587,7 +732,10 @@ async function openFrontend(identity, index) {
     devtools,
     ignoreHTTPSErrors: ignoreHttpsErrors,
     viewport: windowBounds
-      ? { width: Math.max(640, windowBounds.width - 16), height: Math.max(480, windowBounds.height - 96) }
+      ? {
+          width: Math.max(640, windowBounds.width - 16),
+          height: Math.max(480, windowBounds.height - 96),
+        }
       : { width: 1280, height: 900 },
     args: [
       "--disable-background-timer-throttling",
@@ -631,11 +779,20 @@ async function openFrontend(identity, index) {
     }
   });
   page.on("requestfailed", (request) => {
-    requestFailures.push({ url: request.url(), failure: request.failure()?.errorText });
+    requestFailures.push({
+      url: request.url(),
+      failure: request.failure()?.errorText,
+    });
   });
   page.on("response", async (response) => {
     const url = response.url();
-    if (!url.includes("/api/solve") && !url.includes("/api/stream") && !url.includes("/api/auth/me") && !url.includes("/api/validate-key")) return;
+    if (
+      !url.includes("/api/solve") &&
+      !url.includes("/api/stream") &&
+      !url.includes("/api/auth/me") &&
+      !url.includes("/api/validate-key")
+    )
+      return;
     let body = "";
     if (!url.includes("/api/stream")) {
       try {
@@ -647,25 +804,45 @@ async function openFrontend(identity, index) {
     apiResponses.push({ url, status: response.status(), body });
   });
 
-  await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: openFrontendTimeoutMs });
+  await page.goto(baseUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: openFrontendTimeoutMs,
+  });
   await page.waitForFunction(
     () => document.body && document.body.innerText.length > 0,
     null,
     { timeout: openFrontendTimeoutMs },
   );
-  const takeoverButton = page.locator('[data-eopp-component="StatusBarForceReconnectButton"]').first();
+  const takeoverButton = page
+    .locator('[data-eopp-component="StatusBarForceReconnectButton"]')
+    .first();
   if (await takeoverButton.isVisible({ timeout: 1500 }).catch(() => false)) {
     await takeoverButton.click();
-    await takeoverButton.waitFor({ state: "hidden", timeout: openFrontendTimeoutMs }).catch(() => {});
-    await page.waitForFunction(
-      () => !document.querySelector('[data-eopp-component="StatusBarForceReconnectButton"]'),
-      null,
-      { timeout: openFrontendTimeoutMs },
-    ).catch(() => {});
+    await takeoverButton
+      .waitFor({ state: "hidden", timeout: openFrontendTimeoutMs })
+      .catch(() => {});
+    await page
+      .waitForFunction(
+        () =>
+          !document.querySelector(
+            '[data-eopp-component="StatusBarForceReconnectButton"]',
+          ),
+        null,
+        { timeout: openFrontendTimeoutMs },
+      )
+      .catch(() => {});
   }
   await delay(500);
 
-  return { context, page, consoleMessages, requestFailures, apiResponses, authCache };
+  return {
+    context,
+    page,
+    cookie,
+    consoleMessages,
+    requestFailures,
+    apiResponses,
+    authCache,
+  };
 }
 
 async function openOperatorFrontend(operator, index) {
@@ -678,7 +855,10 @@ async function openOperatorFrontend(operator, index) {
     devtools,
     ignoreHTTPSErrors: ignoreHttpsErrors,
     viewport: windowBounds
-      ? { width: Math.max(640, windowBounds.width - 16), height: Math.max(480, windowBounds.height - 96) }
+      ? {
+          width: Math.max(640, windowBounds.width - 16),
+          height: Math.max(480, windowBounds.height - 96),
+        }
       : { width: 1280, height: 900 },
     args: [
       "--disable-background-timer-throttling",
@@ -693,6 +873,23 @@ async function openOperatorFrontend(operator, index) {
         : []),
     ],
   });
+  if (authMode !== "api-key-only") {
+    const sessionValue = parseCookiePair(operator.cookie, "eopp_session");
+    if (!sessionValue) {
+      throw new Error(
+        `missing eopp_session cookie for operator ${operator.uuid}`,
+      );
+    }
+    await context.addCookies([
+      {
+        name: "eopp_session",
+        value: sessionValue,
+        url: baseUrl,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+  }
 
   const page = context.pages()[0] || (await context.newPage());
   const consoleMessages = [];
@@ -704,11 +901,15 @@ async function openOperatorFrontend(operator, index) {
     }
   });
   page.on("requestfailed", (request) => {
-    requestFailures.push({ url: request.url(), failure: request.failure()?.errorText });
+    requestFailures.push({
+      url: request.url(),
+      failure: request.failure()?.errorText,
+    });
   });
   page.on("response", async (response) => {
     const url = response.url();
     if (
+      !url.includes("/api/solve") &&
       !url.includes("/api/distribution/answer") &&
       !url.includes("/api/operators/") &&
       !url.includes("/api/stream")
@@ -726,7 +927,7 @@ async function openOperatorFrontend(operator, index) {
     apiResponses.push({ url, status: response.status(), body });
   });
 
-  await page.goto(`${baseUrl}/api/operators/${encodeURIComponent(operator.uuid)}`, {
+  await page.goto(`${baseUrl}/operators/${encodeURIComponent(operator.uuid)}`, {
     waitUntil: "domcontentloaded",
     timeout: openFrontendTimeoutMs,
   });
@@ -737,7 +938,14 @@ async function openOperatorFrontend(operator, index) {
   );
   await delay(500);
 
-  return { context, page, consoleMessages, requestFailures, apiResponses, authCache: operator.authCache };
+  return {
+    context,
+    page,
+    consoleMessages,
+    requestFailures,
+    apiResponses,
+    authCache: operator.authCache,
+  };
 }
 
 async function pageDiagnostics(page) {
@@ -746,25 +954,42 @@ async function pageDiagnostics(page) {
     title: document.title,
     bodyText: document.body.innerText.slice(0, 1000),
     statusBarText:
-      document.querySelector('[data-eopp-component="StatusBar"]')?.textContent?.slice(0, 500) || "",
-    captchaPanelText: document.querySelector(".captcha-panel")?.textContent?.slice(0, 500) || "",
-    clickSurfaceCount: document.querySelectorAll(".captcha-click-surface__image").length,
-    markerCount: document.querySelectorAll(".captcha-click-surface__marker").length,
+      document
+        .querySelector('[data-eopp-component="StatusBar"]')
+        ?.textContent?.slice(0, 500) || "",
+    captchaPanelText:
+      document.querySelector(".captcha-panel")?.textContent?.slice(0, 500) ||
+      "",
+    clickSurfaceCount: document.querySelectorAll(
+      ".captcha-click-surface__image",
+    ).length,
+    markerCount: document.querySelectorAll(".captcha-click-surface__marker")
+      .length,
     cardCount: document.querySelectorAll(".captcha-card").length,
+    cardIndexes: [...document.querySelectorAll(".captcha-card")]
+      .slice(0, 20)
+      .map((card) => card.getAttribute("data-index")),
     legacyIconImageCount: document.querySelectorAll('img[alt="Капча"]').length,
-    imageCount: document.querySelectorAll('.captcha-click-surface__image, .captcha-card img, img[alt="Капча"]').length,
+    imageCount: document.querySelectorAll(
+      '.captcha-click-surface__image, .captcha-card img, img[alt="Капча"]',
+    ).length,
   }));
 }
 
 async function solveCaptcha(identity, selected) {
+  const headers = { "content-type": "application/json" };
+  if (authMode !== "api-key-only" && identity.cookie) {
+    headers.cookie = identity.cookie;
+  }
+  const requestBody = { ...selected.body };
+  if (authMode === "api-key-only") {
+    requestBody.api_key = identity.key.key;
+  }
   const response = await fetch(`${baseUrl}/api/solve-captcha`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     signal: AbortSignal.timeout(solveCaptchaTimeoutMs),
-    body: JSON.stringify({
-      ...selected.body,
-      api_key: identity.key.key,
-    }),
+    body: JSON.stringify(requestBody),
   });
   const text = await response.text();
   let body = null;
@@ -776,10 +1001,18 @@ async function solveCaptcha(identity, selected) {
   return { status: response.status, body, source: selected.source };
 }
 
-async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) {
+async function clickFrontendCaptcha(
+  frontend,
+  round,
+  index,
+  solveDelayMs,
+  slot,
+) {
   const page = frontend.page;
   const started = performance.now();
-  const image = page.locator('.captcha-click-surface__image, img[alt="Капча"]').first();
+  const image = page
+    .locator('.captcha-click-surface__image, img[alt="Капча"]')
+    .first();
   try {
     await image.waitFor({ state: "visible", timeout: imageVisibleTimeoutMs });
   } catch (error) {
@@ -792,16 +1025,27 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
 
   const box = await image.boundingBox();
   if (!box) throw new Error(`icon-click image has no box for browser ${index}`);
-  const initialImageSrc = await image.evaluate((node) => node.getAttribute("src") || "");
-  const beforeMarkers = await page.locator(".captcha-click-surface__marker").count().catch(() => 0);
+  const initialImageSrc = await image.evaluate(
+    (node) => node.getAttribute("src") || "",
+  );
+  const beforeMarkers = await page
+    .locator(".captcha-click-surface__marker")
+    .count()
+    .catch(() => 0);
   const solveResponsePromise = page.waitForResponse(
-    (response) => response.url().includes("/api/solve") && response.request().method() === "POST",
+    (response) =>
+      response.url().includes("/api/solve") &&
+      response.request().method() === "POST",
     { timeout: solveResponseTimeoutMs },
   );
 
   for (let clickIndex = 0; clickIndex < clickCount; clickIndex += 1) {
-    const x = box.x + randomInt(Math.floor(box.width * 0.12), Math.floor(box.width * 0.88));
-    const y = box.y + randomInt(Math.floor(box.height * 0.12), Math.floor(box.height * 0.88));
+    const x =
+      box.x +
+      randomInt(Math.floor(box.width * 0.12), Math.floor(box.width * 0.88));
+    const y =
+      box.y +
+      randomInt(Math.floor(box.height * 0.12), Math.floor(box.height * 0.88));
     await page.mouse.click(x, y);
     if (clickIntervalMs > 0) {
       await delay(clickIntervalMs);
@@ -813,15 +1057,20 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
     const solveResponse = await solveResponsePromise;
     if (!solveResponse.ok()) {
       const body = await solveResponse.text().catch(() => "");
-      throw new Error(`/api/solve returned ${solveResponse.status()}: ${body.slice(0, 500)}`);
+      throw new Error(
+        `/api/solve returned ${solveResponse.status()}: ${body.slice(0, 500)}`,
+      );
     }
     await page.waitForFunction(
       ({ markerCount, imageSrc }) => {
-        const activeImage = document.querySelector('.captcha-click-surface__image, img[alt="Капча"]');
+        const activeImage = document.querySelector(
+          '.captcha-click-surface__image, img[alt="Капча"]',
+        );
         return (
           !activeImage ||
           activeImage.getAttribute("src") !== imageSrc ||
-          document.querySelectorAll(".captcha-click-surface__marker").length > markerCount
+          document.querySelectorAll(".captcha-click-surface__marker").length >
+            markerCount
         );
       },
       { markerCount: beforeMarkers, imageSrc: initialImageSrc },
@@ -836,7 +1085,26 @@ async function clickFrontendCaptcha(frontend, round, index, solveDelayMs, slot) 
   return { round, index, slot, appearedMs, solveDelayMs, clickedMs, solvedMs };
 }
 
-async function clickDistributedCaptcha(frontend, round, groupIndex, participantIndex, participantCount, solveDelayMs, slot) {
+async function clickDistributedCaptcha(
+  frontend,
+  round,
+  groupIndex,
+  participantIndex,
+  participantCount,
+  solveDelayMs,
+  slot,
+) {
+  if (captchaPayloadType === "puzzle") {
+    return clickDistributedPuzzleCaptcha(
+      frontend,
+      round,
+      groupIndex,
+      participantIndex,
+      solveDelayMs,
+      slot,
+    );
+  }
+
   const page = frontend.page;
   const started = performance.now();
   const image = page.locator(".captcha-click-surface__image").first();
@@ -850,7 +1118,8 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
   const appearedMs = performance.now() - started;
   await delay(solveDelayMs);
 
-  const clickLimit = distributedClickLayouts[participantCount]?.[participantIndex] || clickCount;
+  const clickLimit =
+    distributedClickLayouts[participantCount]?.[participantIndex] || clickCount;
   for (let clickIndex = 0; clickIndex < clickLimit; clickIndex += 1) {
     if (!(await image.isVisible({ timeout: 250 }).catch(() => false))) break;
     const box = await image.boundingBox();
@@ -861,8 +1130,12 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
         response.request().method() === "POST",
       { timeout: solveResponseTimeoutMs },
     );
-    const x = box.x + randomInt(Math.floor(box.width * 0.12), Math.floor(box.width * 0.88));
-    const y = box.y + randomInt(Math.floor(box.height * 0.12), Math.floor(box.height * 0.88));
+    const x =
+      box.x +
+      randomInt(Math.floor(box.width * 0.12), Math.floor(box.width * 0.88));
+    const y =
+      box.y +
+      randomInt(Math.floor(box.height * 0.12), Math.floor(box.height * 0.88));
     await page.mouse.click(x, y);
     let answer;
     try {
@@ -874,10 +1147,15 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
     }
     if (!answer.ok()) {
       const body = await answer.text().catch(() => "");
-      if (answer.status() === 404 && body.includes("Distribution state not found")) {
+      if (
+        answer.status() === 404 &&
+        body.includes("Distribution state not found")
+      ) {
         break;
       }
-      throw new Error(`/api/distribution/answer returned ${answer.status()}: ${body.slice(0, 500)}`);
+      throw new Error(
+        `/api/distribution/answer returned ${answer.status()}: ${body.slice(0, 500)}`,
+      );
     }
     let body = null;
     try {
@@ -892,28 +1170,231 @@ async function clickDistributedCaptcha(frontend, round, groupIndex, participantI
   }
 
   const clickedMs = performance.now() - started;
-  return { round, group: groupIndex, participant: participantIndex, slot, appearedMs, solveDelayMs, clickedMs, solvedMs: clickedMs };
+  return {
+    round,
+    group: groupIndex,
+    participant: participantIndex,
+    slot,
+    appearedMs,
+    solveDelayMs,
+    clickedMs,
+    solvedMs: clickedMs,
+  };
+}
+
+async function clickDistributedPuzzleCaptcha(
+  frontend,
+  round,
+  groupIndex,
+  participantIndex,
+  solveDelayMs,
+  slot,
+) {
+  const page = frontend.page;
+  const started = performance.now();
+  const cards = page.locator(".captcha-card");
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll(".captcha-card").length >= 15,
+      null,
+      { timeout: imageVisibleTimeoutMs },
+    );
+  } catch (error) {
+    const diagnostics = await pageDiagnostics(page);
+    if (
+      captchaPayloadType === "puzzle" &&
+      puzzleDistributedClickMode === "race-different" &&
+      distributedQueueMode === "batch" &&
+      diagnostics.cardCount === 0
+    ) {
+      const elapsedMs = performance.now() - started;
+      return {
+        round,
+        group: groupIndex,
+        participant: participantIndex,
+        slot,
+        appearedMs: elapsedMs,
+        solveDelayMs,
+        clickedMs: elapsedMs,
+        solvedMs: elapsedMs,
+        cardCount: 0,
+        skipped: true,
+        skipReason: "already-advanced",
+        responseStatus: null,
+        responseBody: null,
+        visualOrder: [],
+      };
+    }
+    error.message += ` diagnostics=${JSON.stringify(diagnostics)}`;
+    throw error;
+  }
+
+  const appearedMs = performance.now() - started;
+  await delay(solveDelayMs);
+
+  const visibleCardCount = await cards.count();
+  if (visibleCardCount < 15) {
+    const diagnostics = await pageDiagnostics(page);
+    throw new Error(
+      `expected at least 15 puzzle cards, got ${visibleCardCount}; diagnostics=${JSON.stringify(diagnostics)}`,
+    );
+  }
+
+  const visualOrder = await page.evaluate(() =>
+    [...document.querySelectorAll(".captcha-card")].map((card) =>
+      Number(card.getAttribute("data-index")),
+    ),
+  );
+  if (participantIndex > 0 && visualOrder[0] !== 14) {
+    throw new Error(
+      `operator puzzle cards are not reversed: order=${JSON.stringify(visualOrder)}`,
+    );
+  }
+
+  const variantIndex = visualOrder[0];
+  const effectiveSolveDelayMs =
+    puzzleDistributedClickDelayMs > 0
+      ? puzzleDistributedClickDelayMs
+      : solveDelayMs;
+  if (effectiveSolveDelayMs !== solveDelayMs) {
+    await delay(effectiveSolveDelayMs - solveDelayMs);
+  }
+  const answerPath =
+    participantIndex > 0 ? "/api/distribution/answer" : "/api/solve";
+  const solveResponsePromise = page
+    .waitForResponse(
+      (response) =>
+        response.url().includes(answerPath) &&
+        response.request().method() === "POST",
+      { timeout: solveResponseTimeoutMs },
+    )
+    .catch((error) => error);
+  await cards.first().click();
+
+  let solveResponse;
+  solveResponse = await solveResponsePromise;
+  if (solveResponse instanceof Error) {
+    const diagnostics = await pageDiagnostics(page);
+    solveResponse.message += ` diagnostics=${JSON.stringify(diagnostics)}`;
+    throw solveResponse;
+  }
+
+  const responseText = await solveResponse.text().catch(() => "");
+  let responseBody = null;
+  try {
+    responseBody = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    responseBody = responseText;
+  }
+  if (!solveResponse.ok() && puzzleDistributedClickMode !== "race-different") {
+    throw new Error(
+      `${answerPath} returned ${solveResponse.status()}: ${responseText.slice(0, 500)}`,
+    );
+  }
+
+  let requestBody = null;
+  try {
+    requestBody = JSON.parse(solveResponse.request().postData() || "{}");
+  } catch {
+    requestBody = null;
+  }
+  if (solveResponse.ok() && requestBody?.variantIndex !== variantIndex) {
+    throw new Error(
+      `puzzle click sent variantIndex=${requestBody?.variantIndex}, expected ${variantIndex}; order=${JSON.stringify(visualOrder)}`,
+    );
+  }
+  if (participantIndex > 0 && solveResponse.ok()) {
+    const answeredCaptchaPrefix = requestBody?.captcha_id?.slice(0, 8) || "";
+    try {
+      await page.waitForFunction(
+        (captchaPrefix) => {
+          if (document.querySelectorAll(".captcha-card").length === 0) {
+            return true;
+          }
+          const activeLabel =
+            document.querySelector(".op-header__nickname")?.innerText || "";
+          return captchaPrefix && !activeLabel.includes(captchaPrefix);
+        },
+        answeredCaptchaPrefix,
+        { timeout: solveResponseTimeoutMs },
+      );
+    } catch (error) {
+      const diagnostics = await pageDiagnostics(page);
+      error.message += ` operator puzzle captcha did not leave active slot after answer; answered=${answeredCaptchaPrefix}; diagnostics=${JSON.stringify(diagnostics)}`;
+      throw error;
+    }
+  }
+
+  const clickedMs = performance.now() - started;
+  return {
+    round,
+    group: groupIndex,
+    participant: participantIndex,
+    slot,
+    appearedMs,
+    solveDelayMs,
+    clickedMs,
+    solvedMs: clickedMs,
+    cardCount: visibleCardCount,
+    variantIndex,
+    requestVariantIndex: requestBody?.variantIndex,
+    responseStatus: solveResponse.status(),
+    responseBody,
+    visualOrder: visualOrder.slice(0, 15),
+  };
 }
 
 function summarizeFrontends(frontends) {
   return {
-    console_error_count: frontends.reduce((sum, item) => sum + item.consoleMessages.length, 0),
-    request_failure_count: frontends.reduce((sum, item) => sum + item.requestFailures.length, 0),
-    api_responses: frontends.flatMap((item, index) =>
-      item.apiResponses.slice(-10).map((response) => ({ browser: index, ...response })),
-    ).slice(0, 80),
-    console_errors: frontends.flatMap((item, index) =>
-      item.consoleMessages.slice(0, 5).map((message) => ({ browser: index, ...message })),
-    ).slice(0, 20),
-    request_failures: frontends.flatMap((item, index) =>
-      item.requestFailures.slice(0, 5).map((failure) => ({ browser: index, ...failure })),
-    ).slice(0, 20),
+    console_error_count: frontends.reduce(
+      (sum, item) => sum + item.consoleMessages.length,
+      0,
+    ),
+    request_failure_count: frontends.reduce(
+      (sum, item) => sum + item.requestFailures.length,
+      0,
+    ),
+    api_responses: frontends
+      .flatMap((item, index) =>
+        item.apiResponses
+          .slice(-10)
+          .map((response) => ({ browser: index, ...response })),
+      )
+      .slice(0, 80),
+    console_errors: frontends
+      .flatMap((item, index) =>
+        item.consoleMessages
+          .slice(0, 5)
+          .map((message) => ({ browser: index, ...message })),
+      )
+      .slice(0, 20),
+    request_failures: frontends
+      .flatMap((item, index) =>
+        item.requestFailures
+          .slice(0, 5)
+          .map((failure) => ({ browser: index, ...failure })),
+      )
+      .slice(0, 20),
   };
+}
+
+function shouldClickDistributedParticipant(participantIndex) {
+  if (captchaPayloadType !== "puzzle") return true;
+  if (puzzleDistributedClickMode === "master-delayed") {
+    return participantIndex === 0;
+  }
+  if (puzzleDistributedClickMode === "operator-delayed") {
+    return participantIndex > 0;
+  }
+  return true;
 }
 
 function distributedPayloadFor(pool, round, groupIndex, slot) {
   const poolIndex =
-    (captchaPoolOffset + round * distributedMasterCount * captchasPerBrowser + groupIndex * captchasPerBrowser + slot) %
+    (captchaPoolOffset +
+      round * distributedMasterCount * captchasPerBrowser +
+      groupIndex * captchasPerBrowser +
+      slot) %
     pool.length;
   const selected = pool[poolIndex];
   const body = cloneJson(selected.payload);
@@ -922,7 +1403,7 @@ function distributedPayloadFor(pool, round, groupIndex, slot) {
   body.auto_solve_rucaptcha = false;
   body.timeout_metadata = true;
   body.test_no_timeout = testNoTimeout;
-  body.reservation_id = `${runId}-distributed-icon-click-${round}-${groupIndex}-${slot}`;
+  body.reservation_id = `${runId}-distributed-${captchaPayloadType}-${round}-${groupIndex}-${slot}`;
   return {
     body,
     source: {
@@ -942,11 +1423,15 @@ function buildDistributedGroups() {
     throw new Error("EOPP_DISTRIBUTED_OPERATORS_PER_MASTER must be <= 3");
   }
 
-  const masterLogins = distributedMasterLogins.length ? distributedMasterLogins : userLoginList.slice(0, distributedMasterCount);
+  const masterLogins = distributedMasterLogins.length
+    ? distributedMasterLogins
+    : userLoginList.slice(0, distributedMasterCount);
   const masterPasswords = distributedMasterPasswords.length
     ? distributedMasterPasswords
     : userPasswordList.slice(0, distributedMasterCount);
-  const masterKeys = distributedMasterApiKeys.length ? distributedMasterApiKeys : apiKeyList.slice(0, distributedMasterCount);
+  const masterKeys = distributedMasterApiKeys.length
+    ? distributedMasterApiKeys
+    : apiKeyList.slice(0, distributedMasterCount);
 
   if (
     masterLogins.length < distributedMasterCount ||
@@ -961,24 +1446,46 @@ function buildDistributedGroups() {
 
   let operatorLogins = distributedOperatorLogins;
   let operatorPasswords = distributedOperatorPasswords;
-  if (!operatorLogins.length && userLoginList.length >= distributedMasterCount * (1 + distributedOperatorsPerMaster)) {
-    operatorLogins = Array.from({ length: distributedMasterCount }, (_, groupIndex) => {
-      const start = distributedMasterCount + groupIndex * distributedOperatorsPerMaster;
-      return userLoginList.slice(start, start + distributedOperatorsPerMaster);
-    });
-    operatorPasswords = Array.from({ length: distributedMasterCount }, (_, groupIndex) => {
-      const start = distributedMasterCount + groupIndex * distributedOperatorsPerMaster;
-      return userPasswordList.slice(start, start + distributedOperatorsPerMaster);
-    });
+  if (
+    !operatorLogins.length &&
+    userLoginList.length >=
+      distributedMasterCount * (1 + distributedOperatorsPerMaster)
+  ) {
+    operatorLogins = Array.from(
+      { length: distributedMasterCount },
+      (_, groupIndex) => {
+        const start =
+          distributedMasterCount + groupIndex * distributedOperatorsPerMaster;
+        return userLoginList.slice(
+          start,
+          start + distributedOperatorsPerMaster,
+        );
+      },
+    );
+    operatorPasswords = Array.from(
+      { length: distributedMasterCount },
+      (_, groupIndex) => {
+        const start =
+          distributedMasterCount + groupIndex * distributedOperatorsPerMaster;
+        return userPasswordList.slice(
+          start,
+          start + distributedOperatorsPerMaster,
+        );
+      },
+    );
   }
 
   return Array.from({ length: distributedMasterCount }, (_, groupIndex) => {
-    const operatorCount = operatorLogins[groupIndex]?.length || distributedOperatorsPerMaster;
-    const operators = Array.from({ length: operatorCount }, (_, operatorIndex) => ({
-      login: operatorLogins[groupIndex]?.[operatorIndex] || "",
-      password: operatorPasswords[groupIndex]?.[operatorIndex] || "",
-      uuid: distributedOperatorUuids[groupIndex]?.[operatorIndex] || "",
-    }));
+    const operatorCount =
+      operatorLogins[groupIndex]?.length || distributedOperatorsPerMaster;
+    const operators = Array.from(
+      { length: operatorCount },
+      (_, operatorIndex) => ({
+        login: operatorLogins[groupIndex]?.[operatorIndex] || "",
+        password: operatorPasswords[groupIndex]?.[operatorIndex] || "",
+        uuid: distributedOperatorUuids[groupIndex]?.[operatorIndex] || "",
+      }),
+    );
     for (const operator of operators) {
       if (!operator.uuid && (!operator.login || !operator.password)) {
         throw new Error(
@@ -990,7 +1497,11 @@ function buildDistributedGroups() {
       master: {
         login: masterLogins[groupIndex],
         password: masterPasswords[groupIndex],
-        key: { key: masterKeys[groupIndex], id: null, label: masterLogins[groupIndex] },
+        key: {
+          key: masterKeys[groupIndex],
+          id: null,
+          label: masterLogins[groupIndex],
+        },
       },
       operators,
     };
@@ -1008,12 +1519,16 @@ async function mainMasterOperators() {
   const authCache = {};
 
   try {
-    const { rowsCount, pool } = loadIconClickPool();
+    const { rowsCount, pool } = loadCaptchaPool(
+      captchaPayloadType,
+      distributedMasterCount * captchasPerBrowser,
+    );
     captchaPoolInfo = {
       db_path: dbPath,
       captcha_dir: captchaDir,
       db_rows: rowsCount,
-      icon_click_payloads: pool.length,
+      payload_type: captchaPayloadType,
+      payloads: pool.length,
       samples: pool.slice(0, 8).map((item) => ({
         captcha_id: item.row.captcha_id,
         classification: item.row.classification,
@@ -1034,30 +1549,54 @@ async function mainMasterOperators() {
         group.master.key.id = masterKeyInfo.api_key_id;
         group.master.key.label = masterKeyInfo.label || group.master.login;
       } catch (error) {
-        failures.push({ round: null, group: groupIndex, participant: 0, stage: "validate-master-key", error: errorDetails(error) });
+        failures.push({
+          round: null,
+          group: groupIndex,
+          participant: 0,
+          stage: "validate-master-key",
+          error: errorDetails(error),
+        });
         break;
       }
       try {
         const masterFrontend = await openFrontend(group.master, windowBase);
+        group.master.cookie = masterFrontend.cookie;
         opened.master = masterFrontend;
         frontends.push(masterFrontend);
         contexts.push(masterFrontend.context);
-        authCache[`master:${masterFrontend.authCache}`] = (authCache[`master:${masterFrontend.authCache}`] || 0) + 1;
+        authCache[`master:${masterFrontend.authCache}`] =
+          (authCache[`master:${masterFrontend.authCache}`] || 0) + 1;
       } catch (error) {
-        failures.push({ round: null, group: groupIndex, participant: 0, stage: "open-master", error: errorDetails(error) });
+        failures.push({
+          round: null,
+          group: groupIndex,
+          participant: 0,
+          stage: "open-master",
+          error: errorDetails(error),
+        });
         break;
       }
 
-      for (let operatorIndex = 0; operatorIndex < group.operators.length; operatorIndex += 1) {
+      for (
+        let operatorIndex = 0;
+        operatorIndex < group.operators.length;
+        operatorIndex += 1
+      ) {
         try {
           const resolved = await resolveOperatorUuid(
             group.operators[operatorIndex].login,
             group.operators[operatorIndex].password,
             group.operators[operatorIndex].uuid,
           );
-          const operatorMasters = await listOperatorMasters(resolved.uuid, resolved.cookie);
+          const operatorMasters = await listOperatorMasters(
+            resolved.uuid,
+            resolved.cookie,
+          );
           const assigned = operatorMasters.find((master) => master.assigned);
-          if (!assigned || Number(assigned.id) !== Number(masterKeyInfo.api_key_id)) {
+          if (
+            !assigned ||
+            Number(assigned.id) !== Number(masterKeyInfo.api_key_id)
+          ) {
             throw new Error(
               `operator ${group.operators[operatorIndex].login || resolved.uuid} is assigned to ` +
                 `${assigned ? `${assigned.label || assigned.id} (#${assigned.id})` : "no master"}, ` +
@@ -1068,6 +1607,7 @@ async function mainMasterOperators() {
             {
               ...group.operators[operatorIndex],
               uuid: resolved.uuid,
+              cookie: resolved.cookie,
               authCache: resolved.authCache,
             },
             windowBase + operatorIndex + 1,
@@ -1095,12 +1635,15 @@ async function mainMasterOperators() {
       windowBase += 1 + group.operators.length;
     }
 
-    const ready = failures.length === 0 && openedGroups.length === groups.length;
+    const ready =
+      failures.length === 0 && openedGroups.length === groups.length;
     for (let round = 0; round < (ready ? rounds : 0); round += 1) {
       const solveJobs = [];
       if (distributedQueueMode === "batch") {
         for (let slot = 0; slot < captchasPerBrowser; slot += 1) {
-          const selectedPayloads = groups.map((_, groupIndex) => distributedPayloadFor(pool, round, groupIndex, slot));
+          const selectedPayloads = groups.map((_, groupIndex) =>
+            distributedPayloadFor(pool, round, groupIndex, slot),
+          );
           solveJobs.push(
             ...groups.map((group, groupIndex) =>
               solveCaptcha(group.master, selectedPayloads[groupIndex])
@@ -1119,7 +1662,9 @@ async function mainMasterOperators() {
         const selectedPayloads =
           distributedQueueMode === "batch"
             ? []
-            : groups.map((_, groupIndex) => distributedPayloadFor(pool, round, groupIndex, slot));
+            : groups.map((_, groupIndex) =>
+                distributedPayloadFor(pool, round, groupIndex, slot),
+              );
         const slotSolveJobs =
           distributedQueueMode === "batch"
             ? []
@@ -1134,21 +1679,37 @@ async function mainMasterOperators() {
                   })),
               );
 
-        const clickParticipants = openedGroups.flatMap((group, groupIndex) =>
-          [group.master, ...group.operators].map((frontend, participantIndex) => ({
-            frontend,
-            groupIndex,
-            participantIndex,
-            participantCount: 1 + group.operators.length,
-          })),
-        );
+        const clickParticipants = openedGroups
+          .flatMap((group, groupIndex) =>
+            [group.master, ...group.operators].map(
+              (frontend, participantIndex) => ({
+                frontend,
+                groupIndex,
+                participantIndex,
+                participantCount: 1 + group.operators.length,
+              }),
+            ),
+          )
+          .filter(({ participantIndex }) =>
+            shouldClickDistributedParticipant(participantIndex),
+          );
         const clickResults = await Promise.allSettled(
-          clickParticipants.map(({ frontend, groupIndex, participantIndex, participantCount }) =>
-            clickDistributedCaptcha(frontend, round, groupIndex, participantIndex, participantCount, solveDelayMs, slot),
+          clickParticipants.map(
+            ({ frontend, groupIndex, participantIndex, participantCount }) =>
+              clickDistributedCaptcha(
+                frontend,
+                round,
+                groupIndex,
+                participantIndex,
+                participantCount,
+                solveDelayMs,
+                slot,
+              ),
           ),
         );
         for (const [resultIndex, clickResult] of clickResults.entries()) {
-          const { groupIndex, participantIndex } = clickParticipants[resultIndex];
+          const { groupIndex, participantIndex } =
+            clickParticipants[resultIndex];
           if (clickResult.status === "fulfilled") {
             results.push(clickResult.value);
           } else {
@@ -1164,32 +1725,92 @@ async function mainMasterOperators() {
         }
         if (distributedQueueMode !== "batch") {
           const solveResults = await Promise.all(slotSolveJobs);
-          for (const { groupIndex, slot: solvedSlot, solveResult, solveError, source } of solveResults) {
-            captchaSources.push({ round, group: groupIndex, slot: solvedSlot, ...(solveResult?.source || source || {}) });
+          for (const {
+            groupIndex,
+            slot: solvedSlot,
+            solveResult,
+            solveError,
+            source,
+          } of solveResults) {
+            captchaSources.push({
+              round,
+              group: groupIndex,
+              slot: solvedSlot,
+              ...(solveResult?.source || source || {}),
+            });
             if (solveError) {
-              failures.push({ round, group: groupIndex, slot: solvedSlot, stage: "solve-captcha-exception", error: solveError, source });
+              failures.push({
+                round,
+                group: groupIndex,
+                slot: solvedSlot,
+                stage: "solve-captcha-exception",
+                error: solveError,
+                source,
+              });
               continue;
             }
             if (solveResult.status !== 200) {
-              failures.push({ round, group: groupIndex, slot: solvedSlot, stage: "solve-captcha", solveResult });
+              failures.push({
+                round,
+                group: groupIndex,
+                slot: solvedSlot,
+                stage: "solve-captcha",
+                solveResult,
+              });
             } else if (solveResult.body?.status === "timeout") {
-              failures.push({ round, group: groupIndex, slot: solvedSlot, stage: "solve-captcha-timeout", solveResult });
+              failures.push({
+                round,
+                group: groupIndex,
+                slot: solvedSlot,
+                stage: "solve-captcha-timeout",
+                solveResult,
+              });
             }
           }
         }
       }
       if (distributedQueueMode === "batch") {
         const solveResults = await Promise.all(solveJobs);
-        for (const { groupIndex, slot, solveResult, solveError, source } of solveResults) {
-          captchaSources.push({ round, group: groupIndex, slot, ...(solveResult?.source || source || {}) });
+        for (const {
+          groupIndex,
+          slot,
+          solveResult,
+          solveError,
+          source,
+        } of solveResults) {
+          captchaSources.push({
+            round,
+            group: groupIndex,
+            slot,
+            ...(solveResult?.source || source || {}),
+          });
           if (solveError) {
-            failures.push({ round, group: groupIndex, slot, stage: "solve-captcha-exception", error: solveError, source });
+            failures.push({
+              round,
+              group: groupIndex,
+              slot,
+              stage: "solve-captcha-exception",
+              error: solveError,
+              source,
+            });
             continue;
           }
           if (solveResult.status !== 200) {
-            failures.push({ round, group: groupIndex, slot, stage: "solve-captcha", solveResult });
+            failures.push({
+              round,
+              group: groupIndex,
+              slot,
+              stage: "solve-captcha",
+              solveResult,
+            });
           } else if (solveResult.body?.status === "timeout") {
-            failures.push({ round, group: groupIndex, slot, stage: "solve-captcha-timeout", solveResult });
+            failures.push({
+              round,
+              group: groupIndex,
+              slot,
+              stage: "solve-captcha-timeout",
+              solveResult,
+            });
           }
         }
       }
@@ -1212,12 +1833,15 @@ async function mainMasterOperators() {
       windows: frontends.length,
       rounds,
       captchas_per_master_per_round: captchasPerBrowser,
-      total_expected_master_captchas: distributedMasterCount * rounds * captchasPerBrowser,
+      total_expected_master_captchas:
+        distributedMasterCount * rounds * captchasPerBrowser,
       participant_click_flows_ok: results.length,
       failed: failures.length,
-      captcha_type: "icon-click",
+      captcha_type: captchaPayloadType,
       test_no_timeout: testNoTimeout,
       distributed_queue_mode: distributedQueueMode,
+      puzzle_distributed_click_mode: puzzleDistributedClickMode,
+      puzzle_distributed_click_delay_ms: puzzleDistributedClickDelayMs,
       icon_click_clicks_per_captcha: clickCount,
       hold_after_ms: holdAfterMs,
       icon_click_interval_ms: clickIntervalMs,
@@ -1230,6 +1854,22 @@ async function mainMasterOperators() {
       solve_delay: summarize(solveDelays),
       clicked: summarize(clicked),
       solved: summarize(solved),
+      puzzle_clicks:
+        captchaPayloadType === "puzzle"
+          ? results.map((item) => ({
+              round: item.round,
+              group: item.group,
+              participant: item.participant,
+              slot: item.slot,
+              variantIndex: item.variantIndex,
+              requestVariantIndex: item.requestVariantIndex,
+              responseStatus: item.responseStatus,
+              responseBody: item.responseBody,
+              skipped: item.skipped,
+              skipReason: item.skipReason,
+              visualOrder: item.visualOrder,
+            }))
+          : undefined,
       ...frontendSummary,
       failures: failures.slice(0, 30),
     };
@@ -1275,6 +1915,7 @@ async function main() {
     for (let index = 0; index < browserCount; index += 1) {
       try {
         const frontend = await openFrontend(identities[index], index);
+        identities[index].cookie = frontend.cookie;
         frontends.push(frontend);
         contexts.push(frontend.context);
       } catch (error) {
@@ -1292,9 +1933,15 @@ async function main() {
       }
     }
 
-    for (let round = 0; round < (frontends.length === browserCount ? rounds : 0); round += 1) {
+    for (
+      let round = 0;
+      round < (frontends.length === browserCount ? rounds : 0);
+      round += 1
+    ) {
       const selectedPayloads = identities.map((_, index) =>
-        Array.from({ length: captchasPerBrowser }, (_, slot) => payloadFor(pool, round, index, slot)),
+        Array.from({ length: captchasPerBrowser }, (_, slot) =>
+          payloadFor(pool, round, index, slot),
+        ),
       );
       const solveJobs = identities.flatMap((identity, index) =>
         selectedPayloads[index].map((selected, slot) =>
@@ -1321,16 +1968,46 @@ async function main() {
 
       const solveResults = await solveResultsPromise;
 
-      for (const { index, slot, solveResult, solveError, source } of solveResults) {
-        captchaSources.push({ round, index, slot, ...(solveResult?.source || source || {}) });
+      for (const {
+        index,
+        slot,
+        solveResult,
+        solveError,
+        source,
+      } of solveResults) {
+        captchaSources.push({
+          round,
+          index,
+          slot,
+          ...(solveResult?.source || source || {}),
+        });
         if (solveError) {
-          failures.push({ round, index, slot, stage: "solve-captcha-exception", error: solveError, source });
+          failures.push({
+            round,
+            index,
+            slot,
+            stage: "solve-captcha-exception",
+            error: solveError,
+            source,
+          });
           continue;
         }
         if (solveResult.status !== 200) {
-          failures.push({ round, index, slot, stage: "solve-captcha", solveResult });
+          failures.push({
+            round,
+            index,
+            slot,
+            stage: "solve-captcha",
+            solveResult,
+          });
         } else if (solveResult.body?.status === "timeout") {
-          failures.push({ round, index, slot, stage: "solve-captcha-timeout", solveResult });
+          failures.push({
+            round,
+            index,
+            slot,
+            stage: "solve-captcha-timeout",
+            solveResult,
+          });
         }
       }
       for (const [resultIndex, clickResult] of clickResultsBySlot.entries()) {
@@ -1387,17 +2064,35 @@ async function main() {
       solve_delay: summarize(solveDelays),
       clicked: summarize(clicked),
       solved: summarize(solved),
-      console_error_count: frontends.reduce((sum, item) => sum + item.consoleMessages.length, 0),
-      request_failure_count: frontends.reduce((sum, item) => sum + item.requestFailures.length, 0),
-      api_responses: frontends.flatMap((item, index) =>
-        item.apiResponses.slice(-10).map((response) => ({ browser: index, ...response })),
-      ).slice(0, 40),
-      console_errors: frontends.flatMap((item, index) =>
-        item.consoleMessages.slice(0, 5).map((message) => ({ browser: index, ...message })),
-      ).slice(0, 20),
-      request_failures: frontends.flatMap((item, index) =>
-        item.requestFailures.slice(0, 5).map((failure) => ({ browser: index, ...failure })),
-      ).slice(0, 20),
+      console_error_count: frontends.reduce(
+        (sum, item) => sum + item.consoleMessages.length,
+        0,
+      ),
+      request_failure_count: frontends.reduce(
+        (sum, item) => sum + item.requestFailures.length,
+        0,
+      ),
+      api_responses: frontends
+        .flatMap((item, index) =>
+          item.apiResponses
+            .slice(-10)
+            .map((response) => ({ browser: index, ...response })),
+        )
+        .slice(0, 40),
+      console_errors: frontends
+        .flatMap((item, index) =>
+          item.consoleMessages
+            .slice(0, 5)
+            .map((message) => ({ browser: index, ...message })),
+        )
+        .slice(0, 20),
+      request_failures: frontends
+        .flatMap((item, index) =>
+          item.requestFailures
+            .slice(0, 5)
+            .map((failure) => ({ browser: index, ...failure })),
+        )
+        .slice(0, 20),
       failures: failures.slice(0, 20),
     };
 

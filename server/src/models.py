@@ -370,9 +370,10 @@ class OperatorUnsubscribeBody(BaseModel):
 class DistributionAnswerBody(BaseModel):
     captcha_id: str
     operator_id: int
-    icon_position: int
-    x: int
-    y: int
+    icon_position: int | None = None
+    x: int | None = None
+    y: int | None = None
+    variantIndex: int | None = None
 
 
 class ChatMessageBody(BaseModel):

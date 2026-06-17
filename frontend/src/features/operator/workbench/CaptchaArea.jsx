@@ -4,21 +4,36 @@ import {
   CaptchaIconStrip,
   CaptchaProgressDots,
 } from "../../captcha/solving/CaptchaClickSurface";
+import PuzzleVariantGrid from "../../captcha/shared/PuzzleVariantGrid";
 
 export default function CaptchaArea({
   active,
   iconDisplayMode,
   handleClick,
+  handlePuzzleAnswer,
   queueLen,
 }) {
   const waiting = active?.waiting;
   const complete = active?.complete;
   const hasCaptchaImage = active?.mainImage && !waiting && !complete;
+  const hasPuzzle =
+    active?.variants?.length > 0 &&
+    active?.captchaType !== 1 &&
+    !waiting &&
+    !complete;
 
   return (
     <div className="op-captcha">
       <div className="op-captcha__image-area">
-        {hasCaptchaImage ? (
+        {hasPuzzle ? (
+          <PuzzleVariantGrid
+            entry={active}
+            reverse
+            solved={complete}
+            solvedLabel="Решено"
+            onSelectVariant={handlePuzzleAnswer}
+          />
+        ) : hasCaptchaImage ? (
           <CaptchaClickSurface
             image={active.mainImage}
             markers={[...active.markers, ...active.foreignMarkers]}

@@ -2,12 +2,19 @@
  * EOPP Captcha Solver - CaptchaGrid
  */
 import React, { useEffect, useState } from "react";
-import CaptchaCard from "./CaptchaCard";
+import PuzzleVariantGrid from "../shared/PuzzleVariantGrid";
 import IconClickCaptcha from "./IconClickCaptcha";
 import { CaptchaPanelHeader } from "./CaptchaPanelHeader";
 import useCaptchaStore from "../../../store/useCaptchaStore";
-import { getCaptchaGridStatus, getIdleCaptchaSkeletonMode } from "./captchaGridState";
-import { formatScheduledCountdown, getNextScheduledEvent } from "./scheduledEventsState";
+import { captchaService } from "./api/captchaService";
+import {
+  getCaptchaGridStatus,
+  getIdleCaptchaSkeletonMode,
+} from "./captchaGridState";
+import {
+  formatScheduledCountdown,
+  getNextScheduledEvent,
+} from "./scheduledEventsState";
 
 function IconClickIdleSkeleton() {
   return (
@@ -44,7 +51,9 @@ function IdleScheduledCountdown() {
   return (
     <div className="captcha-idle-schedule">
       <span className="captcha-idle-schedule__label">{label}</span>
-      <span className="captcha-idle-schedule__time">{formatScheduledCountdown(diff)}</span>
+      <span className="captcha-idle-schedule__time">
+        {formatScheduledCountdown(diff)}
+      </span>
     </div>
   );
 }
@@ -64,6 +73,10 @@ function IdleBody() {
 
 function CaptchaGrid() {
   const queue = useCaptchaStore((s) => s.queue);
+  const selectedCard = useCaptchaStore((s) => s.selectedCard);
+  const selectedCaptchaId = useCaptchaStore((s) => s.selectedCaptchaId);
+  const setSelectedCard = useCaptchaStore((s) => s.setSelectedCard);
+  const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const unsolved = queue.filter((q) => !q.solved);
   const active = unsolved[0] || null;
   const meta = getCaptchaGridStatus({ active, unsolvedCount: unsolved.length });
@@ -85,36 +98,63 @@ function CaptchaGrid() {
     return <IconClickCaptcha key={active.id} entry={active} />;
   }
 
-  const variantKeys = (active.variants || []).map((_, index) => String(index));
   const top3 = active.top3;
 
-  const ordered = variantKeys.slice().sort((a, b) => {
-    const ra = top3.indexOf(a), rb = top3.indexOf(b);
-    if (ra >= 0 && rb >= 0) return ra - rb;
-    if (ra >= 0) return -1;
-    if (rb >= 0) return 1;
-    return parseInt(a) - parseInt(b);
-  });
+  const handlePuzzleAnswer = async (variantIndex) => {
+    setSelectedCard(active.id, String(variantIndex));
+
+    const res = await captchaService.solve({
+      captcha_id: active.id,
+      variantIndex,
+    });
+    const data = await res.json();
+
+    if (data.already_solved) {
+      useCaptchaStore.getState().markSolved(active.id);
+      useCaptchaStore
+        .getState()
+        .addLog(`Капча ${active.id} уже решена другим киоском`, "info");
+      return;
+    }
+
+    useCaptchaStore.getState().markSolved(active.id, superKioskMode, null);
+    const solverInfo =
+      superKioskMode && active.ownerLabel
+        ? `Супер Киоск -> ${active.ownerLabel}`
+        : superKioskMode
+          ? "Супер Киоск"
+          : "Локально";
+    useCaptchaStore
+      .getState()
+      .addLog(
+        `Решено [${solverInfo}]: ${active.id} -> #${variantIndex}  (${data.resultFile})`,
+        "success",
+      );
+  };
 
   return (
     <div className="captcha-panel">
-        <CaptchaPanelHeader
-          title={meta.title}
-          typeLabel={meta.subtitle}
-          statusLabel="Активна"
+      <CaptchaPanelHeader
+        title={meta.title}
+        typeLabel={meta.subtitle}
+        statusLabel="Активна"
         createdAt={active.createdAt}
         timeout={active.timeout}
         top3={top3}
       />
-      <div className="captcha-panel__body captcha-panel__body--variants">
-        <div className="captcha-variants-grid">
-          {ordered.map((key) => (
-            <div key={active.id + "-" + key}>
-              <CaptchaCard entry={active} index={key} />
-            </div>
-          ))}
-        </div>
-      </div>
+      <PuzzleVariantGrid
+        entry={active}
+        selectedVariant={
+          selectedCaptchaId === active.id ? Number(selectedCard) : undefined
+        }
+        solved={active.solved}
+        solvedLabel={
+          active.solvedBySuper
+            ? `Супер: ${active.solverLabel || "?"}`
+            : "Решено"
+        }
+        onSelectVariant={handlePuzzleAnswer}
+      />
     </div>
   );
 }

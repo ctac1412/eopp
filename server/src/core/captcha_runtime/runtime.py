@@ -64,6 +64,7 @@ class CaptchaRuntimeDependencies:
     get_top3: Callable[[dict[str, Any]], list[str]] = get_top3_from_solver
     sync_solver_metadata: Callable[[], bool] = lambda: True
     enqueue_metadata: Callable[[str, str], None] = lambda captcha_id, reason: None
+    prepare_display_metadata: Callable[..., dict[str, Any] | None] | None = None
     publish_event: EventPublisher = _noop_event_publisher
     log_step: Callable[..., None] = lambda *args, **kwargs: None
 
@@ -171,6 +172,22 @@ class CaptchaRuntime:
             return 200, result
 
         owner_label = self.dependencies.get_owner_label(api_key_id)
+        if self.dependencies.prepare_display_metadata is not None:
+            extra_metadata = self.dependencies.prepare_display_metadata(
+                session=session,
+                data=data,
+                owner_label=owner_label,
+                is_distributed=presentation.is_distributed,
+                metadata=presentation.metadata,
+            )
+            if extra_metadata:
+                for key, value in extra_metadata.items():
+                    if key == "extra_sse":
+                        presentation.metadata.setdefault("extra_sse", []).extend(value)
+                    elif key == "sse_extra":
+                        presentation.metadata.setdefault("sse_extra", {}).update(value)
+                    else:
+                        presentation.metadata[key] = value
         self._push_display(
             session=session,
             data=data,
@@ -219,6 +236,8 @@ class CaptchaRuntime:
         session = self.sessions.get(captcha_id)
 
         if session is None:
+            if captcha_id and self.sessions.was_finished(captcha_id):
+                return 200, {"already_solved": True, "captcha_id": captcha_id}
             self._log("usage:none", captcha_id, "solve_finish", request_start, status=404)
             return 404, {"error": f"Captcha {captcha_id} not found or already solved"}
         if session.result is not None:

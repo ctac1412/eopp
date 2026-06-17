@@ -30,6 +30,8 @@ test("operator queue entry is created only from distributed operator captcha mes
     }),
     {
       captchaId: "cap-2",
+      id: "cap-2",
+      captchaType: 1,
       operatorId: 12,
       assigned: [1, 3],
       mainImage: "image",
@@ -40,6 +42,40 @@ test("operator queue entry is created only from distributed operator captcha mes
       answeredPositions: [],
       markers: [],
       foreignMarkers: [],
+      complete: false,
+      waiting: false,
+    },
+  );
+});
+
+test("operator queue entry preserves puzzle fields for full-card operator solving", () => {
+  assert.deepEqual(
+    createOperatorQueueEntry({
+      type: "new_captcha",
+      captcha_id: "puzzle-1",
+      tiles: [{ tileId: "tile-a", imageData: "jpeg-a" }],
+      variants: [["tile-a"], ["tile-b"]],
+      top3: ["1"],
+      confident: true,
+      created_at: 123,
+      timeout: 30,
+      owner_label: "master",
+      owner_api_key_id: 7,
+      distribution: { operator_id: 1 },
+    }),
+    {
+      captchaId: "puzzle-1",
+      id: "puzzle-1",
+      captchaType: 0,
+      operatorId: 1,
+      tiles: [{ tileId: "tile-a", imageData: "jpeg-a" }],
+      variants: [["tile-a"], ["tile-b"]],
+      top3: ["1"],
+      confident: true,
+      createdAt: 123,
+      timeout: 30,
+      ownerLabel: "master",
+      ownerApiKeyId: 7,
       complete: false,
       waiting: false,
     },
@@ -108,7 +144,10 @@ test("operator answer result can move to waiting or update next icon state", () 
     waiting: false,
   };
 
-  assert.equal(applyOperatorAnswerResult(entry, { waiting: true }, { x: 1, y: 2 }).waiting, true);
+  assert.equal(
+    applyOperatorAnswerResult(entry, { waiting: true }, { x: 1, y: 2 }).waiting,
+    true,
+  );
 
   const next = applyOperatorAnswerResult(
     entry,

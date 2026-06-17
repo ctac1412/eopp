@@ -196,11 +196,148 @@ def test_runtime_handles_manual_captcha_flow():
     ]
 
 
+async def _run_runtime_late_solve_after_cleanup_flow():
+    from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies
+    from src.core.captcha_runtime.sessions import CaptchaSessionStore
+
+    class KeyRecord:
+        id = 11
+
+    deps = CaptchaRuntimeDependencies(
+        validate_api_key=lambda api_key: KeyRecord(),
+        get_or_create_usage_log=lambda usage_log_id, api_key, reservation_id, captcha_id: 77,
+        save_captcha_payload=lambda captcha_id, data: data,
+        captcha_hash=lambda data: "captcha-late-solve",
+        assemble_captchas=lambda tiles, variants, valid_index: [
+            {"index": index, "image": f"image-{index}"} for index, _ in enumerate(variants)
+        ],
+        push_sse=lambda message, api_key_id=None: None,
+        get_owner_label=lambda api_key_id: "owner",
+        next_result_id=lambda: 123,
+        publish_event=lambda event: None,
+        captcha_timeout=1,
+    )
+    runtime = CaptchaRuntime(deps, CaptchaSessionStore())
+    payload = {
+        "api_key": "secret",
+        "auto_solve": False,
+        "timeout_metadata": True,
+        "reservation_id": "reservation-1",
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["a"]],
+        },
+    }
+
+    pending_task = asyncio.create_task(runtime.handle_captcha(payload))
+    for _ in range(100):
+        if runtime.sessions.get("captcha-late-solve") is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    first_status, first_body = await runtime.submit_solution(
+        {"captcha_id": "captcha-late-solve", "variantIndex": 1, "api_key": "secret"}
+    )
+    await pending_task
+    late_status, late_body = await runtime.submit_solution(
+        {"captcha_id": "captcha-late-solve", "variantIndex": 0, "api_key": "secret"}
+    )
+    unknown_status, unknown_body = await runtime.submit_solution(
+        {"captcha_id": "captcha-never-seen", "variantIndex": 0, "api_key": "secret"}
+    )
+    return first_status, first_body, late_status, late_body, unknown_status, unknown_body
+
+
+def test_runtime_returns_already_solved_for_late_solve_after_cleanup():
+    first_status, first_body, late_status, late_body, unknown_status, unknown_body = asyncio.run(
+        _run_runtime_late_solve_after_cleanup_flow()
+    )
+
+    assert first_status == 200
+    assert first_body["variantIndex"] == 1
+    assert late_status == 200
+    assert late_body == {"already_solved": True, "captcha_id": "captcha-late-solve"}
+    assert unknown_status == 404
+    assert unknown_body == {"error": "Captcha captcha-never-seen not found or already solved"}
+
+
 def test_runtime_publishes_effective_test_no_timeout_to_frontend():
     published = asyncio.run(_run_runtime_test_no_timeout_display_flow())
 
     new_captcha = next(message for message, _ in published if message["type"] == "new_captcha")
     assert new_captcha["timeout"] == 3600
+
+
+async def _run_runtime_extra_sse_metadata_flow():
+    from src.core.captcha_runtime.display_payload import build_new_captcha_message
+    from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies
+    from src.core.captcha_runtime.sessions import CaptchaSessionStore
+
+    published = []
+
+    class KeyRecord:
+        id = 11
+
+    def prepare_display_metadata(*, session, data, owner_label, is_distributed, metadata):
+        return {
+            "extra_sse": [
+                (
+                    build_new_captcha_message(
+                        session,
+                        timeout=1,
+                        owner_label=owner_label,
+                        owner_api_key_id=session.api_key_id,
+                    ).to_dict(),
+                    -100023,
+                )
+            ]
+        }
+
+    deps = CaptchaRuntimeDependencies(
+        validate_api_key=lambda api_key: KeyRecord(),
+        get_or_create_usage_log=lambda usage_log_id, api_key, reservation_id, captcha_id: 77,
+        save_captcha_payload=lambda captcha_id, data: data,
+        captcha_hash=lambda data: "captcha-extra-sse",
+        assemble_captchas=lambda tiles, variants, valid_index: [],
+        push_sse=lambda message, api_key_id=None: published.append((message, api_key_id)),
+        get_owner_label=lambda api_key_id: "owner",
+        next_result_id=lambda: 123,
+        publish_event=lambda event: None,
+        prepare_display_metadata=prepare_display_metadata,
+        captcha_timeout=1,
+    )
+    runtime = CaptchaRuntime(deps, CaptchaSessionStore())
+    payload = {
+        "api_key": "secret",
+        "auto_solve": False,
+        "timeout_metadata": True,
+        "reservation_id": "reservation-1",
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["b"]],
+        },
+    }
+
+    pending_task = asyncio.create_task(runtime.handle_captcha(payload))
+    for _ in range(100):
+        if runtime.sessions.get("captcha-extra-sse") is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    await runtime.submit_solution(
+        {"captcha_id": "captcha-extra-sse", "variantIndex": 0, "api_key": "secret"}
+    )
+    await pending_task
+    return published
+
+
+def test_runtime_publishes_extra_sse_from_display_metadata_hook():
+    published = asyncio.run(_run_runtime_extra_sse_metadata_flow())
+
+    new_captcha_events = [item for item in published if item[0]["type"] == "new_captcha"]
+    assert [target for _, target in new_captcha_events] == [11, -100023]
+    assert new_captcha_events[1][0]["captcha_id"] == "captcha-extra-sse"
+    assert new_captcha_events[1][0]["variants"] == [["a"], ["b"]]
 
 
 async def _run_presenter_raw_variant_payload():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from collections.abc import MutableMapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -120,9 +121,13 @@ class CaptchaSessionStore:
         self,
         pending: MutableMapping[str, Any] | None = None,
         lock: threading.Lock | threading.RLock | None = None,
+        finished_capacity: int = 1024,
     ) -> None:
         self._pending = pending if pending is not None else {}
         self._lock = lock if lock is not None else threading.Lock()
+        self._finished_capacity = max(1, int(finished_capacity))
+        self._finished_ids: set[str] = set()
+        self._finished_order: deque[str] = deque()
 
     def add_or_get(self, session: CaptchaSession) -> tuple[CaptchaSession, bool]:
         """Insert a new session or return the already-pending duplicate."""
@@ -156,7 +161,24 @@ class CaptchaSessionStore:
 
         with self._lock:
             existing = self._pending.pop(captcha_id, None)
+            if existing is not None:
+                self._mark_finished(captcha_id)
         return self._coerce(existing) if existing is not None else None
+
+    def was_finished(self, captcha_id: str) -> bool:
+        """Return whether this runtime recently completed a captcha id without retaining its payload."""
+
+        with self._lock:
+            return captcha_id in self._finished_ids
+
+    def _mark_finished(self, captcha_id: str) -> None:
+        if captcha_id in self._finished_ids:
+            return
+        self._finished_ids.add(captcha_id)
+        self._finished_order.append(captcha_id)
+        while len(self._finished_order) > self._finished_capacity:
+            expired = self._finished_order.popleft()
+            self._finished_ids.discard(expired)
 
     def count(self) -> int:
         """Return the number of currently pending captcha sessions."""

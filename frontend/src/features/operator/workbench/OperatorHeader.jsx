@@ -18,8 +18,21 @@ export default function OperatorHeader({
   handleReconnect,
   handleDisconnect,
 }) {
-  const selectedMaster = masters.find((master) => Number(master.id) === Number(masterId));
-  const masterLabel = selectedMaster?.label || (masterId ? `Мастер #${masterId}` : "Мастер не назначен");
+  const activeAssignedCount = Array.isArray(active?.assigned)
+    ? active.assigned.length
+    : 0;
+  const activeVariantCount = Array.isArray(active?.variants)
+    ? active.variants.length
+    : 0;
+  const activeProgressText = activeVariantCount
+    ? `0/${activeVariantCount}`
+    : `${active?.solvedCount || 0}/${activeAssignedCount}`;
+  const selectedMaster = masters.find(
+    (master) => Number(master.id) === Number(masterId),
+  );
+  const masterLabel =
+    selectedMaster?.label ||
+    (masterId ? `Мастер #${masterId}` : "Мастер не назначен");
 
   return (
     <div data-eopp-component="OperatorHeader" className="op-header">
@@ -33,9 +46,7 @@ export default function OperatorHeader({
             borderRadius: "50%",
             flexShrink: 0,
             background: masterOnline ? "#3fb950" : "#f85149",
-            boxShadow: masterOnline
-              ? "0 0 6px #3fb950"
-              : "0 0 6px #f85149",
+            boxShadow: masterOnline ? "0 0 6px #3fb950" : "0 0 6px #f85149",
           }}
           title={masterOnline ? "Мастер онлайн" : "Мастер офлайн"}
         />
@@ -56,9 +67,7 @@ export default function OperatorHeader({
 
         {/* Queue badge */}
         {queueLen > 1 && (
-          <span className="op-header__queue-badge">
-            +{queueLen - 1}
-          </span>
+          <span className="op-header__queue-badge">+{queueLen - 1}</span>
         )}
 
         {/* Fellow operators badge */}
@@ -78,9 +87,7 @@ export default function OperatorHeader({
           <span
             className={`op-header__mode-badge ${iconDisplayMode === "own_only" ? "is-own" : "is-all"}`}
           >
-            {iconDisplayMode === "own_only"
-              ? "Только свои"
-              : "Свои+чужие"}
+            {iconDisplayMode === "own_only" ? "Только свои" : "Свои+чужие"}
           </span>
         )}
 
@@ -105,7 +112,6 @@ export default function OperatorHeader({
           {masterLabel}
         </span>
 
-
         {/* Progress badge */}
         <span
           className={`op-header__progress-badge ${active?.complete ? "is-complete" : active?.waiting ? "is-waiting" : ""}`}
@@ -115,7 +121,7 @@ export default function OperatorHeader({
             : active?.waiting
               ? "Пауза"
               : active
-                ? `${active.solvedCount}/${active.assigned.length}`
+                ? activeProgressText
                 : "-"}
         </span>
 

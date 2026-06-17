@@ -2,8 +2,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const gridSource = readFileSync(new URL("./CaptchaGrid.jsx", import.meta.url), "utf8");
-const componentCss = readFileSync(new URL("../../../styles/03-components.css", import.meta.url), "utf8");
+const gridSource = readFileSync(
+  new URL("./CaptchaGrid.jsx", import.meta.url),
+  "utf8",
+);
+const puzzleGridSource = readFileSync(
+  new URL("../shared/PuzzleVariantGrid.jsx", import.meta.url),
+  "utf8",
+);
+const componentCss = readFileSync(
+  new URL("../../../styles/03-components.css", import.meta.url),
+  "utf8",
+);
 
 test("idle captcha body leaves status text to the grid header", () => {
   assert.doesNotMatch(gridSource, /IdleBody\(\{\s*solvedCount\s*\}\)/);
@@ -19,14 +29,27 @@ test("icon click captcha uses an effective fixed image field", () => {
 });
 
 test("puzzle variants render as a bounded thumbnail grid", () => {
-  assert.match(gridSource, /captcha-panel__body--variants/);
-  assert.match(componentCss, /\.captcha-panel__body--variants\s*\{[\s\S]*overflow:\s*hidden;/);
-  assert.match(componentCss, /\.captcha-variants-grid\s*\{[\s\S]*height:\s*100%;/);
+  assert.match(gridSource, /PuzzleVariantGrid/);
+  assert.match(puzzleGridSource, /captcha-panel__body--variants/);
+  assert.match(
+    componentCss,
+    /\.captcha-panel__body--variants\s*\{[\s\S]*overflow:\s*hidden;/,
+  );
+  assert.match(
+    componentCss,
+    /\.captcha-variants-grid\s*\{[\s\S]*height:\s*100%;/,
+  );
   assert.match(componentCss, /grid-auto-rows:\s*minmax\(0,\s*1fr\)/);
   assert.match(componentCss, /\.captcha-card\s*\{[\s\S]*display:\s*flex;/);
-  assert.match(componentCss, /\.captcha-card__tiles\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/);
-  assert.match(componentCss, /\.captcha-card__tile\s*\{[\s\S]*min-height:\s*0;/);
-  assert.match(gridSource, /active\.variants/);
+  assert.match(
+    componentCss,
+    /\.captcha-card__tiles\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/,
+  );
+  assert.match(
+    componentCss,
+    /\.captcha-card__tile\s*\{[\s\S]*min-height:\s*0;/,
+  );
+  assert.match(puzzleGridSource, /entry\?\.variants/);
   assert.doesNotMatch(gridSource, /Object\.keys\(active\.images\)/);
 });
 
