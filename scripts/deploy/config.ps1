@@ -69,6 +69,8 @@ function Write-Header {
 # --- SSH ---
 function Remote-Exec {
     param([string]$Cmd)
+    $Cmd = $Cmd -replace "`r`n", "`n"
+    $Cmd = $Cmd -replace "`r", "`n"
     $sshArgs = @("-p", $script:SshPort, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", $script:SshTarget, $Cmd)
     & $script:SshExe @sshArgs
 }

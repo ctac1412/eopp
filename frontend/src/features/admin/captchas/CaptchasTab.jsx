@@ -43,6 +43,8 @@ function formatDuration(durationMs) {
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const ADMIN_CAPTCHAS_LIMIT = 500;
+const ADMIN_CAPTCHA_FILES_LIMIT = 500;
 const SHOW_CAPTCHA_SUMMARIES = false;
 
 function pageCount(total, pageSize) {
@@ -127,7 +129,11 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const fetchCaptchas = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await adminRequest("/admin/captchas", {
+      const params = new URLSearchParams({
+        limit: String(ADMIN_CAPTCHAS_LIMIT),
+        offset: "0",
+      });
+      const res = await adminRequest(`/admin/captchas?${params.toString()}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -145,7 +151,11 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   const fetchCaptchaFiles = useCallback(async () => {
     setFilesLoading(true);
     try {
-      const res = await adminRequest("/admin/captcha-files", {
+      const params = new URLSearchParams({
+        limit: String(ADMIN_CAPTCHA_FILES_LIMIT),
+        offset: "0",
+      });
+      const res = await adminRequest(`/admin/captcha-files?${params.toString()}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

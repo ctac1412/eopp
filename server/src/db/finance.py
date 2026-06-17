@@ -704,6 +704,8 @@ def list_finance_entries(filters: dict | None = None) -> list[dict]:
     filters = filters or {}
     conditions = []
     params = []
+    limit = filters.get("limit")
+    offset = filters.get("offset", 0)
     for key in ("company_id", "usage_log_id", "invoice_id", "payout_id", "kind", "edit_state"):
         value = filters.get(key)
         if value is not None:
@@ -712,6 +714,8 @@ def list_finance_entries(filters: dict | None = None) -> list[dict]:
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     conn = get_connection()
     try:
+        pagination = "LIMIT ? OFFSET ?" if limit is not None else ""
+        query_params = [*params, limit, offset] if limit is not None else params
         rows = conn.execute(
             f"""
             SELECT fe.*, u.name AS user_name, u.login AS user_login
@@ -719,8 +723,9 @@ def list_finance_entries(filters: dict | None = None) -> list[dict]:
             LEFT JOIN users u ON u.id = fe.user_id
             {where}
             ORDER BY fe.created_at DESC, fe.id DESC
+            {pagination}
             """,
-            params,
+            query_params,
         ).fetchall()
         return [_row_to_dict(row) for row in rows]
     finally:

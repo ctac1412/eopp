@@ -10,6 +10,8 @@ function adminHeaders() {
   return { "Content-Type": "application/json" };
 }
 
+const INVOICE_FINANCE_ENTRIES_LIMIT = 500;
+
 function formatLogDate(value) {
   return value ? new Date(value).toLocaleDateString("ru-RU") : "-";
 }
@@ -61,7 +63,9 @@ export function InvoiceEditModal({ show, invoice, onClose, onSave, adminToken, u
       .catch(() => setUsageLogs([]))
       .finally(() => setLogsLoading(false));
     setFinanceEntriesLoading(true);
-    adminRequest(`/admin/finance-entries?invoice_id=${invoice.id}`)
+    adminRequest(
+      `/admin/finance-entries?invoice_id=${invoice.id}&limit=${INVOICE_FINANCE_ENTRIES_LIMIT}&offset=0`,
+    )
       .then((response) => response.json())
       .then((data) => setFinanceEntries(Array.isArray(data) ? data : []))
       .catch(() => setFinanceEntries([]))

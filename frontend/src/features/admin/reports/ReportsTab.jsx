@@ -72,6 +72,8 @@ function getUrlActionDate(searchParams) {
 }
 
 const USAGE_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const REPORTS_USAGE_LOG_LIMIT = 500;
+const REPORTS_FINANCE_ENTRIES_LIMIT = 500;
 
 function getUrlPositiveInt(searchParams, key, fallback) {
   const value = Number.parseInt(searchParams.get(key), 10);
@@ -192,7 +194,12 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await adminRequest(`/usage-log?hide_test=${hideTest}`, {
+      const params = new URLSearchParams({
+        hide_test: hideTest ? "true" : "false",
+        limit: String(REPORTS_USAGE_LOG_LIMIT),
+        offset: "0",
+      });
+      const res = await adminRequest(`/usage-log?${params.toString()}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -244,7 +251,12 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
         }
       }
 
-      const res = await adminRequest(`/admin/finance-entries?usage_log_id=${recordId}`, {
+      const params = new URLSearchParams({
+        usage_log_id: String(recordId),
+        limit: String(REPORTS_FINANCE_ENTRIES_LIMIT),
+        offset: "0",
+      });
+      const res = await adminRequest(`/admin/finance-entries?${params.toString()}`, {
         headers: adminHeadersJson(adminToken),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

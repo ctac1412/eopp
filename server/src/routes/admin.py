@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from src.benchmark import run_benchmark_cached
@@ -843,6 +843,8 @@ async def list_admin_finance_entries(
     payout_id: int | None = None,
     kind: str | None = None,
     edit_state: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
     filters = {
         "company_id": company_id,
@@ -851,6 +853,8 @@ async def list_admin_finance_entries(
         "payout_id": payout_id,
         "kind": kind,
         "edit_state": edit_state,
+        "limit": limit,
+        "offset": offset,
     }
     return _json_result(billing_service.list_finance_entries(filters))
 
@@ -1162,10 +1166,12 @@ async def backfill_captcha_duration(request: Request):
 async def list_admin_captchas(
     status: str | None = None,
     api_key_id: int | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
     from src.db.captchas import list_captchas
 
-    rows = list_captchas()
+    rows = list_captchas(status=status if api_key_id is None else None)
     result = []
     for r in rows:
         if status and r["status"] != status:
@@ -1183,15 +1189,18 @@ async def list_admin_captchas(
         entry["key_label"] = key_label
         entry["api_key_id"] = ul["api_key_id"] if ul else None
         result.append(entry)
-    return JSONResponse(content=result)
+    return JSONResponse(content=result[offset : offset + limit])
 
 
 @router.get("/captcha-files")
-async def list_admin_captcha_files():
+async def list_admin_captcha_files(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     from src.services import captcha_file_service
 
     captcha_file_service.sync_captcha_files()
-    return JSONResponse(content=captcha_file_service.list_captcha_files())
+    return JSONResponse(content=captcha_file_service.list_captcha_files(limit=limit, offset=offset))
 
 
 @router.get("/captcha-files/{captcha_id}/thumbnail")

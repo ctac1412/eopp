@@ -53,6 +53,11 @@ function loadHelpFor() {
   }
 }
 
+function formatLogTime(date = new Date()) {
+  const pad = (value, size = 2) => String(value).padStart(size, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
+}
+
 const useCaptchaStore = create((set) => ({
   queue: [],
   logs: [],
@@ -189,7 +194,7 @@ const useCaptchaStore = create((set) => ({
   addLog: (msg, cls) =>
     set((state) => ({
       logs: [
-        { time: new Date().toLocaleTimeString(), msg, cls: cls || "action" },
+        { time: formatLogTime(), msg, cls: cls || "action" },
         ...state.logs,
       ],
     })),

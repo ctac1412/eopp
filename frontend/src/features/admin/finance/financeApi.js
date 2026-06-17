@@ -1,5 +1,7 @@
 import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient.js";
 
+export const ADMIN_FINANCE_ENTRIES_LIMIT = 500;
+
 function cleanFilters(filters = {}) {
   return Object.fromEntries(
     Object.entries(filters).filter(([, value]) => value !== undefined && value !== null && value !== ""),
@@ -37,7 +39,11 @@ async function sendJson(adminToken, path, method, payload) {
 }
 
 export function listFinanceEntries(adminToken, filters = {}) {
-  return getJson(adminToken, "/admin/finance-entries", filters);
+  return getJson(adminToken, "/admin/finance-entries", {
+    limit: ADMIN_FINANCE_ENTRIES_LIMIT,
+    offset: 0,
+    ...filters,
+  });
 }
 
 export function createFinanceEntry(adminToken, payload) {

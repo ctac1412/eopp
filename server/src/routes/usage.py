@@ -58,6 +58,8 @@ async def get_usage_log(
     api_key: str | None = Query(None),
     invoice_id: int | None = Query(None),
     hide_test: bool = Query(True),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
     token = token_from_request(request)
     user = user_repo.get_session_user(token)
@@ -79,6 +81,8 @@ async def get_usage_log(
         api_key=None,
         hide_test=hide_test,
         invoice_id=invoice_id,
+        limit=limit,
+        offset=offset,
     )
     return JSONResponse(status_code=status, content=content)
 

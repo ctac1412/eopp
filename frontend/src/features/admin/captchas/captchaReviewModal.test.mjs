@@ -28,7 +28,8 @@ test("journal details and operator logs can open captcha review", () => {
   assert.match(detailsSource, /financeEntries/);
   assert.match(detailsSource, /financeKindLabel/);
   assert.doesNotMatch(detailsSource, /API key/);
-  assert.match(reportsSource, /finance-entries\?usage_log_id=/);
+  assert.match(reportsSource, /usage_log_id:\s*String\(recordId\)/);
+  assert.match(reportsSource, /REPORTS_FINANCE_ENTRIES_LIMIT/);
   assert.match(reportsSource, /finance\/recalculate/);
   assert.match(reportsSource, /financeEntries=\{financeEntries\[selectedRecord\.id\] \|\| \[\]\}/);
   assert.match(detailsSource, /onRecalculateFinance/);

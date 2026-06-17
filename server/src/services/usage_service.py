@@ -158,6 +158,8 @@ def list_usage(
     api_key: str | None = None,
     hide_test: bool = True,
     invoice_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
 ) -> tuple[int, list[dict] | dict]:
     is_admin = is_admin_token(admin_token)
 
@@ -175,7 +177,12 @@ def list_usage(
     elif not is_admin:
         return 401, {"error": "Unauthorized"}
 
-    records = usage_log_repo.list_usage(api_key_id, invoice_id=invoice_id)
+    records = usage_log_repo.list_usage(
+        api_key_id,
+        invoice_id=invoice_id,
+        limit=limit,
+        offset=offset,
+    )
     if hide_test:
         records = [r for r in records if not _is_hidden_test_record(r)]
     return 200, [_usage_to_dict(r) for r in records]

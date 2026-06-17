@@ -558,15 +558,19 @@ def backfill_duration_ms() -> int:
     return updated
 
 
-def list_captchas(usage_log_id: int | None = None) -> list[dict]:
+def list_captchas(usage_log_id: int | None = None, status: str | None = None) -> list[dict]:
     conn = get_connection()
+    conditions = []
+    params = []
     if usage_log_id is not None:
-        rows = conn.execute(
-            "SELECT * FROM captchas WHERE usage_log_id = ? ORDER BY created_at ASC",
-            (usage_log_id,),
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM captchas ORDER BY created_at DESC").fetchall()
+        conditions.append("usage_log_id = ?")
+        params.append(usage_log_id)
+    if status is not None:
+        conditions.append("status = ?")
+        params.append(status)
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    order = "created_at ASC" if usage_log_id is not None else "created_at DESC"
+    rows = conn.execute(f"SELECT * FROM captchas {where} ORDER BY {order}", params).fetchall()
     conn.close()
     return [
         {

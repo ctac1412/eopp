@@ -330,8 +330,8 @@ def backfill_analysis_metadata() -> dict:
     }
 
 
-def list_captcha_files() -> list[dict]:
-    return entities_to_list(captcha_file_repo.list_files())
+def list_captcha_files(limit: int | None = None, offset: int = 0) -> list[dict]:
+    return entities_to_list(captcha_file_repo.list_files(limit=limit, offset=offset))
 
 
 def _write_valid_index(path: str, source_data: dict, idx: int) -> bool:

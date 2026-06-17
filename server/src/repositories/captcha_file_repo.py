@@ -2,13 +2,15 @@ from src.entities import CaptchaFile, get_session
 from src.db.connection import get_connection
 
 
-def list_files() -> list[CaptchaFile]:
+def list_files(limit: int | None = None, offset: int = 0) -> list[CaptchaFile]:
     with get_session() as session:
-        return (
+        query = (
             session.query(CaptchaFile)
             .order_by(CaptchaFile.action_date.desc().nullslast(), CaptchaFile.id.desc())
-            .all()
         )
+        if limit is not None:
+            query = query.limit(limit).offset(offset)
+        return query.all()
 
 
 def get_by_captcha_id(captcha_id: str) -> CaptchaFile | None:

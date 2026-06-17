@@ -574,6 +574,31 @@ class TestUsage:
         response = client.get("/api/usage-log")
         assert response.status_code == 200
 
+    def test_usage_log_supports_limit_and_offset(self, client, api_key):
+        from src.db import log_usage
+        from src.db.connection import get_connection
+
+        ids = [
+            log_usage(api_key, f"usage-page-reservation-{index}", f"usage-page-captcha-{index}")
+            for index in range(3)
+        ]
+
+        conn = get_connection()
+        for index, usage_id in enumerate(ids):
+            conn.execute(
+                "UPDATE usage_log SET created_at = ? WHERE id = ?",
+                (f"2026-05-0{index + 1}T00:00:00+00:00", usage_id),
+            )
+        conn.commit()
+        conn.close()
+
+        response = client.get("/api/usage-log?limit=1&offset=1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["reservation_id"] == "usage-page-reservation-1"
+
     def test_usage_log_invalid_key(self, client):
         """doc"""
         response = client.get("/api/usage-log?api_key=invalid")
@@ -706,6 +731,69 @@ class TestAdmin:
     def test_admin_routes_authorized(self, client, admin_token, path):
         response = client.get(path, headers={"X-Admin-Token": admin_token})
         assert response.status_code == 200
+
+    def test_admin_finance_entries_support_limit_and_offset(self, client, admin_token):
+        from src.db.connection import get_connection
+
+        conn = get_connection()
+        for index in range(3):
+            conn.execute(
+                """
+                INSERT INTO finance_entries (
+                    kind, amount, edit_state, source, source_key, comment, created_at, updated_at
+                ) VALUES (?, ?, 'open', 'test', ?, '', ?, ?)
+                """,
+                (
+                    "manual_adjustment",
+                    100 + index,
+                    f"admin-pagination:{index}",
+                    f"2026-05-0{index + 1}T00:00:00+00:00",
+                    f"2026-05-0{index + 1}T00:00:00+00:00",
+                ),
+            )
+        conn.commit()
+        conn.close()
+
+        response = client.get(
+            "/api/admin/finance-entries?limit=1&offset=1",
+            headers={"X-Admin-Token": admin_token},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["amount"] == 101
+
+    def test_admin_captchas_support_limit_and_offset(self, client, admin_token, api_key):
+        from src.db import log_usage
+        from src.db.connection import get_connection
+
+        usage_id = log_usage(api_key, "admin-captcha-page-reservation", "admin-captcha-page")
+        conn = get_connection()
+        for index in range(3):
+            conn.execute(
+                "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, fail_reason) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    f"admin-captcha-page-{index}",
+                    "passed",
+                    usage_id,
+                    f"2026-05-0{index + 1}T00:00:00+00:00",
+                    f"hash{index}",
+                    None,
+                ),
+            )
+        conn.commit()
+        conn.close()
+
+        response = client.get(
+            "/api/admin/captchas?limit=1&offset=1",
+            headers={"X-Admin-Token": admin_token},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["captcha_id"] == "admin-captcha-page-1"
 
     def test_admin_auth_success(self, client, admin_token):
         """doc"""
@@ -1310,6 +1398,24 @@ class TestCaptchaRecords:
         assert response.status_code == 200
         data = response.json()
         assert any(row["captcha_id"] == "listed" and row["valid_index"] == 0 for row in data)
+
+    def test_admin_captcha_files_support_limit_and_offset(self, client, admin_token, tmp_path, monkeypatch):
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        for name in ("first", "second", "third"):
+            (all_dir / f"{name}.json").write_text(
+                json.dumps({"valid_index": 0, "puzzle": {"tiles": [], "variantsCapture": [[]]}}),
+                encoding="utf-8",
+            )
+
+        response = client.get(
+            "/api/admin/captcha-files?limit=1&offset=1",
+            headers={"X-Admin-Token": admin_token},
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()) == 1
 
 
 # === Frontend Tests ===

@@ -9,6 +9,8 @@ import {
   normalizeRepaymentAmount,
 } from "./payoutExpenseRepayments";
 
+const PAYOUT_FINANCE_ENTRIES_LIMIT = 500;
+
 function formatMoney(value) {
   return `${(Number(value) || 0).toLocaleString("ru-RU")} ₽`;
 }
@@ -74,9 +76,9 @@ export function PayoutModal({
     setFinanceEntriesLoading(true);
     setFinanceEntriesError("");
     const requests = form.id
-      ? [adminRequest(`/admin/finance-entries?payout_id=${form.id}`, { headers: adminHeadersJson(adminToken) })]
+      ? [adminRequest(`/admin/finance-entries?payout_id=${form.id}&limit=${PAYOUT_FINANCE_ENTRIES_LIMIT}&offset=0`, { headers: adminHeadersJson(adminToken) })]
       : ids.map((invoiceId) =>
-          adminRequest(`/admin/finance-entries?invoice_id=${invoiceId}`, { headers: adminHeadersJson(adminToken) }),
+          adminRequest(`/admin/finance-entries?invoice_id=${invoiceId}&limit=${PAYOUT_FINANCE_ENTRIES_LIMIT}&offset=0`, { headers: adminHeadersJson(adminToken) }),
         );
     Promise.all(requests)
       .then(async (responses) => {

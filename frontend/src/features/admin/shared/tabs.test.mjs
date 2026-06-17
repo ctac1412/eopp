@@ -38,6 +38,17 @@ test("reports tab does not write legacy tab query param", () => {
   assert.doesNotMatch(reportsTabSource, /nextParams\.set\("tab"/);
 });
 
+test("reports usage log request is bounded", () => {
+  assert.match(reportsTabSource, /REPORTS_USAGE_LOG_LIMIT\s*=\s*500/);
+  assert.match(reportsTabSource, /limit:\s*String\(REPORTS_USAGE_LOG_LIMIT\)/);
+  assert.match(reportsTabSource, /offset:\s*"0"/);
+});
+
+test("reports finance entry request is bounded", () => {
+  assert.match(reportsTabSource, /REPORTS_FINANCE_ENTRIES_LIMIT\s*=\s*500/);
+  assert.match(reportsTabSource, /limit:\s*String\(REPORTS_FINANCE_ENTRIES_LIMIT\)/);
+});
+
 test("admin tab nav uses React Router links instead of document hrefs", () => {
   assert.match(adminPageSource, /<Link[\s\S]*to=\{adminTabPath\(tab\)\}/);
   assert.doesNotMatch(adminPageSource, /href=\{adminTabPath\(tab\)\}/);
