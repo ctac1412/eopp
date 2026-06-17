@@ -17,6 +17,7 @@ tests
 __pycache__
 *.pyc
 data
+server/data
 prod
 tmp
 certs
