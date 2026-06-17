@@ -13,7 +13,7 @@ const AuthHeader = React.memo(function AuthHeader({ onLogout }: Props) {
 
   useEffect(() => {
     if (authKey && !authKeyStatus) {
-      getApiKeyStatus(authKey)
+      getApiKeyStatus()
         .then((status) => {
           if (status.valid) {
             setAuthKeyStatus(status);

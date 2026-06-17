@@ -45,7 +45,7 @@ def register_all_routes(app):
     from src.routes.admin_jobs import router as admin_jobs_router
     from src.routes.auth import router as auth_router
     from src.routes.api_keys import router as api_keys_router
-    from src.routes.callback import router as callback_router, txt_router as callback_txt_router
+    from src.routes.callback import txt_router as callback_txt_router
     from src.routes.captcha import router as captcha_router
     from src.routes.captchas import router as captchas_router
     from src.routes.chat import router as chat_router
@@ -54,8 +54,6 @@ def register_all_routes(app):
     from src.routes.health import router as health_router
     from src.routes.mock import router as mock_router
     from src.routes.operator import router as operator_router
-    from src.routes.plugin_channel import admin_router as plugin_channel_admin_router
-    from src.routes.plugin_channel import router as plugin_channel_router
     from src.routes.plugin_files import router as plugin_router
     from src.routes.scheduled import router as scheduled_router
     from src.routes.slots import router as slots_router
@@ -67,7 +65,8 @@ def register_all_routes(app):
 
     app.include_router(health_router)
     app.include_router(sse_router)
-    app.include_router(callback_router)
+    # Rucaptcha pingback is disabled for the release perimeter until auto-solver
+    # traffic is intentionally re-enabled.
     app.include_router(callback_txt_router)
     app.include_router(auth_router)
     app.include_router(captcha_router)
@@ -77,12 +76,11 @@ def register_all_routes(app):
     app.include_router(slots_router)
     app.include_router(captchas_router)
     app.include_router(operator_router)
-    app.include_router(plugin_channel_router)
+    # Plugin-channel API is disabled until the channel plugin has active consumers.
     app.include_router(chat_router)
     app.include_router(scheduled_router)
     app.include_router(mock_router)
     app.include_router(admin_router)
-    app.include_router(plugin_channel_admin_router)
     app.include_router(admin_jobs_router)
 
     if os.path.isdir(PLUGINS_DIR):

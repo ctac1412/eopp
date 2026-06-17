@@ -164,14 +164,16 @@ def _start_realtime_readers(stop_event: threading.Event) -> list[threading.Threa
     return threads
 
 
-def _create_master(client, admin_token: str, index: int) -> tuple[str, int]:
+def _create_master(client, admin_token: str, index: int) -> tuple[str, int, str]:
+    login = f"load.master.{index}"
+    password = "strong-password"
     user = client.post(
         "/admin/users",
         headers={"X-Admin-Token": admin_token},
         json={
             "name": f"Load Master {index}",
-            "login": f"load.master.{index}",
-            "password": "strong-password",
+            "login": login,
+            "password": password,
         },
     )
     assert user.status_code == 200, user.text
@@ -181,10 +183,17 @@ def _create_master(client, admin_token: str, index: int) -> tuple[str, int]:
         json={"label": f"load-master-{index}", "max_uses": 10000, "user_id": user.json()["id"]},
     )
     assert key.status_code == 200, key.text
-    return key.json()["key"], key.json()["id"]
+    from src.repositories import user_repo
+
+    session_token = user_repo.create_session(user.json()["id"])
+    return key.json()["key"], key.json()["id"], session_token
 
 
-def _start_solo_pending(client, api_key: str, index: int) -> tuple[str, threading.Thread, dict]:
+def _session_cookie(session_token: str) -> dict[str, str]:
+    return {"cookie": f"eopp_session={session_token}"}
+
+
+def _start_solo_pending(client, session_token: str, index: int) -> tuple[str, threading.Thread, dict]:
     from src.captcha_assembly import captcha_hash
     from src.sse import lock, pending
 
@@ -198,8 +207,8 @@ def _start_solo_pending(client, api_key: str, index: int) -> tuple[str, threadin
     def post_solve_captcha() -> None:
         result_holder["response"] = client.post(
             "/solve-captcha",
+            headers=_session_cookie(session_token),
             json={
-                "api_key": api_key,
                 "auto_solve": False,
                 "timeout_metadata": True,
                 "reservation_id": f"load-solo-reservation-{index}",
@@ -294,7 +303,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
     distributed = masters[:4]
     solo = masters[4:]
 
-    for _, key_id in masters:
+    for _, key_id, _session_token in masters:
         realtime_registry.register_connection(api_key_id=key_id, ip=f"load-master-{key_id}")
 
     reader_stop = threading.Event()
@@ -310,7 +319,11 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         def submit(kind: str, request: dict) -> tuple[str, int, float, dict]:
             barrier.wait(timeout=5)
             start = time.perf_counter()
-            response = client.post(request["path"], json=request["json"])
+            response = client.post(
+                request["path"],
+                headers=_session_cookie(request["session_token"]),
+                json=request["json"],
+            )
             elapsed_ms = (time.perf_counter() - start) * 1000
             body = response.json()
             return kind, response.status_code, elapsed_ms, body
@@ -337,38 +350,40 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
         for round_index in range(rounds):
             offset = round_index * 100
             solo_captchas = [
-                (api_key, *_start_solo_pending(client, api_key, offset + index))
-                for index, (api_key, _key_id) in enumerate(solo)
+                (session_token, *_start_solo_pending(client, session_token, offset + index))
+                for index, (_api_key, _key_id, session_token) in enumerate(solo)
             ]
             distributed_captchas = [
                 _seed_distribution_state(api_key, key_id, offset + index)
-                for index, (api_key, key_id) in enumerate(distributed)
+                for index, (api_key, key_id, _session_token) in enumerate(distributed)
             ]
 
             first_wave: list[tuple[str, dict]] = []
             second_wave: list[tuple[str, dict]] = []
-            for api_key, captcha_id, _thread, _holder in solo_captchas:
+            for session_token, captcha_id, _thread, _holder in solo_captchas:
                 first_wave.append(
                     (
                         "solo",
                         {
                             "path": "/solve",
+                            "session_token": session_token,
                             "json": {
                                 "captcha_id": captcha_id,
                                 "variantIndex": 0,
-                                "api_key": api_key,
                             },
                         },
                     )
                 )
 
-            for captcha_id in distributed_captchas:
+            for captcha_index, captcha_id in enumerate(distributed_captchas):
+                session_token = distributed[captcha_index][2]
                 for operator_id, icon_position in ((0, 0), (1, 4), (2, 2)):
                     first_wave.append(
                         (
                             "distributed",
                             {
                                 "path": "/distribution/answer",
+                                "session_token": session_token,
                                 "json": {
                                     "captcha_id": captcha_id,
                                     "operator_id": operator_id,
@@ -385,6 +400,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
                             "distributed",
                             {
                                 "path": "/distribution/answer",
+                                "session_token": session_token,
                                 "json": {
                                     "captcha_id": captcha_id,
                                     "operator_id": operator_id,
@@ -401,7 +417,7 @@ def test_seven_masters_mixed_solo_and_distribution_clicks_start_together(client,
             results.extend(first_results + second_results)
             total_ms += first_total_ms + second_total_ms
 
-            for _api_key, _captcha_id, thread, holder in solo_captchas:
+            for _session_token, _captcha_id, thread, holder in solo_captchas:
                 thread.join(timeout=5)
                 assert "response" in holder
                 assert holder["response"].status_code == 200, holder["response"].text

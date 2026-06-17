@@ -83,7 +83,7 @@ def admin_token(client):
         json={"login": "admin", "password": admin_key["key"]},
     )
     assert response.status_code == 200
-    return response.cookies["eopp_admin_session"]
+    return response.cookies["eopp_session"]
 
 
 @pytest.fixture
@@ -139,22 +139,30 @@ def operator_key(client, admin_token, key_owner_id):
     return r.json()["key"]
 
 
+def _login_key_owner(client):
+    response = client.post(
+        "/auth/login",
+        json={"login": "distribution.key.owner", "password": "strong-password"},
+    )
+    assert response.status_code == 200
+
+
 class TestDistributionFlow:
     def test_register_usage_with_distribution(self, client, master_key, admin_token):
         """Register usage with parallel_operators=2 should create distribution."""
+        _login_key_owner(client)
         r = client.post("/register-usage", json={
-            "api_key": master_key,
             "reservation_id": "test-res-001",
             "captcha_id": "test-captcha",
             "parallel_operators": 2,
         })
-        assert r.status_code == 412  # no SSE stream, expected
+        assert r.status_code == 200
 
     def test_solve_captcha_creates_distribution_state(self, client, master_key, admin_token):
         """Icon-click captcha with distribution should create state."""
+        _login_key_owner(client)
         captcha = _make_icon_click_captcha()
         r = client.post("/solve-captcha", json={
-            "api_key": master_key,
             "auto_solve": False,
             "reservation_id": "test-res-001",
             "puzzle": captcha["puzzle"],
@@ -164,6 +172,7 @@ class TestDistributionFlow:
 
     def test_distribution_answer_404_without_state(self, client, master_key):
         """Answer for non-existent captcha should 404."""
+        _login_key_owner(client)
         r = client.post("/distribution/answer", json={
             "captcha_id": "fake_captcha",
             "operator_id": 0,
@@ -261,6 +270,7 @@ class TestDistributionWithSSE:
             wait_for_distribution_answer_archives,
         )
         import threading
+        _login_key_owner(client)
 
         captcha = _make_icon_click_captcha()
         from src.captcha_solver_engine.images import crop_icons_for_distribution

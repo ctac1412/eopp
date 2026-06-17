@@ -56,7 +56,7 @@ from src.modules.access.permissions import Permission, serialize_roles
 from src.modules.access.service import AccessService
 from src.modules.audit.service import AuditService
 from src.policies.access_policy import (
-    ADMIN_SESSION_COOKIE,
+    SESSION_COOKIE,
     authorize_request,
     requires_admin,
     token_from_request,
@@ -354,7 +354,7 @@ async def admin_roles():
 @router.post("/logout")
 async def admin_logout():
     response = JSONResponse(content={"ok": True})
-    response.delete_cookie(ADMIN_SESSION_COOKIE)
+    response.delete_cookie(SESSION_COOKIE)
     return response
 
 

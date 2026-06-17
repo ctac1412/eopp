@@ -4,7 +4,6 @@ import time
 
 def _puzzle_payload(api_key: str, **overrides):
     payload = {
-        "api_key": api_key,
         "auto_solve": False,
         "timeout_metadata": True,
         "reservation_id": "reservation-core-smoke",
@@ -56,7 +55,7 @@ def test_manual_captcha_flow_solves_pending_session(client, api_key, monkeypatch
 
     solve_response = client.post(
         "/solve",
-        json={"captcha_id": captcha_id, "variantIndex": 1, "api_key": api_key},
+        json={"captcha_id": captcha_id, "variantIndex": 1},
     )
     worker.join(timeout=2)
 
@@ -100,7 +99,7 @@ def test_cancel_captcha_by_usage_log_wakes_pending_request(client, api_key, monk
 
     cancelled = client.post(
         "/cancel-captcha",
-        json={"api_key": api_key, "usage_log_id": 404},
+        json={"usage_log_id": 404},
     )
     worker.join(timeout=2)
 
@@ -154,7 +153,7 @@ def test_solve_captcha_core_mode_survives_archive_and_metadata_failures(
     worker.start()
     _wait_for_pending(captcha_id)
 
-    client.post("/solve", json={"captcha_id": captcha_id, "variantIndex": 0, "api_key": api_key})
+    client.post("/solve", json={"captcha_id": captcha_id, "variantIndex": 0})
     worker.join(timeout=2)
 
     assert result_holder["response"].status_code == 200
@@ -176,7 +175,6 @@ def test_register_usage_core_mode_skips_config_enrichment(
     response = client.post(
         "/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-core-fast",
             "captcha_id": "captcha-core-fast",
             "config_json": {
@@ -238,10 +236,15 @@ def test_register_usage_enqueues_after_usage_row_is_committed(
     with lock:
         sse_queues.setdefault(api_key_id, []).append(object())
 
+    login = client.post(
+        "/auth/login",
+        json={"login": "usage.owner", "password": "strong-password"},
+    )
+    assert login.status_code == 200
+
     response = client.post(
         "/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-enqueue-after-commit",
             "captcha_id": "captcha-enqueue-after-commit",
             "config_json": {"mode": "create"},
@@ -298,7 +301,6 @@ def test_confirm_usage_core_mode_survives_billing_captcha_records_and_telegram_f
         "/confirm-usage",
         json={
             "usage_log_id": usage_log_id,
-            "api_key": api_key,
             "slot_date": "2026-06-11T12:00:00+03:00",
             "logs": ["captcha captcha-confirm-core solved"],
         },

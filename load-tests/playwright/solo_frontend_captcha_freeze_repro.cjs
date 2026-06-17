@@ -430,8 +430,8 @@ async function authMe(cookieHeader) {
 }
 
 async function resolveOperatorUuid(login, password, explicitUuid) {
-  if (explicitUuid) return { uuid: explicitUuid, cookie: "", authCache: "uuid-env" };
   const cookie = await loginUser({ login, password });
+  if (explicitUuid) return { uuid: explicitUuid, cookie, authCache: "uuid-env" };
   const me = await authMe(cookie);
   const operatorProfile = me?.user?.operator_profile;
   const uuid = operatorProfile?.uuid;
@@ -441,8 +441,10 @@ async function resolveOperatorUuid(login, password, explicitUuid) {
   return { uuid, cookie, authCache: "miss" };
 }
 
-async function validateMasterKey(apiKey) {
-  const response = await fetch(`${baseUrl}/validate-key?api_key=${encodeURIComponent(apiKey)}`, {
+async function validateMasterKey(master) {
+  const cookie = await loginUser(master);
+  const response = await fetch(`${baseUrl}/validate-key`, {
+    headers: { cookie },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
   });
   const text = await response.text();
@@ -458,8 +460,9 @@ async function validateMasterKey(apiKey) {
   return body;
 }
 
-async function listOperatorMasters(uuid) {
+async function listOperatorMasters(uuid, cookie) {
   const response = await fetch(`${baseUrl}/operators/${encodeURIComponent(uuid)}/masters`, {
+    headers: { cookie },
     signal: AbortSignal.timeout(openFrontendTimeoutMs),
   });
   const text = await response.text();
@@ -600,13 +603,13 @@ async function openFrontend(identity, index) {
     ],
   });
   if (authMode !== "api-key-only") {
-    const sessionValue = parseCookiePair(cookie, "eopp_admin_session");
+    const sessionValue = parseCookiePair(cookie, "eopp_session");
     if (!sessionValue) {
-      throw new Error(`missing eopp_admin_session cookie for ${identity.login}`);
+      throw new Error(`missing eopp_session cookie for ${identity.login}`);
     }
     await context.addCookies([
       {
-        name: "eopp_admin_session",
+        name: "eopp_session",
         value: sessionValue,
         url: baseUrl,
         httpOnly: true,
@@ -1027,7 +1030,7 @@ async function mainMasterOperators() {
       const opened = { master: null, operators: [] };
       let masterKeyInfo = null;
       try {
-        masterKeyInfo = await validateMasterKey(group.master.key.key);
+        masterKeyInfo = await validateMasterKey(group.master);
         group.master.key.id = masterKeyInfo.api_key_id;
         group.master.key.label = masterKeyInfo.label || group.master.login;
       } catch (error) {
@@ -1052,7 +1055,7 @@ async function mainMasterOperators() {
             group.operators[operatorIndex].password,
             group.operators[operatorIndex].uuid,
           );
-          const operatorMasters = await listOperatorMasters(resolved.uuid);
+          const operatorMasters = await listOperatorMasters(resolved.uuid, resolved.cookie);
           const assigned = operatorMasters.find((master) => master.assigned);
           if (!assigned || Number(assigned.id) !== Number(masterKeyInfo.api_key_id)) {
             throw new Error(

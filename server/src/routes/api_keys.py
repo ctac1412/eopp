@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from src.models import CreateApiKeyBody, UpdateApiKeyBody
 from src.policies.access_policy import token_from_request
 from src.repositories import api_key_repo, tariff_repo, user_repo
+from src.services.session_api_key import key_for_session_request
 
 router = APIRouter(tags=["api_keys"])
 
@@ -227,26 +228,34 @@ async def reset_api_key_usage(key_id: int, request: Request):
 
 
 @router.get("/validate-key")
-async def validate_api_key(api_key: str = Query(...)):
-    result = api_key_repo.validate_api_key(api_key)
+async def validate_api_key(request: Request):
+    key_record, error = key_for_session_request(request, enforce_usage_limit=False)
+    if error:
+        return error
+    if request.query_params.get("api_key"):
+        return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
+    result = api_key_repo.validate_api_key(key_record.key)
     if result["valid"]:
-        key_record = api_key_repo.get_key_record(api_key)
-        if key_record:
-            result["api_key_id"] = key_record.id
-            tariff, _source = tariff_repo.get_effective_tariff(
-                key_record.id,
-                key_record.company_id,
-            )
-            if tariff:
-                result["price_create"] = tariff.price_create
-                result["price_reschedule"] = tariff.price_reschedule
-                result["price_create_peak"] = tariff.price_create_peak
+        result["api_key_id"] = key_record.id
+        tariff, _source = tariff_repo.get_effective_tariff(
+            key_record.id,
+            key_record.company_id,
+        )
+        if tariff:
+            result["price_create"] = tariff.price_create
+            result["price_reschedule"] = tariff.price_reschedule
+            result["price_create_peak"] = tariff.price_create_peak
     return JSONResponse(content=result)
 
 
 @router.get("/api-key-status")
-async def api_key_status(key: str = Query(...)):
-    result = api_key_repo.validate_api_key(key)
+async def api_key_status(request: Request):
+    key_record, error = key_for_session_request(request, enforce_usage_limit=False)
+    if error:
+        return error
+    if request.query_params.get("key"):
+        return JSONResponse(status_code=400, content={"error": "key is no longer accepted"})
+    result = api_key_repo.validate_api_key(key_record.key)
     return JSONResponse(
         content={
             "valid": result["valid"],

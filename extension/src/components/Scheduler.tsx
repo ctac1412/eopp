@@ -41,7 +41,7 @@ const Scheduler = React.memo(function Scheduler() {
       return;
     }
     try {
-      const streamCheck = await checkStream(authKey);
+      const streamCheck = await checkStream();
       if (!streamCheck.has_active_stream) {
         setStatusMessage("Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение");
         setStatusClass("qn-modal-status-error");
@@ -64,7 +64,6 @@ const Scheduler = React.memo(function Scheduler() {
       const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
       const scheduledAt = `${dateStr}T${timeStr}`;
       sendScheduledEvent(
-        authKey,
         `Бронь ${(config.reservationId || "").slice(0, 8)}`,
         scheduledAt,
         config.mode === "reschedule" ? "Перенос" : "Создание",

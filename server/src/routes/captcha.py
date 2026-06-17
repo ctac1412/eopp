@@ -26,6 +26,7 @@ from src.models import SolveCaptchaBody, SolveRequest
 from src.platform.jobs.queue import enqueue_deferred_job
 from src.platform.observability import metrics
 from src.services import captcha_file_service, captcha_service
+from src.services.session_api_key import key_for_session_request, with_session_api_key
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
 from src.test_runner import next_result_id
 
@@ -123,14 +124,26 @@ def _runtime() -> CaptchaRuntime:
 
 
 @router.post("/solve-captcha")
-async def handle_captcha(body: SolveCaptchaBody):
+async def handle_captcha(body: SolveCaptchaBody, request: Request):
+    key_record, error = key_for_session_request(request)
+    if error:
+        return error
+    if body.api_key:
+        return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
+    body = with_session_api_key(body, key_record.key)
     metrics.counter_inc("captcha_solve_requests_total")
     status, content = await _runtime().handle_captcha(body)
     return JSONResponse(status_code=status, content=content)
 
 
 @router.post("/solve")
-async def handle_solve(body: SolveRequest):
+async def handle_solve(body: SolveRequest, request: Request):
+    key_record, error = key_for_session_request(request, enforce_usage_limit=False)
+    if error:
+        return error
+    if body.api_key:
+        return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
+    body = with_session_api_key(body, key_record.key)
     status, content = await _runtime().submit_solution(body)
     return JSONResponse(status_code=status, content=content)
 
@@ -141,6 +154,12 @@ async def handle_cancel_captcha(request: Request):
         body = await request.json()
     except Exception:
         body = {}
+    key_record, error = key_for_session_request(request)
+    if error:
+        return error
+    if body.get("api_key"):
+        return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
+    body["api_key"] = key_record.key
     status, content = await _runtime().cancel_captcha(body)
     return JSONResponse(status_code=status, content=content)
 
@@ -342,22 +361,22 @@ async def _on_timeout(
 async def trigger_test(request: Request):
     from src.test_runner import send_one_test_captcha
 
+    key_record, error = key_for_session_request(request)
+    if error:
+        return error
     try:
         body = await request.json()
     except Exception:
         body = {}
-    api_key = body.get("api_key")
+    if body.get("api_key"):
+        return JSONResponse(status_code=400, content={"error": "api_key is no longer accepted"})
+    api_key = key_record.key
     reservation_id = body.get("reservation_id")
     captcha_id = body.get("captcha_id")
     course_id = body.get("course_id")
     count = body.get("count", 1)
     test_no_timeout = body.get("test_no_timeout", False)
     auto_solve_rucaptcha = body.get("auto_solve_rucaptcha", False)
-
-    if api_key:
-        key_record = get_key_record(api_key)
-        if not key_record:
-            return JSONResponse(status_code=403, content={"error": "Invalid API key"})
 
     captcha_ids = []
 

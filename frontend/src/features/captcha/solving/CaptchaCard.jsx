@@ -9,7 +9,6 @@ function CaptchaCard({ entry, index }) {
   );
   const setSelectedCard = useCaptchaStore((s) => s.setSelectedCard);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
-  const apiKey = useCaptchaStore((s) => s.apiKey);
 
   const handleClick = async () => {
     setSelectedCard(entry.id, index);
@@ -20,7 +19,6 @@ function CaptchaCard({ entry, index }) {
       body: JSON.stringify({
         captcha_id: entry.id,
         variantIndex: parseInt(index),
-        api_key: apiKey,
       }),
     });
     const data = await res.json();

@@ -12,7 +12,7 @@ from src.models import AdminAuthBody
 from src.modules.access.permissions import Permission, role_permissions, role_sections
 from src.modules.access.service import AccessService
 from src.modules.audit.service import AuditService
-from src.policies.access_policy import ADMIN_SESSION_COOKIE, token_from_request
+from src.policies.access_policy import SESSION_COOKIE, token_from_request
 from src.repositories import api_key_repo, user_repo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,7 +39,7 @@ def _response_with_session(user) -> JSONResponse:
     )
     response = JSONResponse(content=_session_payload(user))
     response.set_cookie(
-        ADMIN_SESSION_COOKIE,
+        SESSION_COOKIE,
         token,
         httponly=True,
         samesite="lax",
@@ -98,5 +98,5 @@ async def auth_plugin_keys(request: Request):
 @router.post("/logout")
 async def auth_logout():
     response = JSONResponse(content={"ok": True})
-    response.delete_cookie(ADMIN_SESSION_COOKIE)
+    response.delete_cookie(SESSION_COOKIE)
     return response

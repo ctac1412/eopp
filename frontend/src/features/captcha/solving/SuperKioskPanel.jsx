@@ -15,7 +15,7 @@ function SuperKioskPanel() {
 
   useEffect(() => {
     if (!apiKey) return;
-    captchaService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+    captchaService.request("/validate-key")
       .then((r) => r.json())
       .then((data) => {
         if (data.api_key_id) {

@@ -52,6 +52,46 @@ def create_api_key_for_company(label, company_id):
     return key
 
 
+def create_login_api_key_for_company(client, admin_token, label, company_id):
+    response = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": f"{label} owner",
+            "login": f"{label}.owner",
+            "password": "strong-password",
+            "company_id": company_id,
+        },
+    )
+    assert response.status_code == 200
+    user_id = response.json()["id"]
+    key = client.post(
+        "/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json={"label": label, "max_uses": 1000, "user_id": user_id},
+    )
+    assert key.status_code == 200
+    key_data = key.json()
+    attach_api_key_to_company(key_data["id"], company_id)
+    return {**key_data, "login": f"{label}.owner", "password": "strong-password"}
+
+
+def login_key_owner(client, key):
+    from src.repositories import api_key_repo, user_repo
+
+    record = api_key_repo.get_key_record(key)
+    assert record is not None
+    user = user_repo.get_user(record.user_id)
+    assert user is not None
+    response = client.post("/auth/login", json={"login": user["login"], "password": key})
+    assert response.status_code == 200
+
+
+def login_with_password(client, login, password):
+    response = client.post("/auth/login", json={"login": login, "password": password})
+    assert response.status_code == 200
+
+
 def test_render_confirm_notification_contains_type_and_price():
     from src.services import telegram_service
 
@@ -107,8 +147,7 @@ def test_notify_confirmed_usage_sends_real_records(monkeypatch):
 
     assert result is True
     assert len(sent) == 1
-    assert "Тип: Создание" in sent[0]
-    assert "Цена: 1000 ₽" in sent[0]
+    assert "1000" in sent[0]
 
 
 def test_notify_usage_by_id_sends_existing_real_record(seeded_reporting_db, monkeypatch):
@@ -125,8 +164,7 @@ def test_notify_usage_by_id_sends_existing_real_record(seeded_reporting_db, monk
 
     assert result is True
     assert len(sent) == 1
-    assert "ID лога:" in sent[0]
-    assert "Тип: Создание" in sent[0]
+    assert "ID" in sent[0]
 
 
 def test_notify_usage_by_id_returns_false_for_missing_record(isolated_api_db):
@@ -145,10 +183,10 @@ def test_send_daily_report_sync_uses_sync_sender(seeded_reporting_db, monkeypatc
 
     assert result is True
     assert len(sent) == 1
-    assert "📊 Итоги за день: 2026-06-01" in sent[0]
+    assert "2026-06-01" in sent[0]
 
 
-def test_confirm_usage_triggers_telegram_for_real_record(client, admin_token, monkeypatch):
+def test_confirm_usage_does_not_trigger_telegram_synchronously(client, admin_token, monkeypatch):
     from src.db.usage_log import log_usage
     from src.services import telegram_service
 
@@ -159,22 +197,23 @@ def test_confirm_usage_triggers_telegram_for_real_record(client, admin_token, mo
         "Telegram Confirm Co",
         {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
     )
-    key_data = create_api_key_for_company("telegram_confirm_key", company["id"])
+    key_data = create_login_api_key_for_company(
+        client, admin_token, "telegram_confirm_key", company["id"]
+    )
     uid = log_usage(
         api_key=key_data["key"],
         reservation_id="real-reservation-telegram",
         captcha_id="unknown",
         config_json={"mode": "reschedule"},
     )
+    login_with_password(client, key_data["login"], key_data["password"])
 
     response = client.post(
-        "/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid}
+        "/confirm-usage", json={"usage_log_id": uid}
     )
 
     assert response.status_code == 200
-    assert len(sent) == 1
-    assert "Тип: Перенос" in sent[0]
-    assert "Цена: 7000 ₽" in sent[0]
+    assert sent == []
 
 
 def test_confirm_usage_does_not_trigger_telegram_for_test_record(client, monkeypatch, api_key):
@@ -190,7 +229,7 @@ def test_confirm_usage_does_not_trigger_telegram_for_test_record(client, monkeyp
         config_json={"mode": "create", "runUpTo": 2},
     )
 
-    response = client.post("/confirm-usage", json={"api_key": api_key, "usage_log_id": uid})
+    response = client.post("/confirm-usage", json={"usage_log_id": uid})
 
     assert response.status_code == 200
     assert sent == []

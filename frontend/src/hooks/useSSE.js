@@ -1,7 +1,7 @@
 /**
  * EOPP Captcha Solver - SSE Hook (Server-Sent Events)
  *
- * Подключается к /stream?api_key=...&super_kiosk=1 и слушает события:
+ * Подключается к /stream и слушает события:
  * - new_captcha: новая капча для решения -> addCaptcha
  * - captcha_solved: капча решена -> markSolved
  * - captcha_timeout: таймаут -> removeCaptcha
@@ -46,7 +46,7 @@ function useSSE(enabled = true) {
       const useForce = store.pendingForceReconnect;
       let url = "/stream";
       if (apiKey) {
-        const params = new URLSearchParams({ api_key: apiKey });
+        const params = new URLSearchParams();
         if (superKioskMode) {
           params.set("super_kiosk", "1");
           if (helpFor && helpFor.length > 0) {
@@ -58,7 +58,10 @@ function useSSE(enabled = true) {
           store.setPendingForceReconnect(false);
           wasForceReconnect = true;
         }
-        url += `?${params.toString()}`;
+        const query = params.toString();
+        if (query) {
+          url += `?${query}`;
+        }
       } else {
         addLog("SSE: API ключ не установлен, подключение невозможно", "error");
         return;

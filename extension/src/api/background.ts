@@ -54,13 +54,11 @@ export function sendMessageToBackground(
 
 export async function confirmUsage(
   usageLogId: number,
-  apiKey: string,
   slotDate?: string,
   logs?: string[],
 ): Promise<boolean> {
   const response = await sendMessageToBackground("confirmUsage", {
     usageLogId,
-    apiKey,
     slotDate,
     logs,
   });
@@ -69,7 +67,6 @@ export async function confirmUsage(
 
 export async function failUsage(
   usageLogId: number,
-  apiKey: string,
   errorMessage: string,
   errorStage: string,
   slotDate?: string,
@@ -77,7 +74,6 @@ export async function failUsage(
 ): Promise<boolean> {
   const response = await sendMessageToBackground("failUsage", {
     usageLogId,
-    apiKey,
     errorMessage,
     errorStage,
     slotDate,
@@ -87,13 +83,11 @@ export async function failUsage(
 }
 
 export async function cancelCaptcha(
-  apiKey: string,
   usageLogId?: number | null,
   captchaId?: string | null,
 ): Promise<boolean> {
   if (!usageLogId && !captchaId) return false;
   const response = await sendMessageToBackground("cancelCaptcha", {
-    apiKey,
     usageLogId,
     captchaId,
   });
@@ -101,15 +95,13 @@ export async function cancelCaptcha(
   return data.ok === true;
 }
 
-export async function getApiKeyStatus(
-  apiKey: string,
-): Promise<ApiKeyStatusResponse> {
-  const response = await sendMessageToBackground("apiKeyStatus", { apiKey });
+export async function getApiKeyStatus(): Promise<ApiKeyStatusResponse> {
+  const response = await sendMessageToBackground("apiKeyStatus", {});
   return response as ApiKeyStatusResponse;
 }
 
-export async function checkStream(apiKey: string): Promise<{ valid: boolean; has_active_stream: boolean }> {
-  const response = await sendMessageToBackground("checkStream", { apiKey });
+export async function checkStream(): Promise<{ valid: boolean; has_active_stream: boolean }> {
+  const response = await sendMessageToBackground("checkStream", {});
   return response as { valid: boolean; has_active_stream: boolean };
 }
 
@@ -126,13 +118,11 @@ function sanitizeConfig(config: InjectorConfig): Record<string, unknown> {
 }
 
 export async function registerUsage(
-  apiKey: string,
   reservationId: string,
   config?: InjectorConfig,
 ): Promise<number> {
   try {
     const response = await sendMessageToBackground("registerUsage", {
-      apiKey,
       reservationId,
       configJson: config ? sanitizeConfig(config) : undefined,
     });
@@ -216,13 +206,11 @@ export async function failSharedSlots(
 }
 
 export async function sendScheduledEvent(
-  apiKeyId: string,
   label: string,
   scheduledAt: string,
   description: string,
 ): Promise<{ ok: boolean; delivered_to_operators: number }> {
   const response = await sendMessageToBackground("scheduledEvent", {
-    apiKeyId,
     label,
     scheduledAt,
     description,

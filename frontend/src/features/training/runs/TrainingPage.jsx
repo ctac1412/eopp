@@ -63,7 +63,7 @@ export default function TrainingPage() {
     } else {
       const apiKey = loadApiKey();
       if (apiKey) {
-        trainingService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+        trainingService.request("/validate-key")
           .then((response) => response.json())
           .then((data) => {
             if (data.valid && data.api_key_id) {

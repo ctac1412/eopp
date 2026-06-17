@@ -63,7 +63,6 @@ function Wait-EoppPreflightClean {
     [int]$TimeoutSeconds
   )
 
-  $keys = $MasterApiKeys -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ }
   $logins = $MasterLogins -split "," | ForEach-Object { $_.Trim() }
   $passwords = $MasterPasswords -split "," | ForEach-Object { $_.Trim() }
   $deadline = (Get-Date).AddSeconds([Math]::Max(0, $TimeoutSeconds))
@@ -94,15 +93,21 @@ function Wait-EoppPreflightClean {
 
   while ($true) {
     $active = @()
-    foreach ($key in $keys) {
+    for ($i = 0; $i -lt $logins.Count; $i++) {
       try {
-        $encoded = [System.Uri]::EscapeDataString($key)
-        $state = Invoke-EoppCurlJson -Url "$base/check-stream?api_key=$encoded"
+        if ($i -ge $passwords.Count) {
+          throw "missing password for master login index $i"
+        }
+        $masterCookieFile = Join-Path $artifactDir "preflight-master-$i-cookies.txt"
+        Remove-Item -Force $masterCookieFile -ErrorAction SilentlyContinue
+        $loginBody = @{ login = $logins[$i]; password = $passwords[$i] } | ConvertTo-Json -Compress
+        Invoke-EoppCurlJson -Url "$base/auth/login" -CookieFile $masterCookieFile -Method "POST" -Body $loginBody | Out-Null
+        $state = Invoke-EoppCurlJson -Url "$base/check-stream" -CookieFile $masterCookieFile
         if ($state -and $state.has_active_stream) {
-          $active += $key
+          $active += $logins[$i]
         }
       } catch {
-        Write-Host "PREFLIGHT_CHECK_STREAM failed key=$($key.Substring(0, [Math]::Min(8, $key.Length))) error=$($_.Exception.Message)"
+        Write-Host "PREFLIGHT_CHECK_STREAM failed login=$($logins[$i]) error=$($_.Exception.Message)"
       }
     }
 

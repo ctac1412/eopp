@@ -73,7 +73,7 @@ function StatusBar() {
       return;
     }
     setIsAdmin(localStorage.getItem("admin_session_active") === "1");
-    captchaService.request(`/validate-key?api_key=${encodeURIComponent(apiKey)}`)
+    captchaService.request("/validate-key")
       .then((r) => r.json())
       .then((data) => {
         setApiLabel(data.label || null);
@@ -131,7 +131,7 @@ function StatusBar() {
     setLoading(true);
     setShowSettings(false);
     try {
-      const body = { api_key: apiKey };
+      const body = {};
       if (testCaptchaId) body.captcha_id = testCaptchaId;
       if (testCourseId) body.course_id = testCourseId;
       if (testNoTimeout) body.test_no_timeout = true;

@@ -212,6 +212,16 @@ def get_key_record(api_key: str) -> ApiKey | None:
         return session.query(ApiKey).filter(ApiKey.key == api_key).first()
 
 
+def get_active_key_for_user(user_id: int) -> ApiKey | None:
+    with get_session() as session:
+        return (
+            session.query(ApiKey)
+            .filter(ApiKey.user_id == user_id, ApiKey.active.is_(True))
+            .order_by(ApiKey.created_at.desc())
+            .first()
+        )
+
+
 def update_key(key_id: int, **kwargs) -> ApiKey | None:
     with get_session() as session:
         key = session.get(ApiKey, key_id)
@@ -255,6 +265,9 @@ def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access
         if body.comment is not None and body.comment != key.comment:
             changes["comment"] = (key.comment, body.comment)
             key.comment = body.comment
+        if body.is_admin is not None and body.is_admin != key.is_admin:
+            changes["is_admin"] = (str(key.is_admin), str(body.is_admin))
+            key.is_admin = body.is_admin
         if body.is_super_kiosk is not None and body.is_super_kiosk != key.is_super_kiosk:
             changes["is_super_kiosk"] = (str(key.is_super_kiosk), str(body.is_super_kiosk))
             key.is_super_kiosk = body.is_super_kiosk

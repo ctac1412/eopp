@@ -65,8 +65,8 @@ def admin_token(client, legacy_admin_api_key):
         json={"login": "admin", "password": legacy_admin_api_key},
     )
     assert response.status_code == 200
-    assert "eopp_admin_session" in response.cookies
-    return response.cookies["eopp_admin_session"]
+    assert "eopp_session" in response.cookies
+    return response.cookies["eopp_session"]
 
 
 @pytest.fixture
@@ -83,6 +83,11 @@ def api_key(client, admin_token):
         json={"label": "pytest_key", "max_uses": 1000, "user_id": user.json()["id"]},
     )
     assert response.status_code == 200
+    login = client.post(
+        "/auth/login",
+        json={"login": "pytest.key.owner", "password": "strong-password"},
+    )
+    assert login.status_code == 200
     return response.json()["key"]
 
 

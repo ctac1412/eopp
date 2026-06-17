@@ -15,7 +15,7 @@ async function reportFailure(reason: string, stage: string): Promise<boolean> {
   isReporting = true;
 
   const state = useInjectorStore.getState();
-  if (!state.usageLogId || !state.config.apiKey) {
+  if (!state.usageLogId) {
     isReporting = false;
     return false;
   }
@@ -24,7 +24,6 @@ async function reportFailure(reason: string, stage: string): Promise<boolean> {
   try {
     await failUsage(
       state.usageLogId,
-      state.config.apiKey,
       reason,
       stage,
       state.config.slotDate,
@@ -37,12 +36,10 @@ async function reportFailure(reason: string, stage: string): Promise<boolean> {
 }
 
 async function cancelPendingCaptcha(): Promise<boolean> {
-  const state = useInjectorStore.getState();
-  if (!state.config.apiKey) return false;
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = useInjectorStore.getState();
     try {
-      if (await cancelCaptcha(current.config.apiKey, current.usageLogId, current.captchaId)) {
+      if (await cancelCaptcha(current.usageLogId, current.captchaId)) {
         return true;
       }
     } catch {

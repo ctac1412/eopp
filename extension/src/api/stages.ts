@@ -135,7 +135,6 @@ export async function generateCaptcha(
 export async function solveCaptcha(
   captchaData: CaptchaResponse,
   autoSolve: boolean,
-  apiKey: string,
   reservationId: string,
 ): Promise<SolvedAnswer> {
   useInjectorStore.getState().setStage("solving");
@@ -146,9 +145,6 @@ export async function solveCaptcha(
     auto_solve: autoSolve,
     timeout_metadata: true,
   };
-  if (apiKey) {
-    payload.api_key = apiKey;
-  }
   if (reservationId) {
     payload.reservation_id = reservationId;
   }

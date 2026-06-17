@@ -404,7 +404,6 @@ async function runCaptchaPipeline(
       solveCaptcha(
         captchaResponse,
         config.autoSolve,
-        config.apiKey,
         config.reservationId,
       ),
       signal,
@@ -564,14 +563,13 @@ function isSlotUnavailableError(err: unknown): boolean {
  */
 async function confirmUsageInBackground(config: InjectorConfig): Promise<void> {
   const usageLogId = useInjectorStore.getState().usageLogId;
-  if (usageLogId == null || !config.apiKey) return;
+  if (usageLogId == null) return;
   const logs = useInjectorStore
     .getState()
     .logs.map((l) => `${l.ts} ${l.msg}`);
   try {
     await confirmUsage(
       usageLogId,
-      config.apiKey,
       config.slotDate,
       logs,
     );
@@ -586,14 +584,13 @@ async function confirmUsageInBackground(config: InjectorConfig): Promise<void> {
  */
 async function failUsageInBackground(config: InjectorConfig, err: unknown): Promise<void> {
   const usageLogId = useInjectorStore.getState().usageLogId;
-  if (usageLogId == null || !config.apiKey) return;
+  if (usageLogId == null) return;
   const logs = useInjectorStore
     .getState()
     .logs.map((l) => `${l.ts} ${l.msg}`);
   try {
     await failUsage(
       usageLogId,
-      config.apiKey,
       serializeError(err),
       getErrorStage(),
       config.slotDate,
@@ -671,11 +668,7 @@ async function registerUsageAndFetchSlots(
   config: InjectorConfig,
   signal?: AbortSignal,
 ): Promise<SlotsResponse> {
-  if (!config.apiKey) {
-    throw new Error("apiKey обязателен");
-  }
   const usageLogId = await registerUsage(
-    config.apiKey,
     config.reservationId,
     config,
   );

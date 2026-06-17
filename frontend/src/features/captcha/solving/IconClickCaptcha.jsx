@@ -10,7 +10,6 @@ import {
 import { CaptchaPanelHeader } from "./CaptchaPanelHeader";
 
 function IconClickCaptcha({ entry }) {
-  const apiKey = useCaptchaStore((s) => s.apiKey);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
   const isDistributed = !!entry.distribution;
 
@@ -18,7 +17,6 @@ function IconClickCaptcha({ entry }) {
     return (
       <DistributedIconClick
         entry={entry}
-        apiKey={apiKey}
         superKioskMode={superKioskMode}
       />
     );
@@ -27,13 +25,12 @@ function IconClickCaptcha({ entry }) {
   return (
     <NormalIconClick
       entry={entry}
-      apiKey={apiKey}
       superKioskMode={superKioskMode}
     />
   );
 }
 
-function NormalIconClick({ entry, apiKey, superKioskMode }) {
+function NormalIconClick({ entry, superKioskMode }) {
   const [markers, setMarkers] = useState([]);
 
   const mainImage = entry.images?.["0"] || "";
@@ -47,7 +44,6 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
         captcha_id: entry.id,
         variantIndex: 0,
         coordinates: coords,
-        api_key: apiKey,
       }),
     });
     const data = await res.json();
@@ -111,7 +107,7 @@ function NormalIconClick({ entry, apiKey, superKioskMode }) {
   );
 }
 
-function DistributedIconClick({ entry, apiKey, superKioskMode }) {
+function DistributedIconClick({ entry, superKioskMode }) {
   const operatorId = entry.distribution?.operator_id ?? 0;
   const assigned = entry.distribution?.assigned ?? [0, 1, 2, 3, 4];
   const numOperators = entry.distribution?.num_operators ?? 1;

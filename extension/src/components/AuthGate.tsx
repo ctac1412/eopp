@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { useInjectorStore } from "@/store";
 import { getApiKeyStatus } from "@/api/background";
 
@@ -7,7 +7,6 @@ interface Props {
 }
 
 const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
-  const authKey = useInjectorStore((s) => s.authKey);
   const authKeyStatus = useInjectorStore((s) => s.authKeyStatus);
   const setAuthKey = useInjectorStore((s) => s.setAuthKey);
   const setAuthKeyStatus = useInjectorStore((s) => s.setAuthKeyStatus);
@@ -20,69 +19,63 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
   const authChecking = useInjectorStore((s) => s.authChecking);
   const updateField = useInjectorStore((s) => s.updateField);
 
-  const [inputKey, setInputKey] = useState("");
   const checkedRef = useRef(false);
 
   useEffect(() => {
     if (checkedRef.current) return;
     checkedRef.current = true;
 
-    if (authKey && !authKeyStatus) {
+    if (!authKeyStatus) {
       setAuthChecking(true);
-      getApiKeyStatus(authKey)
+      getApiKeyStatus()
         .then((status) => {
           if (status.valid) {
+            setAuthKey("cookie-session");
             setAuthKeyStatus(status);
+            updateField("apiKey", "");
           } else {
             clearAuthKey();
             updateField("apiKey", "");
             localStorage.removeItem("_k");
-            setAuthError("Недействительный ключ");
+            setAuthError("Нет активной сессии на сервере");
           }
         })
         .catch(() => {
           clearAuthKey();
           updateField("apiKey", "");
           localStorage.removeItem("_k");
-          setAuthError("Не удалось подключиться к серверу");
+          setAuthError("Откройте сервер и войдите в аккаунт");
         })
         .finally(() => {
           setAuthChecking(false);
         });
     }
-  }, [authKey, authKeyStatus]);
+  }, [authKeyStatus]);
 
   const handleLogin = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      const trimmed = inputKey.trim();
-      if (!trimmed) {
-        setAuthError("Введите ключ");
-        return;
-      }
       setAuthLoading(true);
       try {
-        const status = await getApiKeyStatus(trimmed);
+        const status = await getApiKeyStatus();
         if (status.valid) {
-          setAuthKey(trimmed);
+          setAuthKey("cookie-session");
           setAuthKeyStatus(status);
-          updateField("apiKey", trimmed);
-          localStorage.setItem("_k", trimmed);
+          updateField("apiKey", "");
         } else {
-          setAuthError("Недействительный ключ");
+          setAuthError("Нет активной сессии на сервере");
         }
       } catch {
-        setAuthError("Не удалось подключиться к серверу");
+        setAuthError("Откройте сервер и войдите в аккаунт");
       }
     },
-    [inputKey, setAuthKey, setAuthLoading, setAuthError, updateField],
+    [setAuthKey, setAuthLoading, setAuthError, updateField],
   );
 
   const handleLogout = useCallback(() => {
     clearAuthKey();
     updateField("apiKey", "");
     localStorage.removeItem("_k");
-    setInputKey("");
   }, [clearAuthKey, updateField]);
 
   if (authChecking) {
@@ -115,17 +108,6 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
             : "Авторизация для синхронизации заметок"}
         </div>
         <form className="qn-auth-gate-form" onSubmit={handleLogin}>
-          <input
-            className="qn-auth-gate-input"
-            type="text"
-            placeholder="Ключ синхронизации"
-            value={inputKey}
-            onChange={(e) => {
-              setInputKey(e.target.value);
-              setAuthError("");
-            }}
-            autoFocus
-          />
           {authError && (
             <div className="qn-auth-gate-error">{authError}</div>
           )}
@@ -137,7 +119,7 @@ const AuthGate = React.memo(function AuthGate({ onClose }: Props) {
             {authLoading ? "Проверка..." : "Подключить"}
           </button>
         </form>
-        {authKey && !authError && (
+        {authKeyStatus && !authError && (
           <button
             className="qn-auth-gate-logout"
             onClick={handleLogout}

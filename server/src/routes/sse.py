@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from src.repositories import api_key_repo
 from src.routes.chat import get_chat_history
 from src.routes.scheduled import get_scheduled_events_for_masters
+from src.services.session_api_key import key_for_session_request
 from src.sse import register_sse_connection, replace_sse_connections, unregister_sse_connection
 from src.sse.manager import registry as realtime_registry
 
@@ -101,19 +102,15 @@ def _pending_snapshot_events(
 
 @router.get("/check-stream")
 async def check_stream(
-    api_key: str = Query(...), super_kiosk: int = Query(0), help_for: str = Query(None)
+    request: Request, super_kiosk: int = Query(0), help_for: str = Query(None)
 ):
     start = time.perf_counter()
-    key_record = api_key_repo.get_key_record(api_key)
-    if not key_record:
-        logger.warning(
-            "sse_check_stream status=401 super_kiosk=%s duration_ms=%.1f",
-            bool(super_kiosk),
-            (time.perf_counter() - start) * 1000,
-        )
-        return JSONResponse(
-            status_code=401, content={"valid": False, "error": "Invalid API key"}
-        )
+    key_record, error = key_for_session_request(request)
+    if error:
+        return error
+    if request.query_params.get("api_key"):
+        return JSONResponse(status_code=400, content={"valid": False, "error": "api_key is no longer accepted"})
+    api_key = key_record.key
     api_key_id = key_record.id
     effective_id = -1 if (super_kiosk and api_key_repo.is_super_kiosk_key(api_key)) else api_key_id
     has_active = realtime_registry.has_connection(effective_id)
@@ -138,21 +135,27 @@ async def check_stream(
 @router.get("/stream")
 async def sse_stream(
     request: Request,
-    api_key: str = Query(...),
     super_kiosk: int = Query(0),
     help_for: str = Query(None),
     force: int = Query(0),
 ):
     connected_at = time.perf_counter()
     client_ip = request.client.host if request.client else "unknown"
-    key_record = api_key_repo.get_key_record(api_key)
-    if not key_record:
-        logger.warning("sse_stream_auth status=401 ip=%s super_kiosk=%s", client_ip, bool(super_kiosk))
+    key_record, error = key_for_session_request(request)
+    if error:
+        logger.warning("sse_stream_auth status=%s ip=%s super_kiosk=%s", error.status_code, client_ip, bool(super_kiosk))
         return StreamingResponse(
-            status_code=401,
-            content='{"error": "Invalid or missing API key"}',
+            status_code=error.status_code,
+            content='{"error": "Unauthorized"}',
             media_type="application/json",
         )
+    if request.query_params.get("api_key"):
+        return StreamingResponse(
+            status_code=400,
+            content='{"error": "api_key is no longer accepted"}',
+            media_type="application/json",
+        )
+    api_key = key_record.key
 
     is_super = super_kiosk and api_key_repo.is_super_kiosk_key(api_key)
 

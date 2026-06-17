@@ -3,7 +3,7 @@ import { apiRequest } from "../../../shared/api/httpClient";
 export const trainingService = {
   request: (path, options) => apiRequest(path, options),
   resolveOperator: (uuid) => apiRequest(`/training/resolve-operator?uuid=${encodeURIComponent(uuid)}`),
-  validateKey: (apiKey) => apiRequest(`/validate-key?api_key=${encodeURIComponent(apiKey)}`),
+  validateKey: () => apiRequest("/validate-key"),
   courses: () => apiRequest("/training/courses"),
   runs: (params) => apiRequest(`/training/runs?${params}`),
   start: (payload) => apiRequest("/training/start", { method: "POST", json: payload }),

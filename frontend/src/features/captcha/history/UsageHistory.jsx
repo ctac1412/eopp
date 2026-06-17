@@ -7,7 +7,7 @@ import { Toolbar } from "../../../ui";
 const USAGE_HISTORY_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const USAGE_HISTORY_DEFAULT_PAGE_SIZE = 25;
 
-function UsageHistory({ apiKey }) {
+function UsageHistory() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -22,13 +22,8 @@ function UsageHistory({ apiKey }) {
   const toggleError = (id) => setExpandedErrors((p) => ({ ...p, [id]: !p[id] }));
 
   const fetchLogs = useCallback(async () => {
-    if (!apiKey) {
-      setError("API-ключ не установлен");
-      setLoading(false);
-      return;
-    }
     try {
-      const resp = await historyService.request(`/usage-log?api_key=${encodeURIComponent(apiKey)}`);
+      const resp = await historyService.request("/usage-log");
       if (!resp.ok) {
         setError(resp.status === 403 ? "Неверный API-ключ" : "Не удалось загрузить историю");
         return;
@@ -42,7 +37,7 @@ function UsageHistory({ apiKey }) {
     } finally {
       setLoading(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 

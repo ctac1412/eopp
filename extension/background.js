@@ -5,9 +5,11 @@ const FETCH_TIMEOUT = 15000;
 function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() =>
-    clearTimeout(timeoutId),
-  );
+  return fetch(url, {
+    credentials: "include",
+    ...options,
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeoutId));
 }
 
 chrome.runtime.onConnect.addListener((port) => {
@@ -35,7 +37,6 @@ chrome.runtime.onConnect.addListener((port) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            api_key: msg.payload.apiKey,
             usage_log_id: msg.payload.usageLogId,
             captcha_id: msg.payload.captchaId,
           }),
@@ -49,7 +50,6 @@ chrome.runtime.onConnect.addListener((port) => {
           },
           body: JSON.stringify({
             usage_log_id: msg.payload.usageLogId,
-            api_key: msg.payload.apiKey,
             slot_date: msg.payload.slotDate,
             logs: msg.payload.logs,
           }),
@@ -63,7 +63,6 @@ chrome.runtime.onConnect.addListener((port) => {
           },
           body: JSON.stringify({
             usage_log_id: msg.payload.usageLogId,
-            api_key: msg.payload.apiKey,
             error_message: msg.payload.errorMessage,
             error_stage: msg.payload.errorStage,
             slot_date: msg.payload.slotDate,
@@ -71,15 +70,12 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "apiKeyStatus") {
-        res = await fetchWithTimeout(
-          `${serverUrl}/api-key-status?key=${encodeURIComponent(msg.payload.apiKey)}`,
-          {
-            method: "GET",
-            headers: {
-              Accept: "application/json, text/plain, */*",
-            },
+        res = await fetchWithTimeout(`${serverUrl}/api-key-status`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json, text/plain, */*",
           },
-        );
+        });
       } else if (msg.action === "registerUsage") {
         res = await fetchWithTimeout(`${serverUrl}/register-usage`, {
           method: "POST",
@@ -88,7 +84,6 @@ chrome.runtime.onConnect.addListener((port) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            api_key: msg.payload.apiKey,
             reservation_id: msg.payload.reservationId,
             config_json: msg.payload.configJson,
           }),
@@ -158,15 +153,12 @@ chrome.runtime.onConnect.addListener((port) => {
           }),
         });
       } else if (msg.action === "checkStream") {
-        res = await fetchWithTimeout(
-          `${serverUrl}/check-stream?api_key=${encodeURIComponent(msg.payload.apiKey)}`,
-          {
-            method: "GET",
-            headers: {
-              Accept: "application/json, text/plain, */*",
-            },
+        res = await fetchWithTimeout(`${serverUrl}/check-stream`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json, text/plain, */*",
           },
-        );
+        });
       } else if (msg.action === "openServer") {
         chrome.tabs.create({ url: serverUrl });
         port.postMessage({ ok: true, data: null });
@@ -181,7 +173,6 @@ chrome.runtime.onConnect.addListener((port) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            api_key: msg.payload.apiKeyId,
             label: msg.payload.label,
             scheduled_at: msg.payload.scheduledAt,
             description: msg.payload.description,

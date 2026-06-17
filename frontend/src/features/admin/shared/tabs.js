@@ -29,7 +29,6 @@ export const TrainingAdminTabContainer = lazyAdminTab("TrainingAdminTabContainer
 export const StreamsTabContainer = lazyAdminTab("StreamsTabContainer");
 export const BackendLogsTabContainer = lazyAdminTab("BackendLogsTabContainer");
 export const PrepaidPackagesTabContainer = lazyAdminTab("PrepaidPackagesTabContainer");
-export const PluginChannelTabContainer = lazyAdminTab("PluginChannelTabContainer");
 export const AITabContainer = lazyAdminTab("AITabContainer");
 
 export const ADMIN_TABS = [
@@ -48,7 +47,6 @@ export const ADMIN_TABS = [
   { id: "streams", path: "streams", label: "Стримы", component: StreamsTabContainer },
   { id: "backend-logs", path: "backend-logs", label: "Техстатус", shortLabel: "Tech", component: BackendLogsTabContainer },
   { id: "prepaid", path: "prepaid", label: "Предоплата", shortLabel: "Аванс", component: PrepaidPackagesTabContainer },
-  { id: "channels", path: "channels", label: "Каналы", component: PluginChannelTabContainer },
   { id: "ai", path: "ai", label: "ИИ", component: AITabContainer },
 ];
 

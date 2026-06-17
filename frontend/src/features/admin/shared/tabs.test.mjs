@@ -25,6 +25,10 @@ test("admin tabs expose route metadata", () => {
   }
 });
 
+test("disabled plugin channel flow is not exposed as an admin tab", () => {
+  assert.equal(ADMIN_TABS.some((tab) => tab.id === "channels"), false);
+});
+
 test("admin shell no longer supports legacy tab query routing", () => {
   assert.doesNotMatch(adminPageSource, /buildLegacyAdminTabRedirect/);
   assert.doesNotMatch(adminPageSource, /location\.search\.includes\("tab="/);

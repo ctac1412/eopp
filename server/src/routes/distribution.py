@@ -10,13 +10,15 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from threading import Lock
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.constants import DISTRIBUTION, ICON_ORDER
 from src.models import DistributionAnswerBody
+from src.policies.access_policy import token_from_request
 from src.platform.observability.metrics import counter_inc, observe_latency_ms
 from src.repositories import distribution_repo
+from src.repositories import user_repo
 from src.sse import push_sse
 
 logger = logging.getLogger("eopp.distribution")
@@ -190,7 +192,9 @@ def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
 
 
 @router.post("/answer")
-async def handle_distribution_answer(body: DistributionAnswerBody):
+async def handle_distribution_answer(body: DistributionAnswerBody, request: Request):
+    if not user_repo.get_session_user(token_from_request(request)):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     request_start = time.perf_counter()
     captcha_id = body.captcha_id
     operator_id = body.operator_id

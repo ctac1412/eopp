@@ -24,7 +24,7 @@ class SolveRequest(BaseModel):
 
 
 class SolveCaptchaBody(BaseModel):
-    api_key: str
+    api_key: str | None = None
     auto_solve: bool = False
     auto_solve_rucaptcha: bool = False
     timeout_metadata: bool = False
@@ -66,14 +66,14 @@ class UpdateUsageLogBody(BaseModel):
 
 class ConfirmUsageBody(BaseModel):
     usage_log_id: int
-    api_key: str
+    api_key: str | None = None
     slot_date: str | None = None
     logs: list[str] | None = None
 
 
 class FailUsageBody(BaseModel):
     usage_log_id: int
-    api_key: str
+    api_key: str | None = None
     error_message: str = ""
     error_stage: str = "other"
     slot_date: str | None = None
@@ -106,7 +106,7 @@ class UsageLogQuery(BaseModel):
 
 
 class RegisterUsageBody(BaseModel):
-    api_key: str
+    api_key: str | None = None
     reservation_id: str
     captcha_id: str | None = None
     config_json: dict[str, Any] | None = None

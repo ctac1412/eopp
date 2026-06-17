@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from src.models import ScheduledEventBody
 from src.repositories import operator_repo
+from src.services.session_api_key import key_for_session_request
 from src.sse import push_sse
 from src.sse.manager import operator_api_key_id
 
@@ -88,19 +89,12 @@ async def _auto_remove_after(event: dict, api_key_id: int, delay_seconds: float)
 
 
 @router.post("/scheduled-event")
-async def create_scheduled_event(body: ScheduledEventBody):
+async def create_scheduled_event(body: ScheduledEventBody, request: Request):
     """Register a scheduled event and push to all operators of the master."""
-    api_key_id = body.api_key_id
-
-    # Resolve api_key string to api_key_id if needed
-    if not api_key_id and body.api_key:
-        from src.repositories import api_key_repo
-        key_record = api_key_repo.get_key_record(body.api_key)
-        if key_record:
-            api_key_id = key_record.id
-
-    if not api_key_id:
-        return JSONResponse(status_code=400, content={"error": "api_key_id or api_key is required"})
+    key_record, error = key_for_session_request(request)
+    if error:
+        return error
+    api_key_id = key_record.id
 
     from datetime import UTC, datetime
 

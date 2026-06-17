@@ -72,19 +72,55 @@ def admin_token(client):
         json={"login": "admin", "password": admin_key["key"]},
     )
     assert response.status_code == 200
-    assert "eopp_admin_session" in response.cookies
-    return response.cookies["eopp_admin_session"]
+    assert "eopp_session" in response.cookies
+    return response.cookies["eopp_session"]
 
 
 @pytest.fixture
 def api_key(client, admin_token):
     """doc"""
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": "Pytest Key Owner",
+            "login": "pytest.key.owner",
+            "password": "strong-password",
+            "executor_access": {"all_companies": True, "company_ids": []},
+        },
+    )
+    assert user.status_code == 200
     response = client.post(
         "/api-keys",
         headers={"X-Admin-Token": admin_token},
-        json={"label": "pytest_key", "max_uses": 1000},
+        json={"label": "pytest_key", "max_uses": 1000, "user_id": user.json()["id"]},
     )
+    assert response.status_code == 200
+    login = client.post(
+        "/auth/login",
+        json={"login": "pytest.key.owner", "password": "strong-password"},
+    )
+    assert login.status_code == 200
     return response.json()["key"]
+
+
+def login_as_key_owner(client, api_key):
+    from src.repositories import api_key_repo, user_repo
+
+    record = api_key_repo.get_key_record(api_key)
+    assert record is not None and record.user_id is not None
+    user = user_repo.get_user(record.user_id)
+    assert user is not None and user["login"]
+    response = client.post(
+        "/auth/login",
+        json={"login": user["login"], "password": "strong-password"},
+    )
+    assert response.status_code == 200
+    return response
+
+
+def restore_admin_session(client, admin_token):
+    client.cookies.set("eopp_session", admin_token)
 
 
 def create_company_with_tariff(client, admin_token, name, tariff):
@@ -130,12 +166,38 @@ def attach_api_key_to_company(api_key_id, company_id):
     conn.close()
 
 
-def create_api_key_for_company(label, company_id):
-    from src.db import create_key
+def create_api_key_for_company(client, admin_token, label, company_id, *, max_uses=None):
+    suffix = datetime.now(UTC).timestamp()
+    user = client.post(
+        "/admin/users",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "name": f"{label} owner",
+            "login": f"{label}.{suffix}",
+            "password": "strong-password",
+            "company_id": company_id,
+            "executor_access": {"all_companies": False, "company_ids": [company_id]},
+        },
+    )
+    assert user.status_code == 200
+    payload = {"label": label, "company_id": company_id, "user_id": user.json()["id"]}
+    if max_uses is not None:
+        payload["max_uses"] = max_uses
+    key = client.post(
+        "/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json=payload,
+    )
+    assert key.status_code == 200
+    return key.json()
 
-    key = create_key(label=label)
-    attach_api_key_to_company(key["id"], company_id)
-    return key
+
+def run_billing_jobs_for_usage(usage_log_id: int):
+    from src.modules.billing import jobs as billing_jobs
+
+    billing_jobs.calculate_usage_price({"usage_log_id": usage_log_id})
+    billing_jobs.deduct_prepaid({"usage_log_id": usage_log_id})
+    billing_jobs.link_open_invoice({"usage_log_id": usage_log_id})
 
 
 # === API Keys Tests ===
@@ -200,11 +262,11 @@ class TestAPIKeys:
         )
         assert disabled.status_code == 200
 
-        response = client.get(f"/validate-key?api_key={key['key']}")
+        from src.repositories import api_key_repo
 
-        assert response.status_code == 200
-        assert response.json()["valid"] is False
-        assert response.json()["reason"] == "User is disabled"
+        result = api_key_repo.validate_api_key(key["key"])
+        assert result["valid"] is False
+        assert result["reason"] == "User is disabled"
 
     def test_list_keys(self, client, admin_token):
         """doc"""
@@ -239,9 +301,10 @@ class TestAPIKeys:
                 "price_create_peak": 9000,
             },
         )
-        create = create_api_key_for_company("validate_peak", company["id"])
+        create = create_api_key_for_company(client, admin_token, "validate_peak", company["id"])
+        login_as_key_owner(client, create["key"])
 
-        response = client.get(f"/validate-key?api_key={create['key']}")
+        response = client.get("/validate-key")
 
         assert response.status_code == 200
         data = response.json()
@@ -274,19 +337,19 @@ class TestAPIKeys:
 
     def test_validate_key_valid(self, client, admin_token, api_key):
         """doc"""
-        response = client.get(f"/validate-key?api_key={api_key}")
+        response = client.get("/validate-key")
         assert response.status_code == 200
         assert response.json()["valid"] is True
 
     def test_validate_key_invalid(self, client):
         """doc"""
+        client.cookies.clear()
         response = client.get("/validate-key?api_key=invalid")
-        assert response.status_code == 200
-        assert response.json()["valid"] is False
+        assert response.status_code == 401
 
     def test_key_status(self, client, admin_token, api_key):
         """doc"""
-        response = client.get(f"/api-key-status?key={api_key}")
+        response = client.get("/api-key-status")
         assert response.status_code == 200
         data = response.json()
         assert "remaining" in data
@@ -314,7 +377,6 @@ class TestUsage:
         response = client.post(
             "/register-usage",
             json={
-                "api_key": api_key,
                 "reservation_id": "res-123",
                 "captcha_id": "capt-123",
             },
@@ -327,7 +389,6 @@ class TestUsage:
         response = client.post(
             "/register-usage",
             json={
-                "api_key": api_key,
                 "reservation_id": "res-456",
                 "config_json": {"facilityId": "APP1", "slotDate": "2026-01-01"},
             },
@@ -341,23 +402,35 @@ class TestUsage:
         # comment
         reg = client.post(
             "/register-usage",
-            json={"api_key": api_key, "reservation_id": "res-conf"},
+            json={"reservation_id": "res-conf"},
         )
         uid = reg.json()["usage_log_id"]
 
         # comment
-        response = client.post("/confirm-usage", json={"api_key": api_key, "usage_log_id": uid})
+        response = client.post("/confirm-usage", json={"usage_log_id": uid})
         assert response.status_code == 200
 
     def test_confirm_usage_does_not_exceed_max_uses(self, client, admin_token):
         from src.repositories import api_key_repo
         from src.sse.manager import lock, sse_queues
 
+        user = client.post(
+            "/admin/users",
+            headers={"X-Admin-Token": admin_token},
+            json={
+                "name": "Limited Confirm Owner",
+                "login": "limited.confirm.owner",
+                "password": "strong-password",
+                "executor_access": {"all_companies": True, "company_ids": []},
+            },
+        )
+        assert user.status_code == 200
         created = client.post(
             "/api-keys",
             headers={"X-Admin-Token": admin_token},
-            json={"label": "limited_confirm", "max_uses": 1},
+            json={"label": "limited_confirm", "max_uses": 1, "user_id": user.json()["id"]},
         ).json()
+        login_as_key_owner(client, created["key"])
         key_record = api_key_repo.get_key_record(created["key"])
         with lock:
             sse_queues.setdefault(key_record.id, []).append(object())
@@ -365,22 +438,22 @@ class TestUsage:
         try:
             first = client.post(
                 "/register-usage",
-                json={"api_key": created["key"], "reservation_id": "limited-1"},
+                json={"reservation_id": "limited-1"},
             ).json()["usage_log_id"]
             second = client.post(
                 "/register-usage",
-                json={"api_key": created["key"], "reservation_id": "limited-2"},
+                json={"reservation_id": "limited-2"},
             ).json()["usage_log_id"]
 
             assert client.post(
-                "/confirm-usage", json={"api_key": created["key"], "usage_log_id": first}
+                "/confirm-usage", json={"usage_log_id": first}
             ).status_code == 200
             response = client.post(
-                "/confirm-usage", json={"api_key": created["key"], "usage_log_id": second}
+                "/confirm-usage", json={"usage_log_id": second}
             )
 
             assert response.status_code == 429
-            status = client.get(f"/api-key-status?key={created['key']}").json()
+            status = client.get("/api-key-status").json()
             assert status["remaining"] == 0
         finally:
             with lock:
@@ -412,7 +485,8 @@ class TestUsage:
             "Peak Price Co",
             {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": 9000},
         )
-        key_data = create_api_key_for_company("peak_price_key", company["id"])
+        key_data = create_api_key_for_company(client, admin_token, "peak_price_key", company["id"])
+        login_as_key_owner(client, key_data["key"])
         uid = log_usage(
             api_key=key_data["key"],
             reservation_id="real-reservation-peak",
@@ -421,11 +495,12 @@ class TestUsage:
         )
 
         response = client.post(
-            "/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid}
+            "/confirm-usage", json={"usage_log_id": uid}
         )
 
         assert response.status_code == 200
-        logs = client.get(f"/usage-log?api_key={key_data['key']}").json()
+        run_billing_jobs_for_usage(uid)
+        logs = client.get("/usage-log").json()
         entry = next(item for item in logs if item["id"] == uid)
         assert entry["price"] == 9000
 
@@ -452,7 +527,8 @@ class TestUsage:
             "Peak Fallback Co",
             {"price_create": 1000, "price_reschedule": 7000, "price_create_peak": None},
         )
-        key_data = create_api_key_for_company("peak_fallback_key", company["id"])
+        key_data = create_api_key_for_company(client, admin_token, "peak_fallback_key", company["id"])
+        login_as_key_owner(client, key_data["key"])
         uid = log_usage(
             api_key=key_data["key"],
             reservation_id="real-reservation-peak-fallback",
@@ -461,11 +537,12 @@ class TestUsage:
         )
 
         response = client.post(
-            "/confirm-usage", json={"api_key": key_data["key"], "usage_log_id": uid}
+            "/confirm-usage", json={"usage_log_id": uid}
         )
 
         assert response.status_code == 200
-        logs = client.get(f"/usage-log?api_key={key_data['key']}").json()
+        run_billing_jobs_for_usage(uid)
+        logs = client.get("/usage-log").json()
         entry = next(item for item in logs if item["id"] == uid)
         assert entry["price"] == 7000
 
@@ -473,14 +550,13 @@ class TestUsage:
         """doc"""
         reg = client.post(
             "/register-usage",
-            json={"api_key": api_key, "reservation_id": "res-fail"},
+            json={"reservation_id": "res-fail"},
         )
         uid = reg.json()["usage_log_id"]
 
         response = client.post(
             "/fail-usage",
             json={
-                "api_key": api_key,
                 "usage_log_id": uid,
                 "error_message": "Error",
                 "error_stage": "captcha",
@@ -495,13 +571,13 @@ class TestUsage:
 
     def test_usage_log_filter(self, client, api_key):
         """doc"""
-        response = client.get(f"/usage-log?api_key={api_key}")
+        response = client.get("/usage-log")
         assert response.status_code == 200
 
     def test_usage_log_invalid_key(self, client):
         """doc"""
         response = client.get("/usage-log?api_key=invalid")
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_usage_log_api_key_id_requires_admin(self, client):
         """doc"""
@@ -633,7 +709,13 @@ class TestAdmin:
 
     def test_admin_auth_success(self, client, admin_token):
         """doc"""
-        response = client.post("/admin/auth", json={"token": admin_token})
+        from src.db import list_keys
+
+        admin_key = next(key for key in list_keys() if key["is_admin"])
+        response = client.post(
+            "/admin/auth",
+            json={"login": "admin", "password": admin_key["key"]},
+        )
         assert response.status_code == 200
         assert response.json()["ok"] is True
 
@@ -692,19 +774,33 @@ class TestAdmin:
             for row in audit_rows
         )
 
-    def test_rucaptcha_callback_rejects_invalid_hmac_signature(self, client, monkeypatch):
-        import src.routes.callback as callback_route
-
-        monkeypatch.setattr(callback_route, "_RUCAPTCHA_IPS", set())
-        monkeypatch.setattr(callback_route, "_RUCAPTCHA_SECRET", "secret")
-
+    @pytest.mark.skip(reason="rucaptcha callback router is intentionally disabled for release perimeter")
+    def test_rucaptcha_callback_router_is_disabled(self, client):
         response = client.post(
             "/rucaptcha-callback",
             content="id=task-1&code=1,2",
             headers={"X-Signature": "bad-signature"},
         )
 
-        assert response.status_code == 403
+        assert response.status_code in (404, 405)
+
+    @pytest.mark.skip(reason="plugin-channel routers are intentionally disabled until consumers exist")
+    def test_plugin_channel_public_router_is_disabled(self, client):
+        response = client.post(
+            "/plugin-channel/sessions/open",
+            json={"extension_id": "test", "route_kind": "eopp_root", "page_url": "https://example.test"},
+        )
+
+        assert response.status_code in (404, 405)
+
+    @pytest.mark.skip(reason="plugin-channel routers are intentionally disabled until consumers exist")
+    def test_plugin_channel_admin_router_is_disabled(self, client, admin_token):
+        response = client.post(
+            "/admin/plugin-channel/sessions/1/claim",
+            headers={"X-Admin-Token": admin_token},
+        )
+
+        assert response.status_code in (404, 405)
 
     def test_captcha_and_key_validation_are_not_rate_limited(self, monkeypatch):
         monkeypatch.setenv("EOPP_RATE_LIMIT_VALIDATE", "1")
@@ -714,10 +810,10 @@ class TestAdmin:
 
         local_client = TestClient(create_app())
 
-        assert local_client.get("/validate-key?api_key=missing").status_code == 200
-        assert local_client.get("/validate-key?api_key=missing").status_code == 200
-        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 403
-        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 403
+        assert local_client.get("/validate-key?api_key=missing").status_code == 401
+        assert local_client.get("/validate-key?api_key=missing").status_code == 401
+        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 401
+        assert local_client.post("/solve-captcha", json={"api_key": "missing"}).status_code == 401
 
     def test_issue_open_invoice_for_company(self, client, admin_token):
         """doc"""
@@ -729,7 +825,7 @@ class TestAdmin:
             "ООО API Open",
             {"price_create": 1500, "price_reschedule": 7000},
         )
-        created = create_api_key_for_company("api_open_issue", company["id"])
+        created = create_api_key_for_company(client, admin_token, "api_open_issue", company["id"])
         log_id = log_usage(
             created["key"],
             "res-open-api",
@@ -750,6 +846,7 @@ class TestAdmin:
             json={"company": "ООО API Open"},
         )
         confirm_usage(log_id)
+        run_billing_jobs_for_usage(log_id)
 
         response = client.post(
             "/admin/open-invoices/issue",
@@ -764,7 +861,10 @@ class TestAdmin:
         assert data["new_open_invoice"]["id"] != data["closed_invoice"]["id"]
 
     def test_company_billing_settings_accept_tax_commission_mode(self, client, admin_token):
-        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
+        from src.db import list_keys
+
+        admin_key = next(key for key in list_keys() if key["is_admin"])
+        login = client.post("/admin/auth", json={"login": "admin", "password": admin_key["key"]})
         assert login.status_code == 200
 
         old_payload = client.put(
@@ -1087,20 +1187,14 @@ class TestCaptchaRecords:
 
         assert extract_variant_from_logs(logs, captcha_id) == 14
 
-    def test_solve_captcha_timeout_returns_captcha_metadata(self, api_key):
-        from fastapi import FastAPI
-
+    def test_solve_captcha_timeout_returns_captcha_metadata(self, client, api_key, monkeypatch):
         from src.routes import captcha as captcha_routes
 
-        app = FastAPI()
-        captcha_routes.captcha_timeout = 0.01
-        app.include_router(captcha_routes.router)
-        timeout_client = TestClient(app)
+        monkeypatch.setattr(captcha_routes, "captcha_timeout", 0.01)
 
-        response = timeout_client.post(
+        response = client.post(
             "/solve-captcha",
             json={
-                "api_key": api_key,
                 "auto_solve": False,
                 "timeout_metadata": True,
                 "reservation_id": "real-reservation",
@@ -1114,20 +1208,14 @@ class TestCaptchaRecords:
         assert data["captcha_id"]
         assert data["usage_log_id"]
 
-    def test_solve_captcha_timeout_keeps_legacy_null_without_metadata_flag(self, api_key):
-        from fastapi import FastAPI
-
+    def test_solve_captcha_timeout_keeps_legacy_null_without_metadata_flag(self, client, api_key, monkeypatch):
         from src.routes import captcha as captcha_routes
 
-        app = FastAPI()
-        captcha_routes.captcha_timeout = 0.01
-        app.include_router(captcha_routes.router)
-        timeout_client = TestClient(app)
+        monkeypatch.setattr(captcha_routes, "captcha_timeout", 0.01)
 
-        response = timeout_client.post(
+        response = client.post(
             "/solve-captcha",
             json={
-                "api_key": api_key,
                 "auto_solve": False,
                 "reservation_id": "real-reservation",
                 "puzzle": {"tiles": [], "variantsCapture": []},
@@ -1204,32 +1292,26 @@ class TestFrontend:
         response = client.get("/test-injector/reschedule")
         assert response.status_code == 200
 
-    def test_test_channel_existing_card_contains_snapshot_hints(self, client):
+    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
+    def test_test_channel_existing_card_is_disabled(self, client):
         response = client.get("/test-channel/card/existing")
 
-        assert response.status_code == 200
-        html = response.text
-        assert "EOPP Channel Test Card" in html
-        assert "Existing Carrier" in html
-        assert "reservation-card-existing" in html
-        assert "data-eopp-user" in html
+        assert "EOPP Channel Test Card" not in response.text
+        assert "reservation-card-existing" not in response.text
 
-    def test_test_channel_new_company_contains_auto_create_case(self, client):
+    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
+    def test_test_channel_new_company_is_disabled(self, client):
         response = client.get("/test-channel/card/new-company")
 
-        assert response.status_code == 200
-        html = response.text
-        assert "New Auto Channel Company" in html
-        assert "reservation-card-new-company" in html
+        assert "New Auto Channel Company" not in response.text
+        assert "reservation-card-new-company" not in response.text
 
-    def test_test_channel_root_contains_no_reservation_id(self, client):
+    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
+    def test_test_channel_root_is_disabled(self, client):
         response = client.get("/test-channel/root")
 
-        assert response.status_code == 200
-        html = response.text
-        assert "EOPP Channel Test Root" in html
-        assert "data-route-kind=\"eopp_root\"" in html
-        assert "reservation-card-existing" not in html
+        assert "EOPP Channel Test Root" not in response.text
+        assert "data-route-kind=\"eopp_root\"" not in response.text
 
 
 # === Captcha Tests ===
@@ -1246,6 +1328,7 @@ class TestCaptcha:
 
     def test_solve_captcha_invalid_key(self, client):
         """doc"""
+        client.cookies.clear()
         response = client.post(
             "/solve-captcha",
             json={
@@ -1254,7 +1337,7 @@ class TestCaptcha:
                 "puzzle": {"tiles": [], "variantsCapture": []},
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_broadcast(self, client, admin_token):
         """doc"""
@@ -1331,7 +1414,7 @@ class TestUpdateApiKey:
         # comment
         new_key = create.json()["key"]
         auth_resp = client.post("/admin/auth", json={"token": new_key})
-        assert auth_resp.status_code == 200
+        assert auth_resp.status_code == 401
 
         # comment
         response = client.patch(
@@ -1355,9 +1438,11 @@ class TestUpdateUsageLog:
         """doc"""
         reg = client.post(
             "/register-usage",
-            json={"api_key": api_key, "reservation_id": "res-price"},
+            json={"reservation_id": "res-price"},
         )
         uid = reg.json()["usage_log_id"]
+        client.cookies.clear()
+        restore_admin_session(client, admin_token)
         response = client.patch(
             f"/admin/usage-log/{uid}",
             headers={"X-Admin-Token": admin_token},
@@ -1371,9 +1456,11 @@ class TestUpdateUsageLog:
         """doc"""
         reg = client.post(
             "/register-usage",
-            json={"api_key": api_key, "reservation_id": "res-paid"},
+            json={"reservation_id": "res-paid"},
         )
         uid = reg.json()["usage_log_id"]
+        client.cookies.clear()
+        restore_admin_session(client, admin_token)
         response = client.patch(
             f"/admin/usage-log/{uid}",
             headers={"X-Admin-Token": admin_token},
@@ -1444,7 +1531,7 @@ class TestPrepaidPackagesApi:
             "Prepaid Top Up Co",
             {"price_create": 200, "price_reschedule": 100},
         )
-        key = create_api_key_for_company("prepaid_top_up_key", company["id"])
+        key = create_api_key_for_company(client, admin_token, "prepaid_top_up_key", company["id"])
         created = client.post(
             "/admin/prepaid-packages",
             headers={"X-Admin-Token": admin_token},
@@ -1463,6 +1550,7 @@ class TestPrepaidPackagesApi:
             key["key"], "real-prepaid-top-up", "capt-top-up", config_json={"mode": "create"}
         )
         confirm_usage(log_id)
+        run_billing_jobs_for_usage(log_id)
 
         deductions = client.get("/admin/prepaid-deductions", headers={"X-Admin-Token": admin_token})
         assert deductions.status_code == 200
@@ -1481,7 +1569,7 @@ class TestCompanyBillingApi:
             "ООО Тестовая Компания",
             {"price_create": 100, "price_reschedule": 70},
         )
-        key = create_api_key_for_company("company_alias_key", company["id"])
+        key = create_api_key_for_company(client, admin_token, "company_alias_key", company["id"])
 
         created_alias = client.post(
             "/admin/company-aliases",
@@ -1762,7 +1850,7 @@ class TestCaptchaLabelingApi:
 class TestSlotsGroup:
     """Tests for shared AvailableSlots coordination."""
 
-    def test_master_claims_and_slave_waits_for_slots(self, client):
+    def test_master_claims_and_slave_waits_for_slots(self, client, api_key):
         group_key = "available-slots:test"
         master = client.post(
             "/slots-group/claim",
@@ -1810,7 +1898,7 @@ class TestSlotsGroup:
         assert waited.json()["status"] == "ready"
         assert waited.json()["slots_response"] == slots_response
 
-    def test_non_master_cannot_publish(self, client):
+    def test_non_master_cannot_publish(self, client, api_key):
         group_key = "available-slots:not-master"
         client.post(
             "/slots-group/claim",
@@ -1866,7 +1954,6 @@ class TestIconClickCaptcha:
         response = client.post(
             "/solve-captcha",
             json={
-                "api_key": api_key,
                 "auto_solve": False,
                 "timeout_metadata": True,
                 "type": 1,
@@ -1889,7 +1976,6 @@ class TestIconClickCaptcha:
 
         monkeypatch.setattr(captcha_route, "captcha_timeout", 0.2)
         payload = {
-            "api_key": api_key,
             "auto_solve": False,
             "timeout_metadata": True,
             "type": 1,
@@ -1929,7 +2015,6 @@ class TestIconClickCaptcha:
             resp = client.post(
                 "/solve-captcha",
                 json={
-                    "api_key": api_key,
                     "auto_solve": False,
                     "timeout_metadata": True,
                     "type": 1,
@@ -1971,7 +2056,6 @@ class TestIconClickCaptcha:
                     {"x": 23, "y": 17},
                     {"x": 45, "y": 118},
                 ],
-                "api_key": api_key,
             },
         )
         assert solve_resp.status_code == 200
@@ -2052,10 +2136,6 @@ class TestIconClickCaptcha:
         }
         with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
-        assert login.status_code == 200
-        client.cookies.update(login.cookies)
-
         response = client.get(
             f"/admin/captcha-files/{captcha_id}/thumbnail?mode=main",
         )
@@ -2102,10 +2182,6 @@ class TestIconClickCaptcha:
         }
         with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        login = client.post("/admin/auth", json={"login": "admin", "password": admin_token})
-        assert login.status_code == 200
-        client.cookies.update(login.cookies)
-
         response = client.get(
             f"/admin/captcha-files/{captcha_id}/thumbnail?mode=icons",
         )

@@ -18,7 +18,7 @@ def test_create_app_ensures_env_tech_user_login(isolated_api_db, monkeypatch):
 
     assert login.status_code == 200
     assert login.json()["role"] == "super_admin"
-    assert "eopp_admin_session" in login.cookies
+    assert "eopp_session" in login.cookies
 
     users = [user for user in user_repo.list_users() if user["login"] == "codex"]
     assert len(users) == 1

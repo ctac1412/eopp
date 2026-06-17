@@ -84,12 +84,12 @@ PERMISSION_RULES = (
 )
 
 _access_service = AccessService()
-ADMIN_SESSION_COOKIE = "eopp_admin_session"
+SESSION_COOKIE = "eopp_session"
 
 
 def token_from_request(request) -> str | None:
-    """Read the admin session token from the auth cookie."""
-    return request.cookies.get(ADMIN_SESSION_COOKIE)
+    """Read the shared user session token from the auth cookie."""
+    return request.cookies.get(SESSION_COOKIE)
 
 
 def required_permission(method: str, path: str) -> Permission | None:

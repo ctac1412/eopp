@@ -278,7 +278,6 @@ async function runOne(page, id) {
             serverUrl: targetServerUrl,
             timeoutMs: 20000,
             payload: {
-              api_key: "extension-load-key",
               reservation_id: requestId,
               auto_solve: false,
               timeout_metadata: true,

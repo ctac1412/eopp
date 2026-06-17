@@ -174,6 +174,11 @@ def register_test_pages(app):
 
     app.include_router(test_router)
 
+    # Plugin-channel test pages are disabled together with the channel API for
+    # the release perimeter. Keep the router definitions here so the flow can be
+    # restored deliberately when consumers are ready.
+    return
+
     @channel_test_router.get("/card/existing")
     async def test_channel_existing_card():
         return _channel_test_page(
