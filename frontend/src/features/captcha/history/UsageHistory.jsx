@@ -23,7 +23,7 @@ function UsageHistory() {
 
   const fetchLogs = useCallback(async () => {
     try {
-      const resp = await historyService.request("/usage-log");
+      const resp = await historyService.usageLog();
       if (!resp.ok) {
         setError(resp.status === 403 ? "Неверный API-ключ" : "Не удалось загрузить историю");
         return;

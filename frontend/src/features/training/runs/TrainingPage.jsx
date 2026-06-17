@@ -50,7 +50,7 @@ export default function TrainingPage() {
     const opUuid = searchParams.get("op");
 
     if (opUuid) {
-      trainingService.request(`/training/resolve-operator?uuid=${encodeURIComponent(opUuid)}`)
+      trainingService.resolveOperator(opUuid)
         .then((response) => response.json())
         .then((data) => {
           if (data.operator_id) {
@@ -63,7 +63,7 @@ export default function TrainingPage() {
     } else {
       const apiKey = loadApiKey();
       if (apiKey) {
-        trainingService.request("/validate-key")
+        trainingService.validateKey()
           .then((response) => response.json())
           .then((data) => {
             if (data.valid && data.api_key_id) {
@@ -81,7 +81,7 @@ export default function TrainingPage() {
 
   useEffect(() => {
     setCoursesLoading(true);
-    trainingService.request(`/training/courses`)
+    trainingService.courses()
       .then((response) => response.json())
       .then((data) => setCourses(Array.isArray(data) ? data : []))
       .catch(() => setCourses([]))
@@ -94,7 +94,7 @@ export default function TrainingPage() {
     const params = new URLSearchParams();
     params.set("participant_type", participantType);
     params.set("participant_id", participantId);
-    trainingService.request(`/training/runs?${params}`)
+    trainingService.runs(params)
       .then((response) => response.json())
       .then((data) => setRuns(Array.isArray(data) ? data : []))
       .catch(() => setRuns([]))
@@ -115,14 +115,10 @@ export default function TrainingPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await trainingService.request(`/training/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          course_id: selectedCourse,
-          participant_type: participantType,
-          participant_id: participantId,
-        }),
+      const res = await trainingService.start({
+        course_id: selectedCourse,
+        participant_type: participantType,
+        participant_id: participantId,
       });
       const data = await res.json();
       if (res.ok) {

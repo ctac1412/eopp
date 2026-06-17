@@ -1,17 +1,16 @@
-import { apiRequest } from "../../../shared/api/httpClient";
+import { backend } from "../../../shared/api/backend";
 
 export const trainingService = {
-  request: (path, options) => apiRequest(path, options),
-  resolveOperator: (uuid) => apiRequest(`/training/resolve-operator?uuid=${encodeURIComponent(uuid)}`),
-  validateKey: () => apiRequest("/validate-key"),
-  courses: () => apiRequest("/training/courses"),
-  runs: (params) => apiRequest(`/training/runs?${params}`),
-  start: (payload) => apiRequest("/training/start", { method: "POST", json: payload }),
-  runResults: (runId) => apiRequest(`/training/run/${runId}/results`),
-  captcha: (captchaId) => apiRequest(`/training/captcha/${encodeURIComponent(captchaId)}`),
-  runStatus: (runId) => apiRequest(`/training/run/${runId}/status`),
-  next: (runId) => apiRequest(`/training/run/${runId}/next`),
-  complete: (runId) => apiRequest(`/training/run/${runId}/complete`, { method: "POST" }),
-  answer: (runId, payload) => apiRequest(`/training/run/${runId}/answer`, { method: "POST", json: payload }),
-  cancel: (runId) => apiRequest(`/training/run/${runId}/cancel`, { method: "POST" }),
+  resolveOperator: (uuid) => backend.training.resolveOperator(uuid),
+  validateKey: () => backend.training.validateKey(),
+  courses: () => backend.training.courses(),
+  runs: (params) => backend.training.runs(params),
+  start: (payload) => backend.training.start(payload),
+  runResults: (runId) => backend.training.runResults(runId),
+  captcha: (captchaId) => backend.training.captcha(captchaId),
+  runStatus: (runId) => backend.training.runStatus(runId),
+  next: (runId) => backend.training.next(runId),
+  complete: (runId) => backend.training.complete(runId),
+  answer: (runId, payload) => backend.training.answer(runId, payload),
+  cancel: (runId) => backend.training.cancel(runId),
 };

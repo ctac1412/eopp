@@ -1,20 +1,6 @@
 const CAPTCHA_SERVER = "http://localhost:8765";
 
-const FETCH_TIMEOUT = 15000;
-
-function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-  return fetch(url, {
-    credentials: "include",
-    ...options,
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timeoutId));
-}
-
-function apiUrl(serverUrl, path) {
-  return `${serverUrl}/api${path}`;
-}
+importScripts("background-api.js");
 
 chrome.runtime.onConnect.addListener((port) => {
   let responded = false;
@@ -25,144 +11,29 @@ chrome.runtime.onConnect.addListener((port) => {
       let res;
 
       if (msg.action === "solveCaptcha") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/solve-captcha"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(msg.payload),
-        });
+        res = await EoppBackend.solveCaptcha(serverUrl, msg.payload);
       } else if (msg.action === "cancelCaptcha") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/cancel-captcha"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            usage_log_id: msg.payload.usageLogId,
-            captcha_id: msg.payload.captchaId,
-          }),
-        });
+        res = await EoppBackend.cancelCaptcha(serverUrl, msg.payload);
       } else if (msg.action === "confirmUsage") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/confirm-usage"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            usage_log_id: msg.payload.usageLogId,
-            slot_date: msg.payload.slotDate,
-            logs: msg.payload.logs,
-          }),
-        });
+        res = await EoppBackend.confirmUsage(serverUrl, msg.payload);
       } else if (msg.action === "failUsage") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/fail-usage"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            usage_log_id: msg.payload.usageLogId,
-            error_message: msg.payload.errorMessage,
-            error_stage: msg.payload.errorStage,
-            slot_date: msg.payload.slotDate,
-            logs: msg.payload.logs,
-          }),
-        });
+        res = await EoppBackend.failUsage(serverUrl, msg.payload);
       } else if (msg.action === "apiKeyStatus") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/api-key-status"), {
-          method: "GET",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-          },
-        });
+        res = await EoppBackend.apiKeyStatus(serverUrl);
       } else if (msg.action === "registerUsage") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/register-usage"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            reservation_id: msg.payload.reservationId,
-            config_json: msg.payload.configJson,
-          }),
-        });
+        res = await EoppBackend.registerUsage(serverUrl, msg.payload);
       } else if (msg.action === "sharedSlotsClaim") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/slots-group/claim"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_key: msg.payload.groupKey,
-            client_id: msg.payload.clientId,
-            meta: msg.payload.meta,
-          }),
-        });
+        res = await EoppBackend.sharedSlotsClaim(serverUrl, msg.payload);
       } else if (msg.action === "sharedSlotsWait") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/slots-group/wait"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_key: msg.payload.groupKey,
-            client_id: msg.payload.clientId,
-            wait_ms: msg.payload.waitMs,
-          }),
-        });
+        res = await EoppBackend.sharedSlotsWait(serverUrl, msg.payload);
       } else if (msg.action === "sharedSlotsPublish") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/slots-group/publish"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_key: msg.payload.groupKey,
-            client_id: msg.payload.clientId,
-            slots_response: msg.payload.slotsResponse,
-          }),
-        });
+        res = await EoppBackend.sharedSlotsPublish(serverUrl, msg.payload);
       } else if (msg.action === "sharedSlotsFail") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/slots-group/fail"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_key: msg.payload.groupKey,
-            client_id: msg.payload.clientId,
-            error: msg.payload.error,
-          }),
-        });
+        res = await EoppBackend.sharedSlotsFail(serverUrl, msg.payload);
       } else if (msg.action === "sharedSlotsHeartbeat") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/slots-group/heartbeat"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            group_key: msg.payload.groupKey,
-            client_id: msg.payload.clientId,
-          }),
-        });
+        res = await EoppBackend.sharedSlotsHeartbeat(serverUrl, msg.payload);
       } else if (msg.action === "checkStream") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/check-stream"), {
-          method: "GET",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-          },
-        });
+        res = await EoppBackend.checkStream(serverUrl);
       } else if (msg.action === "openServer") {
         chrome.tabs.create({ url: serverUrl });
         port.postMessage({ ok: true, data: null });
@@ -170,18 +41,7 @@ chrome.runtime.onConnect.addListener((port) => {
         port.disconnect();
         return;
       } else if (msg.action === "scheduledEvent") {
-        res = await fetchWithTimeout(apiUrl(serverUrl, "/scheduled-event"), {
-          method: "POST",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            label: msg.payload.label,
-            scheduled_at: msg.payload.scheduledAt,
-            description: msg.payload.description,
-          }),
-        });
+        res = await EoppBackend.scheduledEvent(serverUrl, msg.payload);
       } else {
         port.postMessage({ ok: false, error: `Unknown action: ${msg.action}` });
         responded = true;

@@ -28,16 +28,12 @@ function ChatBox({ ownRole, senderLabel, masterKeyId, operatorColors }) {
     if (!text || !ownRole || !masterKeyId) return;
     setInput("");
     try {
-      await operatorWorkbenchService.request("/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender_role: ownRole,
-          sender_id: masterKeyId,
-          sender_label: senderLabel || ownRole,
-          message: text,
-          master_key_id: masterKeyId,
-        }),
+      await operatorWorkbenchService.sendChat({
+        sender_role: ownRole,
+        sender_id: masterKeyId,
+        sender_label: senderLabel || ownRole,
+        message: text,
+        master_key_id: masterKeyId,
       });
     } catch {
       // Chat is operational side-channel; captcha solving must not depend on it.

@@ -44,7 +44,7 @@ serverUrl = forceHttpsForPublicUrl(serverUrl);
 const copyStaticFiles = () => ({
   name: "copy-static",
   closeBundle() {
-    const staticFiles = ["icon.png", "icon128.png", "page-interceptor.js"];
+    const staticFiles = ["icon.png", "icon128.png", "page-interceptor.js", "background-api.js"];
     const cssSrc = resolve(__dirname, "src", "content.css");
     const bgSrc = resolve(__dirname, "background.js");
     const outDir = resolve(__dirname, "dist");

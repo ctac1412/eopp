@@ -1,8 +1,7 @@
-import { apiRequest } from "../../../../shared/api/httpClient";
+import { backend } from "../../../../shared/api/backend";
 
 export const operatorWorkbenchService = {
-  request: (path, options) => apiRequest(path, options),
-  masters: (uuid) => apiRequest(`/operators/${uuid}/masters`),
-  sendChat: (payload) => apiRequest("/chat/send", { method: "POST", json: payload }),
-  answerDistribution: (payload) => apiRequest("/distribution/answer", { method: "POST", json: payload }),
+  masters: (uuid) => backend.operator.masters(uuid),
+  sendChat: (payload) => backend.operator.sendChat(payload),
+  answerDistribution: (payload) => backend.operator.answerDistribution(payload),
 };

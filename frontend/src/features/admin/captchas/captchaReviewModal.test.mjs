@@ -11,7 +11,7 @@ test("captcha review modal renders operator click markers", () => {
   assert.match(modalSource, /data-eopp-component="CaptchaReviewModal"/);
   assert.match(modalSource, /operator_answers/);
   assert.match(modalSource, /captcha-review-marker/);
-  assert.match(modalSource, /\/admin\/captcha-label\//);
+  assert.match(modalSource, /backend\.admin\.captchaLabel\.get/);
   assert.match(modalSource, /images\?\.\["0"\]/);
   assert.match(modalSource, /icons_image/);
   assert.match(modalSource, /captcha-review__image-layer/);

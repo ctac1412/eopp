@@ -37,7 +37,7 @@ export function HomePage() {
     async function restoreSession() {
       setAuthChecking(true);
       try {
-        const meResp = await captchaService.request("/auth/me");
+        const meResp = await captchaService.me();
         if (!meResp.ok) throw new Error("Unauthorized");
         const me = await meResp.json();
         localStorage.setItem("admin_session_active", "1");
@@ -48,7 +48,7 @@ export function HomePage() {
           setOperatorProfile(me.user?.operator_profile || null);
         }
 
-        const keysResp = await captchaService.request("/auth/plugin-keys");
+        const keysResp = await captchaService.pluginKeys();
         if (!keysResp.ok) throw new Error("No keys");
         const keysData = await keysResp.json();
         const keys = Array.isArray(keysData.keys) ? keysData.keys : [];

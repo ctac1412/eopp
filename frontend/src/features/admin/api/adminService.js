@@ -1,4 +1,4 @@
-import { apiRequest } from "../../../shared/api/httpClient.js";
+import { backend } from "../../../shared/api/backend.js";
 
 export function adminHeaders() {
   return { "Content-Type": "application/json" };
@@ -9,5 +9,7 @@ export function adminHeadersJson() {
 }
 
 export function adminRequest(path, options = {}) {
-  return apiRequest(path, options);
+  return backend.admin.request(path, options);
 }
+
+export const adminService = backend.admin;

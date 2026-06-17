@@ -1,7 +1,6 @@
-import { apiRequest } from "../../../../shared/api/httpClient";
+import { backend } from "../../../../shared/api/backend";
 
 export const publicCaptchasService = {
-  request: (path, options) => apiRequest(path, options),
-  list: () => apiRequest("/public/captchas"),
-  sendSelected: (payload) => apiRequest("/public/captchas/send-selected", { method: "POST", json: payload }),
+  list: () => backend.captcha.public.list(),
+  sendSelected: (payload) => backend.captcha.public.sendSelected(payload),
 };

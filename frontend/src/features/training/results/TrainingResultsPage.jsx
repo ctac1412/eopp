@@ -33,7 +33,7 @@ export default function TrainingResultsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    trainingService.request(`/training/run/${runId}/results`)
+    trainingService.runResults(runId)
       .then((response) => response.json())
       .then((nextData) => {
         setData(nextData);

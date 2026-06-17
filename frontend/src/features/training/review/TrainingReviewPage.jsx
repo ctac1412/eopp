@@ -32,7 +32,7 @@ export default function TrainingReviewPage() {
   const imgContainerRef = useRef(null);
 
   useEffect(() => {
-    trainingService.request(`/training/run/${runId}/results`)
+    trainingService.runResults(runId)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -47,7 +47,7 @@ export default function TrainingReviewPage() {
     setCaptchaData(null);
     setImgSize(null);
 
-    trainingService.request(`/training/captcha/${encodeURIComponent(result.captcha_id)}`)
+    trainingService.captcha(result.captcha_id)
       .then(r => r.json())
       .then(d => { setCaptchaData(d); setImgLoading(false); })
       .catch(() => setImgLoading(false));

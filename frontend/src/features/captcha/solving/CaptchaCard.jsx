@@ -13,13 +13,9 @@ function CaptchaCard({ entry, index }) {
   const handleClick = async () => {
     setSelectedCard(entry.id, index);
 
-    const res = await captchaService.request("/solve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        captcha_id: entry.id,
-        variantIndex: parseInt(index),
-      }),
+    const res = await captchaService.solve({
+      captcha_id: entry.id,
+      variantIndex: parseInt(index),
     });
     const data = await res.json();
 

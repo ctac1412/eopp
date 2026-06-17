@@ -18,7 +18,7 @@
 import { useEffect } from "react";
 import useCaptchaStore from "../store/useCaptchaStore";
 import { playNewCaptchaSound, playChatSound, playScheduledNew } from "../utils/sounds";
-import { API_BASE_URL } from "../shared/api/endpoints";
+import { backend } from "../shared/api/backend";
 
 const sounded = new Set();
 
@@ -45,7 +45,7 @@ function useSSE(enabled = true) {
       if (closed) return;
       const store = useCaptchaStore.getState();
       const useForce = store.pendingForceReconnect;
-      let url = `${API_BASE_URL}/stream`;
+      let url = backend.streams.mainUrl();
       if (apiKey) {
         const params = new URLSearchParams();
         if (superKioskMode) {
@@ -59,10 +59,7 @@ function useSSE(enabled = true) {
           store.setPendingForceReconnect(false);
           wasForceReconnect = true;
         }
-        const query = params.toString();
-        if (query) {
-          url += `?${query}`;
-        }
+        url = backend.streams.mainUrl(Object.fromEntries(params));
       } else {
         addLog("SSE: API ключ не установлен, подключение невозможно", "error");
         return;

@@ -2,7 +2,7 @@ import { operatorWorkbenchService } from "./api/operatorWorkbenchService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "antd";
 import { useParams, useSearchParams } from "react-router-dom";
-import { API_BASE_URL } from "../../../shared/api/endpoints";
+import { backend } from "../../../shared/api/backend";
 import OperatorHeader from "./OperatorHeader";
 import CaptchaArea from "./CaptchaArea";
 import OperatorSidebar from "./OperatorSidebar";
@@ -147,7 +147,7 @@ export function OperatorPage() {
     disconnect();
     setConnecting(true);
     addLog("Подключение к SSE...", "info");
-    const es = new EventSource(`${API_BASE_URL}/operators/${uuid}/stream`);
+    const es = new EventSource(backend.streams.operatorUrl(uuid));
     esRef.current = es;
     es.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -340,7 +340,7 @@ export function OperatorPage() {
   }, [uuid, disconnect, addLog, updateActiveRef]);
 
   useEffect(() => {
-    operatorWorkbenchService.request(`/operators/${uuid}/masters`)
+    operatorWorkbenchService.masters(uuid)
       .then((r) => r.json())
       .then((list) => {
         const active = list.filter((k) => k.active);
@@ -389,16 +389,12 @@ export function OperatorPage() {
 
   const handleReadyClick = () => {
     if (masterId) {
-      operatorWorkbenchService.request("/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender_role: "operator",
-          sender_id: 0,
-          sender_label: operatorNickname || "Оператор",
-          message: "Я на месте",
-          master_key_id: masterId,
-        }),
+      operatorWorkbenchService.sendChat({
+        sender_role: "operator",
+        sender_id: 0,
+        sender_label: operatorNickname || "Оператор",
+        message: "Я на месте",
+        master_key_id: masterId,
       }).catch(() => {});
     }
     setReadinessCheck(null);
@@ -417,15 +413,12 @@ export function OperatorPage() {
     if (!active || active.complete || active.waiting || answering) return;
     setAnswering(true);
     try {
-      const r = await operatorWorkbenchService.request("/distribution/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          captcha_id: active.captchaId,
-          operator_id: active.operatorId,
-          icon_position: active.currentPos ?? active.assigned[0],
-          x, y,
-        }),
+      const r = await operatorWorkbenchService.answerDistribution({
+        captcha_id: active.captchaId,
+        operator_id: active.operatorId,
+        icon_position: active.currentPos ?? active.assigned[0],
+        x,
+        y,
       });
       const data = await r.json();
 
@@ -534,16 +527,12 @@ export function OperatorPage() {
               handleReconnect={handleReconnect}
               handleDisconnect={() => {
                 if (masterId) {
-                  operatorWorkbenchService.request("/chat/send", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      sender_role: "system",
-                      sender_id: 0,
-                      sender_label: "Система",
-                      message: `${operatorNickname || "Оператор"} отключился`,
-                      master_key_id: masterId,
-                    }),
+                  operatorWorkbenchService.sendChat({
+                    sender_role: "system",
+                    sender_id: 0,
+                    sender_label: "Система",
+                    message: `${operatorNickname || "Оператор"} отключился`,
+                    master_key_id: masterId,
                   }).catch(() => {});
                 }
                 disconnect();

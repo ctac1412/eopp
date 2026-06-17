@@ -1,11 +1,13 @@
-import { apiRequest } from "../../../../shared/api/httpClient";
+import { backend } from "../../../../shared/api/backend";
 
 export const captchaService = {
-  request: (path, options) => apiRequest(path, options),
-  solve: (payload) => apiRequest("/solve", { method: "POST", json: payload }),
-  answerDistribution: (payload) => apiRequest("/distribution/answer", { method: "POST", json: payload }),
-  validateKey: () => apiRequest("/validate-key"),
-  apiKeys: () => apiRequest("/api-keys"),
-  trainingCourses: () => apiRequest("/training/courses"),
-  triggerTest: (payload) => apiRequest("/trigger-test", { method: "POST", json: payload }),
+  solve: (payload) => backend.captcha.solve(payload),
+  answerDistribution: (payload) => backend.captcha.answerDistribution(payload),
+  validateKey: () => backend.captcha.validateKey(),
+  apiKeys: (query) => backend.captcha.apiKeys(query),
+  trainingCourses: () => backend.captcha.trainingCourses(),
+  triggerTest: (payload) => backend.captcha.triggerTest(payload),
+  me: () => backend.auth.me(),
+  pluginKeys: () => backend.auth.pluginKeys(),
+  logout: () => backend.auth.logout(),
 };

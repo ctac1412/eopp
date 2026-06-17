@@ -73,7 +73,7 @@ function StatusBar() {
       return;
     }
     setIsAdmin(localStorage.getItem("admin_session_active") === "1");
-    captchaService.request("/validate-key")
+    captchaService.validateKey()
       .then((r) => r.json())
       .then((data) => {
         setApiLabel(data.label || null);
@@ -105,7 +105,7 @@ function StatusBar() {
 
   useEffect(() => {
     if (showSettings && courses.length === 0) {
-      captchaService.request("/training/courses")
+      captchaService.trainingCourses()
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then(setCourses)
         .catch((err) => console.warn("Failed to load courses:", err));
@@ -137,18 +137,14 @@ function StatusBar() {
       if (testNoTimeout) body.test_no_timeout = true;
       if (autoSolveRucaptcha) body.auto_solve_rucaptcha = true;
       if (count > 1) body.count = count;
-      await captchaService.request("/trigger-test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      await captchaService.triggerTest(body);
     } finally {
       setLoading(false);
     }
   };
 
   const handleClearKey = () => {
-    captchaService.request("/auth/logout", { method: "POST" }).catch(() => {});
+    captchaService.logout().catch(() => {});
     localStorage.removeItem("admin_session_active");
     localStorage.removeItem("admin_role");
     localStorage.removeItem("admin_sections");

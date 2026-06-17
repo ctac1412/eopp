@@ -15,7 +15,7 @@ function SuperKioskPanel() {
 
   useEffect(() => {
     if (!apiKey) return;
-    captchaService.request("/validate-key")
+    captchaService.validateKey()
       .then((r) => r.json())
       .then((data) => {
         if (data.api_key_id) {
@@ -31,7 +31,7 @@ function SuperKioskPanel() {
       setLoading(false);
       return;
     }
-    captchaService.request("/api-keys")
+    captchaService.apiKeys()
       .then((r) => r.json())
       .then((data) => {
         const filtered = (Array.isArray(data) ? data : []).filter(

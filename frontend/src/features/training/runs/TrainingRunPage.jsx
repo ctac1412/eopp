@@ -34,7 +34,7 @@ export default function TrainingRunPage() {
 
   const loadStatus = useCallback(async () => {
     try {
-      const res = await trainingService.request(`/training/run/${runId}/status`);
+      const res = await trainingService.runStatus(runId);
       const data = await res.json();
       setStatus(data);
       return data;
@@ -46,14 +46,14 @@ export default function TrainingRunPage() {
 
   const completeRun = async () => {
     try {
-      await trainingService.request(`/training/run/${runId}/complete`, { method: "POST" });
+      await trainingService.complete(runId);
     } catch (e) {}
     loadStatus();
   };
 
   const loadNext = useCallback(async () => {
     try {
-      const res = await trainingService.request(`/training/run/${runId}/next`);
+      const res = await trainingService.next(runId);
       const data = await res.json();
       if (data.done) {
         setDone(true);
@@ -105,15 +105,11 @@ export default function TrainingRunPage() {
     setSelectedVariant(variantIndex);
 
     try {
-      const res = await trainingService.request(`/training/run/${runId}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          captcha_id: current.captcha_id,
-          captcha_file_id: current.captcha_file_id,
-          variant_index: variantIndex,
-          duration_ms: duration,
-        }),
+      const res = await trainingService.answer(runId, {
+        captcha_id: current.captcha_id,
+        captcha_file_id: current.captcha_file_id,
+        variant_index: variantIndex,
+        duration_ms: duration,
       });
       const data = await res.json();
       setFeedback({
@@ -164,15 +160,11 @@ export default function TrainingRunPage() {
 
   async function submitIconAnswer(answers, totalDuration) {
     try {
-      const res = await trainingService.request(`/training/run/${runId}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          captcha_id: current.captcha_id,
-          captcha_file_id: current.captcha_file_id,
-          duration_ms: totalDuration,
-          icon_times: answers,
-        }),
+      const res = await trainingService.answer(runId, {
+        captcha_id: current.captcha_id,
+        captcha_file_id: current.captcha_file_id,
+        duration_ms: totalDuration,
+        icon_times: answers,
       });
       const data = await res.json();
       setFeedback({
@@ -466,7 +458,7 @@ export default function TrainingRunPage() {
           size="small"
           variant="danger"
           onClick={async () => {
-            await trainingService.request(`/training/run/${runId}/cancel`, { method: "POST" });
+            await trainingService.cancel(runId);
             navigate("/training");
           }}
         >

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "antd";
-import { apiRequest } from "../../../shared/api/httpClient";
+import { backend } from "../../../shared/api/backend";
 
 function formatActionTime(value) {
   if (!value) return "";
@@ -26,17 +26,16 @@ export function CaptchaReviewModal({ captcha, open, onClose }) {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [labelPreview, setLabelPreview] = useState(null);
   const answers = Array.isArray(captcha?.operator_answers) ? captcha.operator_answers : [];
-  const encodedCaptchaId = captcha?.captcha_id ? encodeURIComponent(captcha.captcha_id) : "";
   const mainImage = labelPreview?.images?.["0"] || "";
   const iconsImage = labelPreview?.icons_image || "";
 
   useEffect(() => {
     setImageSize({ width: 0, height: 0 });
     setLabelPreview(null);
-    if (!open || !encodedCaptchaId) return;
+    if (!open || !captcha?.captcha_id) return;
 
     let cancelled = false;
-    apiRequest(`/admin/captcha-label/${encodedCaptchaId}`)
+    backend.admin.captchaLabel.get(captcha.captcha_id)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!cancelled) setLabelPreview(data);
@@ -48,7 +47,7 @@ export function CaptchaReviewModal({ captcha, open, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [encodedCaptchaId, open]);
+  }, [captcha?.captcha_id, open]);
 
   return (
     <Modal

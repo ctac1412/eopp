@@ -37,14 +37,10 @@ function NormalIconClick({ entry, superKioskMode }) {
   const iconsImage = entry.iconsImage || "";
 
   const submitAnswer = async (coords) => {
-    const res = await captchaService.request("/solve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        captcha_id: entry.id,
-        variantIndex: 0,
-        coordinates: coords,
-      }),
+    const res = await captchaService.solve({
+      captcha_id: entry.id,
+      variantIndex: 0,
+      coordinates: coords,
     });
     const data = await res.json();
 
@@ -147,16 +143,12 @@ function DistributedIconClick({ entry, superKioskMode }) {
 
     setAnswering(true);
     try {
-      const res = await captchaService.request("/distribution/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          captcha_id: entry.id,
-          operator_id: operatorId,
-          icon_position: currentPosition,
-          x,
-          y,
-        }),
+      const res = await captchaService.answerDistribution({
+        captcha_id: entry.id,
+        operator_id: operatorId,
+        icon_position: currentPosition,
+        x,
+        y,
       });
       const data = await res.json();
 

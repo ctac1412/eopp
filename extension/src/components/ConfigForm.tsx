@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import type { InjectorConfig } from "@/types";
 import { useInjectorStore } from "@/store";
-import { getServerUrl } from "@/api/background";
+import { backend } from "@/api/backend";
 import {
   FACILITIES,
   getDefaultSlotDate,
@@ -348,8 +348,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   useEffect(() => {
     if (!isLocalhost) return;
     setMockLoading(true);
-    const serverUrl = getServerUrl();
-    fetch(`${serverUrl}/api/mock-config`, { method: "GET", credentials: "include" })
+    backend.mockConfig.get()
       .then((r) => r.json())
       .then((data) => {
         const parsed: Record<string, MockMode[]> = {};
@@ -405,7 +404,6 @@ const ConfigForm = React.memo(function ConfigForm() {
   const sendMockConfig = () => {
     if (!isLocalhost) return;
     setMockSending(true);
-    const serverUrl = getServerUrl();
     const endpoints: Record<string, MockEndpointConfigNew> = {};
     for (const [path, responses] of Object.entries(mockConfig)) {
       if (responses.length > 0 && !responses.every((m) => m === "success")) {
@@ -416,12 +414,7 @@ const ConfigForm = React.memo(function ConfigForm() {
     if (mockCaptchaType !== "auto") {
       body["captcha_type"] = mockCaptchaType;
     }
-    fetch(`${serverUrl}/api/mock-config`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
+    backend.mockConfig.update(body)
       .then((r) => r.json())
       .then(() => {
         console.log("[ConfigForm] Mock config sent:", endpoints);
@@ -449,11 +442,7 @@ const ConfigForm = React.memo(function ConfigForm() {
   const resetMockConfig = () => {
     if (!isLocalhost) return;
     setMockSending(true);
-    const serverUrl = getServerUrl();
-    fetch(`${serverUrl}/api/mock-config`, {
-      method: "DELETE",
-      credentials: "include",
-    })
+    backend.mockConfig.reset()
       .then(() => {
         setMockConfig({});
       })

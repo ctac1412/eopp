@@ -1,6 +1,5 @@
-import { apiRequest } from "../../../../shared/api/httpClient";
+import { backend } from "../../../../shared/api/backend";
 
 export const historyService = {
-  request: (path, options) => apiRequest(path, options),
-  usageLog: () => apiRequest("/usage-log"),
+  usageLog: (query) => backend.captcha.history.usageLog(query),
 };

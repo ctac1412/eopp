@@ -25,7 +25,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
     setLoading(true);
     setError("");
     try {
-      const res = await publicCaptchasService.request("/public/captchas");
+      const res = await publicCaptchasService.list();
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCaptchas(Array.isArray(data) ? data : []);
@@ -69,11 +69,7 @@ export function PublicCaptchasTab({ onReplaySent }) {
     setSending(true);
     setError("");
     try {
-      const res = await publicCaptchasService.request("/public/captchas/send-selected", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ captcha_ids: selectedCaptchas }),
-      });
+      const res = await publicCaptchasService.sendSelected({ captcha_ids: selectedCaptchas });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setSelected(new Set());
