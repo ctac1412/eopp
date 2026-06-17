@@ -43,14 +43,17 @@ def compute_top3_cpu(data: dict[str, Any]) -> list[str]:
         top_variants,
     )
 
-    context = build_captcha_context(data)
-    classification = classify_captcha(context)
-    output = solve_prepared_captcha(
-        context,
-        classification,
-        edge_trim=EDGE_TRIM,
-        verbose=False,
-    )
+    try:
+        context = build_captcha_context(data)
+        classification = classify_captcha(context)
+        output = solve_prepared_captcha(
+            context,
+            classification,
+            edge_trim=EDGE_TRIM,
+            verbose=False,
+        )
+    except Exception:
+        return []
     return [str(variant) for variant in top_variants(output.results)]
 
 

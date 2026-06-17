@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 
 
 def test_top3_service_reads_cached_solver_top3_without_starting_pool():
@@ -154,3 +156,14 @@ def test_top3_service_health_reports_failed_compute_without_sync_delay():
     assert status["compute_errors"] == 1
     assert status["empty_returns"] == 1
     assert status["last_error"] == "boom"
+
+
+def test_compute_top3_cpu_returns_empty_for_unsupported_puzzle_without_error():
+    from src.services.top3_service import compute_top3_cpu
+
+    payload_path = Path("server/data/captcha_examples/all/01230b7edbef363a.json")
+    data = json.loads(payload_path.read_text(encoding="utf-8"))
+    for key in ("solver_top3", "solver_results", "solver_valid_rank"):
+        data.pop(key, None)
+
+    assert compute_top3_cpu(data) == []
