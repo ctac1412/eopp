@@ -1,0 +1,17 @@
+{
+    "created_at":  "2026-06-17T16:34:39.5094845+03:00",
+    "migration_before":  "recorded-by-migrate.ps1",
+    "deployment_model":  "code + DB + JSON + plugins as one promotable state",
+    "git_sha":  "8252d536",
+    "migration_after":  "head",
+    "health":  "passed",
+    "release_type":  "full_state_promotion",
+    "compose_sha256":  "cf4c4a5f43dce28f055e852fedbdcc87888c341652d5fc16d141f0660cd5196d",
+    "requires_db_restore_on_rollback":  false,
+    "plugins_sha256":  "6113a2852d0299f08ae57a6327734367429c299e8a36bd8e743a8682c3fee071",
+    "release_id":  "20260617_163401-8252d536",
+    "nginx_sha256":  "702741a9ae186b212b0f36de123e1bc03bbcb1eb895947e24b1033f879f121b3",
+    "db_backup":  "backup_20260617_163437_20260617_163401-8252d536",
+    "image":  "eopp:20260617_163401-8252d536",
+    "data_sha256":  "458174b5245b30a2531b05f8a9bec1dbde6761b852eb2a1e0fc18f802c65864b"
+}

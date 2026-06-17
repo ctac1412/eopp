@@ -7,14 +7,13 @@ from captcha_solver import solve_captcha
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from src.captcha_assembly import assemble_captchas, captcha_hash, get_top3_from_solver
+from src.captcha_assembly import assemble_captchas, captcha_hash
 from src.constants import (
     AUTO_SOLVER_ORDER,
     CAPTCHA_TIMEOUT,
     DISTRIBUTION,
     sync_side_work_enabled,
 )
-from src.core.captcha_runtime.display_payload import build_new_captcha_message
 from src.core.captcha_runtime import (
     CaptchaPresentation,
     CaptchaRuntime,
@@ -22,12 +21,14 @@ from src.core.captcha_runtime import (
     CaptchaSession,
     CaptchaSessionStore,
 )
+from src.core.captcha_runtime.display_payload import build_new_captcha_message
 from src.db import get_key_by_id, get_key_record
 from src.models import SolveCaptchaBody, SolveRequest
 from src.platform.jobs.queue import enqueue_deferred_job
 from src.platform.observability import metrics
 from src.services import captcha_file_service, captcha_service
 from src.services.session_api_key import key_for_session_request, with_session_api_key
+from src.services.top3_service import top3_process_pool
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
 from src.test_runner import next_result_id
 
@@ -172,7 +173,7 @@ def _runtime() -> CaptchaRuntime:
         prepare_icon_session=_prepare_icon_session,
         on_timeout=_on_timeout,
         auto_solve=solve_captcha,
-        get_top3=get_top3_from_solver,
+        get_top3=top3_process_pool.get_top3,
         sync_solver_metadata=_sync_solver_metadata,
         enqueue_metadata=_enqueue_metadata,
         prepare_display_metadata=_prepare_display_metadata,
@@ -401,7 +402,12 @@ async def _on_timeout(
 ) -> None:
     from src.auto_operator import cancel_auto_solve
     from src.routes.distribution import distribution_states
-    from src.sse.manager import get_master_operators, operator_api_key_id, push_sse, push_sse_owner_and_operators
+    from src.sse.manager import (
+        get_master_operators,
+        operator_api_key_id,
+        push_sse,
+        push_sse_owner_and_operators,
+    )
 
     state = distribution_states.get(captcha_id)
     if state:
@@ -417,8 +423,8 @@ async def _on_timeout(
 
 @router.post("/trigger-test")
 async def trigger_test(request: Request):
-    from src.test_runner import send_one_test_captcha
     from src.policies.access_policy import token_from_request
+    from src.test_runner import send_one_test_captcha
 
     key_record, error = key_for_session_request(request)
     if error:

@@ -14,3 +14,13 @@ test("backend logs tab describes outbox as an event journal, not runnable jobs",
   assert.match(source, /Outbox хранит события очереди jobs/);
   assert.match(source, /Кнопка запускает только due background jobs/);
 });
+
+test("backend logs tab displays top3 process pool diagnostics outside health verdict", async () => {
+  const source = await readFile(sourcePath, "utf8");
+
+  assert.ok(source.includes('adminRequest("/top3-pool-status")'));
+  assert.match(source, /Top3 pool/);
+  assert.match(source, /Top3 workers/);
+  assert.match(source, /Top3 errors/);
+  assert.match(source, /top3Pool\?\.last_error/);
+});

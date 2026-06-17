@@ -268,6 +268,87 @@ def test_runtime_publishes_effective_test_no_timeout_to_frontend():
     assert new_captcha["timeout"] == 3600
 
 
+async def _run_runtime_async_top3_flow(get_top3):
+    from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies
+    from src.core.captcha_runtime.sessions import CaptchaSessionStore
+
+    published = []
+    enqueued = []
+
+    class KeyRecord:
+        id = 11
+
+    deps = CaptchaRuntimeDependencies(
+        validate_api_key=lambda api_key: KeyRecord(),
+        get_or_create_usage_log=lambda usage_log_id, api_key, reservation_id, captcha_id: 77,
+        save_captcha_payload=lambda captcha_id, data: data,
+        captcha_hash=lambda data: "captcha-async-top3",
+        assemble_captchas=lambda tiles, variants, valid_index: [],
+        push_sse=lambda message, api_key_id=None: published.append((message, api_key_id)),
+        get_owner_label=lambda api_key_id: "owner",
+        next_result_id=lambda: 123,
+        publish_event=lambda event: None,
+        get_top3=get_top3,
+        enqueue_metadata=lambda captcha_id, reason: enqueued.append((captcha_id, reason)),
+        captcha_timeout=1,
+    )
+    runtime = CaptchaRuntime(deps, CaptchaSessionStore())
+    payload = {
+        "api_key": "secret",
+        "auto_solve": False,
+        "timeout_metadata": True,
+        "reservation_id": "reservation-1",
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["b"], ["c"]],
+        },
+    }
+
+    pending_task = asyncio.create_task(runtime.handle_captcha(payload))
+    for _ in range(100):
+        if runtime.sessions.get("captcha-async-top3") is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    await runtime.submit_solution(
+        {"captcha_id": "captcha-async-top3", "variantIndex": 0, "api_key": "secret"}
+    )
+    handle_status, handle_body = await pending_task
+    return handle_status, handle_body, published, enqueued
+
+
+def test_runtime_awaits_async_top3_before_publishing_new_captcha():
+    async def get_top3(data):
+        await asyncio.sleep(0)
+        return ["2", "1", "0"]
+
+    handle_status, handle_body, published, enqueued = asyncio.run(
+        _run_runtime_async_top3_flow(get_top3)
+    )
+
+    new_captcha = next(message for message, _ in published if message["type"] == "new_captcha")
+    assert handle_status == 200
+    assert handle_body["captcha_id"] == "captcha-async-top3"
+    assert new_captcha["top3"] == ["2", "1", "0"]
+    assert enqueued == []
+
+
+def test_runtime_keeps_captcha_flow_when_async_top3_fails():
+    async def get_top3(data):
+        await asyncio.sleep(0)
+        raise RuntimeError("solver unavailable")
+
+    handle_status, handle_body, published, enqueued = asyncio.run(
+        _run_runtime_async_top3_flow(get_top3)
+    )
+
+    new_captcha = next(message for message, _ in published if message["type"] == "new_captcha")
+    assert handle_status == 200
+    assert handle_body["captcha_id"] == "captcha-async-top3"
+    assert new_captcha["top3"] == []
+    assert enqueued == [("captcha-async-top3", "top3_failed:solver unavailable")]
+
+
 async def _run_runtime_extra_sse_metadata_flow():
     from src.core.captcha_runtime.display_payload import build_new_captcha_message
     from src.core.captcha_runtime.runtime import CaptchaRuntime, CaptchaRuntimeDependencies

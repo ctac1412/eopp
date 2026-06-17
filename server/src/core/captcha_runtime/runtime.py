@@ -61,7 +61,7 @@ class CaptchaRuntimeDependencies:
     prepare_icon_session: Callable[..., Awaitable[Any]] | None = None
     on_timeout: Callable[[str, int | None, int | None, dict[str, Any]], Awaitable[None] | None] | None = None
     auto_solve: Callable[[dict[str, Any]], Any] | None = None
-    get_top3: Callable[[dict[str, Any]], list[str]] = get_top3_from_solver
+    get_top3: Callable[[dict[str, Any]], list[str] | Awaitable[list[str]]] = get_top3_from_solver
     sync_solver_metadata: Callable[[], bool] = lambda: True
     enqueue_metadata: Callable[[str, str], None] = lambda captcha_id, reason: None
     prepare_display_metadata: Callable[..., dict[str, Any] | None] | None = None
@@ -155,7 +155,7 @@ class CaptchaRuntime:
         gauge_set("captcha_pending_count", self.sessions.count())
         saved = self.dependencies.save_captcha_payload(captcha_id, data)
         data = _saved_data(saved, data)
-        top3, confident = self._top3(data, captcha_id)
+        top3, confident = await self._top3(data, captcha_id)
         await self._publish(
             CaptchaDisplayed(
                 captcha_id=captcha_id,
@@ -368,14 +368,17 @@ class CaptchaRuntime:
         session.event.set()
         return 200, {"ok": True, "captcha_id": session.captcha_id, "status": "cancelled"}
 
-    def _top3(self, data: dict[str, Any], captcha_id: str) -> tuple[list[str], bool]:
+    async def _top3(self, data: dict[str, Any], captcha_id: str) -> tuple[list[str], bool]:
         """Return solver hints when sync metadata is enabled, otherwise defer."""
 
         if not self.dependencies.sync_solver_metadata():
             self.dependencies.enqueue_metadata(captcha_id, "disabled")
             return [], False
         try:
-            return self.dependencies.get_top3(data) or [], False
+            maybe_top3 = self.dependencies.get_top3(data)
+            if inspect.isawaitable(maybe_top3):
+                maybe_top3 = await maybe_top3
+            return maybe_top3 or [], False
         except Exception as exc:
             self.dependencies.enqueue_metadata(captcha_id, f"top3_failed:{exc}")
             return [], False

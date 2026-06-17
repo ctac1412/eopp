@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from src.db.connection import get_connection
 from src.platform.module_registry import module_health_payload
 from src.platform.observability.metrics import gauge_set, render_prometheus
+from src.services.top3_service import top3_process_pool
 from src.sse import lock as sse_lock
 from src.sse import pending as sse_pending
 from src.sse import sse_queues
@@ -38,6 +39,13 @@ async def health():
         status_code=status_code,
         content={"status": "ok" if db_ok else "degraded", "db": "ok" if db_ok else "error"},
     )
+
+
+@router.get("/top3-pool-status")
+async def top3_pool_status():
+    """Return top3 process-pool diagnostics for the technical admin page."""
+
+    return JSONResponse(content=top3_process_pool.health_status())
 
 
 @router.get("/version")
@@ -82,7 +90,6 @@ async def ready():
         checks["rucaptcha"] = "ok" if rucaptcha_key else "not_configured"
     else:
         checks["rucaptcha"] = "disabled"
-
     all_ok = all(v == "ok" for v in checks.values() if v != "disabled")
     status_code = 200 if all_ok else 503
     return JSONResponse(

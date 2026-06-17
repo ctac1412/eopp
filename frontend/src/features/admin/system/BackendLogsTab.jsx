@@ -87,6 +87,7 @@ export function BackendLogsTab({ adminToken, onError }) {
   const [logs, setLogs] = useState({ lines: [], path: "", loadedAt: null });
   const [jobsOverview, setJobsOverview] = useState(null);
   const [health, setHealth] = useState(null);
+  const [top3Pool, setTop3Pool] = useState(null);
   const [loading, setLoading] = useState(false);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [runLoading, setRunLoading] = useState(false);
@@ -99,6 +100,13 @@ export function BackendLogsTab({ adminToken, onError }) {
     const res = await adminRequest("/health");
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || data.detail || `health HTTP ${res.status}`);
+    return data;
+  }, []);
+
+  const fetchTop3Pool = useCallback(async () => {
+    const res = await adminRequest("/top3-pool-status");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || data.detail || `top3 HTTP ${res.status}`);
     return data;
   }, []);
 
@@ -134,8 +142,9 @@ export function BackendLogsTab({ adminToken, onError }) {
     setLoading(true);
     setJobsLoading(true);
     try {
-      const [healthResult, jobsResult, logsResult] = await Promise.allSettled([
+      const [healthResult, top3Result, jobsResult, logsResult] = await Promise.allSettled([
         fetchHealth(),
+        fetchTop3Pool(),
         fetchJobs(),
         fetchLogs(),
       ]);
@@ -144,6 +153,12 @@ export function BackendLogsTab({ adminToken, onError }) {
       } else {
         setHealth({ status: "degraded", db: "unknown" });
         onError?.(healthResult.reason?.message || "health check failed");
+      }
+      if (top3Result.status === "fulfilled") {
+        setTop3Pool(top3Result.value);
+      } else {
+        setTop3Pool({ status: "unknown", started: false });
+        onError?.(top3Result.reason?.message || "top3 pool status failed");
       }
       if (jobsResult.status === "fulfilled") {
         setJobsOverview(jobsResult.value);
@@ -165,7 +180,7 @@ export function BackendLogsTab({ adminToken, onError }) {
       setLoading(false);
       setJobsLoading(false);
     }
-  }, [adminToken, fetchHealth, fetchJobs, fetchLogs, onError]);
+  }, [adminToken, fetchHealth, fetchJobs, fetchLogs, fetchTop3Pool, onError]);
 
   useEffect(() => {
     refreshAll();
@@ -205,13 +220,14 @@ export function BackendLogsTab({ adminToken, onError }) {
     const running = sumCounts(jobCounts, (item) => item.status === "running");
     const outboxEvents = sumCounts(outboxCounts);
     return [
+      { key: "top3", label: "Top3 pool", value: top3Pool?.status || "—", tone: top3Pool?.status === "ok" ? "success" : top3Pool?.status === "unknown" ? "neutral" : "warning" },
       { key: "health", label: "Сервер", value: health?.status || "—", tone: health?.status === "ok" ? "success" : "danger" },
       { key: "pending", label: "Jobs ждут", value: pending, tone: pending > 0 ? "warning" : "success" },
       { key: "running", label: "В работе", value: running, tone: running > 0 ? "info" : "neutral" },
       { key: "dead", label: "Dead jobs", value: dead, tone: dead > 0 ? "danger" : "success" },
       { key: "outbox", label: "Outbox события", value: outboxEvents, tone: outboxEvents > 0 ? "neutral" : "success" },
     ];
-  }, [health, jobsOverview]);
+  }, [health, jobsOverview, top3Pool]);
 
   const jobsColumns = [
     {
@@ -349,6 +365,21 @@ export function BackendLogsTab({ adminToken, onError }) {
               <StatusTag status={health?.status === "ok" ? "confirmed" : "failed"} label={health?.status || "—"} />
             </Descriptions.Item>
             <Descriptions.Item label="DB">{health?.db || "—"}</Descriptions.Item>
+            <Descriptions.Item label="Top3 pool">
+              <StatusTag
+                status={top3Pool?.status === "ok" ? "confirmed" : top3Pool?.status === "unknown" ? "neutral" : "warning"}
+                label={top3Pool?.status || "—"}
+              />
+            </Descriptions.Item>
+            <Descriptions.Item label="Top3 workers">{top3Pool?.workers ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Top3 submitted">{top3Pool?.submitted ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Top3 errors">{top3Pool?.compute_errors ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Top3 empty">{top3Pool?.empty_returns ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Top3 last error">
+              <span className={top3Pool?.last_error ? "text-danger" : "text-muted"}>
+                {top3Pool?.last_error || "—"}
+              </span>
+            </Descriptions.Item>
             <Descriptions.Item label="DB path">
               <span className="font-monospace tech-inline-path">{jobsOverview?.db_path || "—"}</span>
             </Descriptions.Item>

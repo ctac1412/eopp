@@ -26,6 +26,7 @@ from src.logging_config import configure_logging
 from src.routes import register_all_routes
 from src.services import telegram_service
 from src.services.tech_user_bootstrap import ensure_env_tech_user
+from src.services.top3_service import top3_process_pool
 from src.sse import lock, pending, push_sse
 
 logger = logging.getLogger("eopp")
@@ -76,7 +77,9 @@ def create_app() -> FastAPI:
         telegram_stop = threading.Event()
         telegram_thread = telegram_service.start_daily_report_scheduler(telegram_stop)
         dist_cleanup_task = asyncio.create_task(_distribution_cleanup_loop())
+        top3_process_pool.startup()
         yield
+        top3_process_pool.shutdown()
         if telegram_thread:
             telegram_stop.set()
         dist_cleanup_task.cancel()
