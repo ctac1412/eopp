@@ -22,5 +22,5 @@ def assign_ranks(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def top_variants(results: list[dict[str, Any]], limit: int = 3) -> list[int]:
-    """Return top variant indexes from sorted solver results."""
-    return [int(result["variant"]) for result in sort_results(results)[:limit]]
+    """Return top variant indexes from solver-ranked results."""
+    return [int(result["variant"]) for result in results[:limit]]

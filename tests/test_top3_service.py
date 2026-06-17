@@ -167,3 +167,14 @@ def test_compute_top3_cpu_returns_empty_for_unsupported_puzzle_without_error():
         data.pop(key, None)
 
     assert compute_top3_cpu(data) == []
+
+
+def test_compute_top3_cpu_preserves_solver_sorted_order_for_puzzle():
+    from src.services.top3_service import compute_top3_cpu
+
+    payload_path = Path("server/data/captcha_examples/all/d6a24b137f06797d.json")
+    data = json.loads(payload_path.read_text(encoding="utf-8"))
+    for key in ("solver_top3", "solver_results", "solver_valid_rank"):
+        data.pop(key, None)
+
+    assert compute_top3_cpu(data) == ["2", "7", "14"]
