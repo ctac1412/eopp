@@ -14,6 +14,7 @@ from src.constants import (
     DISTRIBUTION,
     sync_side_work_enabled,
 )
+from src.core.captcha_runtime.display_payload import build_new_captcha_message
 from src.core.captcha_runtime import (
     CaptchaPresentation,
     CaptchaRuntime,
@@ -303,26 +304,23 @@ async def _prepare_icon_session(
         first_icon = icons_cache.get(assigned[0], {})
         metadata["extra_sse"].append(
             (
-                {
-                    "type": "new_captcha",
-                    "captcha_id": captcha_id,
-                    "captcha_type": 1,
-                    "images": {str(0): main_b64},
-                    "icons_image": first_icon.get("icon", ""),
-                    "count": 1,
-                    "top3": [],
-                    "confident": False,
-                    "created_at": time.time(),
-                    "timeout": captcha_timeout,
-                    "owner_label": owner_label,
-                    "owner_api_key_id": api_key_id,
-                    "distribution": {
-                        "operator_id": op_id,
-                        "assigned": assigned,
-                        "num_operators": num_operators,
+                build_new_captcha_message(
+                    {
+                        "captcha_id": captcha_id,
+                        "captcha_type": 1,
+                        "images": {str(0): main_b64},
+                        "icons_image": first_icon.get("icon", ""),
+                        "distribution": {
+                            "operator_id": op_id,
+                            "assigned": assigned,
+                            "num_operators": num_operators,
+                        },
                     },
-                    "all_icons": make_all_icons(icons_cache, build_icon_order(op_id, num_operators)),
-                },
+                    timeout=captcha_timeout,
+                    owner_label=owner_label,
+                    owner_api_key_id=api_key_id,
+                    extra={"all_icons": make_all_icons(icons_cache, build_icon_order(op_id, num_operators))},
+                ).to_dict(),
                 operator_api_key_id(op_real_id),
             )
         )
@@ -360,10 +358,12 @@ async def _on_timeout(
 @router.post("/trigger-test")
 async def trigger_test(request: Request):
     from src.test_runner import send_one_test_captcha
+    from src.policies.access_policy import token_from_request
 
     key_record, error = key_for_session_request(request)
     if error:
         return error
+    session_token = token_from_request(request)
     try:
         body = await request.json()
     except Exception:
@@ -408,6 +408,7 @@ async def trigger_test(request: Request):
                 "captcha_id": cid,
                 "test_no_timeout": test_no_timeout,
                 "auto_solve_rucaptcha": auto_solve_rucaptcha,
+                "session_token": session_token,
             },
             daemon=True,
         )

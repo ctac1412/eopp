@@ -7,9 +7,10 @@ def test_pending_snapshot_messages_restore_current_master_captchas():
         "own": CaptchaSession(
             captcha_id="own",
             variants=[["a"], ["b"]],
-            images={"0": "image-0", "1": "image-1"},
+            images={},
             usage_log_id=10,
             api_key_id=7,
+            tiles=[{"tileId": "a", "imageData": "jpeg-a"}],
         ),
         "other": CaptchaSession(
             captcha_id="other",
@@ -33,7 +34,9 @@ def test_pending_snapshot_messages_restore_current_master_captchas():
         {
             "type": "new_captcha",
             "captcha_id": "own",
-            "images": {"0": "image-0", "1": "image-1"},
+            "images": {},
+            "tiles": [{"tileId": "a", "imageData": "jpeg-a"}],
+            "variants": [["a"], ["b"]],
             "count": 2,
             "top3": [],
             "confident": False,
@@ -53,7 +56,7 @@ def test_pending_snapshot_messages_restore_session_specific_timeout():
             images={"0": "image-0"},
             usage_log_id=10,
             api_key_id=7,
-            extra={"timeout": 3600},
+            timeout=3600,
         ),
     }
 

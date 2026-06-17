@@ -184,6 +184,10 @@ def test_runtime_handles_manual_captcha_flow():
     assert handle_body["usage_log_id"] == 77
     assert handle_body["captcha_id"] == "captcha-runtime"
     assert published[0][0]["type"] == "new_captcha"
+    assert published[0][0]["images"] == {}
+    assert published[0][0]["tiles"] == [{"tileId": "a", "imageData": "a"}]
+    assert published[0][0]["variants"] == [["a"], ["a"]]
+    assert published[0][0]["count"] == 2
     assert published[-1][0]["type"] == "captcha_solved"
     assert [event.__class__.__name__ for event in events] == [
         "CaptchaReceived",
@@ -197,6 +201,40 @@ def test_runtime_publishes_effective_test_no_timeout_to_frontend():
 
     new_captcha = next(message for message, _ in published if message["type"] == "new_captcha")
     assert new_captcha["timeout"] == 3600
+
+
+async def _run_presenter_raw_variant_payload():
+    from src.core.captcha_runtime.presenter import CaptchaPresenter
+
+    def unexpected_assemble(tiles, variants, valid_index):
+        raise AssertionError("puzzle preview assembly must not run in the hot path")
+
+    presenter = CaptchaPresenter(assemble_puzzle=unexpected_assemble)
+    payload = {
+        "puzzle": {
+            "tiles": [{"tileId": "a", "imageData": "a"}],
+            "variantsCapture": [["a"], ["a"]],
+        }
+    }
+
+    return await presenter.build(
+        captcha_id="captcha-raw",
+        data=payload,
+        usage_log_id=1,
+        api_key_id=2,
+        event=threading.Event(),
+    )
+
+
+def test_presenter_keeps_puzzle_preview_assembly_out_of_hot_path():
+    presentation = asyncio.run(_run_presenter_raw_variant_payload())
+
+    assert presentation.session.images == {}
+    assert presentation.session.variants == [["a"], ["a"]]
+    assert presentation.session.tiles == [{"tileId": "a", "imageData": "a"}]
+    assert presentation.session.valid_index is None
+    assert presentation.session.get("tiles") == [{"tileId": "a", "imageData": "a"}]
+    assert presentation.metadata["generated"] == 0
 
 
 async def _run_runtime_cancel_flow():

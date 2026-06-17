@@ -15,6 +15,7 @@ from src.services import captcha_file_service
 from src.utils import counter_lock, result_counter, source_files
 
 pending = {}
+SOLVE_CAPTCHA_PATH = "/api/solve-captcha"
 
 
 def next_result_id():
@@ -89,16 +90,10 @@ def send_write_cases():
 
 def _send_captcha(body, api_key=None):
     try:
-        if api_key is None:
-            from src.constants import get_test_api_key
-
-            api_key = get_test_api_key()
-
         data = json.loads(body)
-        data["api_key"] = api_key
         wrapped_body = json.dumps(data)
         _http_post(
-            path="/solve-captcha",
+            path=SOLVE_CAPTCHA_PATH,
             body=wrapped_body,
         )
     except Exception as e:
@@ -107,18 +102,12 @@ def _send_captcha(body, api_key=None):
 
 def _send_captcha_with_id(captcha_id, body, api_key=None):
     try:
-        if api_key is None:
-            from src.constants import get_test_api_key
-
-            api_key = get_test_api_key()
-
         wrapper = {
             "captcha_id": captcha_id,
             "data": json.loads(body),
-            "api_key": api_key,
         }
         _http_post(
-            "/solve-captcha",
+            SOLVE_CAPTCHA_PATH,
             json.dumps(wrapper),
         )
     except Exception as e:
@@ -142,7 +131,14 @@ def send_test_cases_with_key(api_key=None):
         time.sleep(1)
 
 
-def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
+def send_one_test_captcha(
+    api_key=None,
+    reservation_id=None,
+    captcha_id=None,
+    test_no_timeout=False,
+    auto_solve_rucaptcha=False,
+    session_token=None,
+):
     files = _captcha_files(labeled=True)
     if not files:
         print(f"No labeled test files found in {captcha_file_service.all_dir()}")
@@ -159,18 +155,26 @@ def send_one_test_captcha(api_key=None, reservation_id=None, captcha_id=None, te
     with open(filepath) as f:
         body = f.read()
     print(f"Sending single test: {os.path.basename(filepath)}")
-    _send_captcha_with_reservation(body, api_key, reservation_id, test_no_timeout, auto_solve_rucaptcha)
+    _send_captcha_with_reservation(
+        body,
+        api_key,
+        reservation_id,
+        test_no_timeout,
+        auto_solve_rucaptcha,
+        session_token,
+    )
 
 
-def _send_captcha_with_reservation(body, api_key=None, reservation_id=None, test_no_timeout=False, auto_solve_rucaptcha=False):
+def _send_captcha_with_reservation(
+    body,
+    api_key=None,
+    reservation_id=None,
+    test_no_timeout=False,
+    auto_solve_rucaptcha=False,
+    session_token=None,
+):
     try:
-        if api_key is None:
-            from src.constants import get_test_api_key
-
-            api_key = get_test_api_key()
-
         data = json.loads(body)
-        data["api_key"] = api_key
         data["reservation_id"] = reservation_id or "unknown"
         if test_no_timeout:
             data["test_no_timeout"] = True
@@ -178,9 +182,11 @@ def _send_captcha_with_reservation(body, api_key=None, reservation_id=None, test
             data["auto_solve_rucaptcha"] = True
         wrapped_body = json.dumps(data)
         http_timeout = 3600 if test_no_timeout else 15
+        extra_headers = {"Cookie": f"eopp_session={session_token}"} if session_token else None
         _http_post(
-            path="/solve-captcha",
+            path=SOLVE_CAPTCHA_PATH,
             body=wrapped_body,
+            extra_headers=extra_headers,
             http_timeout=http_timeout,
         )
     except Exception as e:

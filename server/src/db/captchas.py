@@ -583,10 +583,11 @@ def list_captchas(usage_log_id: int | None = None) -> list[dict]:
     ]
 
 
-def list_public_captchas() -> list[dict]:
+def list_public_captchas(limit: int = 100, offset: int = 0) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT captcha_id, status FROM captchas ORDER BY created_at DESC, id DESC"
+        "SELECT captcha_id, status FROM captchas ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
     ).fetchall()
     conn.close()
     return [

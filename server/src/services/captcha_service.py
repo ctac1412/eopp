@@ -3,7 +3,8 @@ import os
 import threading
 import time
 
-from src.captcha_assembly import assemble_captchas, get_valid_variant_index, is_icon_click_type
+from src.captcha_assembly import get_valid_variant_index, is_icon_click_type
+from src.core.captcha_runtime.display_payload import build_new_captcha_message
 from src.services import captcha_file_service
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
@@ -135,12 +136,10 @@ def read_label_captcha(captcha_id: str) -> dict | None:
     if not tiles or not variants:
         return None
 
-    valid_index = get_valid_variant_index(data)
-    generated = assemble_captchas(tiles, variants, valid_index)
     return {
         "captcha_id": captcha_id,
         "filename": f"{captcha_id}.json",
-        "valid_index": valid_index,
+        "valid_index": get_valid_variant_index(data),
         "no_valid_index": data.get("no_valid_index")
         if isinstance(data.get("no_valid_index"), int)
         else None,
@@ -152,8 +151,10 @@ def read_label_captcha(captcha_id: str) -> dict | None:
         "solver_results": data.get("solver_results")
         if isinstance(data.get("solver_results"), list)
         else [],
-        "variants_count": len(generated),
-        "images": {str(item["index"]): item["image"] for item in generated},
+        "variants_count": len(variants),
+        "images": {},
+        "tiles": tiles,
+        "variants": variants,
     }
 
 
@@ -234,37 +235,32 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
                     gen = assemble_icon_click_preview(main_b64, icons_b64)
                 except Exception:
                     gen = []
-                sse = {
-                    "type": "new_captcha",
-                    "captcha_id": cid,
-                    "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
-                    "count": len(gen),
-                    "top3": [],
-                    "confident": False,
-                    "created_at": time.time(),
-                    "timeout": 30,
-                    "owner_label": "replay",
-                    "owner_api_key_id": -1,
-                    "captcha_type": 1,
-                    "icons_image": gen[0].get("icons", "") if gen else "",
-                }
+                sse = build_new_captcha_message(
+                    {
+                        "captcha_id": cid,
+                        "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
+                        "captcha_type": 1,
+                        "icons_image": gen[0].get("icons", "") if gen else "",
+                    },
+                    timeout=30,
+                    owner_label="replay",
+                    owner_api_key_id=-1,
+                ).to_dict()
             else:
                 puzzle = data.get("puzzle", data)
                 tiles = puzzle.get("tiles", [])
                 variants = puzzle.get("variantsCapture", [])
-                valid_index = get_valid_variant_index(data)
-                generated = assemble_captchas(tiles, variants, valid_index)
-                sse = {
-                    "type": "new_captcha",
-                    "captcha_id": cid,
-                    "images": {str(g["index"]): g["image"] for g in generated},
-                    "count": len(generated),
-                    "top3": [],
-                    "created_at": time.time(),
-                    "timeout": 30,
-                    "owner_label": "replay",
-                    "owner_api_key_id": -1,
-                }
+                sse = build_new_captcha_message(
+                    {
+                        "captcha_id": cid,
+                        "images": {},
+                        "tiles": tiles,
+                        "variants": variants,
+                    },
+                    timeout=30,
+                    owner_label="replay",
+                    owner_api_key_id=-1,
+                ).to_dict()
             push_sse(sse)
             time.sleep(1)
 

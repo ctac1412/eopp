@@ -1005,6 +1005,39 @@ class TestCaptchaRecords:
         assert "api_key_id" not in response.text
         assert "key_label" not in response.text
 
+    def test_public_captchas_support_limit_and_offset(self, client, api_key):
+        from src.db import log_usage
+        from src.db.connection import get_connection
+
+        usage_id = log_usage(api_key, "paged-reservation", "paged-captcha")
+
+        conn = get_connection()
+        for index in range(3):
+            conn.execute(
+                "INSERT INTO captchas (captcha_id, status, usage_log_id, created_at, tiles_hash, fail_reason) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    f"paged-captcha-{index}",
+                    "passed",
+                    usage_id,
+                    f"2026-05-0{index + 1}T00:00:00+00:00",
+                    f"hash{index}",
+                    None,
+                ),
+            )
+        conn.commit()
+        conn.close()
+
+        response = client.get("/api/public/captchas?limit=1&offset=1")
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "id": "paged-captcha-1",
+                "captcha_id": "paged-captcha-1",
+                "status": "passed",
+            },
+        ]
+
     def test_public_captcha_replay_sends_selected_without_token(self, client, monkeypatch):
         from src.db import create_key, log_usage
         from src.db.connection import get_connection
@@ -1660,7 +1693,9 @@ class TestCaptchaLabelingApi:
         assert body["label_source"] is None
         assert body["solver_top3"] == [1, 0]
         assert body["solver_results"] == [{"variant": 1, "rank": 1, "score": 10.5}]
-        assert sorted(body["images"].keys()) == ["0", "1"]
+        assert body["images"] == {}
+        assert body["tiles"] == payload["puzzle"]["tiles"]
+        assert body["variants"] == payload["puzzle"]["variantsCapture"]
 
     def test_captcha_label_save_updates_file_in_place(self, client, admin_token, tmp_path, monkeypatch):
         import json

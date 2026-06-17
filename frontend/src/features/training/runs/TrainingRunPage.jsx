@@ -1,7 +1,8 @@
-import { trainingService } from "../api/trainingService";
+﻿import { trainingService } from "../api/trainingService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Card, Progress, Spin } from "antd";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import PuzzleVariantTiles from "../../captcha/shared/PuzzleVariantTiles";
 import { Button, MetricsStrip, StatusTag, Toolbar } from "../../../ui";
 
 function randomInterval(min, max) {
@@ -26,7 +27,7 @@ export default function TrainingRunPage() {
   // Icon-click state
   const imgRef = useRef(null);
   const [naturalSize, setNaturalSize] = useState(null);
-  const [iconMarkers, setIconMarkers] = useState([]);  // [{x, y}] — original-image coords
+  const [iconMarkers, setIconMarkers] = useState([]);  // [{x, y}] вЂ” original-image coords
   const [iconClickTimes, setIconClickTimes] = useState([]);  // [{icon_position, duration_ms}]
   const iconClickCountRef = useRef(0);
   const timerRef = useRef(null);
@@ -39,7 +40,7 @@ export default function TrainingRunPage() {
       setStatus(data);
       return data;
     } catch (e) {
-      setError("Ошибка загрузки статуса");
+      setError("РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃС‚Р°С‚СѓСЃР°");
       return null;
     }
   }, [runId]);
@@ -69,7 +70,7 @@ export default function TrainingRunPage() {
       iconClickCountRef.current = 0;
       setStartTime(Date.now());
     } catch (e) {
-      setError("Ошибка загрузки капчи");
+      setError("РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РєР°РїС‡Рё");
     }
   }, [runId]);
 
@@ -118,11 +119,11 @@ export default function TrainingRunPage() {
         variant_index: variantIndex,
       });
     } catch (e) {
-      setError("Ошибка сохранения ответа");
+      setError("РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РѕС‚РІРµС‚Р°");
     }
   };
 
-  // Icon click on image — matches real NormalIconClick behaviour
+  // Icon click on image вЂ” matches real NormalIconClick behaviour
   const handleIconClick = (e) => {
     if (!current || feedback || !imgRef.current || !naturalSize) return;
     if (iconMarkers.length >= 5) return;
@@ -172,7 +173,7 @@ export default function TrainingRunPage() {
         duration_ms: totalDuration,
       });
     } catch (e) {
-      setError("Ошибка сохранения ответа");
+      setError("РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РѕС‚РІРµС‚Р°");
     }
   }
 
@@ -180,7 +181,7 @@ export default function TrainingRunPage() {
   useEffect(() => {
     if (feedback && !done) {
       if (!pauseBetween) {
-        // No delay — immediately check if more captchas
+        // No delay вЂ” immediately check if more captchas
         setWaiting(true);
         loadStatus().then(st => {
           setWaiting(false);
@@ -210,19 +211,19 @@ export default function TrainingRunPage() {
   }, [feedback]);
 
   const formatMs = (ms) => {
-    if (ms == null) return "—";
-    return `${(ms / 1000).toFixed(2)}с`;
+    if (ms == null) return "вЂ”";
+    return `${(ms / 1000).toFixed(2)}СЃ`;
   };
 
   // Puzzle captcha rendering
   const renderPuzzle = () => {
-    if (!current || !current.images) return null;
-    const imgKeys = Object.keys(current.images).sort((a, b) => parseInt(a) - parseInt(b));
-    const cols = Math.min(imgKeys.length, 5);
+    if (!current || !current.variants) return null;
+    const variantKeys = current.variants.map((_, index) => String(index));
+    const cols = Math.min(variantKeys.length, 5);
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
-        {imgKeys.map(key => {
+        {variantKeys.map(key => {
           const idx = parseInt(key);
           const isCorrectAnswer = feedback && feedback.variant_index === idx && feedback.correct;
           const isWrongAnswer = feedback && feedback.variant_index === idx && !feedback.correct;
@@ -246,11 +247,7 @@ export default function TrainingRunPage() {
                 position: "relative",
               }}
             >
-              <img
-                src={"data:image/png;base64," + current.images[key]}
-                alt={`Вариант ${idx}`}
-                style={{ width: "100%", display: "block" }}
-              />
+              <PuzzleVariantTiles entry={current} index={idx} style={{ aspectRatio: "16 / 9" }} />
               <div style={{
                 textAlign: "center",
                 padding: "4px 0",
@@ -259,8 +256,8 @@ export default function TrainingRunPage() {
                 borderTop: "1px solid var(--border)",
               }}>
                 #{idx}
-                {isCorrectAnswer && <StatusTag status="confirmed" label="✓" />}
-                {isWrongAnswer && <StatusTag status="failed" label="✗" />}
+                {isCorrectAnswer && <StatusTag status="confirmed" label="вњ“" />}
+                {isWrongAnswer && <StatusTag status="failed" label="вњ—" />}
               </div>
             </div>
           );
@@ -269,7 +266,7 @@ export default function TrainingRunPage() {
     );
   };
 
-  // Icon click captcha rendering — like NormalIconClick
+  // Icon click captcha rendering вЂ” like NormalIconClick
   const renderIconClick = () => {
     if (!current) return null;
     const mainImg = current.images?.["0"];
@@ -284,7 +281,7 @@ export default function TrainingRunPage() {
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
         {/* Status */}
         <div style={{ fontSize: "0.9rem", fontWeight: 500, color: "var(--text-muted)" }}>
-          Клик-капча — нажмите на иконки в правильном порядке ({iconMarkers.length}/5)
+          РљР»РёРє-РєР°РїС‡Р° вЂ” РЅР°Р¶РјРёС‚Рµ РЅР° РёРєРѕРЅРєРё РІ РїСЂР°РІРёР»СЊРЅРѕРј РїРѕСЂСЏРґРєРµ ({iconMarkers.length}/5)
         </div>
 
         {/* Clickable main image */}
@@ -298,7 +295,7 @@ export default function TrainingRunPage() {
             <img
               ref={imgRef}
               src={"data:image/png;base64," + mainImg}
-              alt="Капча"
+              alt="РљР°РїС‡Р°"
               onLoad={handleIconImageLoad}
               onClick={handleIconClick}
               style={{
@@ -349,11 +346,11 @@ export default function TrainingRunPage() {
         {iconsImg && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "0.8rem", color: "#8b949e", marginBottom: 4 }}>
-              Порядок иконок (кликайте слева направо)
+              РџРѕСЂСЏРґРѕРє РёРєРѕРЅРѕРє (РєР»РёРєР°Р№С‚Рµ СЃР»РµРІР° РЅР°РїСЂР°РІРѕ)
             </div>
             <img
               src={"data:image/png;base64," + iconsImg}
-              alt="Иконки"
+              alt="РРєРѕРЅРєРё"
               style={{ height: 50, borderRadius: 4, display: "block", margin: "0 auto" }}
               draggable={false}
             />
@@ -368,7 +365,7 @@ export default function TrainingRunPage() {
                     textAlign: "center",
                   }}
                 >
-                  {n - 1 < iconMarkers.length ? "✓" : n}
+                  {n - 1 < iconMarkers.length ? "вњ“" : n}
                 </span>
               ))}
             </div>
@@ -383,7 +380,7 @@ export default function TrainingRunPage() {
                 key={i}
                 status="neutral"
                 color="blue"
-                label={`Ик.${t.icon_position + 1}: ${formatMs(t.duration_ms)}`}
+                label={`РРє.${t.icon_position + 1}: ${formatMs(t.duration_ms)}`}
               />
             ))}
           </div>
@@ -397,7 +394,7 @@ export default function TrainingRunPage() {
       <div data-eopp-component="TrainingRunPage" className="training-run-page training-run-page--center">
         <Alert type="error" showIcon message={error} />
         <Button variant="primary" onClick={() => navigate("/training")}>
-          Назад к обучению
+          РќР°Р·Р°Рґ Рє РѕР±СѓС‡РµРЅРёСЋ
         </Button>
       </div>
     );
@@ -413,29 +410,29 @@ export default function TrainingRunPage() {
 
   if (done || status.status === "completed" || (status.remaining === 0 && status.solved > 0)) {
     const doneMetrics = status.stats ? [
-      { key: "correct", label: "Правильно", value: `${status.stats.correct}/${status.stats.total}`, tone: "success" },
-      { key: "avg", label: "Сред. время", value: formatMs(status.stats.avg_duration_ms), tone: "neutral" },
-      { key: "avgIcon", label: "Сред. иконка", value: formatMs(status.stats.avg_icon_ms), tone: "neutral" },
-      { key: "errors", label: "Ошибок", value: status.stats.incorrect, tone: "danger" },
+      { key: "correct", label: "РџСЂР°РІРёР»СЊРЅРѕ", value: `${status.stats.correct}/${status.stats.total}`, tone: "success" },
+      { key: "avg", label: "РЎСЂРµРґ. РІСЂРµРјСЏ", value: formatMs(status.stats.avg_duration_ms), tone: "neutral" },
+      { key: "avgIcon", label: "РЎСЂРµРґ. РёРєРѕРЅРєР°", value: formatMs(status.stats.avg_icon_ms), tone: "neutral" },
+      { key: "errors", label: "РћС€РёР±РѕРє", value: status.stats.incorrect, tone: "danger" },
     ] : [];
     return (
       <div data-eopp-component="TrainingRunPage" className="training-run-page">
         <Card
           data-eopp-component="TrainingRunDoneCard"
           size="small"
-          title="Прогон завершён"
+          title="РџСЂРѕРіРѕРЅ Р·Р°РІРµСЂС€С‘РЅ"
           extra={<StatusTag status="confirmed" label={`${status.solved}/${status.total_captchas}`} />}
         >
-          <div className="training-run__done-text">Решено {status.solved}/{status.total_captchas} капч</div>
+          <div className="training-run__done-text">Р РµС€РµРЅРѕ {status.solved}/{status.total_captchas} РєР°РїС‡</div>
         {status.stats && (
           <MetricsStrip items={doneMetrics} />
         )}
           <div className="training-run__done-actions">
             <Button variant="primary" onClick={() => navigate(`/training/run/${runId}/results`)}>
-              Подробные результаты
+              РџРѕРґСЂРѕР±РЅС‹Рµ СЂРµР·СѓР»СЊС‚Р°С‚С‹
             </Button>
             <Button onClick={() => navigate("/training")}>
-              К обучению
+              Рљ РѕР±СѓС‡РµРЅРёСЋ
             </Button>
           </div>
         </Card>
@@ -449,8 +446,8 @@ export default function TrainingRunPage() {
         className="training-run__toolbar"
         left={
           <div className="training-run__title">
-            <strong>Прогон #{runId}</strong>
-            <span>Капча {status.solved + 1}/{status.total_captchas}</span>
+            <strong>РџСЂРѕРіРѕРЅ #{runId}</strong>
+            <span>РљР°РїС‡Р° {status.solved + 1}/{status.total_captchas}</span>
           </div>
         }
         right={
@@ -462,7 +459,7 @@ export default function TrainingRunPage() {
             navigate("/training");
           }}
         >
-            Прервать
+            РџСЂРµСЂРІР°С‚СЊ
           </Button>
         }
       />
@@ -477,7 +474,7 @@ export default function TrainingRunPage() {
         <Card data-eopp-component="TrainingRunWaitingCard" size="small">
           <div className="training-run-page--center">
             <Spin />
-            <span>Следующая капча появится через 2-7 секунд...</span>
+            <span>РЎР»РµРґСѓСЋС‰Р°СЏ РєР°РїС‡Р° РїРѕСЏРІРёС‚СЃСЏ С‡РµСЂРµР· 2-7 СЃРµРєСѓРЅРґ...</span>
           </div>
         </Card>
       ) : current ? (
@@ -485,7 +482,7 @@ export default function TrainingRunPage() {
           data-eopp-component="TrainingRunCaptchaCard"
           size="small"
           title={<span className="training-run__captcha-id">{current.captcha_id?.slice(0, 16)}...</span>}
-          extra={<StatusTag status="neutral" label={current.captcha_type === 1 ? "Клик-капча" : "Пазл"} />}
+          extra={<StatusTag status="neutral" label={current.captcha_type === 1 ? "РљР»РёРє-РєР°РїС‡Р°" : "РџР°Р·Р»"} />}
         >
             {current.captcha_type === 1 ? renderIconClick() : renderPuzzle()}
 
@@ -495,7 +492,7 @@ export default function TrainingRunPage() {
                 className="training-run__feedback"
                 type={feedback.correct ? "success" : "error"}
                 showIcon
-                message={`${feedback.correct ? "Правильно" : "Неправильно"} — ${formatMs(feedback.duration_ms)}`}
+                message={`${feedback.correct ? "РџСЂР°РІРёР»СЊРЅРѕ" : "РќРµРїСЂР°РІРёР»СЊРЅРѕ"} вЂ” ${formatMs(feedback.duration_ms)}`}
               />
             )}
         </Card>

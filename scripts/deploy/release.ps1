@@ -44,8 +44,13 @@ function Get-DirectorySha256 {
     param([string]$Path)
     if (-not (Test-Path $Path)) { return "" }
     $entries = Get-ChildItem -LiteralPath $Path -Recurse -File | Sort-Object FullName | ForEach-Object {
+        if ($_.Name -match '\.db-(wal|shm)$') { return }
         $relative = $_.FullName.Substring((Resolve-Path $Path).Path.Length).TrimStart("\", "/")
-        "$relative=$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant())"
+        try {
+            "$relative=$((Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant())"
+        } catch {
+            "SKIPPED_LOCKED:$relative"
+        }
     }
     if (-not $entries) { return "" }
     $joined = [string]::Join([Environment]::NewLine, $entries)

@@ -1,5 +1,6 @@
 import { captchaService } from "./api/captchaService";
 import React from "react";
+import PuzzleVariantTiles from "../shared/PuzzleVariantTiles";
 import useCaptchaStore from "../../../store/useCaptchaStore";
 import { StatusTag } from "../../../ui";
 
@@ -23,25 +24,19 @@ function CaptchaCard({ entry, index }) {
       useCaptchaStore.getState().markSolved(entry.id);
       useCaptchaStore
         .getState()
-        .addLog(
-          `Капча ${entry.id} уже решена другим киоском`,
-          "info",
-        );
+        .addLog(`Капча ${entry.id} уже решена другим киоском`, "info");
       return;
     }
 
     useCaptchaStore.getState().markSolved(entry.id, superKioskMode, null);
     const solverInfo = superKioskMode && entry.ownerLabel
-      ? `Супер Киоск → ${entry.ownerLabel}`
+      ? `Супер Киоск -> ${entry.ownerLabel}`
       : superKioskMode
       ? "Супер Киоск"
       : "Локально";
     useCaptchaStore
       .getState()
-      .addLog(
-        `Решено [${solverInfo}]: ${entry.id} → #${index}  (${data.resultFile})`,
-        "success",
-      );
+      .addLog(`Решено [${solverInfo}]: ${entry.id} -> #${index}  (${data.resultFile})`, "success");
   };
 
   const rank = entry.top3.indexOf(String(index));
@@ -68,12 +63,7 @@ function CaptchaCard({ entry, index }) {
           />
         </div>
       )}
-      <img
-        className="captcha-card__img"
-        src={"data:image/png;base64," + entry.images[index]}
-        alt={`Вариант ${index}`}
-        style={entry.solved ? { opacity: 0.5 } : {}}
-      />
+      <PuzzleVariantTiles entry={entry} index={index} style={entry.solved ? { opacity: 0.5 } : {}} />
       <div
         className={`captcha-card__footer ${rank === 0 && !entry.solved ? "is-top-ranked" : ""}`}
       >

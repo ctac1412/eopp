@@ -26,6 +26,9 @@ class CaptchaSession:
     result: dict[str, Any] | None = None
     captcha_type: int | None = None
     icons_image: str = ""
+    tiles: list[dict[str, Any]] = field(default_factory=list)
+    valid_index: int | None = None
+    timeout: int | float | None = None
     distribution: dict[str, Any] | None = None
     icons_cache: dict[Any, Any] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
@@ -46,7 +49,11 @@ class CaptchaSession:
             "result": self.result,
             "usage_log_id": self.usage_log_id,
             "api_key_id": self.api_key_id,
+            "tiles": self.tiles,
+            "valid_index": self.valid_index,
         }
+        if self.timeout is not None:
+            data["timeout"] = self.timeout
         if self.captcha_type is not None:
             data["captcha_type"] = self.captcha_type
         if self.icons_image:
@@ -87,6 +94,12 @@ class CaptchaSession:
             self.captcha_type = value
         elif key == "icons_image":
             self.icons_image = value
+        elif key == "tiles":
+            self.tiles = value
+        elif key == "valid_index":
+            self.valid_index = value
+        elif key == "timeout":
+            self.timeout = value
         elif key == "distribution":
             self.distribution = value
         elif key == "icons_cache":
@@ -189,6 +202,9 @@ class CaptchaSessionStore:
             api_key_id=entry.get("api_key_id"),
             captcha_type=entry.get("captcha_type"),
             icons_image=entry.get("icons_image", ""),
+            tiles=entry.get("tiles", []),
+            valid_index=entry.get("valid_index"),
+            timeout=entry.get("timeout"),
             distribution=entry.get("distribution"),
             icons_cache=entry.get("icons_cache", {}),
         )

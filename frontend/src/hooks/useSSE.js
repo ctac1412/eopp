@@ -142,7 +142,9 @@ function useSSE(enabled = true) {
           const wasEmpty = useCaptchaStore.getState().getUnsolvedCount() === 0;
           addCaptcha({
             id: msg.captcha_id,
-            images: msg.images,
+            images: msg.images || {},
+            tiles: msg.tiles || [],
+            variants: msg.variants || [],
             top3: msg.top3 || [],
             count: msg.count,
             created_at: msg.created_at,

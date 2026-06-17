@@ -196,6 +196,7 @@ async def training_next_captcha(run_id: int, request: Request):
         return JSONResponse(status_code=500, content={"error": f"Failed to load captcha {captcha_id}"})
 
     from src.captcha_assembly import is_icon_click_type, get_valid_variant_index
+    from src.core.captcha_runtime.display_payload import build_captcha_display_fields
 
     if is_icon_click_type(data):
         from src.captcha_solver_engine.images import assemble_icon_click_preview
@@ -216,20 +217,19 @@ async def training_next_captcha(run_id: int, request: Request):
             "icons_image": gen[0].get("icons", "") if gen else "",
         })
     else:
-        from src.captcha_solver_engine.images import assemble_captchas
         puzzle = data.get("puzzle", data)
         tiles = puzzle.get("tiles", [])
         variants = puzzle.get("variantsCapture", [])
         valid_index = get_valid_variant_index(data)
-        generated = assemble_captchas(tiles, variants, valid_index)
+        display = build_captcha_display_fields({"images": {}, "tiles": tiles, "variants": variants}).to_dict()
         return JSONResponse(content={
             "done": False,
             "captcha_file_id": next_captcha["captcha_file_id"],
             "captcha_id": captcha_id,
             "captcha_type": 0,
             "valid_index": valid_index,
-            "variants_count": len(generated),
-            "images": {str(g["index"]): g["image"] for g in generated},
+            "variants_count": display["count"],
+            **display,
         })
 
 
@@ -432,6 +432,7 @@ async def training_get_captcha(captcha_id: str):
         return JSONResponse(status_code=404, content={"error": "Captcha not found"})
 
     from src.captcha_assembly import is_icon_click_type, get_valid_variant_index
+    from src.core.captcha_runtime.display_payload import build_captcha_display_fields
 
     if is_icon_click_type(data):
         from src.captcha_solver_engine.images import assemble_icon_click_preview
@@ -459,16 +460,15 @@ async def training_get_captcha(captcha_id: str):
             "boxes": data.get("boxes") if isinstance(data.get("boxes"), list) else None,
         })
     else:
-        from src.captcha_solver_engine.images import assemble_captchas
         puzzle = data.get("puzzle", data)
         tiles = puzzle.get("tiles", [])
         variants = puzzle.get("variantsCapture", [])
         valid_index = get_valid_variant_index(data)
-        generated = assemble_captchas(tiles, variants, valid_index)
+        display = build_captcha_display_fields({"images": {}, "tiles": tiles, "variants": variants}).to_dict()
         return JSONResponse(content={
             "captcha_id": captcha_id,
             "captcha_type": 0,
             "valid_index": valid_index,
-            "variants_count": len(generated),
-            "images": {str(g["index"]): g["image"] for g in generated},
+            "variants_count": display["count"],
+            **display,
         })

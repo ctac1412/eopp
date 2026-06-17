@@ -1,14 +1,15 @@
-import { trainingService } from "../api/trainingService";
+﻿import { trainingService } from "../api/trainingService";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Card, Spin } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
+import PuzzleVariantTiles from "../../captcha/shared/PuzzleVariantTiles";
 import { Button, StatusTag, Toolbar } from "../../../ui";
 
 const COLORS = ["#dc3545", "#fd7e14", "#ffc107", "#198754", "#0d6efd"];
 
 function formatMs(ms) {
-  if (ms == null) return "—";
-  return `${(ms / 1000).toFixed(2)}с`;
+  if (ms == null) return "вЂ”";
+  return `${(ms / 1000).toFixed(2)}СЃ`;
 }
 
 // Approximate positions when x/y data is missing (old runs)
@@ -85,7 +86,7 @@ export default function TrainingReviewPage() {
   if (!data) {
     return (
       <div data-eopp-component="TrainingReviewPage" className="training-review-page">
-        <Alert type="info" showIcon message="Нет данных" />
+        <Alert type="info" showIcon message="РќРµС‚ РґР°РЅРЅС‹С…" />
       </div>
     );
   }
@@ -94,7 +95,7 @@ export default function TrainingReviewPage() {
   if (results.length === 0) {
     return (
       <div data-eopp-component="TrainingReviewPage" className="training-review-page">
-        <Alert type="info" showIcon message="Нет результатов" />
+        <Alert type="info" showIcon message="РќРµС‚ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ" />
       </div>
     );
   }
@@ -110,7 +111,7 @@ export default function TrainingReviewPage() {
     return iconTimes.length > 0 && iconTimes.every(it => it.x != null && it.y != null);
   };
 
-  // ── Icon-click review ──────────────────────────────────────────
+  // в”Ђв”Ђ Icon-click review в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
   const renderIconReview = () => {
     const mainImg = captchaData?.images?.["0"];
@@ -129,7 +130,7 @@ export default function TrainingReviewPage() {
           {mainImg && (
             <img
               src={"data:image/png;base64," + mainImg}
-              alt="Капча"
+              alt="РљР°РїС‡Р°"
               onLoad={measureContainer}
               style={{
                 width: "100%", maxWidth: "800px", maxHeight: "70vh",
@@ -217,7 +218,7 @@ export default function TrainingReviewPage() {
             let leftPct, topPct;
             if (hasCoord) {
               // Assume stored x/y are in the ORIGINAL image coordinates.
-              // We display on the rendered image — scale proportionally.
+              // We display on the rendered image вЂ” scale proportionally.
               // Since the image is shown at container width, we use imgSize.w
               leftPct = (it.x / imgSize.w) * 100;
               topPct = (it.y / imgSize.h) * 100;
@@ -257,7 +258,7 @@ export default function TrainingReviewPage() {
 
         {!exactCoords && iconTimes.length > 0 && (
           <small className="text-warning" style={{ fontSize: "0.75rem" }}>
-            ⚠ Приблизительные позиции — старый прогон без координат кликов
+            вљ  РџСЂРёР±Р»РёР·РёС‚РµР»СЊРЅС‹Рµ РїРѕР·РёС†РёРё вЂ” СЃС‚Р°СЂС‹Р№ РїСЂРѕРіРѕРЅ Р±РµР· РєРѕРѕСЂРґРёРЅР°С‚ РєР»РёРєРѕРІ
           </small>
         )}
 
@@ -266,7 +267,7 @@ export default function TrainingReviewPage() {
           <div style={{ textAlign: "center" }}>
             <img
               src={"data:image/png;base64," + iconsImg}
-              alt="Иконки"
+              alt="РРєРѕРЅРєРё"
               style={{ height: 50, borderRadius: 4, display: "block", margin: "0 auto" }}
               draggable={false}
             />
@@ -283,7 +284,7 @@ export default function TrainingReviewPage() {
                 border: `1px solid ${COLORS[i % COLORS.length]}`,
                 fontSize: "0.8rem", fontWeight: 500,
               }}>
-                <span style={{ color: COLORS[i % COLORS.length] }}>●</span> Ик.{i + 1}: {formatMs(it.duration_ms)}
+                <span style={{ color: COLORS[i % COLORS.length] }}>в—Џ</span> РРє.{i + 1}: {formatMs(it.duration_ms)}
               </div>
             ))}
           </div>
@@ -292,18 +293,18 @@ export default function TrainingReviewPage() {
     );
   };
 
-  // ── Puzzle review ──────────────────────────────────────────────
+  // в”Ђв”Ђ Puzzle review в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
   const renderPuzzleReview = () => {
-    if (!captchaData?.images) return null;
-    const imgKeys = Object.keys(captchaData.images).sort((a, b) => parseInt(a) - parseInt(b));
-    const cols = Math.min(imgKeys.length, 5);
+    if (!captchaData?.variants) return null;
+    const variantKeys = captchaData.variants.map((_, index) => String(index));
+    const cols = Math.min(variantKeys.length, 5);
     const chosen = current.variant_index;
     const correct = captchaData.valid_index;
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 8 }}>
-        {imgKeys.map(key => {
+        {variantKeys.map(key => {
           const vi = parseInt(key);
           const isChosen = chosen != null && vi === chosen;
           const isCorrect = correct != null && vi === correct;
@@ -317,19 +318,15 @@ export default function TrainingReviewPage() {
               border, borderRadius: 8, overflow: "hidden",
               opacity: (chosen != null && !isChosen && !isCorrect) ? 0.4 : 1,
             }}>
-              <img
-                src={"data:image/png;base64," + captchaData.images[key]}
-                alt={`Вариант ${vi}`}
-                style={{ width: "100%", display: "block" }}
-              />
+              <PuzzleVariantTiles entry={captchaData} index={vi} style={{ aspectRatio: "16 / 9" }} />
               <div style={{
                 textAlign: "center", padding: "4px 0", fontSize: "0.75rem",
                 background: "var(--surface-raised)", borderTop: "1px solid var(--border)",
               }}>
                 #{vi}
-                {isChosen && isCorrect && <StatusTag status="confirmed" label="Выбрано" />}
-                {isChosen && !isCorrect && <StatusTag status="failed" label="Выбрано" />}
-                {isCorrect && !isChosen && <StatusTag status="confirmed" label="Верно" />}
+                {isChosen && isCorrect && <StatusTag status="confirmed" label="Р’С‹Р±СЂР°РЅРѕ" />}
+                {isChosen && !isCorrect && <StatusTag status="failed" label="Р’С‹Р±СЂР°РЅРѕ" />}
+                {isCorrect && !isChosen && <StatusTag status="confirmed" label="Р’РµСЂРЅРѕ" />}
               </div>
             </div>
           );
@@ -338,7 +335,7 @@ export default function TrainingReviewPage() {
     );
   };
 
-  // ── Main render ────────────────────────────────────────────────
+  // в”Ђв”Ђ Main render в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
   const isIcon = captchaData?.captcha_type === 1;
 
@@ -348,16 +345,16 @@ export default function TrainingReviewPage() {
         className="training-review__toolbar"
         left={
           <Button size="small" onClick={() => navigate(`/training/run/${runId}/results`)}>
-            К результатам
+            Рљ СЂРµР·СѓР»СЊС‚Р°С‚Р°Рј
           </Button>
         }
         right={
           <>
             <Button size="small" onClick={goPrev} disabled={idx === 0}>
-              Пред.
+              РџСЂРµРґ.
             </Button>
             <Button size="small" onClick={goNext} disabled={idx >= total - 1}>
-              След.
+              РЎР»РµРґ.
             </Button>
           </>
         }
@@ -366,7 +363,7 @@ export default function TrainingReviewPage() {
       <Card data-eopp-component="TrainingReviewNavCard" size="small">
         <div className="training-review__nav">
           <div className="training-review__title">
-            <strong>Капча {idx + 1} из {total}</strong>
+            <strong>РљР°РїС‡Р° {idx + 1} РёР· {total}</strong>
             <span>{current.captcha_id?.slice(0, 16)}...</span>
           </div>
           <div className="training-review__dots">
@@ -391,12 +388,12 @@ export default function TrainingReviewPage() {
         <Card
           data-eopp-component="TrainingReviewImageCard"
           size="small"
-          title={isIcon ? "Клик-капча" : "Пазл"}
+          title={isIcon ? "РљР»РёРє-РєР°РїС‡Р°" : "РџР°Р·Р»"}
           extra={
             <div className="training-review__status">
               <StatusTag
                 status={current.status === "correct" ? "confirmed" : current.status === "incorrect" ? "failed" : "warning"}
-                label={current.status === "correct" ? "Правильно" : current.status === "incorrect" ? "Ошибка" : current.status}
+                label={current.status === "correct" ? "РџСЂР°РІРёР»СЊРЅРѕ" : current.status === "incorrect" ? "РћС€РёР±РєР°" : current.status}
               />
               <span>{formatMs(current.duration_ms)}</span>
             </div>
@@ -405,7 +402,7 @@ export default function TrainingReviewPage() {
           {isIcon ? renderIconReview() : renderPuzzleReview()}
         </Card>
       ) : (
-        <Alert type="error" showIcon message="Не удалось загрузить капчу" />
+        <Alert type="error" showIcon message="РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РєР°РїС‡Сѓ" />
       )}
     </div>
   );

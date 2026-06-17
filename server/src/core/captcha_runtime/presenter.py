@@ -1,7 +1,6 @@
 """Captcha presentation builder for human-facing solve sessions."""
 
 from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -76,13 +75,14 @@ class CaptchaPresenter:
         tiles = puzzle.get("tiles", [])
         variants = puzzle.get("variantsCapture", [])
         valid_index = get_valid_variant_index(data)
-        generated = self._assemble_puzzle(tiles, variants, valid_index)
         session = CaptchaSession(
             captcha_id=captcha_id,
             variants=variants,
-            images={str(item["index"]): item["image"] for item in generated},
+            images={},
             event=event,
             usage_log_id=usage_log_id,
             api_key_id=api_key_id,
+            tiles=tiles,
+            valid_index=valid_index,
         )
-        return CaptchaPresentation(session=session, metadata={"generated": len(generated)})
+        return CaptchaPresentation(session=session, metadata={"generated": 0})

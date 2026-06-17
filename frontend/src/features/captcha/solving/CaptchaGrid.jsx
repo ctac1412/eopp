@@ -85,10 +85,10 @@ function CaptchaGrid() {
     return <IconClickCaptcha key={active.id} entry={active} />;
   }
 
-  const imgKeys = Object.keys(active.images);
+  const variantKeys = (active.variants || []).map((_, index) => String(index));
   const top3 = active.top3;
 
-  const ordered = imgKeys.slice().sort((a, b) => {
+  const ordered = variantKeys.slice().sort((a, b) => {
     const ra = top3.indexOf(a), rb = top3.indexOf(b);
     if (ra >= 0 && rb >= 0) return ra - rb;
     if (ra >= 0) return -1;

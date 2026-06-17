@@ -16,10 +16,13 @@ router = APIRouter(tags=["captchas"])
 
 
 @router.get("/public/captchas")
-async def get_public_captchas():
+async def get_public_captchas(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     from src.db.captchas import list_public_captchas
 
-    return JSONResponse(content=list_public_captchas())
+    return JSONResponse(content=list_public_captchas(limit=limit, offset=offset))
 
 
 @router.post("/public/captchas/send-selected")

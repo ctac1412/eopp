@@ -43,7 +43,7 @@ export const backend = {
     trainingCourses: () => request("/training/courses"),
     triggerTest: (payload) => request("/trigger-test", { method: "POST", json: payload }),
     public: {
-      list: () => request("/public/captchas"),
+      list: (query) => request("/public/captchas", { query }),
       sendSelected: (payload) => request("/public/captchas/send-selected", { method: "POST", json: payload }),
     },
     history: {

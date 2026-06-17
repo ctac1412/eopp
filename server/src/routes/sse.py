@@ -17,10 +17,15 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, Literal, TypeAlias, TypedDict
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from src.core.captcha_runtime.display_payload import NewCaptchaPayload, build_new_captcha_message
+from src.core.captcha_runtime.sessions import CaptchaSession
 from src.repositories import api_key_repo
 from src.routes.chat import get_chat_history
 from src.routes.scheduled import get_scheduled_events_for_masters
@@ -30,6 +35,43 @@ from src.sse.manager import registry as realtime_registry
 
 logger = logging.getLogger("eopp.sse")
 router = APIRouter(tags=["sse"])
+
+PendingCaptchaMap: TypeAlias = Mapping[str, CaptchaSession | Mapping[str, Any]]
+DistributionState: TypeAlias = Mapping[str, Any]
+DistributionStateMap: TypeAlias = Mapping[str, DistributionState]
+
+
+class DistributionProgressPayload(TypedDict):
+    type: Literal["distribution_progress"]
+    captcha_id: str
+    solved_count: int
+    total_icons: int
+    answered_positions: list[int]
+    all_coords: dict[int, dict[str, Any]]
+
+
+SseEvent: TypeAlias = NewCaptchaPayload | DistributionProgressPayload
+
+
+@dataclass(frozen=True, slots=True)
+class DistributionProgressMessage:
+    """Typed snapshot event for already-submitted distributed icon answers."""
+
+    captcha_id: str
+    solved_count: int
+    total_icons: int
+    answered_positions: list[int]
+    all_coords: dict[int, dict[str, Any]]
+
+    def to_dict(self) -> DistributionProgressPayload:
+        return {
+            "type": "distribution_progress",
+            "captcha_id": self.captcha_id,
+            "solved_count": self.solved_count,
+            "total_icons": self.total_icons,
+            "answered_positions": self.answered_positions,
+            "all_coords": self.all_coords,
+        }
 
 
 def _parse_help_for(raw: str | None) -> set[int]:
@@ -44,58 +86,46 @@ def _parse_help_for(raw: str | None) -> set[int]:
 
 
 def _pending_snapshot_events(
-    pending_map,
-    distribution_states,
+    pending_map: PendingCaptchaMap,
+    distribution_states: DistributionStateMap,
     *,
     api_key_id: int,
     owner_label: str,
     timeout: int | float,
     now: float | None = None,
-) -> list[dict]:
+) -> list[SseEvent]:
     """Return SSE events needed to restore active captchas after reconnect."""
 
     created_at = time.time() if now is None else now
-    events = []
+    events: list[SseEvent] = []
     for entry in list(pending_map.values()):
         entry_api_key_id = entry.get("api_key_id") if hasattr(entry, "get") else None
         if entry_api_key_id != api_key_id or entry.get("result") is not None:
             continue
 
         captcha_id = entry.get("captcha_id")
-        images = entry.get("images", {}) or {}
-        captcha_event = {
-            "type": "new_captcha",
-            "captcha_id": captcha_id,
-            "images": images,
-            "count": len(images),
-            "top3": [],
-            "confident": False,
-            "created_at": created_at,
-            "timeout": entry.get("timeout", timeout),
-            "owner_label": owner_label,
-            "owner_api_key_id": api_key_id,
-        }
-        if entry.get("captcha_type") is not None:
-            captcha_event["captcha_type"] = entry.get("captcha_type")
-        if entry.get("icons_image"):
-            captcha_event["icons_image"] = entry.get("icons_image")
-        if entry.get("distribution") is not None:
-            captcha_event["distribution"] = entry.get("distribution")
-        events.append(captcha_event)
+        events.append(
+            build_new_captcha_message(
+                entry,
+                created_at=created_at,
+                timeout=timeout,
+                owner_label=owner_label,
+                owner_api_key_id=api_key_id,
+            ).to_dict()
+        )
 
         dist_state = distribution_states.get(captcha_id)
         if dist_state and dist_state.get("api_key_id") == api_key_id:
             all_answers = dict(dist_state.get("all_answers") or {})
             if all_answers:
                 events.append(
-                    {
-                        "type": "distribution_progress",
-                        "captcha_id": captcha_id,
-                        "solved_count": len(all_answers),
-                        "total_icons": dist_state.get("total_icons", 5),
-                        "answered_positions": sorted(all_answers.keys()),
-                        "all_coords": all_answers,
-                    }
+                    DistributionProgressMessage(
+                        captcha_id=captcha_id,
+                        solved_count=len(all_answers),
+                        total_icons=dist_state.get("total_icons", 5),
+                        answered_positions=sorted(all_answers.keys()),
+                        all_coords=all_answers,
+                    ).to_dict()
                 )
     return events
 

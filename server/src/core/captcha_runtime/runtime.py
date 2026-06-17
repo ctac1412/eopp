@@ -23,6 +23,7 @@ from src.core.contracts.events import (
 )
 from src.platform.observability.metrics import gauge_set, histogram_observe
 
+from .display_payload import build_new_captcha_message
 from .presenter import CaptchaPresenter
 from .sessions import CaptchaSession, CaptchaSessionStore
 
@@ -395,25 +396,19 @@ class CaptchaRuntime:
     ) -> None:
         """Publish the legacy ``new_captcha`` SSE message for a session."""
 
-        message = {
-            "type": "new_captcha",
-            "captcha_id": session.captcha_id,
-            "images": session.images,
-            "count": len(session.images),
-            "top3": top3,
-            "confident": confident,
-            "created_at": time.time(),
-            "timeout": session.get("timeout", self.dependencies.captcha_timeout),
-            "owner_label": owner_label,
-            "owner_api_key_id": session.api_key_id,
-        }
-        if is_icon_click_type(data):
-            message["captcha_type"] = 1
-            message["icons_image"] = session.icons_image
-        if is_distributed:
-            message["distribution"] = session.distribution
-            message.update(metadata.get("sse_extra", {}))
-        self.dependencies.push_sse(message, api_key_id=session.api_key_id)
+        message = build_new_captcha_message(
+            session,
+            top3=top3,
+            confident=confident,
+            timeout=self.dependencies.captcha_timeout,
+            owner_label=owner_label,
+            owner_api_key_id=session.api_key_id,
+            extra=metadata.get("sse_extra", {}) if is_distributed else None,
+        )
+        message_dict = message.to_dict()
+        if is_icon_click_type(data) and message_dict.get("captcha_type") is None:
+            message_dict["captcha_type"] = 1
+        self.dependencies.push_sse(message_dict, api_key_id=session.api_key_id)
         for extra_message, target_id in metadata.get("extra_sse", []):
             self.dependencies.push_sse(extra_message, api_key_id=target_id)
 
