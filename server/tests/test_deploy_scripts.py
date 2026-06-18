@@ -41,11 +41,21 @@ def test_deploy_uses_release_manifest_and_mandatory_backup():
     assert "Write-ReleaseManifest" in script
     assert "Invoke-RemoteBackup" in script
     assert "Show-ReleaseDiffSummary" in script
-    assert '"release_type" = "full_state_promotion"' in script
+    assert '"release_type" = if ($PromoteData) { "full_state_promotion" } else { "hotfix_code_promotion" }' in script
     assert '"release_id" = $releaseId' in script
     assert '"db_backup" = $backupId' in script
     assert '"plugins_sha256" = $pluginsSha' in script
     assert "EOPP_AUTO_MIGRATE=0" in script
+
+
+def test_deploy_skips_local_data_promotion_by_default():
+    script = read_script("deploy.ps1")
+
+    assert "[switch]$PromoteData" in script
+    assert "SkipDataPromotion" not in script
+    assert "if ($PromoteData)" in script
+    assert "Confirm-ProductionAction -Prompt \"Promote local DB and JSON content" in script
+    assert "$dataSha = if ($PromoteData)" in script
 
 
 def test_deploy_passes_git_metadata_into_docker_build():

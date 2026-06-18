@@ -115,7 +115,7 @@ Endpoints:
 Extension:
 - feature toggle in popup config;
 - `sharedSlotsEnabled`;
-- `sharedSlotsWaitMs`, default `1600`;
+- `sharedSlotsWaitMs`, default `5000`;
 - group key is based on exact `AvailableSlots` request fingerprint;
 - fallback to direct EOPP fetch on timeout or failure.
 

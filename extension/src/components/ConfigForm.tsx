@@ -576,7 +576,7 @@ const ConfigForm = React.memo(function ConfigForm() {
                     type="number"
                     min={0}
                     max={5000}
-                    value={config.sharedSlotsWaitMs || 1600}
+                    value={config.sharedSlotsWaitMs || 5000}
                     onChange={(e) =>
                       handleChange("sharedSlotsWaitMs", Number(e.target.value))
                     }

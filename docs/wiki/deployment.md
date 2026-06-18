@@ -18,7 +18,7 @@ A release contains:
 - mandatory backup id.
 - checksums for compose, nginx, plugins, and optionally data.
 
-## Deployment / Full State Promotion
+## Deployment / Code Promotion By Default
 
 ```mermaid
 flowchart TD
@@ -27,11 +27,15 @@ flowchart TD
   BuildExt --> BuildImage["docker build image"]
   BuildImage --> Diff["Show git/DB/data/plugin diff summary"]
   Diff --> Confirm["Operator confirms production promotion"]
-  Confirm --> Backup["Invoke mandatory remote backup"]
+  Confirm --> DataConfirm{"-PromoteData?"}
+  DataConfirm -->|yes| ConfirmData["Operator confirms local DB/JSON promotion"]
+  DataConfirm -->|no| Backup
+  ConfirmData --> Backup
+  Backup["Invoke mandatory remote backup"]
   Backup --> Upload["Upload image, compose, nginx, plugins, manifest"]
-  Upload --> Data{"SkipDataPromotion?"}
-  Data -->|no| PromoteData["Stop app, copy DB/content to shared/data, remove WAL/SHM"]
-  Data -->|yes| Symlink
+  Upload --> Data{"PromoteData?"}
+  Data -->|yes| PromoteData["Stop app, copy DB/content to shared/data, remove WAL/SHM"]
+  Data -->|no| Symlink
   PromoteData --> Symlink["Switch current/previous symlinks"]
   Symlink --> Migrate["Run explicit migrate.ps1"]
   Migrate --> StartApp["docker compose up with EOPP_AUTO_MIGRATE=0"]
@@ -39,6 +43,10 @@ flowchart TD
   Verify -->|pass| MarkGood["release.json health=passed"]
   Verify -->|fail| Rollback["rollback.ps1"]
 ```
+
+`deploy.ps1` does not promote local `server/data` by default. Use
+`-PromoteData` or `make deploy-full-state` only when replacing production
+`shared/data` is intentional.
 
 Audit risk: `deploy.ps1` switches `current` before migration and health verification. If a
 candidate migration fails, rollback runs, but the candidate was already current during the
@@ -103,4 +111,3 @@ backup id.
 | Diff summary is printed, not persisted as a release artifact | hard to audit later | write `diff/*.json` and `files_changed.txt` into release dir |
 | Deploy tests are static token checks | scripts may pass tests while runtime sequence breaks | add mocked shell/integration tests for promotion/rollback paths |
 | Plugin-only release advances `current` | code release and plugin release history may interleave | decide whether plugin releases are full releases or child manifests |
-

@@ -146,7 +146,7 @@ export function createDefaultConfig(
     maxSlotRetries: 8,
     slotRetryDelayMs: 500,
     sharedSlotsEnabled: false,
-    sharedSlotsWaitMs: 15000,
+    sharedSlotsWaitMs: 5000,
     sharedSlotsMode: "reuse",
     retryPerEndpoint: {
       getAvailableSlots: defaultSlotsRetryConfig(),

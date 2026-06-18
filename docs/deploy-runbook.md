@@ -1,8 +1,8 @@
 # EOPP Deploy Runbook
 
-This runbook documents Phase 9 production delivery. A release is one promoted
-state: code, database, JSON content, config, Docker image, and plugins share a
-single `release_id` and `release.json`.
+This runbook documents Phase 9 production delivery. A release has one
+`release_id` and `release.json`. Normal deploys promote code/plugins only;
+local database and JSON content are promoted only by explicit operator choice.
 
 ```json
 {
@@ -48,10 +48,10 @@ Production uses this remote shape:
 and `./current/plugins`. App startup has `EOPP_AUTO_MIGRATE=0`; migrations are
 run explicitly by `scripts/deploy/migrate.ps1`.
 
-## Normal Full-State Deploy
+## Normal Code Deploy
 
-Use this when local code, DB, JSON fixtures/content, and plugins should move to
-prod as one state.
+Use this when local code and plugin assets should move to prod without
+replacing production `shared/data`.
 
 ```powershell
 make deploy
@@ -67,11 +67,22 @@ The deploy script:
 5. Creates a mandatory remote backup under `shared/backups`.
 6. Uploads `docker-compose.yml`, `nginx-default.conf`, `plugins/`, and
    `release.json` to `releases/<release_id>`.
-7. Promotes local `server/data/api_keys.db` and `server/data/captcha_examples`
-   into `shared/data`.
+7. Leaves production `shared/data` untouched.
 8. Runs `migrate.ps1` explicitly.
 9. Starts the app with `EOPP_AUTO_MIGRATE=0`.
 10. Runs `verify-release.ps1` and marks `health` as `passed`.
+
+## Full-State Deploy
+
+Use this only when local `server/data/api_keys.db` and JSON content should
+replace production `shared/data` as part of the release. The script asks for an
+additional production confirmation before copying data.
+
+```powershell
+make deploy-full-state
+# or
+powershell -ExecutionPolicy Bypass -File scripts/deploy/deploy.ps1 -PromoteData
+```
 
 ## Plugin-Only Deploy
 

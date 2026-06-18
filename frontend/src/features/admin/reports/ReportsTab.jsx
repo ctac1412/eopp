@@ -247,6 +247,14 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
         const recalculateData = await recalculateRes.json();
         if (Array.isArray(recalculateData.entries)) {
           setFinanceEntries((prev) => ({ ...prev, [recordId]: recalculateData.entries }));
+          if (recalculateData.usage_log) {
+            setRecords((prev) => prev.map((record) => (
+              record.id === recordId ? { ...record, ...recalculateData.usage_log } : record
+            )));
+            setShowEditModal((current) => (
+              current?.id === recordId ? { ...current, ...recalculateData.usage_log } : current
+            ));
+          }
           return recalculateData.entries;
         }
       }

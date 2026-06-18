@@ -91,6 +91,9 @@ deploy-preflight:
 deploy:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/deploy.ps1"
 
+deploy-full-state:
+	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/deploy.ps1" -PromoteData
+
 deploy-backup:
 	powershell -ExecutionPolicy Bypass -File "$(CURDIR)/scripts/deploy/backup.ps1"
 

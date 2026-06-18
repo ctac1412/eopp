@@ -4,13 +4,15 @@ Build and promote one complete EOPP production release.
 
 .DESCRIPTION
 Creates a release_id, release.json, Docker image, release-bound plugins,
-optional full-state data bundle, mandatory remote backup, explicit migration
-step, health verification, and current/previous symlink promotion.
+optional local data promotion, mandatory remote backup, explicit migration step,
+health verification, and current/previous symlink promotion. By default this is
+a code/plugin release; pass -PromoteData only when local DB/JSON content must
+replace production shared/data.
 #>
 
 param(
     [switch]$Force,
-    [switch]$SkipDataPromotion
+    [switch]$PromoteData
 )
 
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -35,7 +37,10 @@ Check-SSH
 Check-Docker
 
 Show-ReleaseDiffSummary -ReleaseId $releaseId -LocalDbPath $localDbPath -PluginsDir $pluginsDir -DataDir $localDataDir
-Confirm-ProductionAction -Prompt "Promote release $releaseId to production as full_state_promotion?" -Force:$Force
+Confirm-ProductionAction -Prompt "Promote release $releaseId to production as code/plugin release?" -Force:$Force
+if ($PromoteData) {
+    Confirm-ProductionAction -Prompt "Promote local DB and JSON content from server/data to production shared/data for release $releaseId?" -Force:$Force
+}
 
 New-Item -ItemType Directory -Force -Path $localReleaseDir | Out-Null
 
@@ -67,12 +72,12 @@ Log-Success "Mandatory backup created: $backupId"
 $composeSha = Get-FileSha256 -Path $composePath
 $nginxSha = Get-FileSha256 -Path $nginxPath
 $pluginsSha = Get-DirectorySha256 -Path $pluginsDir
-$dataSha = if ($SkipDataPromotion) { "" } else { Get-DirectorySha256 -Path $localDataDir }
+$dataSha = if ($PromoteData) { Get-DirectorySha256 -Path $localDataDir } else { "" }
 
 $manifestPath = Join-Path $localReleaseDir "release.json"
 $manifest = @{
     "release_id" = $releaseId
-    "release_type" = "full_state_promotion"
+    "release_type" = if ($PromoteData) { "full_state_promotion" } else { "hotfix_code_promotion" }
     "git_sha" = $gitSha
     "image" = $imageFull
     "created_at" = (Get-Date -Format o)
@@ -85,7 +90,7 @@ $manifest = @{
     "migration_after" = "head"
     "health" = "pending"
     "requires_db_restore_on_rollback" = $false
-    "deployment_model" = "code + DB + JSON + plugins as one promotable state"
+    "deployment_model" = if ($PromoteData) { "code + DB + JSON + plugins as one promotable state" } else { "code + plugins only; data promotion skipped by default" }
 }
 Write-ReleaseManifest -Path $manifestPath -Manifest $manifest
 
@@ -117,7 +122,7 @@ Log-Info "Loading image on server..."
 $null = Remote-Exec "docker load -i /tmp/eopp-$releaseId.tar && rm -f /tmp/eopp-$releaseId.tar"
 Remove-Item $tmpTar -Force
 
-if (-not $SkipDataPromotion) {
+if ($PromoteData) {
     Log-Info "Promoting local DB and JSON content to shared/data staging..."
     $remoteStage = "$script:RemoteSharedDir/staging/$releaseId/data"
     $null = Remote-Exec "rm -rf '$remoteStage' && mkdir -p '$remoteStage'"

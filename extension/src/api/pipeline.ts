@@ -284,7 +284,7 @@ async function fetchSlotsWithSharedGroup(
 
   const groupKey = getSharedSlotsGroupKey(config);
   const clientId = getSharedSlotsClientId(config.reservationId);
-  const waitMs = Math.max(0, config.sharedSlotsWaitMs || 1600);
+  const waitMs = Math.max(0, config.sharedSlotsWaitMs || 5000);
   let isMaster = false;
 
   try {

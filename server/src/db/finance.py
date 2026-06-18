@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from src.db.connection import get_connection
@@ -161,8 +162,31 @@ def create_usage_finance_entries(conn, usage_log_id: int, price: int) -> None:
         )
 
 
+def _current_usage_tariff_price(usage) -> int | None:
+    if usage["status"] != "confirmed" or not usage["confirmed_at"]:
+        return None
+
+    from src.db.tariffs import get_usage_effective_tariff
+    from src.db.usage_log import _calculate_usage_price
+
+    try:
+        config_json = json.loads(usage["config_json"]) if usage["config_json"] else None
+    except (json.JSONDecodeError, TypeError):
+        config_json = None
+    mode = config_json.get("mode", "create") if isinstance(config_json, dict) else "create"
+    tariff = get_usage_effective_tariff(usage["api_key_id"], usage["company_id"])
+    if not tariff:
+        return None
+    return _calculate_usage_price(
+        mode,
+        tariff,
+        usage["confirmed_at"],
+        bool(usage["has_custom_slots"]),
+    )
+
+
 def recalculate_usage_finance_entries(usage_log_id: int) -> list[dict]:
-    """Rebuild open automatic finance entries from the current usage log price."""
+    """Rebuild open automatic finance entries from the current usage tariff price."""
 
     conn = get_connection()
     try:
@@ -171,7 +195,15 @@ def recalculate_usage_finance_entries(usage_log_id: int) -> list[dict]:
         if usage is None:
             conn.execute("ROLLBACK")
             raise ValueError(f"usage_log {usage_log_id} not found")
-        if usage["price"] is None:
+        price = _current_usage_tariff_price(usage)
+        if price is not None and price != usage["price"]:
+            conn.execute(
+                "UPDATE usage_log SET price = ? WHERE id = ?",
+                (price, usage_log_id),
+            )
+        if price is None:
+            price = usage["price"]
+        if price is None:
             conn.execute("ROLLBACK")
             raise ValueError(f"usage_log {usage_log_id} has no price")
         conn.execute(
@@ -185,7 +217,7 @@ def recalculate_usage_finance_entries(usage_log_id: int) -> list[dict]:
             """,
             (usage_log_id,),
         )
-        create_usage_finance_entries(conn, usage_log_id, int(usage["price"]))
+        create_usage_finance_entries(conn, usage_log_id, int(price))
         if usage["invoice_id"] is not None:
             rebuild_profit_lots(conn, int(usage["invoice_id"]), [usage_log_id])
         conn.commit()

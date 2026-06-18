@@ -108,7 +108,8 @@ def recalculate_usage_finance_entries(usage_log_id: int) -> tuple[int, dict]:
         if "not found" in message:
             return 404, {"error": message}
         return 422, {"error": message}
-    return 200, {"ok": True, "entries": entries}
+    usage_log = usage_log_repo.get_usage_log(usage_log_id)
+    return 200, {"ok": True, "entries": entries, "usage_log": usage_log}
 
 
 def update_api_key(api_key_id: int, body, *, admin_id: int | None = None, access_decision=None) -> tuple[int, dict]:

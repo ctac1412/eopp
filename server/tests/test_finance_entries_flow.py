@@ -751,7 +751,7 @@ def test_recalculate_removes_open_operator_salary_for_free_operator(isolated_api
             (api_key_id, reservation_id, status, created_at, confirmed_at, price, company_id, company, is_test)
         VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, 0)
         """,
-        (api_key_id, "res-recalc-free", _now(), _now(), company_id, "Recalc Free Co"),
+        (api_key_id, "res-recalc-free", _now(), _non_peak_time(), company_id, "Recalc Free Co"),
     )
     usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.execute(
@@ -788,6 +788,121 @@ def test_recalculate_removes_open_operator_salary_for_free_operator(isolated_api
     conn.close()
 
     assert [(row["kind"], row["amount"]) for row in rows] == [("customer_income", 1000)]
+
+
+def test_recalculate_usage_finance_entries_refreshes_price_from_usage_company_tariff(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.db.finance import recalculate_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Key Company", _now()))
+    key_company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Usage Company", _now()))
+    usage_company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (key_company_id, 1000, 500, 0, 0, _now(), _now()),
+    )
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (usage_company_id, 3000, 10000, 0, 0, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("recalc-usage-company-key", "Recalc usage company", _now(), key_company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, config_json, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, ?, 0)
+        """,
+        (
+            api_key_id,
+            "res-recalc-usage-company",
+            _now(),
+            _non_peak_time(),
+            '{"mode":"create"}',
+            usage_company_id,
+            "Usage Company",
+        ),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO finance_entries
+            (usage_log_id, kind, amount, edit_state, source, source_key, created_at, updated_at)
+        VALUES (?, 'customer_income', 1000, 'open', 'system', ?, ?, ?)
+        """,
+        (usage_log_id, f"usage:{usage_log_id}:income", _now(), _now()),
+    )
+    conn.commit()
+    conn.close()
+
+    rows = recalculate_usage_finance_entries(usage_log_id)
+
+    conn = get_connection()
+    usage = conn.execute("SELECT price FROM usage_log WHERE id = ?", (usage_log_id,)).fetchone()
+    conn.close()
+
+    assert usage["price"] == 3000
+    assert [(row["kind"], row["amount"]) for row in rows] == [("customer_income", 3000)]
+
+
+def test_recalculate_usage_finance_service_returns_updated_usage_log_price(isolated_api_db):
+    from src.db.connection import get_connection
+    from src.services.billing_service import recalculate_usage_finance_entries
+
+    conn = get_connection()
+    conn.execute("INSERT INTO companies (name, created_at) VALUES (?, ?)", ("Service Recalc Co", _now()))
+    company_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO company_tariffs
+            (company_id, price_create, price_reschedule, executor_amount, operator_amount, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (company_id, 3000, 10000, 0, 0, _now(), _now()),
+    )
+    conn.execute(
+        "INSERT INTO api_keys (key, label, created_at, company_id) VALUES (?, ?, ?, ?)",
+        ("service-recalc-key", "Service recalc", _now(), company_id),
+    )
+    api_key_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO usage_log
+            (api_key_id, reservation_id, status, created_at, confirmed_at, price, config_json, company_id, company, is_test)
+        VALUES (?, ?, 'confirmed', ?, ?, 1000, ?, ?, ?, 0)
+        """,
+        (
+            api_key_id,
+            "res-service-recalc",
+            _now(),
+            _non_peak_time(),
+            '{"mode":"create"}',
+            company_id,
+            "Service Recalc Co",
+        ),
+    )
+    usage_log_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.commit()
+    conn.close()
+
+    status, content = recalculate_usage_finance_entries(usage_log_id)
+
+    assert status == 200
+    assert content["usage_log"]["id"] == usage_log_id
+    assert content["usage_log"]["price"] == 3000
 
 
 def test_executor_salary_uses_api_key_owner_and_company_tariff(isolated_api_db):
