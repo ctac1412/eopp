@@ -4,6 +4,7 @@ import { parseTime, mskToUtcSeconds } from "@/hooks/useClock";
 import { useInjector } from "@/hooks/useInjector";
 import { useScheduler } from "@/hooks/useScheduler";
 import { checkStream, openServerUrl, getDefaultScheduleTime, sendScheduledEvent } from "@/api/background";
+import { pingSlotsLimit } from "@/api/slots-ping";
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
@@ -50,6 +51,12 @@ const Scheduler = React.memo(function Scheduler() {
       }
     } catch {
       setStatusMessage("Не удалось проверить подключение к серверу");
+      setStatusClass("qn-modal-status-error");
+      return;
+    }
+    const pingResult = await pingSlotsLimit(config);
+    if (pingResult === "limit-missing") {
+      setStatusMessage("Планирование остановлено: лимита слотов нет");
       setStatusClass("qn-modal-status-error");
       return;
     }

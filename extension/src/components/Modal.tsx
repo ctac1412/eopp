@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import ConfigForm from "./ConfigForm";
 import Scheduler from "./Scheduler";
 import StatusBar from "./StatusBar";
@@ -9,6 +9,7 @@ import AuthHeader from "./AuthHeader";
 import { useClock } from "@/hooks/useClock";
 import { useInjectorStore } from "@/store";
 import { getServerUrl } from "@/api/background";
+import { pingSlotsLimit } from "@/api/slots-ping";
 
 interface Props {
   onClose: () => void;
@@ -24,12 +25,24 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
   const authError = useInjectorStore((s) => s.authError);
   const clearAuthKey = useInjectorStore((s) => s.clearAuthKey);
   const updateField = useInjectorStore((s) => s.updateField);
+  const config = useInjectorStore((s) => s.config);
+  const [slotsPingLoading, setSlotsPingLoading] = useState(false);
   const isReady = authKey !== "" && authKeyStatus !== null && !authChecking;
 
   const handleLogout = () => {
     clearAuthKey();
     updateField("apiKey", "");
     localStorage.removeItem("_k");
+  };
+
+  const handlePingSlotsLimit = async () => {
+    if (slotsPingLoading) return;
+    setSlotsPingLoading(true);
+    try {
+      await pingSlotsLimit(config);
+    } finally {
+      setSlotsPingLoading(false);
+    }
   };
 
   return (
@@ -50,6 +63,16 @@ const Modal = React.memo(function Modal({ onClose }: Props) {
           >
             Сервер
           </button>
+          {isReady && (
+            <button
+              className="qn-modal-server-btn qn-modal-ping-btn"
+              onClick={handlePingSlotsLimit}
+              disabled={slotsPingLoading}
+              title="Пинг лимита слотов"
+            >
+              {slotsPingLoading ? "Пинг..." : "Пинг слотов"}
+            </button>
+          )}
           <div className="qn-header-center">
             {isReady && <AuthHeader onLogout={handleLogout} />}
             <StatusBar />

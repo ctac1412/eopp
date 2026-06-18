@@ -39,6 +39,46 @@ export function describeHttpError(err: unknown): string {
   return "";
 }
 
+export type EoppHttpErrorInfo = {
+  title: string | null;
+  eoppStatus: number | null;
+  detail: string | null;
+};
+
+export function parseEoppHttpError(err: unknown): EoppHttpErrorInfo | null {
+  const body = (err as { body?: string | null })?.body;
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as {
+      title?: unknown;
+      eoppStatus?: unknown;
+      detail?: unknown;
+    };
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : null,
+      eoppStatus: typeof parsed.eoppStatus === "number" ? parsed.eoppStatus : null,
+      detail: typeof parsed.detail === "string" ? parsed.detail : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function getEoppHttpErrorTag(err: unknown): string {
+  const parsed = parseEoppHttpError(err);
+  if (!parsed) return "";
+  if (parsed.title && parsed.eoppStatus != null) {
+    return ` [${parsed.title}:${parsed.eoppStatus}]`;
+  }
+  if (parsed.title) {
+    return ` [${parsed.title}]`;
+  }
+  if (parsed.eoppStatus != null) {
+    return ` [eoppStatus:${parsed.eoppStatus}]`;
+  }
+  return "";
+}
+
 function getCookie(name: string): string | null {
   const prefix = `${name}=`;
   const item = document.cookie
@@ -247,8 +287,9 @@ export async function retryWith429And400<T>(
       ) {
         attempts400++;
         last400Error = err;
+        const errorTag = getEoppHttpErrorTag(err);
         log(
-          `Получен 400, повтор через ${retry400.delayMs / 1000}с (400-попытка ${attempts400}/${retry400.maxRetries})${lbl}`,
+          `Получен 400${errorTag}, повтор через ${retry400.delayMs / 1000}с (400-попытка ${attempts400}/${retry400.maxRetries})${lbl}`,
         );
         await waitForRetry(retry400.delayMs, signal);
         continue;

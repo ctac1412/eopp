@@ -24,6 +24,8 @@ import type {
 } from "@/types";
 import {
   describeHttpError,
+  getEoppHttpErrorTag,
+  parseEoppHttpError,
   isEoppAccessChallengeError,
   retryOn429,
   retryWith429And400,
@@ -164,6 +166,8 @@ async function trackStage<T>(
 function serializeError(err: unknown): string {
   const httpDescription = describeHttpError(err);
   if (httpDescription) return httpDescription;
+  const eoppTag = getEoppHttpErrorTag(err);
+  if (eoppTag) return `EOPP${eoppTag}`;
   if (err instanceof Error) return err.message;
   if (typeof err === "object" && err !== null) {
     try {
@@ -190,6 +194,30 @@ async function retryWithConfig<T>(
     return fn();
   }
   return retryOn429(fn, rc.maxRetries, rc.delayMs, endpoint, signal);
+}
+
+function isMaxActiveReservationsForFacility(err: unknown): boolean {
+  const parsed = parseEoppHttpError(err);
+  return (
+    parsed?.title === "MaxActiveReservationsForFacility" &&
+    parsed.eoppStatus === 40118
+  );
+}
+
+async function getAvailableSlotsWithTyped400(
+  config: InjectorConfig,
+  signal?: AbortSignal,
+): Promise<SlotsResponse> {
+  try {
+    return await getAvailableSlots(config, signal);
+  } catch (err) {
+    if (isMaxActiveReservationsForFacility(err)) {
+      const message = `Получен 400 [MaxActiveReservationsForFacility:40118], остановка ретраев [getAvailableSlots]`;
+      log(message);
+      throw new Error(`${message}: ${describeEoppError(err)}`);
+    }
+    throw err;
+  }
 }
 
 /**
@@ -268,7 +296,7 @@ async function fetchSlotsDirect(
   signal?: AbortSignal,
 ): Promise<SlotsResponse> {
   return retrySlotsWithConfig(
-    () => getAvailableSlots(config, signal),
+    () => getAvailableSlotsWithTyped400(config, signal),
     config,
     signal,
   );
@@ -310,6 +338,7 @@ async function fetchSlotsWithSharedGroup(
     }
 
     if (claim.role === "master") {
+      isMaster = true;
       log("Общие слоты: этот клиент мастер, запрашиваю EOPP и публикую результат");
 
       const masterConfig = {
@@ -320,7 +349,7 @@ async function fetchSlotsWithSharedGroup(
         },
       };
 
-      const masterFn = () => getAvailableSlots(masterConfig, signal);
+      const masterFn = () => getAvailableSlotsWithTyped400(masterConfig, signal);
 
       try {
         const slotsResponse = await retrySlotsWithHeartbeat(masterFn, masterConfig, groupKey, clientId, signal);

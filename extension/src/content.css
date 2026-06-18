@@ -437,6 +437,11 @@
   border-color: #ffcc00;
 }
 
+.qn-modal-server-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .qn-modal-close {
   background: none;
   border: none;
