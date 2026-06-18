@@ -9,7 +9,7 @@
 | F1 | Счета: фильтры и сводная аналитика | done | `frontend/src/components/admin/InvoicesTab.jsx` | Добавлены поиск, фильтры, summary cards, улучшенная таблица. |
 | F2 | Расходы: фильтры и сводная аналитика | done | `frontend/src/components/admin/ExpensesTab.jsx` | Добавлены поиск, фильтры, summary cards, распределение. |
 | F3 | Выплаты: новый визуал, фильтры, аналитика | done | `frontend/src/components/admin/PayoutsTab.jsx` | Добавлены фильтры, сводки, участники, детали счетов/расходов. |
-| C1 | Benchmark/captcha examples audit | done | `tests/test_solve_captcha.py`, `src/utils.py`, `data/captcha_examples/**` | Valid set now contains only examples with integer in-range `valid_index`; 41 `null` examples moved to `no_valid`. |
+| C1 | Benchmark/captcha examples audit | done | `server/scripts/bench_solver_weights.py`, `src/utils.py`, `data/captcha_examples/**` | Valid set now contains only examples with integer in-range `valid_index`; 41 `null` examples moved to `no_valid`. |
 | C2 | Починить сохранение valid example без варианта | done | `src/utils.py`, routes captcha/admin | `valid_index` is accepted only when it is an integer inside `variantsCapture`; `0` remains a valid first-variant label. |
 | C3 | Frontend labeling mode для капч | planned-only | frontend/admin + backend route TBD | По просьбе можно пока только спланировать. |
 | E1 | UI расширения: обзор и улучшения | done | `extension/src/**` | Основной запуск стал компактнее: дата рядом с режимом, редкие настройки свернуты, добавлены чипы состояния. |

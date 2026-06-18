@@ -70,7 +70,7 @@ format-check-js:
 # === Utils ===
 
 bench:
-	uv run pytest server/tests/test_solve_captcha.py -v -s
+	uv run python server/scripts/bench_solver_weights.py
 
 list-plugins:
 	@echo "Plugin versions:"

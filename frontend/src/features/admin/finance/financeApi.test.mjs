@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import test from "node:test";
 
 import { buildAdminUrl } from "./financeApi.js";
 
+test("admin finance API URL builder omits empty query params", () => {
 assert.equal(
   buildAdminUrl("/admin/finance-entries", {
     limit: 500,
@@ -16,3 +18,4 @@ assert.equal(
 );
 
 assert.equal(buildAdminUrl("/admin/profit-lots", {}), "/admin/profit-lots");
+});

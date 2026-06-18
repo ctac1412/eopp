@@ -2,38 +2,24 @@
 
 import os
 import sys
-import tempfile
 from datetime import date
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from db_template import cleanup_db_file, use_isolated_migrated_db
 from src.services import reporting_service
 
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    import src.db.connection as conn_module
-    import src.db.init as init_module
-    from src.entities.base import set_db_path
-
-    test_db = tempfile.mktemp(suffix=".db")
-    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    set_db_path(test_db)
-    init_module.init_db()
+    test_db = use_isolated_migrated_db(monkeypatch)
 
     yield
 
-    try:
-        conn_module.get_connection().close()
-    except Exception:
-        pass
-    if os.path.exists(test_db):
-        try:
-            os.remove(test_db)
-        except Exception:
-            pass
+    cleanup_db_file(test_db)
 
 
 @pytest.fixture

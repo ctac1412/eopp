@@ -32,6 +32,29 @@ type InterceptorMessage = {
   payload?: unknown;
 };
 
+function randomTestVehicleNumber(): string {
+  const letters = ["А", "В", "Е", "К", "М", "Н", "О", "Р", "С", "Т", "У", "Х"];
+  const pick = () => letters[Math.floor(Math.random() * letters.length)];
+  const digits = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+  const region = String(10 + Math.floor(Math.random() * 90));
+  return `${pick()}${digits}${pick()}${pick()}${region}`;
+}
+
+function testFacilityName(facilityId: string): string {
+  const names: Record<string, string> = {
+    "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42": "АПП Забайкальск",
+    "93c9939a-2182-4e78-98b4-0cf314b09cfa": "АПП Тагиркент-Казмаляр",
+    "cbde069a-7e18-4ca6-9b38-f790348d6c24": "АПП Бугристое",
+    "1fffb312-4ebe-4ad2-a356-0b8f04587c11": "АПП Верхний Ларс",
+    "ab6edb80-5f8f-4bf9-bf9a-a925271d9df8": "АПП Чернышевское",
+  };
+  return names[facilityId] || "АПП Забайкальск";
+}
+
+function testCompanyName(): string {
+  return 'ООО "АРТ-ТРАНС"';
+}
+
 function installPageRequestCache(): void {
   if (!USE_PAGE_REQUEST_CACHE || window.location.hostname !== "eopp.epd-portal.ru") {
     return;
@@ -174,6 +197,42 @@ function injectButton(info: PageInfo): void {
       params = actualInfo.variant
         ? testVariants[actualInfo.variant] || testVariants[1]
         : { facilityId: FACILITIES[0].id, vehicleId: "test-vehicle-id", transportType: EoppTransportType.Cargo };
+      reservationRaw = {
+        id: actualInfo.reservationId,
+        reservationRequestCode: "TEST-001",
+        facilityId: params.facilityId,
+        userData: {
+          userId: "test-user-id",
+          fio: "Иванов Иван Иванович",
+          organizationName: testCompanyName(),
+          inn: "123456789012",
+          orgInn: "1234567890",
+          orgOgrn: "1234567890123",
+          requesterType: "LEGAL",
+        },
+        vehicleData: [
+          {
+            vehicleId: params.vehicleId,
+            vehicleTypeId: 1,
+            vehicleType: "Truck",
+            subTypeId: 1,
+            subType: "Truck",
+            regNumber: randomTestVehicleNumber(),
+            status: 1,
+            isArchive: false,
+          },
+        ],
+        isSpecialCargo: params.transportType === EoppTransportType.Special,
+        typeOfTransportation: params.transportType,
+      };
+      facilityRaw = {
+        id: params.facilityId,
+        name: testFacilityName(params.facilityId),
+        mode: {
+          facilityId: params.facilityId,
+          modeType: 1,
+        },
+      };
     } else {
       const json = await fetchReservationRaw(actualInfo.reservationId);
       reservationRaw = json;
@@ -209,6 +268,10 @@ function injectButton(info: PageInfo): void {
     const savedConfig = loadSavedConfig(actualInfo.reservationId);
     if (savedConfig) {
       Object.assign(defaultConfig, savedConfig);
+    }
+    if (actualInfo.isLocalhost && reservationRaw) {
+      defaultConfig.vehicleId = params.vehicleId;
+      defaultConfig.transportType = params.transportType;
     }
     defaultConfig.mode = mode;
     defaultConfig.apiKey = savedApiKey;

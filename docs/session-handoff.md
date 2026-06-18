@@ -157,7 +157,8 @@ Local ignored data cleanup:
 - 41 JSON examples were moved from `data/captcha_examples/valid` to `data/captcha_examples/no_valid` because they had `valid_index: null`.
 
 Verified previously:
-- `uv run pytest tests/test_captcha_validation.py tests/test_solve_captcha.py`
+- `uv run pytest tests/test_captcha_validation.py`
+- `uv run python server/scripts/bench_solver_weights.py`
 
 ### Extension UI
 

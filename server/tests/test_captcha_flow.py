@@ -8,7 +8,7 @@ def test_solve_captcha_invalid_key(client):
         },
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_broadcast_requires_admin(client):

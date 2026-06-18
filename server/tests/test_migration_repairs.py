@@ -201,6 +201,17 @@ def test_operator_billing_mode_migration_backfills_from_icon_rate(tmp_path, monk
             """
         )
         conn.execute(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'master',
+                active BOOLEAN DEFAULT 1 NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
             "INSERT INTO operators (uuid, nickname, created_at, icon_rate) VALUES (?, ?, ?, ?)",
             ("company-mode", "Company", "2026-01-01T00:00:00+00:00", 0),
         )
@@ -263,6 +274,17 @@ def test_finance_income_backfill_keeps_only_positive_price_entries(tmp_path, mon
                 comment TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'master',
+                active BOOLEAN DEFAULT 1 NOT NULL,
+                created_at TEXT NOT NULL
             )
             """
         )

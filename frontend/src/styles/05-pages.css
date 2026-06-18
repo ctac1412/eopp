@@ -3893,6 +3893,98 @@
   font-size: 0.74rem;
 }
 
+.ops-scheduled-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  margin-bottom: 0.75rem;
+}
+
+.ops-scheduled-list-card {
+  min-width: 0;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.ops-scheduled-list-card .ant-card-body {
+  padding: 0;
+}
+
+.ops-scheduled-table .ant-table-cell {
+  white-space: nowrap;
+}
+
+.ops-scheduled-table__countdown {
+  display: inline-block;
+  width: 8ch;
+  color: var(--info-strong-text);
+  font-family: var(--bs-font-monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ops-scheduled-detail__muted {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.ops-scheduled-detail__raw {
+  min-width: 0;
+  max-height: min(70vh, 640px);
+  margin: 0;
+  overflow: auto;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 0.66rem;
+}
+
+.ops-scheduled-detail__error {
+  color: var(--danger-strong-text);
+  font-size: 0.78rem;
+}
+
+.ops-refresh-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.ops-refresh-controls [data-eopp-component="Button"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.ops-refresh-controls__icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.ops-refresh-controls__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-refresh-controls__status {
+  min-width: 13ch;
+  color: var(--text-muted);
+  font-family: var(--bs-font-monospace);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .ops-admin-broadcast {
   display: grid;
   grid-template-columns: minmax(180px, 0.36fr) minmax(220px, 1fr) auto auto;

@@ -7,47 +7,28 @@ EOPP Captcha Solver - API Routes Unit Tests
 import json
 import os
 import sys
-import tempfile
 import threading
+import time
 from datetime import UTC, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pytest
 from fastapi.testclient import TestClient
+
+from db_template import cleanup_db_file, use_isolated_migrated_db
 
 
 # === Fixtures ===
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
     """doc"""
-    import src.db.connection as conn_module
-    import src.db.init as init_module
-    from src.entities.base import set_db_path
-
-    # comment
-    fd, test_db = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-
-    # comment
-    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    set_db_path(test_db)
-
-    # comment
-    init_module.init_db()
+    test_db = use_isolated_migrated_db(monkeypatch)
 
     yield
 
-    # cleanup
-    try:
-        conn_module.get_connection().close()
-    except Exception:
-        pass
-    if os.path.exists(test_db):
-        try:
-            os.remove(test_db)
-        except Exception:
-            pass
+    cleanup_db_file(test_db)
 
 
 @pytest.fixture
@@ -396,6 +377,134 @@ class TestUsage:
         assert response.status_code == 200
         data = response.json()
         assert "usage_log_id" in data
+
+    def test_register_usage_rejects_run_up_to_5_outside_zabaikalsk(self, client, api_key, active_sse):
+        """doc"""
+        response = client.post(
+            "/api/register-usage",
+            json={
+                "reservation_id": "res-guard",
+                "config_json": {
+                    "runUpTo": 5,
+                    "facilityId": "93c9939a-2182-4e78-98b4-0cf314b09cfa",
+                    "reservationData": {
+                        "facilityRaw": {"name": "АПП Тагиркент-Казмаляр"},
+                    },
+                },
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"] == "launch_guard_failed"
+
+
+class TestScheduledEvents:
+    """doc"""
+
+    def test_scheduled_event_detail_keeps_config_out_of_list(self, client, api_key, admin_token, active_sse):
+        """doc"""
+        config = {
+            "mode": "create",
+            "slotDate": "2026-07-01",
+            "reservationId": "res-detail",
+            "runUpTo": 5,
+            "timeOrder": [["00:00", "16:00"]],
+            "sharedSlotsEnabled": True,
+            "reservationData": {
+                "facilityRaw": {
+                    "id": "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
+                    "name": "АПП Забайкальск",
+                },
+                "raw": {
+                    "reservationRequestCode": "REQ-42",
+                    "facilityId": "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
+                    "userData": {
+                        "organizationName": "ООО Тестовая Компания",
+                    },
+                    "vehicleData": [
+                        {"subTypeId": 2, "regNumber": "ПРИЦЕП"},
+                        {"subTypeId": 1, "regNumber": "А123ВС790"},
+                    ],
+                }
+            },
+        }
+        created = client.post(
+            "/api/scheduled-event",
+            json={
+                "label": "Бронь res-detail",
+                "scheduled_at": "2026-07-01T10:00:00",
+                "description": "Создание",
+                "config_json": config,
+            },
+        )
+        assert created.status_code == 200
+
+        client.cookies.set("eopp_session", admin_token)
+        listed = client.get(
+            "/api/admin/scheduled-events",
+            headers={"X-Admin-Token": admin_token},
+        )
+        assert listed.status_code == 200
+        events = [
+            event
+            for event in listed.json()
+            if event.get("label") == "Бронь res-detail"
+        ]
+        assert len(events) == 1
+        event = events[0]
+        assert "event_id" in event
+        assert "config_json" not in event
+        assert event["mode"] == "create"
+        assert event["slot_date"] == "2026-07-01"
+        assert event["reservation_id"] == "res-detail"
+        assert event["facility_id"] == "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42"
+        assert event["facility_name"] == "АПП Забайкальск"
+        assert event["company_name"] == "ООО Тестовая Компания"
+        assert event["vehicle_number"] == "А123ВС790"
+        assert event["run_up_to"] == 5
+        assert event["time_order"] == [["00:00", "16:00"]]
+        assert event["shared_slots_enabled"] is True
+
+        detail = client.get(
+            f"/api/admin/scheduled-events/{event['event_id']}",
+            headers={"X-Admin-Token": admin_token},
+        )
+        assert detail.status_code == 200
+        assert detail.json()["config_json"] == config
+
+    def test_scheduled_event_rejects_run_up_to_5_outside_allowed_facilities(self, client, api_key):
+        """doc"""
+        response = client.post(
+            "/api/scheduled-event",
+            json={
+                "label": "guarded",
+                "scheduled_at": "2026-07-01T10:00:00",
+                "config_json": {
+                    "runUpTo": 5,
+                    "facilityId": "93c9939a-2182-4e78-98b4-0cf314b09cfa",
+                    "reservationData": {
+                        "facilityRaw": {"name": "АПП Тагиркент-Казмаляр"},
+                    },
+                },
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error"] == "launch_guard_failed"
+
+    def test_scheduled_event_requires_active_stream(self, client, api_key):
+        """doc"""
+        response = client.post(
+            "/api/scheduled-event",
+            json={
+                "label": "no stream",
+                "scheduled_at": "2026-07-01T10:00:00",
+                "config_json": {
+                    "runUpTo": 4,
+                    "facilityId": "93c9939a-2182-4e78-98b4-0cf314b09cfa",
+                },
+            },
+        )
+        assert response.status_code == 412
+        assert response.json()["error"] == "no_stream"
 
     def test_confirm_usage(self, client, api_key, active_sse):
         """doc"""
@@ -862,7 +971,6 @@ class TestAdmin:
             for row in audit_rows
         )
 
-    @pytest.mark.skip(reason="rucaptcha callback router is intentionally disabled for release perimeter")
     def test_rucaptcha_callback_router_is_disabled(self, client):
         response = client.post(
             "/rucaptcha-callback",
@@ -872,7 +980,6 @@ class TestAdmin:
 
         assert response.status_code in (404, 405)
 
-    @pytest.mark.skip(reason="plugin-channel routers are intentionally disabled until consumers exist")
     def test_plugin_channel_public_router_is_disabled(self, client):
         response = client.post(
             "/plugin-channel/sessions/open",
@@ -881,7 +988,6 @@ class TestAdmin:
 
         assert response.status_code in (404, 405)
 
-    @pytest.mark.skip(reason="plugin-channel routers are intentionally disabled until consumers exist")
     def test_plugin_channel_admin_router_is_disabled(self, client, admin_token):
         response = client.post(
             "/api/admin/plugin-channel/sessions/1/claim",
@@ -1437,21 +1543,18 @@ class TestFrontend:
         response = client.get("/test-injector/reschedule")
         assert response.status_code == 200
 
-    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
     def test_test_channel_existing_card_is_disabled(self, client):
         response = client.get("/test-channel/card/existing")
 
         assert "EOPP Channel Test Card" not in response.text
         assert "reservation-card-existing" not in response.text
 
-    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
     def test_test_channel_new_company_is_disabled(self, client):
         response = client.get("/test-channel/card/new-company")
 
         assert "New Auto Channel Company" not in response.text
         assert "reservation-card-new-company" not in response.text
 
-    @pytest.mark.skip(reason="test-channel pages are disabled together with plugin-channel flow")
     def test_test_channel_root_is_disabled(self, client):
         response = client.get("/test-channel/root")
 
@@ -1462,14 +1565,6 @@ class TestFrontend:
 # === Captcha Tests ===
 class TestCaptcha:
     """doc"""
-
-    def test_solve_captcha_auto_solve(self, client, api_key):
-        """doc"""
-
-        # comment
-        pytest.skip(
-            "РўСЂРµР±СѓРµС‚ СЂРµР°Р»СЊРЅС‹Рµ РґР°РЅРЅС‹Рµ РєР°РїС‡Рё СЃ base64 РёР·РѕР±СЂР°Р¶РµРЅРёСЏРјРё"
-        )
 
     def test_solve_captcha_invalid_key(self, client):
         """doc"""
@@ -2153,7 +2248,6 @@ class TestIconClickCaptcha:
 
     def test_solve_type1_with_coordinates(self, client, api_key):
         """POST /api/solve with coordinates marks type=1 captcha as solved."""
-        import threading, time
         from src.sse import lock, pending
 
         captcha_id = None
@@ -2239,7 +2333,7 @@ class TestIconClickCaptcha:
 
     def test_type1_captcha_saved_to_json(self, client, api_key, monkeypatch):
         """Type=1 captcha JSON is persisted with correct fields."""
-        from src.captcha_assembly import captcha_hash, is_icon_click_type
+        from src.captcha_assembly import captcha_hash
         from src.services.captcha_file_service import save_captcha_payload_detailed
 
         monkeypatch.setenv("EOPP_CAPTCHA_SYNC_ARCHIVE_ENABLED", "1")

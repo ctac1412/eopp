@@ -227,7 +227,7 @@ Vite + React 18 + React Router + Zustand.
 |------------|-----------|
 | `tests/test_cases/valid/` | Тестовые капчи с известным ответом (`valid_index`) |
 | `tests/test_cases/no_valid/` | Неразмеченные капчи для label |
-| `tests/test_solve_captcha.py` | Бенчмарк решателя |
+| `server/scripts/bench_solver_weights.py` | Бенчмарк решателя |
 
 Тестовые JSON-файлы содержат структуру капчи EOPP:
 ```json

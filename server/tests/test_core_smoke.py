@@ -131,8 +131,8 @@ def test_solve_captcha_core_mode_survives_archive_and_metadata_failures(
         lambda data: (_ for _ in ()).throw(RuntimeError("metadata should be deferred")),
     )
     monkeypatch.setattr(
-        captcha_route,
-        "get_top3_from_solver",
+        captcha_route.top3_process_pool,
+        "get_top3",
         lambda data: (_ for _ in ()).throw(RuntimeError("top3 should be deferred")),
     )
     monkeypatch.setattr(

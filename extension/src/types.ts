@@ -43,6 +43,15 @@ export interface EoppReservationRaw {
   status?: number;
   facilityId?: string;
   vehicleData?: EoppVehicleData[];
+  userData?: {
+    userId?: string;
+    fio?: string;
+    organizationName?: string;
+    inn?: string;
+    orgInn?: string;
+    orgOgrn?: string;
+    requesterType?: string;
+  };
   isSpecialCargo?: boolean;
   typeOfTransportation?: number;
   reservedSlots?: string[] | null;

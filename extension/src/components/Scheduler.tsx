@@ -3,8 +3,61 @@ import { useInjectorStore } from "@/store";
 import { parseTime, mskToUtcSeconds } from "@/hooks/useClock";
 import { useInjector } from "@/hooks/useInjector";
 import { useScheduler } from "@/hooks/useScheduler";
-import { checkStream, openServerUrl, getDefaultScheduleTime, sendScheduledEvent } from "@/api/background";
+import { openServerUrl, getDefaultScheduleTime, sendScheduledEvent } from "@/api/background";
 import { pingSlotsLimit } from "@/api/slots-ping";
+import { getDefaultSlotDate } from "@/constants";
+import type { InjectorConfig } from "@/types";
+
+const FACILITY_ALIASES: Record<string, string> = {
+  "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42": "ЗАБ",
+  "93c9939a-2182-4e78-98b4-0cf314b09cfa": "ТАГ",
+  "cbde069a-7e18-4ca6-9b38-f790348d6c24": "БУГ",
+  "1fffb312-4ebe-4ad2-a356-0b8f04587c11": "ЛАРС",
+  "ab6edb80-5f8f-4bf9-bf9a-a925271d9df8": "ЧЕРН",
+};
+
+function shortId(value: string): string {
+  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
+function facilityAlias(config: InjectorConfig): string {
+  const known = FACILITY_ALIASES[config.facilityId];
+  if (known) return known;
+  const rawName = config.reservationData?.facilityRaw?.name || "";
+  const cleaned = rawName
+    .replace(/^АПП\s+/i, "")
+    .trim()
+    .replace(/[^a-zа-яё0-9]/gi, "");
+  return (cleaned || "АПП").slice(0, 4).toUpperCase();
+}
+
+function buildScheduleLabel(config: InjectorConfig): string {
+  const vehicles = config.reservationData?.raw?.vehicleData || [];
+  const truck = vehicles.find((vehicle) => vehicle.subTypeId === 1);
+  const vehicleNumber =
+    truck?.regNumber ||
+    vehicles.find((vehicle) => vehicle.regNumber)?.regNumber ||
+    shortId(config.vehicleId || config.reservationId || "unknown");
+  const requestType = config.mode === "reschedule" ? "Перенос" : "Бронь";
+  return `${requestType} ${facilityAlias(config)} ${vehicleNumber} ${config.slotDate}`;
+}
+
+function backendErrorMessage(error: unknown, fallback: string): string {
+  const payload = error as { body?: string; message?: string };
+  if (payload?.body) {
+    try {
+      const parsed = JSON.parse(payload.body) as { message?: string; error?: string };
+      return parsed.message || parsed.error || fallback;
+    } catch {
+      return payload.body || fallback;
+    }
+  }
+  return payload?.message || fallback;
+}
+
+function backendErrorStatus(error: unknown): number | undefined {
+  return (error as { status?: number })?.status;
+}
 
 const Scheduler = React.memo(function Scheduler() {
   const status = useInjectorStore((s) => s.status);
@@ -41,17 +94,13 @@ const Scheduler = React.memo(function Scheduler() {
       setStatusClass("qn-modal-status-error");
       return;
     }
-    try {
-      const streamCheck = await checkStream();
-      if (!streamCheck.has_active_stream) {
-        setStatusMessage("Откройте страницу с капчами и авторизуйтесь. Требуется активное SSE-подключение");
-        setStatusClass("qn-modal-status-error");
-        openServerUrl();
-        return;
-      }
-    } catch {
-      setStatusMessage("Не удалось проверить подключение к серверу");
-      setStatusClass("qn-modal-status-error");
+    const autoSlotDate = getDefaultSlotDate(config.mode);
+    if (
+      config.slotDate !== autoSlotDate &&
+      !window.confirm(
+        `Автоматически выбранная дата: ${autoSlotDate}\nУстановленная дата: ${config.slotDate}\n\nПродолжить планирование с установленной датой?`,
+      )
+    ) {
       return;
     }
     const pingResult = await pingSlotsLimit(config);
@@ -61,8 +110,7 @@ const Scheduler = React.memo(function Scheduler() {
       return;
     }
     const targetUtcSeconds = mskToUtcSeconds(mskSeconds);
-    // Notify operators of planned start
-    {
+    try {
       const mskH = Math.floor(mskSeconds / 3600);
       const mskM = Math.floor((mskSeconds % 3600) / 60);
       const mskS = Math.floor(mskSeconds % 60);
@@ -70,11 +118,27 @@ const Scheduler = React.memo(function Scheduler() {
       const today = new Date();
       const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
       const scheduledAt = `${dateStr}T${timeStr}`;
-      sendScheduledEvent(
-        `Бронь ${(config.reservationId || "").slice(0, 8)}`,
+      await sendScheduledEvent(
+        buildScheduleLabel(config),
         scheduledAt,
         config.mode === "reschedule" ? "Перенос" : "Создание",
-      ).catch(() => {});
+        config,
+      );
+    } catch (error) {
+      const status = backendErrorStatus(error);
+      setStatusMessage(
+        backendErrorMessage(
+          error,
+          status === 412
+            ? "Откройте страницу с капчами и авторизуйтесь"
+            : "Планирование запрещено сервером",
+        ),
+      );
+      setStatusClass("qn-modal-status-error");
+      if (status === 412) {
+        openServerUrl();
+      }
+      return;
     }
     startSchedule(targetUtcSeconds, config);
     setStatusMessage("");

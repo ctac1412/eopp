@@ -102,5 +102,6 @@ self.EoppBackend = {
       label: payload.label,
       scheduled_at: payload.scheduledAt,
       description: payload.description,
+      config_json: payload.configJson,
     }),
 };

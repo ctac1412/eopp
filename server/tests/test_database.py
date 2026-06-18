@@ -11,37 +11,23 @@ EOPP Captcha Solver - Database Unit Tests
 
 import os
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pytest
+
+from db_template import cleanup_db_file, use_isolated_migrated_db
 
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
     """РР·РѕР»РёСЂСѓРµРј Р‘Р” РґР»СЏ РєР°Р¶РґРѕРіРѕ С‚РµСЃС‚Р°."""
-    import src.db.connection as conn_module
-    import src.db.init as init_module
-    from src.entities.base import set_db_path
-
-    fd, test_db = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    set_db_path(test_db)
-    init_module.init_db()
+    test_db = use_isolated_migrated_db(monkeypatch)
 
     yield
 
-    try:
-        conn_module.get_connection().close()
-    except Exception:
-        pass
-    if os.path.exists(test_db):
-        try:
-            os.remove(test_db)
-        except Exception:
-            pass
+    cleanup_db_file(test_db)
 
 
 def attach_key_to_company_tariff(

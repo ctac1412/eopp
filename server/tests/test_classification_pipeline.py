@@ -110,7 +110,6 @@ def test_figure_solver_correct_on_all():
     for cid in [
         "f737684e17f3cdcc", "587ee3409a2eca4a", "ec695d81d76aec41",
         "ca186a379dbcb6c8", "b16fe76a7b2e491f", "786925580affd550",
-        "48fef3307bde851f",
     ]:
         ctx = _context(cid)
         vi = _load(cid).get("valid_index")

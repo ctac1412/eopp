@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Card, Space } from "antd";
+import { Card, Modal, Space, Switch } from "antd";
 import {
   Button,
   CheckboxField,
+  DataTable,
+  StatusTag,
   TextInput,
   Toolbar,
 } from "../../../ui";
@@ -10,7 +12,6 @@ import {
   formatScheduledCountdown,
   getFutureScheduledEvents,
 } from "../../captcha/solving/scheduledEventsState";
-import { buildOperationsScheduledSummary } from "./operationsScheduledSummary";
 import { adminHeaders, adminHeadersJson, adminRequest } from "../shared/adminClient";
 import { isAllAccessibleMasters, normalizeAllowedMasters } from "../operators/operatorAssignments";
 
@@ -95,6 +96,110 @@ function streamOnlineSet(streams) {
   return new Set(streams.map((stream) => Number(stream.api_key_id)).filter((id) => Number.isFinite(id)));
 }
 
+function formatRefreshTime(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+const FACILITY_NAMES = {
+  "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42": "АПП Забайкальск",
+  "93c9939a-2182-4e78-98b4-0cf314b09cfa": "АПП Тагиркент-Казмаляр",
+  "cbde069a-7e18-4ca6-9b38-f790348d6c24": "АПП Бугристое",
+  "1fffb312-4ebe-4ad2-a356-0b8f04587c11": "АПП Верхний Ларс",
+  "ab6edb80-5f8f-4bf9-bf9a-a925271d9df8": "АПП Чернышевское",
+};
+
+function scheduledConfig(detail) {
+  return detail?.config_json && typeof detail.config_json === "object" ? detail.config_json : {};
+}
+
+function scheduledLabelParts(event) {
+  const label = event?.label || "";
+  const parts = label.replace(/^\S+\s+/, "").split(/\s+/).filter(Boolean);
+  const date = event?.slot_date || parts.find((part) => /^\d{4}-\d{2}-\d{2}/.test(part));
+  const withoutDate = date ? parts.filter((part) => part !== date) : parts;
+  return {
+    facility: withoutDate[0] || "",
+    vehicle: withoutDate.slice(1).join(" ") || "",
+  };
+}
+
+function scheduledVehicleNumber(config, event) {
+  const vehicles = config?.reservationData?.raw?.vehicleData || [];
+  const truck = vehicles.find((vehicle) => Number(vehicle?.subTypeId) === 1);
+  return truck?.regNumber
+    || vehicles.find((vehicle) => vehicle?.regNumber)?.regNumber
+    || event?.vehicle_number
+    || scheduledLabelParts(event).vehicle
+    || "-";
+}
+
+function scheduledFacilityName(config, event) {
+  return config?.reservationData?.facilityRaw?.name
+    || event?.facility_name
+    || FACILITY_NAMES[config?.facilityId]
+    || FACILITY_NAMES[event?.facility_id]
+    || scheduledLabelParts(event).facility
+    || config?.facilityId
+    || event?.facility_id
+    || "-";
+}
+
+function scheduledCompanyName(config, event) {
+  return event?.company_name
+    || config?.reservationData?.raw?.userData?.organizationName
+    || "-";
+}
+
+function scheduledReservationCode(config, event) {
+  return config?.reservationData?.raw?.reservationRequestCode
+    || event?.reservation_id
+    || config?.reservationId
+    || "-";
+}
+
+function scheduledModeLabel(value) {
+  if (value === "reschedule") return "Перенос";
+  if (value === "create") return "Бронь";
+  return value || "-";
+}
+
+function scheduledModeStatus(value) {
+  return value === "reschedule" ? "reschedule" : "create";
+}
+
+function scheduledTimeOrderLabel(value) {
+  if (!Array.isArray(value) || value.length === 0) return "-";
+  const groups = value
+    .map((group) => (Array.isArray(group) ? group.filter(Boolean).join("-") : ""))
+    .filter(Boolean);
+  return groups.length ? groups.join(" / ") : "-";
+}
+
+function scheduledRowFromEvent(event, masterLabel, now) {
+  const config = scheduledConfig(event);
+  const mode = event.mode || config.mode;
+  return {
+    ...event,
+    masterLabel,
+    companyLabel: scheduledCompanyName(config, event),
+    typeLabel: scheduledModeLabel(mode),
+    typeStatus: scheduledModeStatus(mode),
+    facilityLabel: scheduledFacilityName(config, event),
+    vehicleLabel: scheduledVehicleNumber(config, event),
+    dateLabel: event.slot_date || config.slotDate || "-",
+    countdown: formatScheduledCountdown(event.scheduledAt - now),
+    runUpToLabel: event.run_up_to ?? config.runUpTo ?? "-",
+    reservationIdLabel: event.reservation_id || config.reservationId || "-",
+    timeOrderLabel: scheduledTimeOrderLabel(event.time_order || config.timeOrder),
+    sharedSlotsLabel: (event.shared_slots_enabled ?? config.sharedSlotsEnabled) ? "Да" : "Нет",
+  };
+}
+
 export function OperationsDashboardTab({ adminToken, onError }) {
   const [operators, setOperators] = useState([]);
   const [links, setLinks] = useState([]);
@@ -115,8 +220,18 @@ export function OperationsDashboardTab({ adminToken, onError }) {
   const [adminBroadcastMessage, setAdminBroadcastMessage] = useState("");
   const [adminBroadcastSending, setAdminBroadcastSending] = useState(false);
   const [adminBroadcastStatus, setAdminBroadcastStatus] = useState("");
+  const [scheduledDetail, setScheduledDetail] = useState(null);
+  const [scheduledDetailLoading, setScheduledDetailLoading] = useState(false);
+  const [scheduledDetailError, setScheduledDetailError] = useState("");
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshAt, setLastRefreshAt] = useState(null);
+  const refreshInFlightRef = useRef(false);
 
   const loadAll = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    setRefreshing(true);
     try {
       const [operatorsRes, linksRes, keysRes, streamsRes, scheduledRes] = await Promise.all([
         adminRequest("/admin/operators?include_test=0", { headers: adminHeaders(adminToken) }),
@@ -137,8 +252,12 @@ export function OperationsDashboardTab({ adminToken, onError }) {
       setKeys(Array.isArray(keysData) ? keysData : keysData.keys || []);
       setStreams(Array.isArray(streamsData) ? streamsData : []);
       setScheduledEvents(Array.isArray(scheduledData) ? scheduledData : []);
+      setLastRefreshAt(Date.now());
     } catch {
       onError?.("Ошибка загрузки оперативного дэшборда");
+    } finally {
+      refreshInFlightRef.current = false;
+      setRefreshing(false);
     }
   }, [adminToken, onError]);
 
@@ -150,6 +269,12 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!autoRefreshEnabled) return undefined;
+    const timer = window.setInterval(loadAll, 5000);
+    return () => window.clearInterval(timer);
+  }, [autoRefreshEnabled, loadAll]);
 
   const onlineStreams = useMemo(() => streamOnlineSet(streams), [streams]);
   const masters = useMemo(() => keys.filter((key) => !key.is_external && key.is_master_key !== false), [keys]);
@@ -222,10 +347,42 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     () => groupByLabel(sortedMasters, masterCompanyLabel),
     [sortedMasters],
   );
-  const scheduledSummary = useMemo(
-    () => buildOperationsScheduledSummary(scheduledEvents, masters, now),
-    [masters, now, scheduledEvents],
+  const scheduledRows = useMemo(
+    () => getFutureScheduledEvents(scheduledEvents, now).map((event) => {
+      const master = masterById.get(Number(event.api_key_id));
+      return scheduledRowFromEvent(
+        event,
+        master ? keyLabel(master) : `#${event.api_key_id}`,
+        now,
+      );
+    }),
+    [masterById, now, scheduledEvents],
   );
+  const scheduledColumns = useMemo(() => [
+    { title: "Мастер", dataIndex: "masterLabel", width: 100, ellipsis: true },
+    { title: "Компания", dataIndex: "companyLabel", width: 150, ellipsis: true },
+    {
+      title: "Тип",
+      width: 82,
+      render: (_, event) => (
+        <StatusTag status={event.typeStatus} label={event.typeLabel} />
+      ),
+    },
+    { title: "АПП", dataIndex: "facilityLabel", width: 160, ellipsis: true },
+    { title: "Машина", dataIndex: "vehicleLabel", width: 96, ellipsis: true },
+    { title: "Дата", dataIndex: "dateLabel", width: 92 },
+    {
+      title: "До старта",
+      dataIndex: "countdown",
+      width: 88,
+      align: "right",
+      render: (value) => <span className="ops-scheduled-table__countdown">{value}</span>,
+    },
+    { title: "runUpTo", dataIndex: "runUpToLabel", width: 72, align: "center" },
+    { title: "reservationId", dataIndex: "reservationIdLabel", width: 150, ellipsis: true },
+    { title: "timeOrder", dataIndex: "timeOrderLabel", width: 136, ellipsis: true },
+    { title: "shared", dataIndex: "sharedSlotsLabel", width: 72, align: "center" },
+  ], []);
 
   const unassignedOnlineGroups = useMemo(
     () => groupByLabel(unassignedOnlineOperators, operatorCompanyLabel),
@@ -500,6 +657,28 @@ export function OperationsDashboardTab({ adminToken, onError }) {
     }
   };
 
+  const loadScheduledDetail = async (event) => {
+    if (!event?.event_id) return;
+    setScheduledDetailLoading(true);
+    setScheduledDetailError("");
+    try {
+      const response = await adminRequest(`/admin/scheduled-events/${event.event_id}`, {
+        headers: adminHeaders(adminToken),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.detail || `HTTP ${response.status}`);
+      }
+      setScheduledDetail(data);
+    } catch (error) {
+      const message = error.message || "Не удалось загрузить детали брони";
+      setScheduledDetailError(message);
+      onError?.(message);
+    } finally {
+      setScheduledDetailLoading(false);
+    }
+  };
+
   const handleMasterDrop = (event, masterId) => {
     event.preventDefault();
     stopDragAutoScroll();
@@ -569,53 +748,77 @@ export function OperationsDashboardTab({ adminToken, onError }) {
             <div className="small text-muted">Быстрое распределение online-операторов между мастерами</div>
           </div>
         }
-        right={<Button size="small" onClick={loadAll}>Обновить</Button>}
+        right={
+          <div className="ops-refresh-controls">
+            <Button size="small" onClick={loadAll} loading={refreshing}>
+              {!refreshing && <span className="ops-refresh-controls__icon" aria-hidden="true">↻</span>}
+              <span>{refreshing ? "Обновляется..." : "Обновить"}</span>
+            </Button>
+            <label className="ops-refresh-controls__toggle">
+              <span>Авто 5с</span>
+              <Switch
+                size="small"
+                checked={autoRefreshEnabled}
+                onChange={setAutoRefreshEnabled}
+              />
+            </label>
+            <span className="ops-refresh-controls__status">
+              {refreshing
+                ? "идет запрос"
+                : lastRefreshAt
+                  ? `обновлено ${formatRefreshTime(lastRefreshAt)}`
+                  : "еще не обновлялось"}
+            </span>
+          </div>
+        }
       />
 
-      <div data-eopp-component="OpsScheduledSummary" className="ops-scheduled-summary">
-        <div className="ops-scheduled-summary__stats">
-          <div className="ops-scheduled-summary__stat">
-            <span>Запланировано</span>
-            <strong>{scheduledSummary.total}</strong>
-          </div>
-          <div className="ops-scheduled-summary__stat">
-            <span>До 5 мин</span>
-            <strong>{scheduledSummary.soon}</strong>
-          </div>
-          <div className="ops-scheduled-summary__stat ops-scheduled-summary__stat--urgent">
-            <span>До 1 мин</span>
-            <strong>{scheduledSummary.urgent}</strong>
-          </div>
-        </div>
-        <div className="ops-scheduled-summary__masters">
-          {scheduledSummary.byMaster.length === 0 ? (
-            <div className="ops-scheduled-summary__empty">Нет запланированных стартов</div>
-          ) : (
-            scheduledSummary.byMaster.slice(0, 8).map((group) => (
-              <div key={group.masterId} className="ops-scheduled-summary__master">
-                <div className="ops-scheduled-summary__master-head">
-                  <strong>{group.masterLabel}</strong>
-                  <span>{group.nextCountdown}</span>
-                </div>
-                <div className="ops-scheduled-summary__events">
-                  {group.events.slice(0, 3).map((event) => (
-                    <span
-                      key={`${group.masterId}-${event.label}-${event.scheduled_at}`}
-                      className={`ops-scheduled-summary__event ${event.urgent ? "is-urgent" : event.soon ? "is-soon" : ""}`}
-                      title={event.scheduled_at || ""}
-                    >
-                      {event.label || event.description || "Старт"} · {event.countdown}
-                    </span>
-                  ))}
-                  {group.events.length > 3 && (
-                    <span className="ops-scheduled-summary__more">+{group.events.length - 3}</span>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+      <div data-eopp-component="OpsScheduledWorkspace" className="ops-scheduled-workspace">
+        <Card
+          data-eopp-component="OpsScheduledList"
+          className="ops-scheduled-list-card"
+          size="small"
+        >
+          <DataTable
+            className="ops-scheduled-table reports-log-table"
+            rowKey="event_id"
+            data={scheduledRows}
+            columns={scheduledColumns}
+            pagination={false}
+            scroll={false}
+            emptyText="Нет запланированных стартов"
+            rowClassName={(event) => (
+              scheduledDetail?.event_id === event.event_id
+                ? "reports-log-row reports-log-row--selected"
+                : "reports-log-row"
+            )}
+            onRow={(event) => ({
+              onClick: () => loadScheduledDetail(event),
+            })}
+          />
+        </Card>
       </div>
+
+      <Modal
+        open={Boolean(scheduledDetail || scheduledDetailLoading || scheduledDetailError)}
+        title="Config JSON"
+        footer={null}
+        onCancel={() => {
+          setScheduledDetail(null);
+          setScheduledDetailError("");
+        }}
+        width={860}
+      >
+        {scheduledDetailLoading ? (
+          <div className="ops-scheduled-detail__muted">Загрузка...</div>
+        ) : scheduledDetailError ? (
+          <div className="ops-scheduled-detail__error">{scheduledDetailError}</div>
+        ) : scheduledDetail ? (
+          <pre className="ops-scheduled-detail__raw ops-scheduled-detail__raw--modal">
+            {JSON.stringify(scheduledConfig(scheduledDetail), null, 2)}
+          </pre>
+        ) : null}
+      </Modal>
 
       <div data-eopp-component="OpsAdminBroadcast" className="ops-admin-broadcast">
         <div className="ops-admin-broadcast__label">

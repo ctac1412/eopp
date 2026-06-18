@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from src.captcha_assembly import assemble_captchas, captcha_hash
+from src.captcha_test_driver import next_result_id
 from src.constants import (
     AUTO_SOLVER_ORDER,
     CAPTCHA_TIMEOUT,
@@ -30,7 +31,6 @@ from src.services import captcha_file_service, captcha_service
 from src.services.session_api_key import key_for_session_request, with_session_api_key
 from src.services.top3_service import top3_process_pool
 from src.sse import lock, pending, push_sse, super_kiosk_subscriptions
-from src.test_runner import next_result_id
 
 logger = logging.getLogger("eopp.captcha")
 router = APIRouter(tags=["captcha"])
@@ -423,8 +423,8 @@ async def _on_timeout(
 
 @router.post("/trigger-test")
 async def trigger_test(request: Request):
+    from src.captcha_test_driver import send_one_test_captcha
     from src.policies.access_policy import token_from_request
-    from src.test_runner import send_one_test_captcha
 
     key_record, error = key_for_session_request(request)
     if error:

@@ -1,9 +1,9 @@
 import json
 
 
-def test_test_runner_posts_captchas_to_api_prefixed_solve_route(monkeypatch):
+def test_captcha_test_driver_posts_captchas_to_api_prefixed_solve_route(monkeypatch):
     import src.db  # noqa: F401
-    from src import test_runner
+    from src import captcha_test_driver
 
     calls = []
 
@@ -15,9 +15,9 @@ def test_test_runner_posts_captchas_to_api_prefixed_solve_route(monkeypatch):
 
         return Response()
 
-    monkeypatch.setattr(test_runner, "_http_post", fake_http_post)
+    monkeypatch.setattr(captcha_test_driver, "_http_post", fake_http_post)
 
-    test_runner._send_captcha_with_reservation(
+    captcha_test_driver._send_captcha_with_reservation(
         json.dumps({"puzzle": {"tiles": [], "variantsCapture": []}}),
         api_key="test-key",
         reservation_id="reservation-1",
@@ -26,9 +26,9 @@ def test_test_runner_posts_captchas_to_api_prefixed_solve_route(monkeypatch):
     assert calls[0][0] == "/api/solve-captcha"
 
 
-def test_test_runner_forwards_session_cookie_to_internal_solve_call(monkeypatch):
+def test_captcha_test_driver_forwards_session_cookie_to_internal_solve_call(monkeypatch):
     import src.db  # noqa: F401
-    from src import test_runner
+    from src import captcha_test_driver
 
     calls = []
 
@@ -40,9 +40,9 @@ def test_test_runner_forwards_session_cookie_to_internal_solve_call(monkeypatch)
 
         return Response()
 
-    monkeypatch.setattr(test_runner, "_http_post", fake_http_post)
+    monkeypatch.setattr(captcha_test_driver, "_http_post", fake_http_post)
 
-    test_runner._send_captcha_with_reservation(
+    captcha_test_driver._send_captcha_with_reservation(
         json.dumps({"puzzle": {"tiles": [], "variantsCapture": []}}),
         api_key="test-key",
         reservation_id="reservation-1",
@@ -52,9 +52,9 @@ def test_test_runner_forwards_session_cookie_to_internal_solve_call(monkeypatch)
     assert calls[0][1]["Cookie"] == "eopp_session=session-token"
 
 
-def test_test_runner_lets_api_route_inject_session_api_key(monkeypatch):
+def test_captcha_test_driver_lets_api_route_inject_session_api_key(monkeypatch):
     import src.db  # noqa: F401
-    from src import test_runner
+    from src import captcha_test_driver
 
     bodies = []
 
@@ -66,9 +66,9 @@ def test_test_runner_lets_api_route_inject_session_api_key(monkeypatch):
 
         return Response()
 
-    monkeypatch.setattr(test_runner, "_http_post", fake_http_post)
+    monkeypatch.setattr(captcha_test_driver, "_http_post", fake_http_post)
 
-    test_runner._send_captcha_with_reservation(
+    captcha_test_driver._send_captcha_with_reservation(
         json.dumps({"puzzle": {"tiles": [], "variantsCapture": []}}),
         api_key="test-key",
         reservation_id="reservation-1",

@@ -117,6 +117,19 @@ function sanitizeConfig(config: InjectorConfig): Record<string, unknown> {
   return c;
 }
 
+function parseBackendErrorMessage(error: unknown, fallback: string): string {
+  const payload = error as { body?: string; message?: string };
+  if (payload?.body) {
+    try {
+      const parsed = JSON.parse(payload.body) as { message?: string; error?: string };
+      return parsed.message || parsed.error || fallback;
+    } catch {
+      return payload.body || fallback;
+    }
+  }
+  return payload?.message || fallback;
+}
+
 export async function registerUsage(
   reservationId: string,
   config?: InjectorConfig,
@@ -131,12 +144,10 @@ export async function registerUsage(
   } catch (err) {
     const error = err as { status?: number; body?: string };
     if (error.status === 412) {
-      try {
-        const parsed = JSON.parse(error.body || "{}");
-        throw new Error(parsed.message || "Требуется активное SSE-подключение");
-      } catch {
-        throw new Error("Откройте страницу с капчами и авторизуйтесь");
-      }
+      throw new Error(parseBackendErrorMessage(error, "Откройте страницу с капчами и авторизуйтесь"));
+    }
+    if (error.status === 400) {
+      throw new Error(parseBackendErrorMessage(error, "Запуск запрещен сервером"));
     }
     throw err;
   }
@@ -209,11 +220,13 @@ export async function sendScheduledEvent(
   label: string,
   scheduledAt: string,
   description: string,
+  config?: InjectorConfig,
 ): Promise<{ ok: boolean; delivered_to_operators: number }> {
   const response = await sendMessageToBackground("scheduledEvent", {
     label,
     scheduledAt,
     description,
+    configJson: config ? sanitizeConfig(config) : undefined,
   });
   return response as { ok: boolean; delivered_to_operators: number };
 }

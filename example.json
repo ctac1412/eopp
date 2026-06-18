@@ -1,0 +1,414 @@
+{
+  "runUpTo": 5,
+  "facilityId": "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
+  "vehicleId": "f510ade6-b44a-4114-9b2b-5d90266105e6",
+  "reservationId": "806d5626-7b48-4b42-9b4b-0d3f8c87ed29",
+  "transportType": 1,
+  "slotDate": "2026-07-01",
+  "mode": "create",
+  "timeOrder": [
+    []
+  ],
+  "preferredMode": "soft",
+  "autoSolve": false,
+  "retryOnAllSlotsOccupied": true,
+  "maxSlotRetries": 8,
+  "slotRetryDelayMs": 500,
+  "sharedSlotsEnabled": true,
+  "sharedSlotsWaitMs": 15000,
+  "sharedSlotsMode": "reuse",
+  "retryPerEndpoint": {
+    "getAvailableSlots": {
+      "enabled": true,
+      "maxRetries": 5,
+      "delayMs": 3000,
+      "retry400Enabled": true,
+      "retry400MaxRetries": 15,
+      "retry400DelayMs": 1000
+    },
+    "generateCaptcha": {
+      "enabled": true,
+      "maxRetries": 5,
+      "delayMs": 3000,
+      "retry400Enabled": false,
+      "retry400MaxRetries": 0,
+      "retry400DelayMs": 0
+    },
+    "validateCaptcha": {
+      "enabled": true,
+      "maxRetries": 5,
+      "delayMs": 3000,
+      "retry400Enabled": true,
+      "retry400MaxRetries": 3,
+      "retry400DelayMs": 500
+    },
+    "submitReschedule": {
+      "enabled": true,
+      "maxRetries": 5,
+      "delayMs": 3000,
+      "retry400Enabled": false,
+      "retry400MaxRetries": 0,
+      "retry400DelayMs": 0
+    },
+    "submitCreate": {
+      "enabled": true,
+      "maxRetries": 5,
+      "delayMs": 3000,
+      "retry400Enabled": false,
+      "retry400MaxRetries": 0,
+      "retry400DelayMs": 0
+    }
+  },
+  "maxRetries": 5,
+  "retryDelayMs": 3000,
+  "reservationData": {
+    "raw": {
+      "id": "806d5626-7b48-4b42-9b4b-0d3f8c87ed29",
+      "userId": "fb310705-35a9-46c6-89ef-97488debc6bf",
+      "reservationRequestCode": "2026061812589",
+      "source": 0,
+      "status": 1,
+      "timeslot": null,
+      "arrivalDatePlan": null,
+      "arrivalDatePlanStr": null,
+      "borderCrossingDateFact": null,
+      "countryId": "156",
+      "vehicleData": [
+        {
+          "vehicleId": "081f4987-371a-4f58-9978-93087ad1044e",
+          "vehicleTypeId": 3,
+          "vehicleType": "Грузовое ТС",
+          "subTypeId": 2,
+          "subType": "Прицеп (полуприцеп)",
+          "regNumber": "AO495369",
+          "brand": "KOGEL",
+          "model": "SN24",
+          "loadCapacity": null,
+          "isRF": true,
+          "scanDoc": [
+            {
+              "name": "f19ed613-ca4d-42e5-9716-aa36600aa28b.pdf",
+              "path": "f19ed613-ca4d-42e5-9716-aa36600aa28b.pdf",
+              "size": 218994,
+              "createdAt": "0001-01-01T00:00:00"
+            }
+          ],
+          "status": 1,
+          "facilityId": "00000000-0000-0000-0000-000000000000",
+          "isArchive": false,
+          "vin": null,
+          "color": null,
+          "sts": null,
+          "stsDate": null
+        },
+        {
+          "vehicleId": "f510ade6-b44a-4114-9b2b-5d90266105e6",
+          "vehicleTypeId": 3,
+          "vehicleType": "Грузовое ТС",
+          "subTypeId": 1,
+          "subType": "Грузовой автомобиль (тягач)",
+          "regNumber": "P471TA69",
+          "brand": "SCANIA",
+          "model": "R440",
+          "loadCapacity": null,
+          "isRF": true,
+          "scanDoc": [
+            {
+              "name": "e02f90cb-38f4-4092-b2ec-898a76f5f094.pdf",
+              "path": "e02f90cb-38f4-4092-b2ec-898a76f5f094.pdf",
+              "size": 767625,
+              "createdAt": "0001-01-01T00:00:00"
+            }
+          ],
+          "status": 1,
+          "facilityId": "00000000-0000-0000-0000-000000000000",
+          "isArchive": false,
+          "vin": null,
+          "color": null,
+          "sts": null,
+          "stsDate": null
+        }
+      ],
+      "isLoaded": false,
+      "driverData": {
+        "driverId": null,
+        "lastName": null,
+        "firstName": null,
+        "middleName": null,
+        "license": null,
+        "licenseDateEnd": null
+      },
+      "userData": {
+        "userId": "fb310705-35a9-46c6-89ef-97488debc6bf",
+        "esiaId": 12498,
+        "epguId": 1038257309,
+        "fio": "Никитин Никита Сергеевич",
+        "organizationName": "ООО \"АРТ-ТРАНС\"",
+        "inn": "694301823714",
+        "orgInn": "6949007635",
+        "orgOgrn": "1116952008337",
+        "requesterType": "LEGAL",
+        "organizationForm": "12300",
+        "isForeigner": false,
+        "taxAuthorityCode": null
+      },
+      "facilityId": "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
+      "reservedSlots": null,
+      "email": "nikita123nikitin@icloud.com",
+      "phone": "9157086572",
+      "isArchive": false,
+      "isDocsDeleted": false,
+      "typeOfTransportation": 2,
+      "createdAt": "2026-06-18T06:52:31.134012+00:00",
+      "modifiedAt": "2026-06-18T06:53:28.270686+00:00",
+      "deletedAt": null,
+      "reservationChangeDeadline": null,
+      "earlyArrivalDateStart": null,
+      "earlyArrivalDateFinish": null,
+      "isSpecialCargo": false,
+      "typeOfSpecialCargo": null,
+      "cargoDescription": null,
+      "isControl": false,
+      "sequentialNum": null,
+      "timeslotNum": 0,
+      "specialCargoDocNumber": null,
+      "specialCargoDocDate": null,
+      "specialCargoScanDoc": [],
+      "loadCapacity": 22,
+      "vehicles": [
+        {
+          "vehicleId": "081f4987-371a-4f58-9978-93087ad1044e",
+          "status": 1,
+          "vehicleSubType": 2,
+          "regNum": "AO495369",
+          "isArchive": false
+        },
+        {
+          "vehicleId": "f510ade6-b44a-4114-9b2b-5d90266105e6",
+          "status": 1,
+          "vehicleSubType": 1,
+          "regNum": "P471TA69",
+          "isArchive": false
+        }
+      ],
+      "vin": null,
+      "color": null,
+      "sts": null,
+      "stsDate": null,
+      "isEditable": true,
+      "restrictions": {
+        "approveAllowed": true,
+        "rescheduleForward": 1,
+        "rescheduleBackward": 1,
+        "cancelVehicle": 0,
+        "cancelAll": 0,
+        "cancelVehicleHaveRestriction": false,
+        "cancelAllHaveRestriction": false,
+        "rescheduleHaveRestriction": true
+      }
+    },
+    "facilityRaw": {
+      "id": "1dae5b1c-e2b3-44a4-848f-df8ce2ddde42",
+      "name": "АПП Забайкальск",
+      "nameEng": "Zabaikal'sk",
+      "zipCode": 674650,
+      "region": "Забайкальский край",
+      "municipality": "Забайкальский район",
+      "locality": "пгт. Забайкальск",
+      "roadSection": "Федеральная трасса А-350, Чита-Забайкальск",
+      "countryId": "156",
+      "shortName": "КИТАЙ",
+      "shortNameEng": "China",
+      "organization": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ \"ОТРАСЛЕВОЙ ЦЕНТР ИМПОРТОЗАМЕЩЕНИЯ\"",
+      "communicationType": 3,
+      "operatingMode": 1,
+      "type": 1,
+      "lines": 3,
+      "truckLines": 1,
+      "isWorks": true,
+      "isReadonly": true,
+      "tz": 9,
+      "timezone": null,
+      "workSchedule": 1,
+      "workingDaysJson": null,
+      "bandwidthVehicleDay": 312,
+      "countControlPoints": 0,
+      "bandwidthVehicleTimeslot": 13,
+      "workingHoursCode": 1,
+      "changesReasons": null,
+      "changesDatetime": null,
+      "changesList": null,
+      "controlPoints": [
+        {
+          "id": "fa4a7aad-684a-4bdc-b755-86a45d753b55",
+          "waitingArea": true,
+          "capacity": 10,
+          "maxCapacity": 80,
+          "isArchive": false,
+          "countControlPosts": 2,
+          "workingHours": 0,
+          "providers": [],
+          "roadMapImage": null
+        }
+      ],
+      "shifts": [],
+      "horizon": 14,
+      "nearFacilityRus": "Манчьжурия",
+      "nearFacilityEng": "Manchuria",
+      "haveRoadSchema": true,
+      "workingDayStart": null,
+      "workingDayEnd": null,
+      "settingsQueue": {
+        "hoursWaiting": 12,
+        "maxQueueLength": null,
+        "cargoSpecialProportion": "",
+        "reservationLock": {
+          "eopp": false,
+          "epgu": false,
+          "tso": false
+        },
+        "approveReservation": {
+          "cargo": true,
+          "specialCargo": false,
+          "unconfirmedVehicleEpgu": false,
+          "unconfirmedVehicleEopp": false
+        },
+        "cancel": {
+          "haveRestriction": true,
+          "minutesBeforeBooking": 1
+        },
+        "arrival": {
+          "haveRestriction": false,
+          "earlyIntervalArrival": false,
+          "earlyMinutes": 0,
+          "earlyHours": 0,
+          "earlyDays": 0,
+          "hoursLate": 2
+        },
+        "nonArrival": {
+          "haveRestriction": false,
+          "blockUserAnyVehicle": false,
+          "blockUserSameVehicle": false,
+          "blockRestrictedUserVehicle": false
+        }
+      },
+      "settingsTimeslot": {
+        "unlockingSlots": {
+          "enumApplied": true,
+          "intervalAfterCancel": true,
+          "minutesAfterCancelMin": 10,
+          "minutesAfterCancelMax": 60,
+          "time": 2,
+          "displayDaysSlotsEopp": 14,
+          "displayHoursSlotsTso": 24
+        },
+        "approveReservation": {
+          "cargo": true,
+          "specialCargo": false,
+          "unconfirmedVehicleEopp": false,
+          "unconfirmedVehicleEpgu": false
+        },
+        "booking": {
+          "haveRestriction": true,
+          "countBooking": 1,
+          "intervalBooking": false,
+          "hoursBeforeBooking": 72,
+          "hoursAfterBooking": 72
+        },
+        "reschedule": {
+          "haveRestriction": true,
+          "daysReschedule": 15,
+          "countReschedule": 1,
+          "serialHaveRestriction": false,
+          "serialReschedule": 99
+        },
+        "cancel": {
+          "haveRestriction": true,
+          "minutesBeforeBooking": 1
+        },
+        "multipleCancel": {
+          "haveRestriction": false,
+          "blockUserAnyVehicle": false,
+          "blockUserSameVehicle": false
+        },
+        "arrival": {
+          "haveRestriction": false,
+          "earlyIntervalArrival": false,
+          "earlyMinutes": 0,
+          "earlyHours": 0,
+          "earlyDays": 0,
+          "hoursLate": 0,
+          "daysLate": 0,
+          "countLate": 0,
+          "serialLate": 0
+        },
+        "nonArrival": {
+          "haveRestriction": false,
+          "blockUserAnyVehicle": false,
+          "blockUserSameVehicle": false,
+          "blockRestrictedUserVehicle": false
+        }
+      },
+      "settingsSpecial": {
+        "hoursWaiting": 12,
+        "unlockingSlots": {
+          "enumApplied": true,
+          "intervalAfterCancel": true,
+          "minutesAfterCancelMin": 10,
+          "minutesAfterCancelMax": 60,
+          "time": 2,
+          "displayDaysSlotsEopp": 31,
+          "displayHoursSlotsTso": 24
+        },
+        "approveReservation": {
+          "cargo": true,
+          "specialCargo": false,
+          "unconfirmedVehicleEopp": true,
+          "unconfirmedVehicleEpgu": true
+        },
+        "booking": {
+          "haveRestriction": true,
+          "countBooking": 1,
+          "intervalBooking": false,
+          "hoursBeforeBooking": 72,
+          "hoursAfterBooking": 72
+        },
+        "reschedule": {
+          "haveRestriction": true,
+          "daysReschedule": 15,
+          "countReschedule": 1,
+          "serialHaveRestriction": false,
+          "serialReschedule": 99
+        },
+        "cancel": {
+          "haveRestriction": true,
+          "minutesBeforeBooking": 1
+        },
+        "multipleCancel": {
+          "haveRestriction": false,
+          "blockUserAnyVehicle": false,
+          "blockUserSameVehicle": false
+        },
+        "arrival": {
+          "haveRestriction": false,
+          "earlyIntervalArrival": false,
+          "earlyMinutes": 0,
+          "earlyHours": 0,
+          "earlyDays": 0,
+          "hoursLate": 2
+        },
+        "nonArrival": {
+          "haveRestriction": false,
+          "blockUserAnyVehicle": false,
+          "blockUserSameVehicle": false,
+          "blockRestrictedUserVehicle": false
+        }
+      },
+      "hoursLate": 0,
+      "bandwidthFact": 16,
+      "delayLevel": 0,
+      "modeType": 1
+    }
+  },
+  "captcha_source": "eopp"
+}

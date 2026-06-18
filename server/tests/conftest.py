@@ -1,11 +1,13 @@
 import os
 import sys
-import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from db_template import cleanup_db_file, use_isolated_migrated_db  # noqa: E402
 
 # Admin token is now required at import time — set default for tests
 os.environ.setdefault("ADMIN_TOKEN", "test_admin_token_123")
@@ -19,26 +21,11 @@ if os.name == "nt" and "PYTEST_DEBUG_TEMPROOT" not in os.environ:
 
 @pytest.fixture
 def isolated_api_db(monkeypatch):
-    import src.db.connection as conn_module
-    import src.db.init as init_module
-    from src.entities.base import set_db_path
-
-    test_db = tempfile.mkstemp(suffix=".db")[1]
-    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    set_db_path(test_db)
-    init_module.init_db()
+    test_db = use_isolated_migrated_db(monkeypatch)
 
     yield
 
-    try:
-        conn_module.get_connection().close()
-    except Exception:
-        pass
-    if os.path.exists(test_db):
-        try:
-            os.remove(test_db)
-        except Exception:
-            pass
+    cleanup_db_file(test_db)
 
 
 @pytest.fixture
@@ -93,20 +80,14 @@ def api_key(client, admin_token):
 
 @pytest.fixture
 def active_sse(api_key):
-    """Populate sse_queues so /api/register-usage passes the active-stream check."""
+    """Register an active SSE stream for routes that require a live operator page."""
     from src.repositories import api_key_repo
-    from src.sse.manager import lock, sse_queues
+    from src.sse.manager import register_sse_connection, unregister_sse_connection
 
     record = api_key_repo.get_key_record(api_key)
     api_key_id = record.id
-
-    with lock:
-        sse_queues.setdefault(api_key_id, []).append(object())
+    queue, _ = register_sse_connection(api_key_id, "testclient")
 
     yield
 
-    with lock:
-        if api_key_id in sse_queues:
-            sse_queues[api_key_id].pop()
-            if not sse_queues[api_key_id]:
-                del sse_queues[api_key_id]
+    unregister_sse_connection(queue, api_key_id)

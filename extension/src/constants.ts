@@ -91,6 +91,10 @@ function addDays(days: number): string {
   return d.toISOString().split("T")[0];
 }
 
+function isAfterCreateDateCutoff(date = new Date()): boolean {
+  return date.getHours() * 60 + date.getMinutes() > 11 * 60 + 15;
+}
+
 function defaultRetryConfig(): RetryConfig {
   return {
     enabled: true,
@@ -163,6 +167,9 @@ export function createDefaultConfig(
 }
 
 export function getDefaultSlotDate(mode: "reschedule" | "create"): string {
+  if (mode === "create" && isAfterCreateDateCutoff()) {
+    return addDays(1);
+  }
   return mode === "reschedule" ? addDays(1) : addDays(13);
 }
 

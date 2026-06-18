@@ -395,6 +395,7 @@ class ScheduledEventBody(BaseModel):
     label: str
     scheduled_at: str  # ISO format
     description: str = ""
+    config_json: dict[str, Any] | None = None
 
 
 class UpdateOperatorBody(BaseModel):

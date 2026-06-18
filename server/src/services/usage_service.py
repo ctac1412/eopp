@@ -7,6 +7,7 @@ from src.platform.observability.metrics import latency_timer
 from src.policies.access_policy import is_admin_token
 from src.repositories import api_key_repo, usage_log_repo
 from src.repositories import company_repo
+from src.services.launch_guards import validate_launch_config
 from src.sse import lock, sse_queues
 
 
@@ -73,6 +74,9 @@ def register_usage(body) -> tuple[int, dict]:
     key_record = api_key_repo.get_key_record(body.api_key)
     if not key_record:
         return 403, {"error": "Invalid API key"}
+
+    if guard_error := validate_launch_config(body.config_json):
+        return 400, guard_error
 
     api_key_id = key_record.id
     with lock:

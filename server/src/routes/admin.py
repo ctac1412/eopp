@@ -18,9 +18,11 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from src.benchmark import run_benchmark_cached
+from src.captcha_test_driver import get_test_stats
 from src.constants import FRONTEND_DIST
 from src.models import (
     CaptchaLabelSaveBody,
+    CompanyAccessBody,
     CompanyAliasBody,
     CompanyBillingSettingBody,
     CompanyBody,
@@ -32,7 +34,6 @@ from src.models import (
     CreateUserBody,
     DefaultPayoutSplitsBody,
     GenerateInvoiceBody,
-    CompanyAccessBody,
     OpenInvoiceBody,
     PreviewPayoutBody,
     SendSelectedCaptchasBody,
@@ -61,11 +62,10 @@ from src.policies.access_policy import (
     token_from_request,
 )
 from src.repositories import api_key_repo, company_repo, usage_log_repo, user_company_access_repo, user_repo
-
-logger = logging.getLogger("eopp.admin")
 from src.services import billing_service, captcha_service, reporting_service
 from src.sse import get_connected_streams
-from src.test_runner import get_test_stats
+
+logger = logging.getLogger("eopp.admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1213,7 +1213,7 @@ async def admin_captcha_thumbnail(captcha_id: str, mode: str | None = None):
         return Response(status_code=404, content="Not found")
 
     if is_icon_click_type(data):
-        from src.captcha_solver_engine.images import _clean_b64, _decode_b64_image
+        from src.captcha_solver_engine.images import _decode_b64_image
         puzzle_data = data.get("puzzle", data)
         main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
         icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""

@@ -56,9 +56,15 @@ ignore = ["E501"]
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests", "server/tests"]
+python_files = ["test_*.py"]
+addopts = ["-n", "8"]
+
 [dependency-groups]
 dev = [
     "import-linter>=2.8",
     "ruff>=0.15.14",
     "pyright>=1.1.400",
+    "pytest-xdist>=3.8.0",
 ]

@@ -9,8 +9,7 @@ import ssl
 import threading
 import time
 
-from src.captcha_assembly import captcha_hash
-from src.captcha_assembly import get_valid_variant_index
+from src.captcha_assembly import captcha_hash, get_valid_variant_index
 from src.services import captcha_file_service
 from src.utils import counter_lock, result_counter, source_files
 

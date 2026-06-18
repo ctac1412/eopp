@@ -2,16 +2,18 @@
 
 import base64
 import io
-import json
 import os
 import sys
-import tempfile
+import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
+
+from db_template import cleanup_db_file, use_isolated_migrated_db
 
 
 def _make_icon_click_captcha() -> dict:
@@ -47,24 +49,9 @@ def _make_icon_click_captcha() -> dict:
 
 @pytest.fixture(autouse=True)
 def isolate_db(monkeypatch):
-    import src.db.connection as conn_module
-    import src.db.init as init_module
-    from src.entities.base import set_db_path
-
-    test_db = tempfile.mktemp(suffix=".db")
-    monkeypatch.setattr(conn_module, "DB_PATH", test_db)
-    set_db_path(test_db)
-    init_module.init_db()
+    test_db = use_isolated_migrated_db(monkeypatch)
     yield
-    try:
-        conn_module.get_connection().close()
-    except Exception:
-        pass
-    if os.path.exists(test_db):
-        try:
-            os.remove(test_db)
-        except Exception:
-            pass
+    cleanup_db_file(test_db)
 
 
 @pytest.fixture
@@ -278,16 +265,15 @@ class TestDistributionWithSSE:
     def test_distribution_state_machine(self, client, master_key, admin_token):
         """Test distribution state init, answer submission, completion."""
         from src.routes.distribution import (
-            init_distribution_state,
             distribution_states,
+            init_distribution_state,
             wait_for_distribution_answer_archives,
         )
-        import threading
         _login_key_owner(client)
 
         captcha = _make_icon_click_captcha()
-        from src.captcha_solver_engine.images import crop_icons_for_distribution
         from src.captcha_assembly import captcha_hash
+        from src.captcha_solver_engine.images import crop_icons_for_distribution
 
         cid = captcha_hash(captcha)
         coords = [{"x": x, "y": y} for x, y in captcha["coords"]]

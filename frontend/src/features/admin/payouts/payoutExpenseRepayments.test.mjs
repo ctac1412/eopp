@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import test from "node:test";
 
 import {
   expenseRemainingAmount,
@@ -6,6 +7,7 @@ import {
   normalizeRepaymentAmount,
 } from "./payoutExpenseRepayments.js";
 
+test("payout expense repayments clamp remaining amounts and serialize form values", () => {
 const expense = {
   id: 7,
   amount: 10000,
@@ -27,3 +29,4 @@ assert.deepEqual(
   }),
   [{ expense_id: 7, amount: 2500 }],
 );
+});
