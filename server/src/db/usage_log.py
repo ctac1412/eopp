@@ -176,11 +176,11 @@ def _resolved_usage_price(conn, row) -> int | None:
         return int(finance_row["amount"])
     if row["status"] != "confirmed":
         return None
-    from src.db.tariffs import get_effective_tariff
+    from src.db.tariffs import get_usage_effective_tariff
 
     config_json = json.loads(row["config_json"]) if row["config_json"] else None
     mode = config_json.get("mode", "create") if config_json else "create"
-    tariff = get_effective_tariff(row["api_key_id"])
+    tariff = get_usage_effective_tariff(row["api_key_id"], row["company_id"])
     if not tariff:
         return None
     return _calculate_usage_price(

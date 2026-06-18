@@ -121,7 +121,6 @@ def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api
     register_response = client.post(
         "/api/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-1",
             "captcha_id": "captcha-1",
             "config_json": {"mode": "create"},
@@ -138,7 +137,7 @@ def test_confirm_usage_survives_failed_deferred_enqueue(monkeypatch, client, api
 
     confirm_response = client.post(
         "/api/confirm-usage",
-        json={"api_key": api_key, "usage_log_id": usage_log_id, "slot_date": "2026-06-11"},
+        json={"usage_log_id": usage_log_id, "slot_date": "2026-06-11"},
     )
 
     assert confirm_response.status_code == 200
@@ -157,7 +156,6 @@ def test_confirm_usage_defers_telegram_even_when_sync_flag_enabled(
     register_response = client.post(
         "/api/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-telegram-deferred",
             "captcha_id": "captcha-telegram-deferred",
             "config_json": {"mode": "create"},
@@ -173,7 +171,7 @@ def test_confirm_usage_defers_telegram_even_when_sync_flag_enabled(
 
     confirm_response = client.post(
         "/api/confirm-usage",
-        json={"api_key": api_key, "usage_log_id": usage_log_id, "slot_date": "2026-06-15"},
+        json={"usage_log_id": usage_log_id, "slot_date": "2026-06-15"},
     )
 
     assert confirm_response.status_code == 200
@@ -197,7 +195,6 @@ def test_fail_usage_defers_captcha_record_parsing(monkeypatch, client, api_key, 
     register_response = client.post(
         "/api/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-failed-captcha",
             "captcha_id": "captcha-failed",
             "config_json": {"mode": "create", "captcha_source": "eopp"},
@@ -214,7 +211,6 @@ def test_fail_usage_defers_captcha_record_parsing(monkeypatch, client, api_key, 
     fail_response = client.post(
         "/api/fail-usage",
         json={
-            "api_key": api_key,
             "usage_log_id": usage_log_id,
             "error_message": "captcha failed",
             "error_stage": "captcha",

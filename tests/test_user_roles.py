@@ -1706,3 +1706,63 @@ def test_company_tariff_prices_confirmed_usage_without_key_tariff(client, admin_
     calculate_usage_price({"usage_log_id": usage_log_id})
 
     assert get_usage_log_entry(usage_log_id)["price"] == 555
+
+
+def test_usage_billing_prefers_reservation_company_tariff(client, admin_token):
+    from src.db import confirm_usage, get_usage_log_entry, log_usage
+    from src.modules.billing.jobs import calculate_usage_price
+    from src.modules.crm.jobs import enrich_usage
+
+    key_company = client.post(
+        "/api/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "KeyTariffBillingCo"},
+    ).json()
+    reservation_company = client.post(
+        "/api/admin/companies",
+        headers={"X-Admin-Token": admin_token},
+        json={"name": "ReservationTariffBillingCo"},
+    ).json()
+    key = client.post(
+        "/api/api-keys",
+        headers={"X-Admin-Token": admin_token},
+        json={"label": "reservation-company-tariff-key", "company_id": key_company["id"]},
+    ).json()
+    assert client.put(
+        f"/api/admin/company-tariffs/{key_company['id']}",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "price_create": 100,
+            "price_reschedule": 200,
+            "price_create_peak": 100,
+        },
+    ).status_code == 200
+    assert client.put(
+        f"/api/admin/company-tariffs/{reservation_company['id']}",
+        headers={"X-Admin-Token": admin_token},
+        json={
+            "price_create": 3000,
+            "price_reschedule": 10000,
+            "price_create_peak": 3000,
+        },
+    ).status_code == 200
+
+    usage_log_id = log_usage(
+        key["key"],
+        "reservation-company-tariff-billing-reservation",
+        "captcha-reservation-company-tariff-billing",
+        config_json={
+            "mode": "create",
+            "reservationData": {
+                "raw": {
+                    "userData": {"organizationName": reservation_company["name"]},
+                },
+            },
+        },
+    )
+    enrich_usage({"usage_log_id": usage_log_id})
+    assert confirm_usage(usage_log_id) is True
+
+    calculate_usage_price({"usage_log_id": usage_log_id})
+
+    assert get_usage_log_entry(usage_log_id)["price"] == 3000

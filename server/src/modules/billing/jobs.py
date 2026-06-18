@@ -25,7 +25,7 @@ def calculate_usage_price(payload: dict[str, Any]) -> None:
     """Calculate and store usage price, then request prepaid deduction."""
 
     from src.db.finance import create_usage_finance_entries
-    from src.db.tariffs import get_effective_tariff
+    from src.db.tariffs import get_usage_effective_tariff
     from src.db.usage_log import _calculate_usage_price
 
     usage_log_id = int(payload["usage_log_id"])
@@ -45,7 +45,7 @@ def calculate_usage_price(payload: dict[str, Any]) -> None:
 
         config_json = json.loads(row["config_json"]) if row["config_json"] else None
         mode = config_json.get("mode", "create") if config_json else "create"
-        tariff = get_effective_tariff(row["api_key_id"])
+        tariff = get_usage_effective_tariff(row["api_key_id"], row["company_id"])
         price = 0
         if tariff:
             price = _calculate_usage_price(

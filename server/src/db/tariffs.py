@@ -39,3 +39,34 @@ def get_effective_tariff(api_key_id: int) -> dict | None:
     if not company_tariff:
         return None
     return _company_tariff_to_dict(company_tariff)
+
+
+def get_usage_effective_tariff(api_key_id: int, company_id: int | None) -> dict | None:
+    """Return the usage company tariff, falling back to the API key company."""
+
+    conn = get_connection()
+    if company_id is not None:
+        company_tariff = conn.execute(
+            """
+            SELECT *
+            FROM company_tariffs
+            WHERE company_id = ?
+            """,
+            (company_id,),
+        ).fetchone()
+        if company_tariff:
+            conn.close()
+            return _company_tariff_to_dict(company_tariff)
+    company_tariff = conn.execute(
+        """
+        SELECT ct.*
+        FROM api_keys ak
+        JOIN company_tariffs ct ON ct.company_id = ak.company_id
+        WHERE ak.id = ?
+        """,
+        (api_key_id,),
+    ).fetchone()
+    conn.close()
+    if not company_tariff:
+        return None
+    return _company_tariff_to_dict(company_tariff)

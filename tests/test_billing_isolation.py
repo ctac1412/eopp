@@ -9,7 +9,6 @@ def _puzzle_payload(api_key: str) -> dict:
     """Build the smallest manual captcha payload accepted by the HTTP adapter."""
 
     return {
-        "api_key": api_key,
         "auto_solve": False,
         "timeout_metadata": True,
         "reservation_id": "reservation-billing-isolation",
@@ -94,11 +93,10 @@ def test_broken_invoice_link_does_not_break_confirm_core(
 
     response = client.post(
         "/api/confirm-usage",
-        json={
-            "api_key": api_key,
-            "usage_log_id": usage_log_id,
-            "slot_date": "2026-06-11T12:00:00+03:00",
-            "logs": ["captcha solved"],
+            json={
+                "usage_log_id": usage_log_id,
+                "slot_date": "2026-06-11T12:00:00+03:00",
+                "logs": ["captcha solved"],
         },
     )
 
@@ -123,7 +121,6 @@ def test_broken_company_parsing_does_not_break_register_core(
     response = client.post(
         "/api/register-usage",
         json={
-            "api_key": api_key,
             "reservation_id": "reservation-crm-isolation",
             "captcha_id": "captcha-crm-isolation",
             "config_json": {
