@@ -949,6 +949,51 @@ class TestAdmin:
         assert data["limit"] == 3
         assert data["lines"] == ["line 2", "line 3", "line 4"]
 
+    def test_admin_runtime_state_summarizes_memory_entities(self, client, admin_token):
+        from src.routes.distribution import distribution_states
+        from src.sse import lock, pending, sse_queues
+
+        class FakeQueue:
+            def qsize(self):
+                return 2
+
+        with lock:
+            pending["runtime-captcha"] = {
+                "usage_log_id": 589,
+                "api_key_id": 42,
+                "result": None,
+            }
+            sse_queues[42] = [FakeQueue()]
+        distribution_states["runtime-captcha"] = {
+            "usage_log_id": 589,
+            "api_key_id": 42,
+            "operators": {0: {"idx": 0}},
+            "all_answers": {0: {"x": 1, "y": 2}},
+        }
+        try:
+            response = client.get(
+                "/api/admin/runtime-state",
+                headers={"X-Admin-Token": admin_token},
+            )
+        finally:
+            with lock:
+                pending.pop("runtime-captcha", None)
+                sse_queues.pop(42, None)
+            distribution_states.pop("runtime-captcha", None)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["summary"]["pending_captchas"] >= 1
+        assert data["summary"]["sse_queues"] >= 1
+        queues_entity = next(item for item in data["entities"] if item["name"] == "sse_queues")
+        queue_item = next(item for item in queues_entity["items"] if item["api_key_id"] == 42)
+        assert queue_item["queues"] == 1
+        assert queue_item["queue_details"][0]["depth"] == 2
+        assert queue_item["queue_details"][0]["type"] == "FakeQueue"
+        pending_entity = next(item for item in data["entities"] if item["name"] == "pending_captchas")
+        pending_item = next(item for item in pending_entity["items"] if item["key"] == "runtime-captcha")
+        assert "text" in pending_item
+
     def test_admin_api_key_update_writes_audit_log(self, client, admin_token):
         from src.db.audit_log import list_audit_log
 

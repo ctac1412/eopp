@@ -17,7 +17,7 @@ import { getCurrentOperatorPageUrl } from "./homeOperatorAccess";
 import { normalizeHomeSideTab } from "./homeTabs";
 import { SegmentedControl } from "../../../ui";
 
-export function HomePage() {
+export function HomePage({ themeMode = "dark", onThemeModeChange }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const apiKey = useCaptchaStore((s) => s.apiKey);
   const superKioskMode = useCaptchaStore((s) => s.superKioskMode);
@@ -122,7 +122,23 @@ export function HomePage() {
 
   return (
     <div className="container py-3 home-page">
-      <StatusBar />
+      <header data-eopp-component="HomePageHeader" className="home-page__header">
+        <div className="home-page__status">
+          <StatusBar />
+        </div>
+        <SegmentedControl
+          aria-label="Theme"
+          data-eopp-component="HomeThemeSwitch"
+          className="home-page__theme"
+          size="small"
+          value={themeMode}
+          onChange={(value) => onThemeModeChange?.(value)}
+          options={[
+            { label: "Темная", value: "dark" },
+            { label: "Светлая", value: "light" },
+          ]}
+        />
+      </header>
       {superKioskMode && isAdmin && <SuperKioskPanel />}
       <div className="home-workspace">
         <section data-eopp-component="HomeQueuePane" className="home-workspace__queue">

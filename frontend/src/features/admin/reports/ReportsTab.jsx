@@ -12,6 +12,7 @@ import {
   getErrorInfo,
   getErrorTagColor,
   getFioFull,
+  groupByCompany,
   getOpType,
   getSearchText,
   getStatusLabel,
@@ -22,6 +23,7 @@ import {
   Button,
   DataTable,
   FilterBar,
+  MetricsStrip,
   SelectInput,
   StatusTag,
   TextInput,
@@ -460,6 +462,31 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
   const selectedLogs = selectableRecords.filter((record) => selectedLogIds.includes(record.id));
   const selectedRecord = filteredRecords.find((record) => record.id === expandedRecordId) || null;
   const usagePageStart = (usagePage - 1) * usagePageSize;
+  const invoiceReadyAmount = selectableRecords.reduce((sum, record) => sum + (record.price || 0), 0);
+  const selectedInvoiceAmount = selectedLogs.reduce((sum, record) => sum + (record.price || 0), 0);
+  const confirmedCount = filteredRecords.filter((record) => record.status === "confirmed").length;
+  const failedCount = filteredRecords.filter((record) => record.status === "failed").length;
+  const journalMetrics = [
+    { key: "visible", label: "В журнале", value: filteredRecords.length, tone: "neutral" },
+    { key: "confirmed", label: "Успешно", value: confirmedCount, tone: "success" },
+    { key: "failed", label: "Ошибки", value: failedCount, tone: failedCount > 0 ? "danger" : "success" },
+    {
+      key: "invoice-ready",
+      label: "К счету",
+      value: `${selectableRecords.length} / ${formatMoney(invoiceReadyAmount)}`,
+      tone: selectableRecords.length > 0 ? "info" : "neutral",
+    },
+    {
+      key: "invoice-selected",
+      label: "Выбрано",
+      value: `${selectedLogs.length} / ${formatMoney(selectedInvoiceAmount)}`,
+      tone: selectedLogs.length > 0 ? "warning" : "neutral",
+    },
+  ];
+  const companyBadges = groupByCompany(records)
+    .filter((company) => company.name !== "—")
+    .sort((a, b) => b.records.length - a.records.length)
+    .slice(0, 12);
 
   const openManualInvoiceModal = () => {
     if (selectedLogs.length === 0) {
@@ -713,6 +740,8 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
         }
       />
 
+      <MetricsStrip items={journalMetrics} className="reports-journal-summary mb-2" />
+
       <FilterBar className="mb-3">
         <label className="form-label small mb-0">
           Компания
@@ -799,6 +828,34 @@ export function ReportsTab({ adminToken, onError, onInvoiceGenerated, users = []
           />
         </label>
       </FilterBar>
+
+      {companyBadges.length > 0 && (
+        <div
+          data-eopp-component="ReportsCompanyBadges"
+          className="reports-company-badges mb-3"
+          aria-label="Быстрые фильтры компаний"
+        >
+          <button
+            type="button"
+            className={`reports-company-badge ${companyFilter === "all" ? "is-active" : ""}`}
+            onClick={() => setCompanyFilter("all")}
+          >
+            Все
+          </button>
+          {companyBadges.map((company) => (
+            <button
+              key={company.name}
+              type="button"
+              className={`reports-company-badge ${companyFilter === company.name ? "is-active" : ""}`}
+              title={`${company.name}: к счету ${formatMoney(company.invoiceAmount)}`}
+              onClick={() => setCompanyFilter(company.name)}
+            >
+              <span className="reports-company-badge__name">{company.name}</span>
+              <span className="reports-company-badge__amount">{formatMoney(company.invoiceAmount)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div data-eopp-component="ReportsWorkspace" className="reports-workspace">
         <Card

@@ -20,7 +20,17 @@ test("backend logs tab displays top3 process pool diagnostics outside health ver
 
   assert.ok(source.includes('adminRequest("/top3-pool-status")'));
   assert.match(source, /Top3 pool/);
-  assert.match(source, /Top3 workers/);
-  assert.match(source, /Top3 errors/);
+  assert.match(source, /Workers/);
+  assert.match(source, /Errors/);
   assert.match(source, /top3Pool\?\.last_error/);
+});
+
+test("backend logs tab exposes runtime memory snapshot and expandable job details", async () => {
+  const source = await readFile(sourcePath, "utf8");
+
+  assert.ok(source.includes('adminRequest("/admin/runtime-state?limit=50"'));
+  assert.match(source, /Runtime memory entities/);
+  assert.match(source, /runtimeCollapseItems/);
+  assert.match(source, /expandedRowRender/);
+  assert.match(source, /idempotency_key/);
 });

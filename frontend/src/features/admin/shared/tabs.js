@@ -15,6 +15,7 @@ function lazyAdminTab(exportName) {
 }
 
 export const OperationsTabContainer = lazyAdminTab("OperationsTabContainer");
+export const MetricsTabContainer = lazyAdminTab("MetricsTabContainer");
 export const ReportsTabContainer = lazyAdminTab("ReportsTabContainer");
 export const CompaniesTabContainer = lazyAdminTab("CompaniesTabContainer");
 export const OperatorsTabContainer = lazyAdminTab("OperatorsTabContainer");
@@ -45,6 +46,7 @@ export const ADMIN_TABS = [
   { id: "testbench", path: "testbench", label: "Тесты и бенчмарк", shortLabel: "Тесты", component: TestBenchmarkTabContainer },
   { id: "training", path: "training", label: "Обучение", component: TrainingAdminTabContainer },
   { id: "streams", path: "streams", label: "Стримы", component: StreamsTabContainer },
+  { id: "metrics", path: "metrics", label: "Метрики", component: MetricsTabContainer },
   { id: "backend-logs", path: "backend-logs", label: "Техстатус", shortLabel: "Tech", component: BackendLogsTabContainer },
   { id: "prepaid", path: "prepaid", label: "Предоплата", shortLabel: "Аванс", component: PrepaidPackagesTabContainer },
   { id: "ai", path: "ai", label: "ИИ", component: AITabContainer },

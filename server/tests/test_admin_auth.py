@@ -11,6 +11,7 @@ def test_admin_auth_accepts_password_login(client, legacy_admin_api_key):
     data = response.json()
     assert data["ok"] is True
     assert data["role"] == "super_admin"
+    assert "metrics" in data["sections"]
     assert "finance" in data["sections"]
     assert "token" not in data
 

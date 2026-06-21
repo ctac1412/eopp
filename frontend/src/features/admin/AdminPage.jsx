@@ -28,7 +28,7 @@ const ROLE_LABELS = {
 const DEFAULT_ROLE_SECTIONS = {
   super_admin: ADMIN_TABS.map((tab) => tab.id),
   administrator: ADMIN_TABS.filter((tab) => tab.id !== "users").map((tab) => tab.id),
-  manager: ["reports", "companies", "captchas", "invoices", "prepaid", "expenses", "finance", "payouts"],
+  manager: ["metrics", "reports", "companies", "captchas", "invoices", "prepaid", "expenses", "finance", "payouts"],
   operator: ["operations", "operators", "streams"],
 };
 

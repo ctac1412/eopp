@@ -4,12 +4,11 @@ import threading
 import time
 
 from src.captcha_assembly import get_valid_variant_index, is_icon_click_type
-from src.core.captcha_runtime.display_payload import build_new_captcha_message
 from src.services import captcha_file_service
 from src.entities import ApiKey
 from src.repositories import api_key_repo, usage_log_repo
 from src.policies.access_policy import is_admin_token
-from src.sse import get_connected_streams, push_sse
+from src.sse import get_connected_streams
 
 
 def authorize_broadcast(admin_token: str | None) -> tuple[int, dict] | None:
@@ -208,7 +207,27 @@ def save_captcha_label(captcha_id: str, variant_index: int) -> tuple[int, dict]:
         return 500, {"error": f"save failed: {exc}"}
 
 
-def replay_captchas(captcha_ids: list[str]) -> int | None:
+def _send_replay_payload(
+    body: str,
+    *,
+    session_token: str | None = None,
+    auto_solve_rucaptcha: bool = False,
+) -> None:
+    from src.captcha_test_driver import _send_captcha_with_reservation
+
+    _send_captcha_with_reservation(
+        body,
+        auto_solve_rucaptcha=auto_solve_rucaptcha,
+        session_token=session_token,
+    )
+
+
+def replay_captchas(
+    captcha_ids: list[str],
+    *,
+    session_token: str | None = None,
+    auto_solve_rucaptcha: bool = False,
+) -> int | None:
     if not captcha_ids:
         return None
     streams = get_connected_streams()
@@ -226,42 +245,11 @@ def replay_captchas(captcha_ids: list[str]) -> int | None:
 
     def send_captchas():
         for cid, data in replay_payloads:
-            if is_icon_click_type(data):
-                from src.captcha_solver_engine.images import assemble_icon_click_preview
-                puzzle_data = data.get("puzzle", data)
-                main_b64 = puzzle_data.get("imageBase64", "") if isinstance(puzzle_data, dict) else ""
-                icons_b64 = puzzle_data.get("iconsBase64", "") if isinstance(puzzle_data, dict) else ""
-                try:
-                    gen = assemble_icon_click_preview(main_b64, icons_b64)
-                except Exception:
-                    gen = []
-                sse = build_new_captcha_message(
-                    {
-                        "captcha_id": cid,
-                        "images": {str(g["index"]): g["image"] for g in gen} if gen else {},
-                        "captcha_type": 1,
-                        "icons_image": gen[0].get("icons", "") if gen else "",
-                    },
-                    timeout=30,
-                    owner_label="replay",
-                    owner_api_key_id=-1,
-                ).to_dict()
-            else:
-                puzzle = data.get("puzzle", data)
-                tiles = puzzle.get("tiles", [])
-                variants = puzzle.get("variantsCapture", [])
-                sse = build_new_captcha_message(
-                    {
-                        "captcha_id": cid,
-                        "images": {},
-                        "tiles": tiles,
-                        "variants": variants,
-                    },
-                    timeout=30,
-                    owner_label="replay",
-                    owner_api_key_id=-1,
-                ).to_dict()
-            push_sse(sse)
+            _send_replay_payload(
+                json.dumps(data),
+                session_token=session_token,
+                auto_solve_rucaptcha=auto_solve_rucaptcha,
+            )
             time.sleep(1)
 
     t = threading.Thread(target=send_captchas, daemon=True)

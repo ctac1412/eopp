@@ -355,6 +355,7 @@ class CaptchaLabelSaveBody(BaseModel):
 
 class SendSelectedCaptchasBody(BaseModel):
     captcha_ids: list[str] = []
+    auto_solve_rucaptcha: bool = False
 
 
 class OperatorSubscribeBody(BaseModel):

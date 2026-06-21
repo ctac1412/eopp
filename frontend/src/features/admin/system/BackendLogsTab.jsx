@@ -1,6 +1,6 @@
 import { adminRequest } from "../shared/adminClient";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Alert, Card, Descriptions, Space } from "antd";
+import { Alert, Card, Collapse, Space } from "antd";
 import {
   Button,
   DataTable,
@@ -78,6 +78,54 @@ function compactPayload(payload) {
   return text.length > 120 ? `${text.slice(0, 120)}...` : text;
 }
 
+function formatJson(value) {
+  if (value == null) return "—";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function renderRuntimeItem(entityName, item, index) {
+  if (entityName === "sse_queues") {
+    const queueDetails = Array.isArray(item.queue_details) ? item.queue_details : [];
+    return (
+      <div className="tech-runtime-item" key={item.key || index}>
+        <div className="tech-runtime-item__head">
+          <span className="font-monospace">api key {item.api_key_id ?? item.key ?? "—"}</span>
+          <span className="text-muted">{item.queues ?? queueDetails.length} queues</span>
+        </div>
+        <div className="tech-sse-queues">
+          {queueDetails.length === 0 ? (
+            <span className="text-muted small">No queue details</span>
+          ) : (
+            queueDetails.map((queue, queueIndex) => (
+              <div className="tech-sse-queue" key={queue.queue_id || queueIndex}>
+                <span className="font-monospace">#{queue.queue_id}</span>
+                <span>depth {queue.depth ?? "—"}/{queue.maxsize ?? "—"}</span>
+                <span>tasks {queue.unfinished_tasks ?? "—"}</span>
+                <span>getters {queue.waiting_getters ?? 0}</span>
+                <span>putters {queue.waiting_putters ?? 0}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tech-runtime-item" key={item.key || index}>
+      <div className="tech-runtime-item__head">
+        <span className="font-monospace">{item.key || item.task_id || item.queue_id || index}</span>
+        {item.type && <span className="text-muted">{item.type}</span>}
+      </div>
+      <pre>{item.text || formatJson(item)}</pre>
+    </div>
+  );
+}
+
 function normalizeLogError(message) {
   if (message === "log_file_not_found") return "Файл лога пока не создан";
   return message;
@@ -86,6 +134,7 @@ function normalizeLogError(message) {
 export function BackendLogsTab({ adminToken, onError }) {
   const [logs, setLogs] = useState({ lines: [], path: "", loadedAt: null });
   const [jobsOverview, setJobsOverview] = useState(null);
+  const [runtimeState, setRuntimeState] = useState(null);
   const [health, setHealth] = useState(null);
   const [top3Pool, setTop3Pool] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -137,16 +186,27 @@ export function BackendLogsTab({ adminToken, onError }) {
     };
   }, [adminToken]);
 
+  const fetchRuntimeState = useCallback(async () => {
+    if (!adminToken) return null;
+    const res = await adminRequest("/admin/runtime-state?limit=50", {
+      headers: adminHeadersJson(adminToken),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || data.detail || `runtime HTTP ${res.status}`);
+    return data;
+  }, [adminToken]);
+
   const refreshAll = useCallback(async () => {
     if (!adminToken) return;
     setLoading(true);
     setJobsLoading(true);
     try {
-      const [healthResult, top3Result, jobsResult, logsResult] = await Promise.allSettled([
+      const [healthResult, top3Result, jobsResult, logsResult, runtimeResult] = await Promise.allSettled([
         fetchHealth(),
         fetchTop3Pool(),
         fetchJobs(),
         fetchLogs(),
+        fetchRuntimeState(),
       ]);
       if (healthResult.status === "fulfilled") {
         setHealth(healthResult.value);
@@ -176,11 +236,17 @@ export function BackendLogsTab({ adminToken, onError }) {
           error: normalizeLogError(logsResult.reason?.message || "log unavailable"),
         });
       }
+      if (runtimeResult.status === "fulfilled") {
+        setRuntimeState(runtimeResult.value);
+      } else {
+        setRuntimeState(null);
+        onError?.(runtimeResult.reason?.message || "runtime state failed");
+      }
     } finally {
       setLoading(false);
       setJobsLoading(false);
     }
-  }, [adminToken, fetchHealth, fetchJobs, fetchLogs, fetchTop3Pool, onError]);
+  }, [adminToken, fetchHealth, fetchJobs, fetchLogs, fetchRuntimeState, fetchTop3Pool, onError]);
 
   useEffect(() => {
     refreshAll();
@@ -219,6 +285,7 @@ export function BackendLogsTab({ adminToken, onError }) {
     const dead = sumCounts(jobCounts, (item) => item.status === "dead");
     const running = sumCounts(jobCounts, (item) => item.status === "running");
     const outboxEvents = sumCounts(outboxCounts);
+    const runtimeSummary = runtimeState?.summary || {};
     return [
       { key: "top3", label: "Top3 pool", value: top3Pool?.status || "—", tone: top3Pool?.status === "ok" ? "success" : top3Pool?.status === "unknown" ? "neutral" : "warning" },
       { key: "health", label: "Сервер", value: health?.status || "—", tone: health?.status === "ok" ? "success" : "danger" },
@@ -226,8 +293,12 @@ export function BackendLogsTab({ adminToken, onError }) {
       { key: "running", label: "В работе", value: running, tone: running > 0 ? "info" : "neutral" },
       { key: "dead", label: "Dead jobs", value: dead, tone: dead > 0 ? "danger" : "success" },
       { key: "outbox", label: "Outbox события", value: outboxEvents, tone: outboxEvents > 0 ? "neutral" : "success" },
+      { key: "mem-pending", label: "Memory pending", value: runtimeSummary.pending_captchas ?? "—", tone: runtimeSummary.pending_captchas > 0 ? "warning" : "success" },
+      { key: "mem-sse", label: "SSE queues", value: runtimeSummary.sse_queues ?? "—", tone: runtimeSummary.sse_queues > 0 ? "info" : "neutral" },
+      { key: "mem-dist", label: "Distribution", value: runtimeSummary.distribution_states ?? "—", tone: runtimeSummary.distribution_states > 0 ? "info" : "neutral" },
+      { key: "mem-callbacks", label: "Callbacks", value: runtimeSummary.rucaptcha_callbacks ?? "—", tone: runtimeSummary.rucaptcha_callbacks > 0 ? "warning" : "success" },
     ];
-  }, [health, jobsOverview, top3Pool]);
+  }, [health, jobsOverview, runtimeState, top3Pool]);
 
   const jobsColumns = [
     {
@@ -321,6 +392,20 @@ export function BackendLogsTab({ adminToken, onError }) {
 
   const jobs = jobsOverview?.jobs || [];
   const oldestDue = jobsOverview?.oldest_due_job;
+  const runtimeEntities = runtimeState?.entities || [];
+  const runtimeCollapseItems = runtimeEntities.map((entity) => ({
+    key: entity.name,
+    label: `${entity.label || entity.name} (${entity.count ?? 0})`,
+    children: (
+      <div className="tech-runtime-entity">
+        {(entity.items || []).length === 0 ? (
+          <div className="text-muted small">No in-memory entries</div>
+        ) : (
+          (entity.items || []).map((item, index) => renderRuntimeItem(entity.name, item, index))
+        )}
+      </div>
+    ),
+  }));
 
   return (
     <div data-eopp-component="TechStatusTab" className="tech-status-page">
@@ -360,39 +445,49 @@ export function BackendLogsTab({ adminToken, onError }) {
 
       <div className="tech-status-grid">
         <Card data-eopp-component="TechStatusHealthCard" size="small" title="Сервер">
-          <Descriptions size="small" column={1}>
-            <Descriptions.Item label="Health">
+          <div className="tech-server-compact">
+            <div className="tech-server-compact__item">
+              <span>Health</span>
               <StatusTag status={health?.status === "ok" ? "confirmed" : "failed"} label={health?.status || "—"} />
-            </Descriptions.Item>
-            <Descriptions.Item label="DB">{health?.db || "—"}</Descriptions.Item>
-            <Descriptions.Item label="Top3 pool">
+            </div>
+            <div className="tech-server-compact__item">
+              <span>DB</span>
+              <strong>{health?.db || "—"}</strong>
+            </div>
+            <div className="tech-server-compact__item">
+              <span>Top3</span>
               <StatusTag
                 status={top3Pool?.status === "ok" ? "confirmed" : top3Pool?.status === "unknown" ? "neutral" : "warning"}
                 label={top3Pool?.status || "—"}
               />
-            </Descriptions.Item>
-            <Descriptions.Item label="Top3 workers">{top3Pool?.workers ?? "—"}</Descriptions.Item>
-            <Descriptions.Item label="Top3 submitted">{top3Pool?.submitted ?? "—"}</Descriptions.Item>
-            <Descriptions.Item label="Top3 errors">{top3Pool?.compute_errors ?? "—"}</Descriptions.Item>
-            <Descriptions.Item label="Top3 empty">{top3Pool?.empty_returns ?? "—"}</Descriptions.Item>
-            <Descriptions.Item label="Top3 last error">
-              <span className={top3Pool?.last_error ? "text-danger" : "text-muted"}>
-                {top3Pool?.last_error || "—"}
-              </span>
-            </Descriptions.Item>
-            <Descriptions.Item label="DB path">
-              <span className="font-monospace tech-inline-path">{jobsOverview?.db_path || "—"}</span>
-            </Descriptions.Item>
-            <Descriptions.Item label="Самая старая due">
-              {oldestDue ? (
-                <span className="font-monospace">
-                  #{oldestDue.id} {oldestDue.job_name} · {formatDateTime(oldestDue.created_at)}
-                </span>
-              ) : (
-                "—"
-              )}
-            </Descriptions.Item>
-          </Descriptions>
+            </div>
+            <div className="tech-server-compact__item">
+              <span>Workers</span>
+              <strong>{top3Pool?.workers ?? "—"}</strong>
+            </div>
+            <div className="tech-server-compact__item">
+              <span>Submitted</span>
+              <strong>{top3Pool?.submitted ?? "—"}</strong>
+            </div>
+            <div className="tech-server-compact__item">
+              <span>Errors</span>
+              <strong className={top3Pool?.compute_errors ? "text-danger" : ""}>{top3Pool?.compute_errors ?? "—"}</strong>
+            </div>
+            <div className="tech-server-compact__wide">
+              <span>DB path</span>
+              <strong className="font-monospace tech-inline-path">{jobsOverview?.db_path || "—"}</strong>
+            </div>
+            <div className="tech-server-compact__wide">
+              <span>Oldest due</span>
+              <strong className="font-monospace">
+                {oldestDue ? `#${oldestDue.id} ${oldestDue.job_name} · ${formatDateTime(oldestDue.created_at)}` : "—"}
+              </strong>
+            </div>
+            <div className="tech-server-compact__wide">
+              <span>Last Top3 error</span>
+              <strong className={top3Pool?.last_error ? "text-danger" : "text-muted"}>{top3Pool?.last_error || "—"}</strong>
+            </div>
+          </div>
         </Card>
 
         <Card data-eopp-component="TechStatusOutboxCard" size="small" title="Outbox: журнал событий">
@@ -457,6 +552,42 @@ export function BackendLogsTab({ adminToken, onError }) {
           loading={jobsLoading}
           emptyText="Очередь пуста"
           pagination
+          expandable={{
+            expandedRowRender: (job) => (
+              <div className="tech-job-detail">
+                <div className="tech-job-detail__meta">
+                  <span>ID #{job.id}</span>
+                  <span>{job.job_name}</span>
+                  <span>{job.idempotency_key || "no idempotency key"}</span>
+                  <span>created {formatDateTime(job.created_at)}</span>
+                  <span>locked {formatDateTime(job.locked_at)}</span>
+                  <span>completed {formatDateTime(job.completed_at)}</span>
+                </div>
+                {job.last_error && <pre className="tech-job-detail__error">{job.last_error}</pre>}
+                <pre>{formatJson(job.payload)}</pre>
+              </div>
+            ),
+            rowExpandable: () => true,
+          }}
+        />
+      </Card>
+
+      <Card
+        data-eopp-component="TechStatusRuntimeCard"
+        className="mt-3"
+        size="small"
+        title="Runtime memory entities"
+        extra={
+          <span className="small text-muted">
+            {runtimeState?.loaded_at ? formatDateTime(runtimeState.loaded_at) : "not loaded"}
+          </span>
+        }
+      >
+        <Collapse
+          size="small"
+          ghost
+          items={runtimeCollapseItems}
+          className="tech-runtime-collapse"
         />
       </Card>
 

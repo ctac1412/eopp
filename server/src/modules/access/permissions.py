@@ -71,6 +71,7 @@ ROLE_SECTIONS: dict[str, tuple[str, ...]] = {
         "testbench",
         "training",
         "streams",
+        "metrics",
         "backend-logs",
     ),
     "administrator": (
@@ -90,9 +91,10 @@ ROLE_SECTIONS: dict[str, tuple[str, ...]] = {
         "testbench",
         "training",
         "streams",
+        "metrics",
         "backend-logs",
     ),
-    "manager": ("reports", "companies", "captchas", "invoices", "prepaid", "expenses", "finance", "payouts"),
+    "manager": ("metrics", "reports", "companies", "captchas", "invoices", "prepaid", "expenses", "finance", "payouts"),
     "operator": ("operations", "operators", "streams"),
 }
 

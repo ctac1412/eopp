@@ -16,12 +16,11 @@ import "antd/dist/reset.css";
 import { ConfigProvider } from "antd";
 import App from "./app/App.jsx";
 import { AdminPage } from "./features/admin";
-import AuthWizard from "./features/auth/AuthWizard.jsx";
-import { authService } from "./features/auth/api/authService.js";
 import { OperatorPage } from "./features/operator/workbench";
 import { TrainingPage, TrainingRunPage } from "./features/training/runs";
 import { TrainingResultsPage } from "./features/training/results";
 import { TrainingReviewPage } from "./features/training/review";
+import { registerServiceWorker } from "./registerServiceWorker";
 import { createAntdTheme } from "./ui/theme/antdTheme";
 import "./ui/styles/layout.css";
 import "./main.css";
@@ -43,51 +42,6 @@ const initialThemeMode = readStoredThemeMode();
 document.documentElement.dataset.theme = initialThemeMode;
 document.getElementById("root")?.setAttribute("data-theme", initialThemeMode);
 
-function OperatorAuthGate() {
-  const [authChecked, setAuthChecked] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    authService.me()
-      .then((response) => {
-        if (!response.ok) throw new Error("Unauthorized");
-        return response.json();
-      })
-      .then((me) => {
-        localStorage.setItem("admin_session_active", "1");
-        localStorage.setItem("admin_role", me.role || "");
-        localStorage.setItem("admin_sections", JSON.stringify(me.sections || []));
-        localStorage.setItem("admin_permissions", JSON.stringify(me.permissions || []));
-        if (!cancelled) setAuthenticated(true);
-      })
-      .catch(() => {
-        localStorage.removeItem("admin_session_active");
-        if (!cancelled) setAuthenticated(false);
-      })
-      .finally(() => {
-        if (!cancelled) setAuthChecked(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleAuthSuccess = () => {
-    setAuthenticated(true);
-  };
-
-  if (!authChecked) {
-    return null;
-  }
-
-  if (!authenticated) {
-    return <AuthWizard onSuccess={handleAuthSuccess} requireApiKey={false} />;
-  }
-
-  return <OperatorPage />;
-}
-
 function EoppRoot() {
   const [themeMode, setThemeMode] = useState(initialThemeMode);
   const antdTheme = useMemo(() => createAntdTheme(themeMode), [themeMode]);
@@ -108,7 +62,15 @@ function EoppRoot() {
     <ConfigProvider theme={antdTheme}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<App />} />
+          <Route
+            path="/"
+            element={
+              <App
+                themeMode={themeMode}
+                onThemeModeChange={setThemeMode}
+              />
+            }
+          />
           <Route
             path="/admin/:tabId?"
             element={
@@ -118,7 +80,15 @@ function EoppRoot() {
               />
             }
           />
-          <Route path="/operators/:uuid" element={<OperatorAuthGate />} />
+          <Route
+            path="/operators/:uuid"
+            element={
+              <OperatorPage
+                themeMode={themeMode}
+                onThemeModeChange={setThemeMode}
+              />
+            }
+          />
           <Route path="/training" element={<TrainingPage />} />
           <Route path="/training/run/:id" element={<TrainingRunPage />} />
           <Route
@@ -140,3 +110,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <EoppRoot />
   </React.StrictMode>,
 );
+
+if (import.meta.env.PROD) {
+  registerServiceWorker();
+}

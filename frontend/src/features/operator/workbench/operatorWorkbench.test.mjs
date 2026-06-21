@@ -75,11 +75,15 @@ test("operator mobile layout keeps captcha in main workbench and collapses side 
   );
   assert.match(
     operatorCss,
-    /\.op-captcha__image-area \.captcha-variants-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(180px,\s*1fr\)\);/,
+    /\.op-captcha__image-area \.captcha-variants-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\);/,
   );
   assert.match(
     operatorCss,
-    /\.op-captcha__image-area \.captcha-card\s*\{[\s\S]*min-height:\s*155px;/,
+    /@media \(max-width:\s*980px\)\s*\{[\s\S]*\.op-captcha__image-area \.captcha-variants-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\);/,
+  );
+  assert.match(
+    operatorCss,
+    /\.op-captcha__image-area \.captcha-card\s*\{[\s\S]*min-height:\s*145px;/,
   );
   assert.match(
     workbenchCss,

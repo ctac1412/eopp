@@ -11,6 +11,7 @@ import {
   ExpensesTab,
   FinanceTab,
   InvoicesTab,
+  MetricsTab,
   OperationsDashboardTab,
   OperatorsTab,
   PayoutModal,
@@ -56,6 +57,10 @@ async function getJson(path, adminToken, fallback = []) {
 
 export function OperationsTabContainer({ adminToken, onError }) {
   return <OperationsDashboardTab adminToken={adminToken} onError={onError} />;
+}
+
+export function MetricsTabContainer({ adminToken, onError }) {
+  return <MetricsTab adminToken={adminToken} onError={onError} />;
 }
 
 export function OperatorsTabContainer({ adminToken, onError }) {

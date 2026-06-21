@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, DatePicker, Segmented, Space } from "antd";
 
 import { listCompanies, listFinanceParticipants } from "./financeApi.js";
+import { FinanceAnalyticsView } from "./FinanceAnalyticsView.jsx";
 import { FinanceEntriesView } from "./FinanceEntriesView.jsx";
 import { FinanceReportView } from "./FinanceReportView.jsx";
 import { ProfitLotsView } from "./ProfitLotsView.jsx";
@@ -10,6 +11,7 @@ const { RangePicker } = DatePicker;
 
 const VIEW_OPTIONS = [
   { label: "Проводки", value: "ledger" },
+  { label: "Аналитика", value: "analytics" },
   { label: "Лоты прибыли", value: "lots" },
   { label: "Сводка", value: "report" },
 ];
@@ -93,6 +95,11 @@ export function FinanceTab({ adminToken, onError }) {
           {...sharedProps}
           initialFilters={ledgerFilters}
           onFiltersChange={setLedgerFilters}
+        />
+      )}
+      {activeView === "analytics" && (
+        <FinanceAnalyticsView
+          {...sharedProps}
         />
       )}
       {activeView === "lots" && (

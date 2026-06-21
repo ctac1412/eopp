@@ -9,6 +9,7 @@ export { InvoiceCreateModal } from "./invoices/InvoiceCreateModal";
 export { InvoiceEditModal } from "./invoices/InvoiceEditModal";
 export { InvoiceModal } from "./invoices/InvoiceModal";
 export { UsageLogEditModal } from "./invoices/UsageLogEditModal";
+export { MetricsTab } from "./metrics/MetricsTab";
 export { OperationsDashboardTab } from "./operations/OperationsDashboardTab";
 export { OperatorsTab } from "./operators/OperatorsTab";
 export { PayoutsTab } from "./payouts/PayoutsTab";

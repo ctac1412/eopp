@@ -1,0 +1,19 @@
+{
+  "name": "EOPP Operator Console",
+  "short_name": "EOPP",
+  "description": "Операторская и административная панель EOPP",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f9fc",
+  "theme_color": "#6d28d9",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/eopp-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

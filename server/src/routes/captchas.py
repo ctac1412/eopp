@@ -26,11 +26,15 @@ async def get_public_captchas(
 
 
 @router.post("/public/captchas/send-selected")
-async def send_public_selected_captchas(body: SendSelectedCaptchasBody):
+async def send_public_selected_captchas(body: SendSelectedCaptchasBody, request: Request):
     captcha_ids = list(dict.fromkeys(body.captcha_ids))
     if not captcha_ids:
         return JSONResponse(status_code=400, content={"error": "No captchas selected"})
-    sent = captcha_service.replay_captchas(captcha_ids)
+    sent = captcha_service.replay_captchas(
+        captcha_ids,
+        session_token=token_from_request(request),
+        auto_solve_rucaptcha=body.auto_solve_rucaptcha,
+    )
     if sent is None:
         return JSONResponse(status_code=400, content={"error": "No active SSE connections"})
     if sent == 0:

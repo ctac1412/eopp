@@ -69,7 +69,17 @@ export function PublicCaptchasTab({ onReplaySent }) {
     setSending(true);
     setError("");
     try {
-      const res = await publicCaptchasService.sendSelected({ captcha_ids: selectedCaptchas });
+      const autoSolveRucaptcha = (() => {
+        try {
+          return localStorage.getItem("auto_solve_rucaptcha") === "1";
+        } catch {
+          return false;
+        }
+      })();
+      const res = await publicCaptchasService.sendSelected({
+        captcha_ids: selectedCaptchas,
+        auto_solve_rucaptcha: autoSolveRucaptcha,
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setSelected(new Set());

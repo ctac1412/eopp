@@ -14,7 +14,7 @@ import {
   playScheduledNew,
 } from "../../../utils/sounds";
 import useCaptchaStore from "../../../store/useCaptchaStore";
-import { Button, WorkbenchPage } from "../../../ui";
+import { Button, SegmentedControl, WorkbenchPage } from "../../../ui";
 import {
   applyOperatorAnswerResult,
   applyOperatorProgress,
@@ -44,7 +44,7 @@ function saveMaster(uuid, id, label) {
   }
 }
 
-export function OperatorPage() {
+export function OperatorPage({ themeMode = "dark", onThemeModeChange }) {
   const { uuid } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [masters, setMasters] = useState([]);
@@ -557,7 +557,7 @@ export function OperatorPage() {
             return next;
           });
           addLog(
-            "����� " + active.captchaId.slice(0, 8) + " ��� �������",
+            `Капча ${active.captchaId.slice(0, 8)} уже не активна`,
             "info",
           );
           return;
@@ -624,6 +624,18 @@ export function OperatorPage() {
             >
               Тренировка
             </a>
+            <SegmentedControl
+              aria-label="Theme"
+              data-eopp-component="OperatorConnectThemeSwitch"
+              className="operator-connect-card__theme"
+              size="small"
+              value={themeMode}
+              onChange={(value) => onThemeModeChange?.(value)}
+              options={[
+                { label: "Темная", value: "dark" },
+                { label: "Светлая", value: "light" },
+              ]}
+            />
           </div>
           <div className="operator-connect-card__field">
             <span>Назначенный мастер</span>
@@ -667,20 +679,8 @@ export function OperatorPage() {
                 hasActive={hasActive}
                 uuid={uuid}
                 handleReconnect={handleReconnect}
-                handleDisconnect={() => {
-                  if (masterId) {
-                    operatorWorkbenchService
-                      .sendChat({
-                        sender_role: "system",
-                        sender_id: 0,
-                        sender_label: "Система",
-                        message: `${operatorNickname || "Оператор"} отключился`,
-                        master_key_id: masterId,
-                      })
-                      .catch(() => {});
-                  }
-                  disconnect();
-                }}
+                themeMode={themeMode}
+                onThemeModeChange={onThemeModeChange}
               />
 
               <CaptchaArea

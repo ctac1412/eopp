@@ -1,6 +1,5 @@
 import { captchaService } from "./api/captchaService";
 import React, { useState, useEffect, useRef } from "react";
-import { formatMoney } from "../../../utils/format";
 import useCaptchaStore from "../../../store/useCaptchaStore";
 import { Button, CheckboxField, SelectInput, TextInput } from "../../../ui";
 
@@ -58,8 +57,6 @@ function StatusBar() {
   const [apiLabel, setApiLabel] = useState(null);
   const [apiRemaining, setApiRemaining] = useState(null);
   const [apiMaxUses, setApiMaxUses] = useState(null);
-  const [apiPriceCreate, setApiPriceCreate] = useState(null);
-  const [apiPriceReschedule, setApiPriceReschedule] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -67,8 +64,6 @@ function StatusBar() {
       setApiLabel(null);
       setApiRemaining(null);
       setApiMaxUses(null);
-      setApiPriceCreate(null);
-      setApiPriceReschedule(null);
       setIsAdmin(false);
       return;
     }
@@ -79,15 +74,11 @@ function StatusBar() {
         setApiLabel(data.label || null);
         setApiRemaining(data.remaining ?? null);
         setApiMaxUses(data.max_uses ?? null);
-        setApiPriceCreate(data.price_create ?? null);
-        setApiPriceReschedule(data.price_reschedule ?? null);
       })
       .catch(() => {
         setApiLabel(null);
         setApiRemaining(null);
         setApiMaxUses(null);
-        setApiPriceCreate(null);
-        setApiPriceReschedule(null);
       });
   }, [apiKey]);
 
@@ -211,12 +202,6 @@ function StatusBar() {
       </div>
 
       <div className="status-bar__actions">
-        {apiPriceCreate != null && (
-          <span className="tariff-badge tariff-badge--create">{formatMoney(apiPriceCreate)}</span>
-        )}
-        {apiPriceReschedule != null && (
-          <span className="tariff-badge tariff-badge--reschedule">{formatMoney(apiPriceReschedule)}</span>
-        )}
         {apiKey && (
           <div className="status-bar__key">
             <span className="api-key">{apiLabel || maskKey(apiKey)}</span>

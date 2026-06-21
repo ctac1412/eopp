@@ -285,6 +285,27 @@
   max-width: 1800px;
 }
 
+.home-page__header {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.home-page__status {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.home-page__status .status-bar {
+  height: 100%;
+}
+
+.home-page__theme {
+  flex: 0 0 150px;
+  align-self: center;
+}
+
 .home-workspace {
   --home-queue-stage-height: clamp(440px, 62vh, 520px);
   display: grid;
@@ -584,6 +605,15 @@
 }
 
 @media (max-width: 640px) {
+  .home-page__header {
+    flex-direction: column;
+  }
+
+  .home-page__theme {
+    width: 100%;
+    flex-basis: auto;
+  }
+
   .home-tabs-nav {
     align-items: stretch;
     flex-direction: column;
@@ -824,8 +854,221 @@
   background: var(--surface);
 }
 
+.admin-metrics-page {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.admin-metrics-page--loading {
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.admin-metrics-page__strip .eopp-metric-card {
+  flex: 1 1 150px;
+}
+
+.admin-metrics-page__grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.admin-metrics-page__card {
+  min-width: 0;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.admin-metrics-runtime {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.admin-metrics-runtime > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.admin-metrics-runtime > div:last-child {
+  border-bottom: 0;
+}
+
+.admin-metrics-runtime dt {
+  color: var(--text-subtle);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.admin-metrics-runtime dd {
+  margin: 0;
+  color: var(--text-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .admin-metrics-page__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .reports-company-summary-table {
   font-size: 0.75rem;
+}
+
+.finance-analytics-view {
+  min-width: 0;
+}
+
+.finance-analytics-metrics .eopp-metric-card {
+  flex: 1 1 150px;
+}
+
+.finance-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.finance-analytics-chart {
+  min-width: 0;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.finance-analytics-chart--daily {
+  grid-column: 1 / -1;
+}
+
+.finance-chart-bars {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.finance-chart-bar {
+  display: grid;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.finance-chart-bar__meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.finance-chart-bar__meta span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finance-chart-bar__meta strong {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--bs-font-monospace);
+  font-size: 0.72rem;
+}
+
+.finance-chart-bar__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.finance-chart-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--info);
+}
+
+.finance-chart-bar__fill.is-success {
+  background: var(--success);
+}
+
+.finance-chart-bar__fill.is-danger {
+  background: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .finance-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.reports-journal-summary .eopp-metric-card {
+  flex: 1 1 136px;
+}
+
+.reports-company-badges {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reports-company-badge {
+  display: inline-flex;
+  max-width: 240px;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 4px 9px;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.reports-company-badge:hover {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-surface-subtle);
+}
+
+.reports-company-badge.is-active {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-surface-soft);
+  color: var(--text-heading);
+}
+
+.reports-company-badge__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reports-company-badge__amount {
+  flex: 0 0 auto;
+  font-family: var(--font-monospace);
+  font-size: 0.68rem;
+}
+
+.reports-company-badge__amount {
+  color: var(--info-text);
 }
 
 .reports-usage-log-card {
@@ -1378,6 +1621,47 @@
   min-height: 38px;
 }
 
+.tech-server-compact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.tech-server-compact__item,
+.tech-server-compact__wide {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+}
+
+.tech-server-compact__wide {
+  grid-column: 1 / -1;
+}
+
+.tech-server-compact__item span,
+.tech-server-compact__wide span {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tech-server-compact__item strong,
+.tech-server-compact__wide strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tech-inline-path,
 .tech-payload-cell {
   display: inline-block;
@@ -1390,6 +1674,116 @@
 
 .tech-jobs-table {
   font-size: 0.75rem;
+}
+
+.tech-job-detail {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.tech-job-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tech-job-detail__meta span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.16rem 0.4rem;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--bs-font-monospace);
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tech-job-detail pre,
+.tech-runtime-item pre {
+  max-height: 260px;
+  min-width: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--bs-font-monospace);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tech-job-detail__error {
+  border-color: var(--danger-border-soft) !important;
+  background: var(--danger-surface-subtle) !important;
+  color: var(--danger-strong-text) !important;
+}
+
+.tech-runtime-collapse .ant-collapse-content-box {
+  padding-block: 0.45rem !important;
+}
+
+.tech-runtime-entity {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tech-runtime-item {
+  display: grid;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.tech-runtime-item__head {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.tech-runtime-item__head span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tech-sse-queues {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.tech-sse-queue {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-sunken);
+}
+
+.tech-sse-queue span {
+  min-width: 0;
+  color: var(--text-subtle);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.tech-sse-queue span:first-child {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
 }
 
 .tech-status-note {
@@ -1419,6 +1813,16 @@
 
 @media (max-width: 1100px) {
   .tech-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tech-server-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .tech-server-compact {
     grid-template-columns: 1fr;
   }
 }

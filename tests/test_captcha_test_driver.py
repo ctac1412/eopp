@@ -76,3 +76,50 @@ def test_captcha_test_driver_lets_api_route_inject_session_api_key(monkeypatch):
     )
 
     assert "api_key" not in bodies[0]
+
+
+def test_replay_captchas_posts_to_solve_with_session_and_rucaptcha(monkeypatch):
+    import src.db  # noqa: F401
+    from src.services import captcha_service
+
+    calls = []
+
+    monkeypatch.setattr(captcha_service, "get_connected_streams", lambda: [{"api_key_id": 1}])
+    monkeypatch.setattr(
+        captcha_service,
+        "load_captcha_file",
+        lambda captcha_id: {"puzzle": {"tiles": [], "variantsCapture": []}},
+    )
+    monkeypatch.setattr(captcha_service.time, "sleep", lambda _seconds: None)
+
+    class Thread:
+        def __init__(self, target, daemon=False):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(captcha_service.threading, "Thread", Thread)
+
+    def fake_send(body, **kwargs):
+        calls.append((json.loads(body), kwargs))
+
+    monkeypatch.setattr(captcha_service, "_send_replay_payload", fake_send)
+
+    sent = captcha_service.replay_captchas(
+        ["cap-1"],
+        session_token="session-token",
+        auto_solve_rucaptcha=True,
+    )
+
+    assert sent == 1
+    assert calls == [
+        (
+            {"puzzle": {"tiles": [], "variantsCapture": []}},
+            {
+                "session_token": "session-token",
+                "auto_solve_rucaptcha": True,
+            },
+        )
+    ]

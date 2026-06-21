@@ -6,8 +6,8 @@
 import React from "react";
 import { HomePage } from "../features/captcha/solving";
 
-function App() {
-  return <HomePage />;
+function App({ themeMode = "dark", onThemeModeChange }) {
+  return <HomePage themeMode={themeMode} onThemeModeChange={onThemeModeChange} />;
 }
 
 export default App;

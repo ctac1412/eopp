@@ -1,6 +1,6 @@
 import React from "react";
 import Clock from "../../captcha/solving/Clock";
-import { Button } from "../../../ui";
+import { Button, SegmentedControl } from "../../../ui";
 
 export default function OperatorHeader({
   masterOnline,
@@ -16,7 +16,8 @@ export default function OperatorHeader({
   hasActive,
   uuid,
   handleReconnect,
-  handleDisconnect,
+  themeMode = "dark",
+  onThemeModeChange,
 }) {
   const activeAssignedCount = Array.isArray(active?.assigned)
     ? active.assigned.length
@@ -100,6 +101,19 @@ export default function OperatorHeader({
         </a>
 
         <Clock />
+
+        <SegmentedControl
+          aria-label="Theme"
+          data-eopp-component="OperatorThemeSwitch"
+          className="op-header__theme-switch"
+          size="small"
+          value={themeMode}
+          onChange={(value) => onThemeModeChange?.(value)}
+          options={[
+            { label: "Темная", value: "dark" },
+            { label: "Светлая", value: "light" },
+          ]}
+        />
       </div>
 
       {/* Controls area */}
@@ -134,18 +148,6 @@ export default function OperatorHeader({
           title="Переподключиться"
         >
           ↻
-        </Button>
-
-        {/* Disconnect button */}
-        <Button
-          data-eopp-component="OperatorDisconnectButton"
-          className="op-header__action-btn"
-          size="small"
-          variant="danger"
-          onClick={handleDisconnect}
-          title="Отключиться"
-        >
-          ×
         </Button>
       </div>
     </div>

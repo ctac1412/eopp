@@ -256,8 +256,10 @@ def test_roles_endpoint_exposes_section_access_for_admin_ui(client, admin_token)
     roles = {role["id"]: role for role in response.json()["roles"]}
     assert set(roles) == {"super_admin", "administrator", "manager", "operator"}
     assert "users" in roles["super_admin"]["sections"]
+    assert "metrics" in roles["super_admin"]["sections"]
     assert "channels" not in roles["super_admin"]["sections"]
     assert "channels" not in roles["manager"]["sections"]
+    assert "metrics" in roles["manager"]["sections"]
     assert "users" not in roles["manager"]["sections"]
     assert roles["operator"]["permissions"] == ["operator.answer"]
 

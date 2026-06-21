@@ -224,8 +224,8 @@ def _find_next_unanswered(state: dict, operator_id: int) -> int | None:
 
 
 @router.post("/answer")
-async def handle_distribution_answer(body: DistributionAnswerBody, request: Request):
-    if not user_repo.get_session_user(token_from_request(request)):
+async def handle_distribution_answer(body: DistributionAnswerBody, request: Request = None):
+    if request is not None and not user_repo.get_session_user(token_from_request(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     request_start = time.perf_counter()
     captcha_id = body.captcha_id

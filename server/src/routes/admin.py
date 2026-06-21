@@ -11,6 +11,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -338,6 +339,66 @@ def _tail_lines(path: Path, limit: int) -> list[str]:
         return file.readlines()[-limit:]
 
 
+def _compact_text(value: Any, limit: int = 1200) -> str:
+    text = repr(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... ({len(text)} chars)"
+
+
+def _queue_runtime_summary(queue: Any) -> dict[str, Any]:
+    """Return stable diagnostics for an in-memory SSE asyncio queue."""
+
+    return {
+        "queue_id": id(queue),
+        "type": type(queue).__name__,
+        "maxsize": getattr(queue, "maxsize", getattr(queue, "_maxsize", None)),
+        "depth": queue.qsize() if hasattr(queue, "qsize") else None,
+        "waiting_getters": len(getattr(queue, "_getters", ()) or ()),
+        "waiting_putters": len(getattr(queue, "_putters", ()) or ()),
+        "unfinished_tasks": getattr(queue, "_unfinished_tasks", None),
+    }
+
+
+def _pending_entry_summary(captcha_id: str, entry: Any) -> dict[str, Any]:
+    if hasattr(entry, "snapshot"):
+        try:
+            snapshot = entry.snapshot()
+        except Exception:
+            snapshot = {}
+    elif isinstance(entry, dict):
+        snapshot = entry
+    else:
+        snapshot = {}
+    return {
+        "key": captcha_id,
+        "type": type(entry).__name__,
+        "usage_log_id": snapshot.get("usage_log_id"),
+        "api_key_id": snapshot.get("api_key_id"),
+        "created_at": snapshot.get("created_at"),
+        "text": _compact_text(entry),
+    }
+
+
+def _distribution_state_summary(captcha_id: str, state: dict) -> dict[str, Any]:
+    operators = state.get("operators") or {}
+    all_answers = state.get("all_answers") or {}
+    answered_at = state.get("answered_at") or {}
+    return {
+        "key": captcha_id,
+        "type": state.get("kind") or "icon_click",
+        "usage_log_id": state.get("usage_log_id"),
+        "api_key_id": state.get("api_key_id"),
+        "operators": len(operators),
+        "answers": len(all_answers) + len(answered_at),
+        "text": _compact_text(state),
+    }
+
+
+def _runtime_entity(name: str, label: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"name": name, "label": label, "count": len(items), "items": items}
+
+
 @router.get("/roles")
 async def admin_roles():
     return JSONResponse(content={"roles": serialize_roles()})
@@ -420,6 +481,121 @@ async def admin_backend_logs(lines: int = 300):
             "path": str(log_path),
             "limit": limit,
             "lines": [line.rstrip("\n") for line in _tail_lines(log_path, limit)],
+        }
+    )
+
+
+@router.get("/runtime-state")
+async def admin_runtime_state(limit: int = 25):
+    """Return a bounded diagnostic snapshot of process-local runtime state."""
+
+    limit = max(1, min(limit, 100))
+    from src.auto_operator import _pending_callbacks as rucaptcha_pending
+    from src.routes.distribution import (
+        _answer_archive_futures,
+        _answer_archive_futures_lock,
+        distribution_states,
+    )
+    from src.sse.manager import (
+        lock as sse_lock,
+        pending as sse_pending,
+        queue_subscriptions,
+        registry,
+        sse_queues,
+        super_kiosk_subscriptions,
+    )
+
+    with sse_lock:
+        pending_items = [
+            _pending_entry_summary(captcha_id, entry)
+            for captcha_id, entry in list(sse_pending.items())[:limit]
+        ]
+        queue_items = [
+            {
+                "key": str(api_key_id),
+                "api_key_id": api_key_id,
+                "queues": len(queues),
+                "queue_details": [
+                    _queue_runtime_summary(queue)
+                    for queue in queues[:limit]
+                ],
+                "text": _compact_text([
+                    _queue_runtime_summary(queue)
+                    for queue in queues[:limit]
+                ]),
+            }
+            for api_key_id, queues in list(sse_queues.items())[:limit]
+        ]
+        subscription_items = [
+            {
+                "key": str(queue_id),
+                "queue_id": queue_id,
+                "help_for": sorted(help_for),
+                "text": _compact_text(help_for),
+            }
+            for queue_id, help_for in list(queue_subscriptions.items())[:limit]
+        ]
+        super_kiosk_items = [
+            {
+                "key": str(master_id),
+                "master_api_key_id": master_id,
+                "operator_ids": sorted(operator_ids),
+                "text": _compact_text(operator_ids),
+            }
+            for master_id, operator_ids in list(super_kiosk_subscriptions.items())[:limit]
+        ]
+
+    connection_items = []
+    for index, item in enumerate(registry.connection_infos()[:limit]):
+        queue = item.get("queue")
+        serializable = {key: value for key, value in item.items() if key != "queue"}
+        serializable["queue_id"] = id(queue) if queue is not None else None
+        serializable["queue_depth"] = queue.qsize() if hasattr(queue, "qsize") else None
+        connection_items.append(
+            {
+                "key": str(serializable.get("queue_id") or index),
+                **serializable,
+                "text": _compact_text(serializable),
+            }
+        )
+
+    distribution_items = [
+        _distribution_state_summary(captcha_id, state)
+        for captcha_id, state in list(distribution_states.items())[:limit]
+    ]
+    callback_items = [
+        {"key": task_id, "task_id": task_id, **entry, "text": _compact_text(entry)}
+        for task_id, entry in list(rucaptcha_pending.items())[:limit]
+    ]
+    with _answer_archive_futures_lock:
+        future_items = [
+            {
+                "key": str(id(future)),
+                "future_id": id(future),
+                "running": future.running(),
+                "done": future.done(),
+                "cancelled": future.cancelled(),
+                "text": _compact_text(future),
+            }
+            for future in list(_answer_archive_futures)[:limit]
+        ]
+
+    entities = [
+        _runtime_entity("pending_captchas", "Pending captcha sessions", pending_items),
+        _runtime_entity("sse_queues", "SSE queues", queue_items),
+        _runtime_entity("sse_connections", "SSE connections", connection_items),
+        _runtime_entity("queue_subscriptions", "Queue subscriptions", subscription_items),
+        _runtime_entity("super_kiosk_subscriptions", "Super kiosk subscriptions", super_kiosk_items),
+        _runtime_entity("distribution_states", "Distribution states", distribution_items),
+        _runtime_entity("rucaptcha_callbacks", "Rucaptcha callbacks", callback_items),
+        _runtime_entity("distribution_archive_futures", "Distribution archive futures", future_items),
+    ]
+    return JSONResponse(
+        content={
+            "limit": limit,
+            "loaded_at": datetime.now().isoformat(),
+            "summary": {entity["name"]: entity["count"] for entity in entities},
+            "entities": entities,
         }
     )
 
@@ -1140,10 +1316,14 @@ async def list_admin_prepaid_deductions(
 
 
 @router.post("/captchas/send-selected")
-async def send_selected_captchas(body: SendSelectedCaptchasBody):
+async def send_selected_captchas(body: SendSelectedCaptchasBody, request: Request):
     if not body.captcha_ids:
         return JSONResponse(status_code=400, content={"error": "Нет выбранных капч"})
-    sent = captcha_service.replay_captchas(body.captcha_ids)
+    sent = captcha_service.replay_captchas(
+        body.captcha_ids,
+        session_token=token_from_request(request),
+        auto_solve_rucaptcha=body.auto_solve_rucaptcha,
+    )
     if sent is None:
         return JSONResponse(status_code=400, content={"error": "Нет активных SSE подключений"})
     return JSONResponse(content={"sent": sent})
@@ -1170,6 +1350,7 @@ async def list_admin_captchas(
     offset: int = Query(0, ge=0),
 ):
     from src.db.captchas import list_captchas
+    from src.repositories import captcha_file_repo
 
     rows = list_captchas(status=status if api_key_id is None else None)
     result = []
@@ -1188,6 +1369,18 @@ async def list_admin_captchas(
         entry = dict(r)
         entry["key_label"] = key_label
         entry["api_key_id"] = ul["api_key_id"] if ul else None
+        captcha_file = captcha_file_repo.get_by_captcha_id(entry["captcha_id"])
+        if captcha_file:
+            entry["captcha_type"] = captcha_file.captcha_type
+            entry["classification"] = captcha_file.classification
+            entry["valid_index"] = captcha_file.valid_index
+            entry["no_valid_index"] = captcha_file.no_valid_index
+            entry["manual_labeled"] = bool(captcha_file.manual_labeled)
+            entry["label_source"] = captcha_file.label_source
+            entry["solver_valid_rank"] = captcha_file.solver_valid_rank
+            entry["variants_count"] = captcha_file.variants_count
+            entry["has_coordinates"] = bool(captcha_file.has_coordinates)
+            entry["has_boxes"] = bool(captcha_file.has_boxes)
         result.append(entry)
     return JSONResponse(content=result[offset : offset + limit])
 
