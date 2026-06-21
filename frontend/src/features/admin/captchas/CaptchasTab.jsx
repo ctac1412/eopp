@@ -1,6 +1,7 @@
 import { adminRequest } from "../shared/adminClient";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Checkbox, Input, Modal, Pagination } from "antd";
+import { backend } from "../../../shared/api/backend";
 import {
   Button,
   DataTable,
@@ -53,6 +54,13 @@ function pageCount(total, pageSize) {
 
 function pageSlice(items, page, pageSize) {
   return items.slice((page - 1) * pageSize, page * pageSize);
+}
+
+function captchaThumbnailUrl(captchaId, mode = null) {
+  return backend.url(
+    `/admin/captcha-files/${encodeURIComponent(captchaId)}/thumbnail`,
+    mode ? { mode } : undefined,
+  );
 }
 
 export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabChange }) {
@@ -633,7 +641,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       <img
         data-eopp-component="CaptchaFilePreview"
         className="captchas-preview"
-        src={`/admin/captcha-files/${captcha.captcha_id}/thumbnail?${captcha.valid_index == null ? "mode=solver_top1" : ""}`}
+        src={captchaThumbnailUrl(captcha.captcha_id, captcha.valid_index == null ? "solver_top1" : null)}
         alt={captcha.valid_index == null ? "solver top1" : "variant"}
         loading="lazy"
         onError={(event) => { event.currentTarget.style.display = "none"; }}
@@ -654,7 +662,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
       <img
         data-eopp-component="CaptchaOperationPreview"
         className="captchas-preview"
-        src={`/admin/captcha-files/${captcha.captcha_id}/thumbnail${mode ? `?mode=${mode}` : ""}`}
+        src={captchaThumbnailUrl(captcha.captcha_id, mode)}
         alt={mode ? "solver top1" : "variant"}
         loading="lazy"
         onError={(event) => { event.currentTarget.style.display = "none"; }}
@@ -1052,7 +1060,7 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
           }}
         >
           <img
-            src={`/admin/captcha-files/${previewCaptchaId}/thumbnail${previewMode ? `?mode=${previewMode}` : ""}`}
+            src={captchaThumbnailUrl(previewCaptchaId, previewMode)}
             alt="variant large"
             style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()}

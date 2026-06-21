@@ -11,3 +11,9 @@ test("admin captchas requests are bounded", () => {
   assert.match(source, /\/admin\/captcha-files\?\$\{params\.toString\(\)\}/);
   assert.match(source, /offset:\s*"0"/);
 });
+
+test("captcha thumbnail image urls use the API prefix", () => {
+  assert.match(source, /captchaThumbnailUrl/);
+  assert.match(source, /backend\.url\([\s\S]*`\/admin\/captcha-files\/\$\{encodeURIComponent\(captchaId\)\}\/thumbnail`/);
+  assert.doesNotMatch(source, /src=\{`\/admin\/captcha-files\//);
+});
