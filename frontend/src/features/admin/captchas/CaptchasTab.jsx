@@ -2,6 +2,7 @@ import { adminRequest } from "../shared/adminClient";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Checkbox, Input, Modal, Pagination } from "antd";
 import { backend } from "../../../shared/api/backend";
+import PuzzleVariantTiles from "../../captcha/shared/PuzzleVariantTiles";
 import {
   Button,
   DataTable,
@@ -61,6 +62,22 @@ function captchaThumbnailUrl(captchaId, mode = null) {
     `/admin/captcha-files/${encodeURIComponent(captchaId)}/thumbnail`,
     mode ? { mode } : undefined,
   );
+}
+
+function hasPreviewSource(captcha) {
+  return Boolean(captcha?.captcha_id);
+}
+
+function captchaPreviewMode(captcha) {
+  if (captcha?.valid_index != null) return null;
+  if (Number.isInteger(captcha?.solver_valid_rank)) return "solver_top1";
+  return "first";
+}
+
+function captchaPreviewAlt(mode) {
+  if (mode === "solver_top1") return "solver top1";
+  if (mode === "first") return "first variant";
+  return "variant";
 }
 
 export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabChange }) {
@@ -314,9 +331,13 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   };
 
   const labelVariantIndexes = useMemo(() => {
-    if (!labelingCaptcha?.images) return [];
+    if (!labelingCaptcha) return [];
     const top3 = (labelingCaptcha.solver_top3 || []).filter((item) => Number.isInteger(item));
-    return Object.keys(labelingCaptcha.images)
+    const imageIndexes = Object.keys(labelingCaptcha.images || {});
+    const variantIndexes = Array.isArray(labelingCaptcha.variants)
+      ? labelingCaptcha.variants.map((_, index) => String(index))
+      : [];
+    return [...new Set([...imageIndexes, ...variantIndexes])]
       .map((key) => parseInt(key, 10))
       .filter((key) => Number.isInteger(key))
       .sort((a, b) => {
@@ -637,17 +658,17 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
   };
 
   const renderFilePreview = (captcha) => (
-    captcha.valid_index != null || captcha.solver_valid_rank == null ? (
+    hasPreviewSource(captcha) ? (
       <img
         data-eopp-component="CaptchaFilePreview"
         className="captchas-preview"
-        src={captchaThumbnailUrl(captcha.captcha_id, captcha.valid_index == null ? "solver_top1" : null)}
-        alt={captcha.valid_index == null ? "solver top1" : "variant"}
+        src={captchaThumbnailUrl(captcha.captcha_id, captchaPreviewMode(captcha))}
+        alt={captchaPreviewAlt(captchaPreviewMode(captcha))}
         loading="lazy"
         onError={(event) => { event.currentTarget.style.display = "none"; }}
         onClick={() => {
           setPreviewCaptchaId(captcha.captcha_id);
-          setPreviewMode(captcha.valid_index == null ? "solver_top1" : null);
+          setPreviewMode(captchaPreviewMode(captcha));
         }}
       />
     ) : "—"
@@ -657,13 +678,13 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
     const file = captchaFileById.get(captcha.captcha_id);
     const validIndex = captcha.valid_index ?? file?.valid_index ?? null;
     const hasSolverRank = Number.isInteger(captcha.solver_valid_rank ?? file?.solver_valid_rank);
-    const mode = validIndex == null && hasSolverRank ? "solver_top1" : null;
-    return validIndex != null || hasSolverRank || file ? (
+    const mode = validIndex != null ? null : hasSolverRank ? "solver_top1" : "first";
+    return hasPreviewSource(captcha) ? (
       <img
         data-eopp-component="CaptchaOperationPreview"
         className="captchas-preview"
         src={captchaThumbnailUrl(captcha.captcha_id, mode)}
-        alt={mode ? "solver top1" : "variant"}
+        alt={captchaPreviewAlt(mode)}
         loading="lazy"
         onError={(event) => { event.currentTarget.style.display = "none"; }}
         onClick={() => {
@@ -1112,6 +1133,11 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                       onError={(msg) => onError?.(msg)}
                       onSaved={() => { setLabelingCaptcha(null); setLabelSelectedIndex(0); fetchCaptchaFiles(); }}
                     />
+                  ) : labelVariantIndexes.length === 0 ? (
+                    <div className="captchas-label-empty">
+                      <strong>Нет вариантов для разметки</strong>
+                      <span>В файле капчи нет готовых изображений или набора tiles/variants. Эту запись можно пропустить или пересинхронизировать файлы капч.</span>
+                    </div>
                   ) : (
                     <div className="captchas-label-variants">
                       {labelVariantIndexes.map((index) => (
@@ -1121,11 +1147,20 @@ export function CaptchasTab({ adminToken, keys, onError, activeSubtab, onSubtabC
                             className={`captchas-label-variant ${labelSelectedIndex === index ? "is-selected" : ""}`}
                             onClick={() => setLabelSelectedIndex(index)}
                           >
+                            {labelingCaptcha.images?.[String(index)] ? (
                             <img
                               src={`data:image/png;base64,${labelingCaptcha.images[String(index)]}`}
                               alt={`Вариант ${index}`}
                               className="captchas-label-variant__image"
                             />
+                            ) : (
+                              <PuzzleVariantTiles
+                                entry={labelingCaptcha}
+                                index={index}
+                                className="captchas-label-variant__tiles"
+                                tileClassName="captchas-label-variant__tile"
+                              />
+                            )}
                             <div className="captchas-label-variant__body">
                               <div className="captchas-label-variant__header">
                                 <span>Вариант {index}</span>

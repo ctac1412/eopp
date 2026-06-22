@@ -229,6 +229,297 @@ def build_finance_report(
     }
 
 
+def _user_label(row) -> str:
+    return row["user_name"] or row["user_login"] or f"#{row['user_id']}"
+
+
+def build_company_finance_analytics(company_id: int) -> dict | None:
+    """Return company-scoped finance and launch analytics for the admin company card."""
+
+    conn = get_connection()
+    try:
+        company = conn.execute(
+            "SELECT id, name FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+        if company is None:
+            return None
+
+        income_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS amount
+            FROM finance_entries
+            WHERE company_id = ? AND kind = 'customer_income'
+            """,
+            (company_id,),
+        ).fetchone()
+        success_row = conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM usage_log
+            WHERE company_id = ?
+              AND status = 'confirmed'
+              AND COALESCE(is_test, 0) = 0
+            """,
+            (company_id,),
+        ).fetchone()
+        starts_by_type = [
+            {
+                "op_type": row["op_type"] or "unknown",
+                "count": int(row["count"] or 0),
+                "income": int(row["income"] or 0),
+            }
+            for row in conn.execute(
+                """
+                WITH usage_income AS (
+                    SELECT usage_log_id, SUM(amount) AS income
+                    FROM finance_entries
+                    WHERE company_id = ? AND kind = 'customer_income'
+                    GROUP BY usage_log_id
+                )
+                SELECT
+                    COALESCE(ul.op_type, 'unknown') AS op_type,
+                    COUNT(*) AS count,
+                    COALESCE(SUM(ui.income), 0) AS income
+                FROM usage_log ul
+                LEFT JOIN usage_income ui ON ui.usage_log_id = ul.id
+                WHERE ul.company_id = ?
+                  AND ul.status = 'confirmed'
+                  AND COALESCE(ul.is_test, 0) = 0
+                GROUP BY COALESCE(ul.op_type, 'unknown')
+                ORDER BY count DESC, op_type
+                """,
+                (company_id, company_id),
+            ).fetchall()
+        ]
+        commission_rows = [
+            {
+                "kind": row["kind"],
+                "user_id": row["user_id"],
+                "user_name": _user_label(row) if row["user_id"] is not None else "Без получателя",
+                "amount": abs(int(row["amount"] or 0)),
+                "starts_count": int(row["starts_count"] or 0),
+            }
+            for row in conn.execute(
+                """
+                SELECT
+                    fe.kind,
+                    fe.user_id,
+                    u.name AS user_name,
+                    u.login AS user_login,
+                    SUM(ABS(fe.amount)) AS amount,
+                    COUNT(DISTINCT fe.usage_log_id) AS starts_count
+                FROM finance_entries fe
+                LEFT JOIN users u ON u.id = fe.user_id
+                WHERE fe.company_id = ?
+                  AND fe.kind IN ('invoice_commission', 'invoice_tax')
+                GROUP BY fe.kind, fe.user_id, u.name, u.login
+                HAVING amount != 0
+                ORDER BY ABS(amount) DESC, fe.kind
+                """,
+                (company_id,),
+            ).fetchall()
+        ]
+        payments_by_user = [
+            {
+                "user_id": row["user_id"],
+                "user_name": _user_label(row),
+                "amount": abs(int(row["amount"] or 0)),
+                "entries_count": int(row["entries_count"] or 0),
+            }
+            for row in conn.execute(
+                """
+                SELECT
+                    fe.user_id,
+                    u.name AS user_name,
+                    u.login AS user_login,
+                    SUM(ABS(fe.amount)) AS amount,
+                    COUNT(*) AS entries_count
+                FROM finance_entries fe
+                LEFT JOIN users u ON u.id = fe.user_id
+                WHERE fe.company_id = ?
+                  AND fe.user_id IS NOT NULL
+                GROUP BY fe.user_id, u.name, u.login
+                HAVING amount != 0
+                ORDER BY ABS(amount) DESC, user_name
+                """,
+                (company_id,),
+            ).fetchall()
+        ]
+        tax_recipients_for_starts = [
+            {
+                "user_id": row["user_id"],
+                "user_name": _user_label(row),
+                "amount": abs(int(row["amount"] or 0)),
+                "starts_count": int(row["starts_count"] or 0),
+            }
+            for row in conn.execute(
+                """
+                SELECT
+                    fe.user_id,
+                    u.name AS user_name,
+                    u.login AS user_login,
+                    SUM(ABS(fe.amount)) AS amount,
+                    COUNT(DISTINCT fe.usage_log_id) AS starts_count
+                FROM finance_entries fe
+                LEFT JOIN users u ON u.id = fe.user_id
+                WHERE fe.company_id = ?
+                  AND fe.kind = 'invoice_tax'
+                  AND fe.usage_log_id IS NOT NULL
+                  AND fe.user_id IS NOT NULL
+                GROUP BY fe.user_id, u.name, u.login
+                HAVING amount != 0
+                ORDER BY ABS(amount) DESC, user_name
+                """,
+                (company_id,),
+            ).fetchall()
+        ]
+        settings = conn.execute(
+            """
+            SELECT
+                cbs.tax_commission_mode,
+                cbs.default_percent_rate,
+                cbs.default_tax_rate,
+                cbs.default_commission_user_id,
+                cu.name AS default_commission_user_name,
+                cu.login AS default_commission_user_login,
+                cbs.default_tax_user_id,
+                tu.name AS default_tax_user_name,
+                tu.login AS default_tax_user_login
+            FROM company_billing_settings cbs
+            LEFT JOIN users cu ON cu.id = cbs.default_commission_user_id
+            LEFT JOIN users tu ON tu.id = cbs.default_tax_user_id
+            WHERE cbs.company = ?
+            """,
+            (company["name"],),
+        ).fetchone()
+
+        commission_settings = {}
+        if settings is not None:
+            commission_settings = {
+                "tax_commission_mode": settings["tax_commission_mode"] or "added",
+                "default_percent_rate": float(settings["default_percent_rate"] or 0),
+                "default_tax_rate": float(settings["default_tax_rate"] or 0),
+                "default_commission_user_id": settings["default_commission_user_id"],
+                "default_commission_user_name": (
+                    settings["default_commission_user_name"]
+                    or settings["default_commission_user_login"]
+                ),
+                "default_tax_user_id": settings["default_tax_user_id"],
+                "default_tax_user_name": settings["default_tax_user_name"] or settings["default_tax_user_login"],
+            }
+
+        return {
+            "company": {"id": company["id"], "name": company["name"]},
+            "totals": {
+                "income": int(income_row["amount"] or 0),
+                "successful_starts": int(success_row["count"] or 0),
+            },
+            "starts_by_type": starts_by_type,
+            "commission_settings": commission_settings,
+            "commission_rows": commission_rows,
+            "payments_by_user": payments_by_user,
+            "tax_recipients_for_starts": tax_recipients_for_starts,
+        }
+    finally:
+        conn.close()
+
+
+def build_companies_finance_analytics(company_id: int | None = None) -> dict:
+    """Return all-company finance summary, optionally scoped to one tenant company."""
+
+    conn = get_connection()
+    try:
+        params = [company_id] if company_id is not None else []
+        where = "WHERE id = ?" if company_id is not None else ""
+        companies = conn.execute(
+            f"SELECT id, name FROM companies {where} ORDER BY name",
+            params,
+        ).fetchall()
+        tax_filters = ["fe.kind = 'invoice_tax'", "fe.usage_log_id IS NOT NULL", "fe.user_id IS NOT NULL"]
+        tax_params: list[int] = []
+        if company_id is not None:
+            tax_filters.append("fe.company_id = ?")
+            tax_params.append(company_id)
+        tax_recipients_for_starts = [
+            {
+                "user_id": row["user_id"],
+                "user_name": _user_label(row),
+                "amount": int(row["amount"] or 0),
+                "starts_count": int(row["starts_count"] or 0),
+            }
+            for row in conn.execute(
+                f"""
+                SELECT
+                    fe.user_id,
+                    u.name AS user_name,
+                    u.login AS user_login,
+                    SUM(ABS(fe.amount)) AS amount,
+                    COUNT(DISTINCT fe.usage_log_id) AS starts_count
+                FROM finance_entries fe
+                LEFT JOIN users u ON u.id = fe.user_id
+                WHERE {" AND ".join(tax_filters)}
+                GROUP BY fe.user_id, u.name, u.login
+                HAVING amount != 0
+                ORDER BY amount DESC, user_name
+                """,
+                tax_params,
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+    company_reports = [
+        report
+        for report in (build_company_finance_analytics(int(company["id"])) for company in companies)
+        if report is not None
+    ]
+    company_rows = []
+    starts_by_type: dict[str, dict] = {}
+    totals = {
+        "income": 0,
+        "successful_starts": 0,
+        "companies_count": len(company_reports),
+        "payments_amount": 0,
+        "tax_recipients_amount": sum(row["amount"] for row in tax_recipients_for_starts),
+    }
+    for report in company_reports:
+        payments_amount = sum(row["amount"] for row in report["payments_by_user"])
+        tax_amount = sum(row["amount"] for row in report["tax_recipients_for_starts"])
+        commission_amount = sum(row["amount"] for row in report["commission_rows"])
+        income = int(report["totals"]["income"] or 0)
+        successful_starts = int(report["totals"]["successful_starts"] or 0)
+        totals["income"] += income
+        totals["successful_starts"] += successful_starts
+        totals["payments_amount"] += payments_amount
+        company_rows.append(
+            {
+                "company_id": report["company"]["id"],
+                "company_name": report["company"]["name"],
+                "income": income,
+                "successful_starts": successful_starts,
+                "payments_amount": payments_amount,
+                "commission_amount": commission_amount,
+                "tax_recipients_amount": tax_amount,
+            }
+        )
+        for row in report["starts_by_type"]:
+            node = starts_by_type.setdefault(
+                row["op_type"],
+                {"op_type": row["op_type"], "count": 0, "income": 0},
+            )
+            node["count"] += int(row["count"] or 0)
+            node["income"] += int(row["income"] or 0)
+
+    company_rows.sort(key=lambda row: row["income"], reverse=True)
+    return {
+        "totals": totals,
+        "companies": company_rows,
+        "starts_by_type": sorted(starts_by_type.values(), key=lambda row: (-row["count"], row["op_type"])),
+        "tax_recipients_for_starts": tax_recipients_for_starts,
+    }
+
+
 def render_telegram_daily_report(report: dict) -> str:
     lines = [
         f"📊 Итоги за день: {report['date']} (МСК)",

@@ -11,6 +11,7 @@ DEFAULT_TARIFF = {
     "price_custom_slots": 4400,
     "executor_amount": 550,
     "operator_amount": 660,
+    "operator_puzzle_amount": 0,
 }
 
 DEFAULT_BILLING = {

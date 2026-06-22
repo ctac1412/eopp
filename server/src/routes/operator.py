@@ -458,6 +458,8 @@ async def admin_update_operator(operator_id: int, request: Request):
         kwargs["icon_display_mode"] = body["icon_display_mode"]
     if "icon_rate" in body:
         kwargs["icon_rate"] = max(0, int(body.get("icon_rate") or 0))
+    if "puzzle_rate" in body:
+        kwargs["puzzle_rate"] = max(0, int(body.get("puzzle_rate") or 0))
     if "billing_mode" in body:
         billing_mode = str(body.get("billing_mode") or "company")
         if billing_mode not in {"company", "custom", "free"}:

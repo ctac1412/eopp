@@ -81,6 +81,7 @@ def _operator_to_dict(op: Operator, company_names: dict[int, str] | None = None)
         "created_at": op.created_at,
         "icon_display_mode": op.icon_display_mode,
         "icon_rate": int(getattr(op, "icon_rate", 0) or 0),
+        "puzzle_rate": int(getattr(op, "puzzle_rate", 0) or 0),
         "billing_mode": getattr(op, "billing_mode", None) or "company",
         "allowed_master_keys": (
             _json.loads(op.allowed_master_keys)
@@ -120,6 +121,7 @@ def _operator_billing_overrides(operator_id: int, company_names: dict[int, str] 
                 "company_name": names.get(row.company_id),
                 "billing_mode": row.billing_mode or "company",
                 "icon_rate": int(row.icon_rate or 0),
+                "puzzle_rate": int(getattr(row, "puzzle_rate", 0) or 0),
             }
             for row in rows
         ]
@@ -145,11 +147,13 @@ def _normalize_billing_overrides(value) -> list[dict]:
         if billing_mode not in OPERATOR_BILLING_MODES:
             raise ValueError("Invalid operator billing_mode")
         icon_rate = max(0, int(raw.get("icon_rate") or 0)) if billing_mode == "custom" else 0
+        puzzle_rate = max(0, int(raw.get("puzzle_rate") or 0)) if billing_mode == "custom" else 0
         result.append(
             {
                 "company_id": company_id,
                 "billing_mode": billing_mode,
                 "icon_rate": icon_rate,
+                "puzzle_rate": puzzle_rate,
             }
         )
         seen.add(company_id)
@@ -176,6 +180,7 @@ def _replace_billing_overrides(session, operator_id: int, overrides) -> None:
                 company_id=item["company_id"],
                 billing_mode=item["billing_mode"],
                 icon_rate=item["icon_rate"],
+                puzzle_rate=item["puzzle_rate"],
                 created_at=now,
                 updated_at=now,
             )
@@ -189,6 +194,7 @@ def create_operator(nickname: str, company_id: int | None = None) -> dict:
             uuid=_uuid.uuid4().hex[:12],
             created_at=now,
             icon_rate=0,
+            puzzle_rate=0,
             billing_mode="company",
             company_id=company_id,
         )

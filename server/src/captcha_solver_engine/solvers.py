@@ -14,6 +14,7 @@ from .metrics import (
 )
 from .models import CaptchaClassification, CaptchaContext, SolverOutput
 from .ranking import sort_results
+from .digit_recognizer import predict_confident_digits, rank_variants_by_digit_predictions
 
 W_DISC = 0.5
 W_SSIM = 800.0
@@ -137,7 +138,7 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
     2. Known digits fix their positions in the 1-9 sequence
     3. Unknown tiles permuted to fill gaps (≤5! = 120 permutations)
     4. Best variant matched against the inferred order
-    5. Falls back to SeamMetrics if digit detection finds <2 digits
+    5. Returns an uncertain no-signal result instead of trusting puzzle seams
     """
 
     name = "digit_solver"
@@ -155,18 +156,47 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
         tiles = context.tiles
         variants = context.variants
 
+        digit_predictions = predict_confident_digits(context)
+        if digit_predictions:
+            fallback = SeamMetricsSolver().solve(context, classification, edge_trim, verbose=False)
+            sorted_results = rank_variants_by_digit_predictions(
+                variants,
+                digit_predictions,
+                fallback.results,
+            )
+            best_variant = sorted_results[0]["variant"] if sorted_results else None
+            tile_order = variants[best_variant] if best_variant is not None else []
+            confident = (
+                sorted_results[0]["digit_matches"] >= 2
+                and sorted_results[0]["digit_conflicts"] == 0
+                if sorted_results
+                else False
+            )
+            if verbose:
+                print(
+                    f"[{self.name}] recognizer: {len(digit_predictions)}/9 confident digits, "
+                    f"best={best_variant}, confident={confident}"
+                )
+            return SolverOutput(
+                best_variant=best_variant,
+                tile_order=tile_order,
+                results=sorted_results,
+                classification=classification,
+                solver_name=f"{self.name}:recognizer",
+                confident=confident,
+            )
+
         # Read digits via EasyOCR
         try:
             import easyocr
             reader = easyocr.Reader(['en'], gpu=False, verbose=False)
         except ImportError:
             if verbose:
-                print(f"[{self.name}] EasyOCR not available — using seam metrics fallback")
-            fallback = SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+                print(f"[{self.name}] EasyOCR not available - no digit signal")
             return SolverOutput(
-                best_variant=fallback.best_variant,
-                tile_order=fallback.tile_order,
-                results=fallback.results,
+                best_variant=None,
+                tile_order=[],
+                results=[],
                 classification=classification,
                 solver_name=self.name,
                 confident=False,
@@ -211,15 +241,14 @@ class DigitCaptchaSolver(BaseCaptchaSolver):
 
         if len(known) < 2:
             if verbose:
-                print(f"[{self.name}] Too few digits — using seam metrics fallback")
-            fallback = SeamMetricsSolver().solve(context, classification, edge_trim, verbose)
+                print(f"[{self.name}] Too few digits - no digit signal")
             return SolverOutput(
-                best_variant=fallback.best_variant,
-                tile_order=fallback.tile_order,
-                results=fallback.results,
+                best_variant=None,
+                tile_order=[],
+                results=[],
                 classification=classification,
                 solver_name=self.name,
-                confident=False,  # never confident on fallback
+                confident=False,
             )
 
         # Deduce missing digits and find best arrangement
@@ -401,7 +430,7 @@ class IconClickSolver(BaseCaptchaSolver):
 
         if not main_b64 or not icons_b64:
             if verbose:
-                print(f"[{self.name}] Missing imageBase64 or iconsBase64 — cannot solve")
+                print(f"[{self.name}] Missing imageBase64 or iconsBase64 - cannot solve")
             return SolverOutput(
                 best_variant=None,
                 tile_order=[],

@@ -70,6 +70,7 @@ function normalizeBillingOverrides(overrides = []) {
       company_id: companyId,
       billing_mode: billingMode,
       icon_rate: billingMode === "custom" ? Math.max(0, Number(override.icon_rate) || 0) : 0,
+      puzzle_rate: billingMode === "custom" ? Math.max(0, Number(override.puzzle_rate) || 0) : 0,
     });
     seen.add(companyId);
   });
@@ -117,6 +118,7 @@ export function OperatorsTab({ adminToken, onError }) {
     icon_display_mode: "own_then_foreign",
     billing_mode: "company",
     icon_rate: 0,
+    puzzle_rate: 0,
     masterAccessMode: "all",
     allowed_master_keys: [],
     billing_overrides: [],
@@ -250,6 +252,7 @@ export function OperatorsTab({ adminToken, onError }) {
         op.operator_all_companies ? "все компании" : "",
         op.icon_display_mode,
         op.icon_rate,
+        op.puzzle_rate,
       ]
         .filter(Boolean)
         .join(" ")
@@ -276,6 +279,7 @@ export function OperatorsTab({ adminToken, onError }) {
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
       billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
+      puzzle_rate: Number(selectedOperator.puzzle_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
       billing_overrides: normalizeBillingOverrides(selectedOperator.billing_overrides),
@@ -323,6 +327,7 @@ export function OperatorsTab({ adminToken, onError }) {
       };
       if (body.billing_mode === "custom") {
         body.icon_rate = Math.max(0, Number(editForm.icon_rate) || 0);
+        body.puzzle_rate = Math.max(0, Number(editForm.puzzle_rate) || 0);
       }
       const res = await adminRequest(`/admin/operators/${selectedOperator.id}`, {
         method: "PUT",
@@ -345,6 +350,7 @@ export function OperatorsTab({ adminToken, onError }) {
       icon_display_mode: selectedOperator.icon_display_mode || "own_then_foreign",
       billing_mode: selectedOperator.billing_mode || "company",
       icon_rate: Number(selectedOperator.icon_rate || 0),
+      puzzle_rate: Number(selectedOperator.puzzle_rate || 0),
       masterAccessMode: isAllAccessibleMasters(selectedOperator.allowed_master_keys) ? "all" : "selected",
       allowed_master_keys: allowed,
       billing_overrides: normalizeBillingOverrides(selectedOperator.billing_overrides),
@@ -359,7 +365,7 @@ export function OperatorsTab({ adminToken, onError }) {
       ...prev,
       billing_overrides: [
         ...(prev.billing_overrides || []),
-        { company_id: Number(company.id), billing_mode: "free", icon_rate: 0 },
+        { company_id: Number(company.id), billing_mode: "free", icon_rate: 0, puzzle_rate: 0 },
       ],
     }));
   };
@@ -370,7 +376,10 @@ export function OperatorsTab({ adminToken, onError }) {
       billing_overrides: (prev.billing_overrides || []).map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const next = { ...item, ...patch };
-        if (next.billing_mode !== "custom") next.icon_rate = 0;
+        if (next.billing_mode !== "custom") {
+          next.icon_rate = 0;
+          next.puzzle_rate = 0;
+        }
         return next;
       }),
     }));
@@ -485,7 +494,9 @@ export function OperatorsTab({ adminToken, onError }) {
 
   const getBillingModeLabel = (op) => {
     if (op.billing_mode === "free") return "Бесплатно";
-    if (op.billing_mode === "custom") return `${Number(op.icon_rate || 0).toLocaleString("ru-RU")} ₽`;
+    if (op.billing_mode === "custom") {
+      return `Клик ${Number(op.icon_rate || 0).toLocaleString("ru-RU")} ₽ / пазл ${Number(op.puzzle_rate || 0).toLocaleString("ru-RU")} ₽`;
+    }
     return "Компания";
   };
 
@@ -797,16 +808,28 @@ export function OperatorsTab({ adminToken, onError }) {
                     />
                   </label>
                   {editForm.billing_mode === "custom" && (
-                    <label className="form-label small mb-0">
-                      Сумма за иконку
-                      <TextInput
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={editForm.icon_rate}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, icon_rate: event.target.value }))}
-                      />
-                    </label>
+                    <>
+                      <label className="form-label small mb-0">
+                        Тариф клик капча
+                        <TextInput
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={editForm.icon_rate}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, icon_rate: event.target.value }))}
+                        />
+                      </label>
+                      <label className="form-label small mb-0">
+                        Тариф пазл
+                        <TextInput
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={editForm.puzzle_rate}
+                          onChange={(event) => setEditForm((prev) => ({ ...prev, puzzle_rate: event.target.value }))}
+                        />
+                      </label>
+                    </>
                   )}
                   <div className="operator-billing-overrides">
                     <div className="operator-billing-overrides__head">
@@ -844,13 +867,24 @@ export function OperatorsTab({ adminToken, onError }) {
                             allowClear={false}
                           />
                           {override.billing_mode === "custom" ? (
-                            <TextInput
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={override.icon_rate}
-                              onChange={(event) => updateBillingOverride(index, { icon_rate: event.target.value })}
-                            />
+                            <div className="operator-billing-overrides__rates">
+                              <TextInput
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={override.icon_rate}
+                                onChange={(event) => updateBillingOverride(index, { icon_rate: event.target.value })}
+                                placeholder="Клик"
+                              />
+                              <TextInput
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={override.puzzle_rate}
+                                onChange={(event) => updateBillingOverride(index, { puzzle_rate: event.target.value })}
+                                placeholder="Пазл"
+                              />
+                            </div>
                           ) : (
                             <span className="operator-billing-overrides__rate-muted">-</span>
                           )}

@@ -24,6 +24,7 @@ class CompanyTariff(Base):
     price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     executor_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     operator_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    operator_puzzle_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -40,6 +41,7 @@ class DefaultCompanyTariff(Base):
     price_custom_slots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     executor_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     operator_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    operator_puzzle_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tax_commission_mode: Mapped[str] = mapped_column(String, nullable=False, default="added")
     default_percent_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     default_tax_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0)

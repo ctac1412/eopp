@@ -22,6 +22,7 @@ class Operator(Base):
         Text, nullable=False, default="own_then_foreign"
     )
     icon_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    puzzle_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     billing_mode: Mapped[str] = mapped_column(Text, nullable=False, default="company")
     allowed_master_keys: Mapped[str | None] = mapped_column(Text, nullable=True)
     online: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -41,6 +42,7 @@ class OperatorCompanyBillingOverride(Base):
     company_id: Mapped[int] = mapped_column(Integer, ForeignKey("companies.id"), nullable=False)
     billing_mode: Mapped[str] = mapped_column(Text, nullable=False, default="company")
     icon_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    puzzle_rate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

@@ -1989,6 +1989,7 @@ class TestCaptchaLabelingApi:
                 {"variant": 1, "rank": 3, "score": 3.0},
             ],
         )
+        monkeypatch.setattr(captcha_file_service, "calculate_classification", lambda data: "puzzle")
 
         captcha_id = "solver_top3"
         payload = {
@@ -2004,6 +2005,7 @@ class TestCaptchaLabelingApi:
             saved = json.load(f)
         assert saved["solver_top3"] == [2, 0, 1]
         assert saved["solver_results"][0]["variant"] == 2
+        assert saved["classification"] == "puzzle"
 
     def test_captcha_file_index_marks_solver_valid_rank(self, client, admin_token, tmp_path, monkeypatch):
         import json
@@ -2055,6 +2057,7 @@ class TestCaptchaLabelingApi:
                 {"variant": 1, "rank": 3, "score": 3.0},
             ],
         )
+        monkeypatch.setattr(captcha_file_service, "calculate_classification", lambda data: "puzzle")
 
         payload = {
             "valid_index": 1,
@@ -2080,6 +2083,7 @@ class TestCaptchaLabelingApi:
             saved = json.load(f)
         assert saved["solver_top3"] == [2, 0, 1]
         assert saved["solver_valid_rank"] == 2
+        assert saved["classification"] == "puzzle"
         assert saved["manual_labeled"] is False
         assert saved["label_source"] is None
 
@@ -2087,8 +2091,30 @@ class TestCaptchaLabelingApi:
         assert any(
             row["captcha_id"] == "backfill_rank"
             and row["solver_valid_rank"] == 2
+            and row["classification"] == "puzzle"
             for row in rows
         )
+
+    def test_admin_captcha_file_classification_accepts_icon_click(self, client, admin_token, tmp_path, monkeypatch):
+        import json
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+        (all_dir / "icon_classification.json").write_text(
+            json.dumps({"type": 1, "puzzle": {"imageBase64": "", "iconsBase64": ""}}),
+            encoding="utf-8",
+        )
+        client.get("/api/admin/captcha-files", headers={"X-Admin-Token": admin_token})
+
+        response = client.put(
+            "/api/admin/captcha-files/icon_classification/classification",
+            headers={"X-Admin-Token": admin_token},
+            json={"classification": "icon_click"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["classification"] == "icon_click"
 
     def test_captcha_label_save_overwrites_wrong_label_and_db_index(self, client, admin_token, tmp_path, monkeypatch):
         import json
@@ -2450,6 +2476,40 @@ class TestIconClickCaptcha:
         assert combined_response.status_code == 200
         combined_image = Image.open(io.BytesIO(combined_response.content))
         assert combined_image.size == (30, 30)
+
+    def test_puzzle_thumbnail_first_mode_returns_first_variant_without_answer(
+        self, client, admin_token, tmp_path, monkeypatch
+    ):
+        import io
+        import json
+
+        from PIL import Image
+
+        all_dir = tmp_path / "all"
+        all_dir.mkdir()
+        monkeypatch.setenv("EOPP_CAPTCHA_ALL_DIR", str(all_dir))
+
+        captcha_id = "puzzle_no_answer_preview"
+        payload = {
+            "type": 2,
+            "puzzle": {
+                "tiles": [
+                    {"tileId": "a", "imageData": self._png_b64_size(10, 8)},
+                    {"tileId": "b", "imageData": self._png_b64_size(10, 8)},
+                ],
+                "variantsCapture": [["a", "b"]],
+            },
+        }
+        with open(all_dir / f"{captcha_id}.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+
+        response = client.get(
+            f"/api/admin/captcha-files/{captcha_id}/thumbnail?mode=first",
+        )
+
+        assert response.status_code == 200
+        image = Image.open(io.BytesIO(response.content))
+        assert image.size == (20, 8)
 
     def test_icon_click_thumbnail_icons_mode_crops_combined_icons_payload(
         self, client, admin_token, tmp_path, monkeypatch

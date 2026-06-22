@@ -31,6 +31,7 @@ def tariff_to_dict(
         "price_custom_slots": tariff.price_custom_slots,
         "executor_amount": getattr(tariff, "executor_amount", 0),
         "operator_amount": getattr(tariff, "operator_amount", 0),
+        "operator_puzzle_amount": getattr(tariff, "operator_puzzle_amount", 0),
         "source": source,
     }
     if company_id is not None:
@@ -84,6 +85,7 @@ def upsert_company_tariff(
     price_custom_slots: int | None = None,
     executor_amount: int = 0,
     operator_amount: int = 0,
+    operator_puzzle_amount: int = 0,
 ) -> CompanyTariff:
     now = datetime.now(UTC).isoformat()
     with get_session() as session:
@@ -95,6 +97,7 @@ def upsert_company_tariff(
             tariff.price_custom_slots = price_custom_slots
             tariff.executor_amount = executor_amount
             tariff.operator_amount = operator_amount
+            tariff.operator_puzzle_amount = operator_puzzle_amount
             tariff.updated_at = now
         else:
             tariff = CompanyTariff(
@@ -105,6 +108,7 @@ def upsert_company_tariff(
                 price_custom_slots=price_custom_slots,
                 executor_amount=executor_amount,
                 operator_amount=operator_amount,
+                operator_puzzle_amount=operator_puzzle_amount,
                 created_at=now,
                 updated_at=now,
             )
@@ -121,6 +125,7 @@ def upsert_default_company_tariff(
     price_custom_slots: int | None = None,
     executor_amount: int = 0,
     operator_amount: int = 0,
+    operator_puzzle_amount: int = 0,
     tax_commission_mode: str | None | object = _UNSET,
     default_percent_rate: float | None | object = _UNSET,
     default_tax_rate: float | None | object = _UNSET,
@@ -137,6 +142,7 @@ def upsert_default_company_tariff(
             tariff.price_custom_slots = price_custom_slots
             tariff.executor_amount = executor_amount
             tariff.operator_amount = operator_amount
+            tariff.operator_puzzle_amount = operator_puzzle_amount
             if tax_commission_mode is not _UNSET:
                 tariff.tax_commission_mode = company_billing_repo.normalize_tax_commission_mode(
                     tax_commission_mode
@@ -158,6 +164,7 @@ def upsert_default_company_tariff(
                 price_custom_slots=price_custom_slots,
                 executor_amount=executor_amount,
                 operator_amount=operator_amount,
+                operator_puzzle_amount=operator_puzzle_amount,
                 tax_commission_mode=company_billing_repo.normalize_tax_commission_mode(
                     None if tax_commission_mode is _UNSET else tax_commission_mode
                 ),
@@ -186,6 +193,7 @@ def apply_default_company_tariff(company_id: int) -> CompanyTariff | None:
         default_tariff.price_custom_slots,
         default_tariff.executor_amount,
         default_tariff.operator_amount,
+        getattr(default_tariff, "operator_puzzle_amount", 0),
     )
 
 

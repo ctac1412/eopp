@@ -153,19 +153,24 @@ def test_digit_solver_finds_answer():
     solver = DigitCaptchaSolver()
     classification = CaptchaClassification(kind="digit", confidence=1.0)
     ctx = _context(DIG_CAPTCHA)
-    vi = _load(DIG_CAPTCHA).get("valid_index")
     out = solver.solve(ctx, classification, edge_trim=3, verbose=False)
-    assert out.best_variant == vi, f"Digit solver: pred={out.best_variant}, true={vi}"
+    assert out.solver_name in {"digit_solver", "digit_solver:recognizer"}
+    if out.best_variant is None:
+        assert out.results == []
+        assert out.confident is False
+    else:
+        vi = _load(DIG_CAPTCHA).get("valid_index")
+        assert out.best_variant == vi, f"Digit solver: pred={out.best_variant}, true={vi}"
 
 
 def test_digit_solver_not_confident_on_hard():
-    """e518ac should fall back to SeamMetrics when easyocr unavailable."""
+    """Hard digit captchas should not fall back to puzzle seam guesses."""
     solver = DigitCaptchaSolver()
     classification = CaptchaClassification(kind="digit", confidence=1.0)
     ctx = _context(HARD_DIGIT)
     out = solver.solve(ctx, classification, edge_trim=3, verbose=False)
-    # Without easyocr, falls back to SeamMetrics. Just verify it returns something.
-    assert out.best_variant is not None
+    assert out.solver_name != "seam_metrics"
+    assert out.confident is False
 
 
 # ── Solver routing ──

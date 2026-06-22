@@ -695,6 +695,7 @@ async def admin_captcha_label_recompute(captcha_id: str):
     from src.services import captcha_file_service
     from src.captcha_solver_engine.classifier import classify_captcha
     from src.captcha_solver_engine.common import build_captcha_context
+    from src.captcha_solver_engine.digit_recognizer import classification_from_saved_metadata
     from src.captcha_solver_engine.solvers import solver_for_classification
 
     data = captcha_file_service.load_captcha_payload(captcha_id)
@@ -702,7 +703,8 @@ async def admin_captcha_label_recompute(captcha_id: str):
         return JSONResponse(status_code=404, content={"error": "Captcha not found"})
 
     context = build_captcha_context(data)
-    classification = classify_captcha(context)
+    computed_classification = classify_captcha(context)
+    classification = classification_from_saved_metadata(data, computed_classification)
     solver = solver_for_classification(classification)
 
     solver_output = solver.solve(context, classification, edge_trim=3, verbose=False)
@@ -718,6 +720,7 @@ async def admin_captcha_label_recompute(captcha_id: str):
     return JSONResponse(content={
         "captcha_id": captcha_id,
         "classification": classification.kind,
+        "computed_classification": computed_classification.kind,
         "solver": solver_output.solver_name,
         "best_variant": solver_output.best_variant,
         "top3": top3,
@@ -947,6 +950,24 @@ async def delete_admin_company_alias(alias: str):
 @router.get("/companies")
 async def list_admin_companies(request: Request):
     return JSONResponse(content=company_repo.list_companies(_tenant_company_id(request)))
+
+
+@router.get("/companies/analytics")
+async def get_admin_companies_analytics(request: Request):
+    return JSONResponse(
+        content=reporting_service.build_companies_finance_analytics(_tenant_company_id(request))
+    )
+
+
+@router.get("/companies/{company_id}/analytics")
+async def get_admin_company_analytics(company_id: int, request: Request):
+    tenant_company_id = _tenant_company_id(request)
+    if tenant_company_id is not None and int(company_id) != tenant_company_id:
+        return _forbid_company_scope()
+    report = reporting_service.build_company_finance_analytics(company_id)
+    if report is None:
+        return JSONResponse(status_code=404, content={"error": "Company not found"})
+    return JSONResponse(content=report)
 
 
 @router.post("/companies")
@@ -1457,6 +1478,8 @@ async def admin_captcha_thumbnail(captcha_id: str, mode: str | None = None):
         top3 = data.get("solver_top3")
         if isinstance(top3, list) and top3 and isinstance(top3[0], int):
             vi = top3[0]
+    if vi is None and mode == "first":
+        vi = 0
     if vi is None:
         return Response(status_code=404, content="No valid_index")
 
@@ -1535,8 +1558,8 @@ async def admin_set_classification(captcha_id: str, body: dict):
     from src.repositories import captcha_file_repo
 
     classification = body.get("classification")
-    if classification not in ("digit", "puzzle", "figures", None):
-        raise HTTPException(400, "classification must be 'digit', 'puzzle', 'figures', or null")
+    if classification not in ("digit", "puzzle", "figures", "icon_click", None):
+        raise HTTPException(400, "classification must be 'digit', 'puzzle', 'figures', 'icon_click', or null")
     ok = captcha_file_repo.update_classification(captcha_id, classification)
     if not ok:
         raise HTTPException(404, "Captcha file not found")

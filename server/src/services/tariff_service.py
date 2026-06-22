@@ -27,6 +27,7 @@ def upsert_company_tariff(company_id: int, body) -> tuple[int, dict]:
         body.price_custom_slots,
         body.executor_amount or 0,
         body.operator_amount or 0,
+        body.operator_puzzle_amount or 0,
     )
     return 200, tariff_repo.tariff_to_dict(tariff, source="company", company_id=company_id)
 
@@ -57,6 +58,7 @@ def upsert_default_company_tariff(body) -> tuple[int, dict]:
         body.price_custom_slots,
         body.executor_amount or 0,
         body.operator_amount or 0,
+        body.operator_puzzle_amount or 0,
         **optional_settings,
     )
     return 200, tariff_repo.tariff_to_dict(tariff, source="default")

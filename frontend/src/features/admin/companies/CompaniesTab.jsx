@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Card, Checkbox, Input, InputNumber, Modal, Space, Tabs } from "antd";
+import { Alert, Card, Checkbox, Input, InputNumber, Modal, Space, Spin, Tabs } from "antd";
 import {
   Button,
   DataTable,
   FilterBar,
+  MetricsStrip,
   SelectInput,
   TextInput,
   Toolbar,
@@ -41,8 +42,34 @@ function formatMoney(value) {
   return `${number.toLocaleString("ru-RU")} ₽`;
 }
 
+function formatPercent(value) {
+  if (value == null || value === "") return "вЂ”";
+  return `${Number(value || 0).toLocaleString("ru-RU")}%`;
+}
+
 function renderTariffAmount(company, field) {
   return <span className="text-nowrap">{formatMoney(company.tariff?.[field])}</span>;
+}
+
+function operationLabel(value) {
+  if (value === "create") return "Создание";
+  if (value === "reschedule") return "Перенос";
+  if (value === "unknown") return "Неизвестно";
+  return value || "—";
+}
+
+function financeKindLabel(value) {
+  if (value === "invoice_commission") return "Комиссия";
+  if (value === "invoice_tax") return "Налог";
+  if (value === "executor_salary") return "Исполнитель";
+  if (value === "operator_salary") return "Оператор";
+  if (value === "director_profit") return "Директор";
+  if (value === "expense_repayment") return "Возмещение";
+  return value || "—";
+}
+
+function commissionModeLabel(value) {
+  return normalizeTaxCommissionMode(value) === "included" ? "Включено" : "Сверху";
 }
 
 const EMPTY_TARIFF_FORM = {
@@ -52,6 +79,7 @@ const EMPTY_TARIFF_FORM = {
   price_custom_slots: "",
   executor_amount: "",
   operator_amount: "",
+  operator_puzzle_amount: "",
 };
 
 const EMPTY_BILLING_DEFAULTS = {
@@ -75,7 +103,8 @@ const TARIFF_FIELDS = [
   ["price_reschedule", "Перенос"],
   ["price_create_peak", "Создание пик"],
   ["price_custom_slots", "Свои слоты"],
-  ["operator_amount", "Оператор"],
+  ["operator_amount", "Оператор: клик капча"],
+  ["operator_puzzle_amount", "Оператор: пазл"],
   ["executor_amount", "Исполнитель"],
 ];
 
@@ -87,6 +116,7 @@ function tariffToForm(tariff) {
     price_custom_slots: tariff?.price_custom_slots ?? "",
     executor_amount: tariff?.executor_amount ?? "",
     operator_amount: tariff?.operator_amount ?? "",
+    operator_puzzle_amount: tariff?.operator_puzzle_amount ?? "",
   };
 }
 
@@ -98,6 +128,7 @@ function tariffFormToBody(form) {
     price_custom_slots: form.price_custom_slots === "" ? null : Number(form.price_custom_slots),
     executor_amount: Number(form.executor_amount) || 0,
     operator_amount: Number(form.operator_amount) || 0,
+    operator_puzzle_amount: Number(form.operator_puzzle_amount) || 0,
   };
 }
 
@@ -306,6 +337,369 @@ function CompanyAccessMatrix({ users, draft, search, onSearchChange, onToggle })
   );
 }
 
+function CompanyAnalyticsPanel({ analytics, loading, error, onRefresh }) {
+  const totals = analytics?.totals || {};
+  const settings = analytics?.commission_settings || {};
+  const metrics = [
+    {
+      key: "income",
+      label: "Доход",
+      value: formatMoney(totals.income || 0),
+      tone: Number(totals.income || 0) > 0 ? "success" : "neutral",
+    },
+    {
+      key: "starts",
+      label: "Успешные старты",
+      value: totals.successful_starts || 0,
+      tone: Number(totals.successful_starts || 0) > 0 ? "info" : "warning",
+    },
+    {
+      key: "commission",
+      label: "Комиссия",
+      value: `${Number(settings.default_percent_rate || 0).toLocaleString("ru-RU")}%`,
+      tone: Number(settings.default_percent_rate || 0) > 0 ? "neutral" : "warning",
+    },
+    {
+      key: "tax",
+      label: "Налог",
+      value: `${Number(settings.default_tax_rate || 0).toLocaleString("ru-RU")}%`,
+      tone: Number(settings.default_tax_rate || 0) > 0 ? "neutral" : "warning",
+    },
+  ];
+  const startColumns = [
+    {
+      title: "Тип",
+      dataIndex: "op_type",
+      render: operationLabel,
+    },
+    {
+      title: "Успешных стартов",
+      dataIndex: "count",
+      width: 150,
+      align: "right",
+    },
+    {
+      title: "Доход",
+      dataIndex: "income",
+      width: 130,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+  const commissionColumns = [
+    {
+      title: "Вид комиссии",
+      dataIndex: "kind",
+      render: financeKindLabel,
+    },
+    {
+      title: "Получатель",
+      dataIndex: "user_name",
+      render: (value) => value || "Без получателя",
+    },
+    {
+      title: "Стартов",
+      dataIndex: "starts_count",
+      width: 90,
+      align: "right",
+    },
+    {
+      title: "Сумма",
+      dataIndex: "amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+  const paymentColumns = [
+    {
+      title: "Получатель",
+      dataIndex: "user_name",
+      render: (value) => value || "—",
+    },
+    {
+      title: "Проводок",
+      dataIndex: "entries_count",
+      width: 90,
+      align: "right",
+    },
+    {
+      title: "Получил",
+      dataIndex: "amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+  const taxColumns = [
+    {
+      title: "Приемщик налогов",
+      dataIndex: "user_name",
+      render: (value) => value || "—",
+    },
+    {
+      title: "Запусков",
+      dataIndex: "starts_count",
+      width: 100,
+      align: "right",
+    },
+    {
+      title: "На счет",
+      dataIndex: "amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+
+  return (
+    <div className="company-analytics">
+      <Toolbar
+        className="company-analytics__toolbar"
+        left={
+          <div className="company-analytics__settings">
+            <span>Режим: {commissionModeLabel(settings.tax_commission_mode)}</span>
+            <span>Комиссия: {settings.default_commission_user_name || "не указан"}</span>
+            <span>Налог: {settings.default_tax_user_name || "не указан"}</span>
+          </div>
+        }
+        right={
+          <Space size={8}>
+            {loading && <Spin size="small" />}
+            <Button size="small" onClick={onRefresh} loading={loading}>
+              Обновить
+            </Button>
+          </Space>
+        }
+      />
+      {error && <Alert className="mb-3" type="error" showIcon message={error} />}
+      <MetricsStrip items={metrics} className="company-analytics__metrics mb-3" />
+      <div className="company-analytics__grid">
+        <Card size="small" title="Успешные старты по типу">
+          <DataTable
+            rowKey="op_type"
+            data={analytics?.starts_by_type || []}
+            columns={startColumns}
+            emptyText="Нет успешных стартов"
+            pagination={false}
+            scroll={false}
+          />
+        </Card>
+        <Card size="small" title="Комиссии и получатели">
+          <DataTable
+            rowKey={(row) => `${row.kind}:${row.user_id || "none"}`}
+            data={analytics?.commission_rows || []}
+            columns={commissionColumns}
+            emptyText="Нет комиссий"
+            pagination={false}
+            scroll={false}
+          />
+        </Card>
+        <Card size="small" title="Выплаты по людям">
+          <DataTable
+            rowKey="user_id"
+            data={analytics?.payments_by_user || []}
+            columns={paymentColumns}
+            emptyText="Нет выплат"
+            pagination={false}
+            scroll={false}
+          />
+        </Card>
+        <Card size="small" title="Приемщики налогов за запуски">
+          <DataTable
+            rowKey="user_id"
+            data={analytics?.tax_recipients_for_starts || []}
+            columns={taxColumns}
+            emptyText="Нет налоговых проводок по запускам"
+            pagination={false}
+            scroll={false}
+          />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function CompaniesAnalyticsPanel({ analytics, loading, error, onRefresh, onCompanyOpen }) {
+  const totals = analytics?.totals || {};
+  const metrics = [
+    {
+      key: "income",
+      label: "Доход",
+      value: formatMoney(totals.income || 0),
+      tone: Number(totals.income || 0) > 0 ? "success" : "neutral",
+    },
+    {
+      key: "starts",
+      label: "Успешные старты",
+      value: totals.successful_starts || 0,
+      tone: Number(totals.successful_starts || 0) > 0 ? "info" : "warning",
+    },
+    {
+      key: "companies",
+      label: "Компании",
+      value: totals.companies_count || 0,
+      tone: Number(totals.companies_count || 0) > 0 ? "neutral" : "warning",
+    },
+    {
+      key: "tax",
+      label: "Налоги за запуски",
+      value: formatMoney(totals.tax_recipients_amount || 0),
+      tone: Number(totals.tax_recipients_amount || 0) > 0 ? "warning" : "neutral",
+    },
+    {
+      key: "payments",
+      label: "На счета людей",
+      value: formatMoney(totals.payments_amount || 0),
+      tone: Number(totals.payments_amount || 0) > 0 ? "neutral" : "warning",
+    },
+  ];
+  const companyColumns = [
+    {
+      title: "Компания",
+      dataIndex: "company_name",
+      render: (value) => <span className="fw-semibold">{value}</span>,
+    },
+    {
+      title: "Доход",
+      dataIndex: "income",
+      width: 130,
+      align: "right",
+      render: formatMoney,
+    },
+    {
+      title: "Старты",
+      dataIndex: "successful_starts",
+      width: 90,
+      align: "right",
+    },
+    {
+      title: "Комиссии",
+      dataIndex: "commission_amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+    {
+      title: "Налоги",
+      dataIndex: "tax_recipients_amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+    {
+      title: "Людям",
+      dataIndex: "payments_amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+  const startColumns = [
+    {
+      title: "Тип",
+      dataIndex: "op_type",
+      render: operationLabel,
+    },
+    {
+      title: "Старты",
+      dataIndex: "count",
+      width: 90,
+      align: "right",
+    },
+    {
+      title: "Доход",
+      dataIndex: "income",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+  const taxColumns = [
+    {
+      title: "Приемщик налогов",
+      dataIndex: "user_name",
+      render: (value) => value || "—",
+    },
+    {
+      title: "Запусков",
+      dataIndex: "starts_count",
+      width: 100,
+      align: "right",
+    },
+    {
+      title: "На счет",
+      dataIndex: "amount",
+      width: 120,
+      align: "right",
+      render: formatMoney,
+    },
+  ];
+
+  return (
+    <div data-eopp-component="CompaniesAnalyticsPanel" className="companies-analytics">
+      <Toolbar
+        className="mb-3"
+        left={
+          <div>
+            <h3 className="fs-6 fw-semibold mb-1">Сводка по компаниям</h3>
+            <div className="small text-muted">Доход, успешные старты, комиссии и налоговые получатели по всем компаниям</div>
+          </div>
+        }
+        right={
+          <Space size={8}>
+            {loading && <Spin size="small" />}
+            <Button size="small" onClick={onRefresh} loading={loading}>
+              Обновить
+            </Button>
+          </Space>
+        }
+      />
+      {error && <Alert className="mb-3" type="error" showIcon message={error} />}
+      <MetricsStrip items={metrics} className="companies-analytics__metrics mb-3" />
+      <div className="companies-analytics__main">
+        <DataTable
+          className="companies-analytics__companies"
+          rowKey="company_id"
+          data={analytics?.companies || []}
+          columns={companyColumns}
+          loading={loading}
+          emptyText="Нет данных по компаниям"
+          pagination
+          scroll={false}
+          tableLayout="fixed"
+          onRow={(row) => ({
+            onClick: () => onCompanyOpen?.({ id: row.company_id, name: row.company_name }),
+            className: "companies-table-row",
+          })}
+        />
+        <div className="companies-analytics__side">
+          <Card size="small" title="Старты по типам">
+            <DataTable
+              rowKey="op_type"
+              data={analytics?.starts_by_type || []}
+              columns={startColumns}
+              emptyText="Нет успешных стартов"
+              pagination={false}
+              scroll={false}
+            />
+          </Card>
+          <Card size="small" title="Приемщики налогов за запуски">
+            <DataTable
+              rowKey="user_id"
+              data={analytics?.tax_recipients_for_starts || []}
+              columns={taxColumns}
+              emptyText="Нет налоговых проводок по запускам"
+              pagination={false}
+              scroll={false}
+            />
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CompaniesTab({ adminToken, onError }) {
   const [companies, setCompanies] = useState([]);
   const [companySettings, setCompanySettings] = useState([]);
@@ -338,6 +732,13 @@ export function CompaniesTab({ adminToken, onError }) {
   const [accessSearch, setAccessSearch] = useState("");
   const [accessSaving, setAccessSaving] = useState(false);
   const [companyEditorTab, setCompanyEditorTab] = useState("tariffs");
+  const [companyAnalytics, setCompanyAnalytics] = useState(null);
+  const [companyAnalyticsLoading, setCompanyAnalyticsLoading] = useState(false);
+  const [companyAnalyticsError, setCompanyAnalyticsError] = useState("");
+  const [pageTab, setPageTab] = useState("list");
+  const [companiesAnalytics, setCompaniesAnalytics] = useState(null);
+  const [companiesAnalyticsLoading, setCompaniesAnalyticsLoading] = useState(false);
+  const [companiesAnalyticsError, setCompaniesAnalyticsError] = useState("");
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -404,6 +805,45 @@ export function CompaniesTab({ adminToken, onError }) {
     }
   }, [adminToken, onError]);
 
+  const loadCompanyAnalytics = useCallback(async (company = tariffCompany) => {
+    if (!company?.id) return;
+    setCompanyAnalyticsLoading(true);
+    try {
+      const res = await adminRequest(`/admin/companies/${company.id}/analytics`, {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCompanyAnalytics(data || null);
+      setCompanyAnalyticsError("");
+    } catch (err) {
+      const message = `Ошибка загрузки аналитики компании: ${err.message}`;
+      setCompanyAnalyticsError(message);
+      onError?.(message);
+    } finally {
+      setCompanyAnalyticsLoading(false);
+    }
+  }, [adminToken, onError, tariffCompany]);
+
+  const loadCompaniesAnalytics = useCallback(async () => {
+    setCompaniesAnalyticsLoading(true);
+    try {
+      const res = await adminRequest("/admin/companies/analytics", {
+        headers: adminHeadersJson(adminToken),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCompaniesAnalytics(data || null);
+      setCompaniesAnalyticsError("");
+    } catch (err) {
+      const message = `Ошибка загрузки аналитики компаний: ${err.message}`;
+      setCompaniesAnalyticsError(message);
+      onError?.(message);
+    } finally {
+      setCompaniesAnalyticsLoading(false);
+    }
+  }, [adminToken, onError]);
+
   useEffect(() => {
     fetchCompanies();
     fetchDefaultTariff();
@@ -414,6 +854,19 @@ export function CompaniesTab({ adminToken, onError }) {
   const settingsByCompany = useMemo(
     () => new Map(companySettings.map((setting) => [setting.company, setting])),
     [companySettings],
+  );
+  const financeParticipantsById = useMemo(
+    () => new Map(financeParticipants.map((user) => [Number(user.id), userDisplayName(user)])),
+    [financeParticipants],
+  );
+
+  const renderFinanceParticipant = useCallback(
+    (userId) => {
+      if (userId == null) return <span className="text-muted">вЂ”</span>;
+      const label = financeParticipantsById.get(Number(userId)) || `#${userId}`;
+      return <span title={label}>{label}</span>;
+    },
+    [financeParticipantsById],
   );
 
   const filteredCompanies = useMemo(() => {
@@ -566,7 +1019,10 @@ export function CompaniesTab({ adminToken, onError }) {
   };
 
   const openTariff = async (company) => {
+    if (!company?.id) return;
     setCompanyEditorTab("tariffs");
+    setCompanyAnalytics(null);
+    setCompanyAnalyticsError("");
     openEdit(company, { show: false });
     const setting = settingsByCompany.get(company.name);
     setTariffCompany(company);
@@ -583,6 +1039,19 @@ export function CompaniesTab({ adminToken, onError }) {
       setTariffForm(tariffToForm(data));
     } catch (err) {
       onError?.(`Ошибка загрузки тарифа компании: ${err.message}`);
+    }
+  };
+
+  const openCompanyFromAnalytics = (row) => {
+    const companyId = row?.id ?? row?.company_id;
+    const company = companies.find((item) => Number(item.id) === Number(companyId));
+    openTariff(company || { id: companyId, name: row?.name || row?.company_name });
+  };
+
+  const handlePageTabChange = (key) => {
+    setPageTab(key);
+    if (key === "analytics") {
+      loadCompaniesAnalytics();
     }
   };
 
@@ -686,6 +1155,9 @@ export function CompaniesTab({ adminToken, onError }) {
     if (key === "access" && tariffCompany) {
       loadAccess(tariffCompany);
     }
+    if (key === "analytics" && tariffCompany) {
+      loadCompanyAnalytics(tariffCompany);
+    }
   };
 
 
@@ -745,6 +1217,10 @@ export function CompaniesTab({ adminToken, onError }) {
       saveAccess({ close: false });
       return;
     }
+    if (companyEditorTab === "analytics") {
+      loadCompanyAnalytics();
+      return;
+    }
     saveTariff();
   }
 
@@ -800,9 +1276,14 @@ export function CompaniesTab({ adminToken, onError }) {
       render: (_, company) => renderTariffAmount(company, "price_custom_slots"),
     },
     {
-      title: "Опер.",
+      title: "Опер. клик",
       width: 54,
       render: (_, company) => renderTariffAmount(company, "operator_amount"),
+    },
+    {
+      title: "Опер. пазл",
+      width: 54,
+      render: (_, company) => renderTariffAmount(company, "operator_puzzle_amount"),
     },
     {
       title: "Исп.",
@@ -816,6 +1297,35 @@ export function CompaniesTab({ adminToken, onError }) {
         const mode = normalizeTaxCommissionMode(settingsByCompany.get(company.name)?.tax_commission_mode);
         return mode === "included" ? "Вкл." : "Св.";
       },
+    },
+    {
+      title: "Вид комиссии",
+      width: 112,
+      render: (_, company) => commissionModeLabel(settingsByCompany.get(company.name)?.tax_commission_mode),
+    },
+    {
+      title: "Комиссия",
+      width: 86,
+      align: "right",
+      render: (_, company) => formatPercent(settingsByCompany.get(company.name)?.default_percent_rate),
+    },
+    {
+      title: "Получатель комиссии",
+      width: 150,
+      ellipsis: true,
+      render: (_, company) => renderFinanceParticipant(settingsByCompany.get(company.name)?.default_commission_user_id),
+    },
+    {
+      title: "Налог",
+      width: 74,
+      align: "right",
+      render: (_, company) => formatPercent(settingsByCompany.get(company.name)?.default_tax_rate),
+    },
+    {
+      title: "Получатель налога",
+      width: 150,
+      ellipsis: true,
+      render: (_, company) => renderFinanceParticipant(settingsByCompany.get(company.name)?.default_tax_user_id),
     },
     {
       title: "Заметки",
@@ -865,35 +1375,61 @@ export function CompaniesTab({ adminToken, onError }) {
         }
       />
 
-      <Card data-eopp-component="CompaniesListCard" className="mt-3" size="small" title="Список компаний">
-        <FilterBar className="mb-3">
-          <label className="form-label small mb-0 companies-search">
-            Поиск
-            <TextInput
-              size="small"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="название, алиас, заметка"
-            />
-          </label>
-        </FilterBar>
+      <Tabs
+        className="companies-page-tabs"
+        activeKey={pageTab}
+        onChange={handlePageTabChange}
+        items={[
+          {
+            key: "list",
+            label: "Список",
+            children: (
+              <Card data-eopp-component="CompaniesListCard" className="mt-3" size="small" title="Список компаний">
+                <FilterBar className="mb-3">
+                  <label className="form-label small mb-0 companies-search">
+                    Поиск
+                    <TextInput
+                      size="small"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="название, алиас, заметка"
+                    />
+                  </label>
+                </FilterBar>
 
-        <DataTable
-          className="companies-table"
-          rowKey="id"
-          data={filteredCompanies}
-          columns={columns}
-          loading={loading}
-          emptyText="Нет компаний"
-          scroll={false}
-          tableLayout="fixed"
-          pagination
-          onRow={(company) => ({
-            onClick: () => openTariff(company),
-            className: "companies-table-row",
-          })}
-        />
-      </Card>
+                <DataTable
+                  className="companies-table"
+                  rowKey="id"
+                  data={filteredCompanies}
+                  columns={columns}
+                  loading={loading}
+                  emptyText="Нет компаний"
+                  scroll={{ x: 1520 }}
+                  tableLayout="fixed"
+                  pagination
+                  onRow={(company) => ({
+                    onClick: () => openTariff(company),
+                    className: "companies-table-row",
+                  })}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: "analytics",
+            label: "Аналитика",
+            children: (
+              <CompaniesAnalyticsPanel
+                analytics={companiesAnalytics}
+                loading={companiesAnalyticsLoading}
+                error={companiesAnalyticsError}
+                onRefresh={loadCompaniesAnalytics}
+                onCompanyOpen={openCompanyFromAnalytics}
+              />
+            ),
+          },
+        ]}
+      />
 
       <Modal
         title={editingId ? "Редактировать компанию" : "Добавить компанию"}
@@ -984,11 +1520,20 @@ export function CompaniesTab({ adminToken, onError }) {
                   {"\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0442\u0430\u0440\u0438\u0444"}
                 </Button>
               </Space>
+            ) : companyEditorTab === "analytics" ? (
+              <Button size="small" onClick={() => loadCompanyAnalytics()} loading={companyAnalyticsLoading}>
+                {"\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}
+              </Button>
             ) : <span />}
             <Space size={8}>
               <CancelBtn />
-              <Button size="small" variant="primary" onClick={saveCompanyEditorTab} loading={tariffSaving || saving || accessSaving}>
-                {"\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
+              <Button
+                size="small"
+                variant="primary"
+                onClick={saveCompanyEditorTab}
+                loading={tariffSaving || saving || accessSaving || companyAnalyticsLoading}
+              >
+                {companyEditorTab === "analytics" ? "\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c" : "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
               </Button>
             </Space>
           </div>
@@ -1065,6 +1610,18 @@ export function CompaniesTab({ adminToken, onError }) {
                     onToggle={toggleAccessUser}
                   />
                 </div>
+              ),
+            },
+            {
+              key: "analytics",
+              label: "\u0410\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0430",
+              children: (
+                <CompanyAnalyticsPanel
+                  analytics={companyAnalytics}
+                  loading={companyAnalyticsLoading}
+                  error={companyAnalyticsError}
+                  onRefresh={() => loadCompanyAnalytics()}
+                />
               ),
             },
           ]}

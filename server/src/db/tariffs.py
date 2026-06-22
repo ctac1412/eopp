@@ -17,6 +17,7 @@ def _company_tariff_to_dict(row) -> dict:
         "price_custom_slots": row["price_custom_slots"],
         "executor_amount": row["executor_amount"],
         "operator_amount": row["operator_amount"],
+        "operator_puzzle_amount": row["operator_puzzle_amount"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }

@@ -282,6 +282,14 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
             da.id AS distribution_answer_id,
             op.user_id,
             CASE
+                WHEN cf.captcha_id IS NOT NULL
+                 AND COALESCE(cf.classification, '') != 'icon_click'
+                 AND COALESCE(cf.captcha_type, '') NOT IN ('1', 'icon_click')
+                    THEN CASE
+                        WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                            THEN COALESCE(obo.puzzle_rate, o.puzzle_rate, 0)
+                        ELSE COALESCE(ct.operator_puzzle_amount, 0)
+                    END
                 WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
                     THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
                 ELSE COALESCE(ct.operator_amount, 0)
@@ -289,6 +297,7 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
         FROM distribution_answers da
         JOIN usage_log ul ON ul.id = da.usage_log_id
         JOIN successful_captchas sc ON sc.captcha_id = da.captcha_id
+        LEFT JOIN captcha_files cf ON cf.captcha_id = da.captcha_id
         JOIN operators o ON o.id = da.operator_id
         LEFT JOIN operator_company_billing_overrides obo
           ON obo.operator_id = o.id
@@ -299,6 +308,14 @@ def _operator_entries(conn, usage_log_id: int) -> list[dict]:
         WHERE da.usage_log_id = ?
           AND COALESCE(obo.billing_mode, o.billing_mode, 'company') != 'free'
           AND CASE
+                WHEN cf.captcha_id IS NOT NULL
+                 AND COALESCE(cf.classification, '') != 'icon_click'
+                 AND COALESCE(cf.captcha_type, '') NOT IN ('1', 'icon_click')
+                    THEN CASE
+                        WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
+                            THEN COALESCE(obo.puzzle_rate, o.puzzle_rate, 0)
+                        ELSE COALESCE(ct.operator_puzzle_amount, 0)
+                    END
                 WHEN COALESCE(obo.billing_mode, o.billing_mode, 'company') = 'custom'
                     THEN COALESCE(obo.icon_rate, o.icon_rate, 0)
                 ELSE COALESCE(ct.operator_amount, 0)

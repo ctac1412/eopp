@@ -98,6 +98,44 @@ def calculate_solver_results(data: dict) -> list[dict]:
     ]
 
 
+STORED_CLASSIFICATIONS = {"digit", "puzzle", "figures", "icon_click"}
+
+
+def stored_classification(kind: object) -> str | None:
+    if kind == "default":
+        return "puzzle"
+    if isinstance(kind, str) and kind in STORED_CLASSIFICATIONS:
+        return kind
+    return None
+
+
+def calculate_classification(data: dict) -> str | None:
+    if is_icon_click_type(data):
+        return "icon_click"
+
+    try:
+        from src.captcha_solver_engine.classifier import classify_captcha
+        from src.captcha_solver_engine.common import build_captcha_context
+
+        classification = classify_captcha(build_captcha_context(data))
+    except Exception:
+        return None
+
+    return stored_classification(getattr(classification, "kind", None))
+
+
+def ensure_classification_metadata(data: dict) -> bool:
+    if stored_classification(data.get("classification")) is not None:
+        return False
+
+    classification = calculate_classification(data)
+    if classification is None:
+        return False
+
+    data["classification"] = classification
+    return True
+
+
 def ensure_solver_metadata(data: dict) -> bool:
     top3 = data.get("solver_top3")
     results = data.get("solver_results")
@@ -154,7 +192,8 @@ def ensure_label_metadata(data: dict) -> bool:
 def ensure_analysis_metadata(data: dict) -> bool:
     solver_changed = ensure_solver_metadata(data)
     label_changed = ensure_label_metadata(data)
-    return solver_changed or label_changed
+    classification_changed = ensure_classification_metadata(data)
+    return solver_changed or label_changed or classification_changed
 
 
 def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> dict:
@@ -179,6 +218,7 @@ def metadata_for_data(path: str, data: dict, captcha_id: str | None = None) -> d
         "no_valid_index": no_valid if isinstance(no_valid, int) else None,
         "manual_labeled": manual_labeled,
         "label_source": str(label_source) if isinstance(label_source, str) else None,
+        "classification": stored_classification(data.get("classification")),
         "solver_valid_rank": solver_valid_rank(data, valid_index),
         "variants_count": variant_count,
         "file_size": stat.st_size,
@@ -217,7 +257,7 @@ def write_captcha_json(path: str, data: dict) -> None:
 
 
 def copy_existing_metadata(existing: dict, data: dict, include_labels: bool = False) -> None:
-    keys = ["solver_top3", "solver_results", "solver_valid_rank"]
+    keys = ["solver_top3", "solver_results", "solver_valid_rank", "classification"]
     if include_labels:
         keys.extend(["manual_labeled", "label_source", "valid_index", "no_valid_index"])
     for key in keys:

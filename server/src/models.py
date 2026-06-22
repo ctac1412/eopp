@@ -124,6 +124,7 @@ class TariffBody(BaseModel):
     price_custom_slots: int | None = None
     executor_amount: int | None = None
     operator_amount: int | None = None
+    operator_puzzle_amount: int | None = None
     tax_commission_mode: str | None = None
     default_percent_rate: float | None = None
     default_tax_rate: float | None = None
@@ -403,6 +404,7 @@ class UpdateOperatorBody(BaseModel):
     nickname: str | None = None
     icon_display_mode: str | None = None
     icon_rate: int | None = None
+    puzzle_rate: int | None = None
     billing_mode: str | None = None
     allowed_master_keys: list[int] | None = None
     company_id: int | None = None
