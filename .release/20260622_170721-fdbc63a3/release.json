@@ -1,0 +1,17 @@
+{
+    "created_at":  "2026-06-22T17:08:02.3330708+03:00",
+    "migration_before":  "recorded-by-migrate.ps1",
+    "deployment_model":  "code + plugins only; data promotion skipped by default",
+    "git_sha":  "fdbc63a3",
+    "migration_after":  "head",
+    "health":  "passed",
+    "release_type":  "hotfix_code_promotion",
+    "compose_sha256":  "cf4c4a5f43dce28f055e852fedbdcc87888c341652d5fc16d141f0660cd5196d",
+    "requires_db_restore_on_rollback":  false,
+    "plugins_sha256":  "59c7d4a2919d4e04d7fe8c80615afafa3a0660f654c8a2d793fae7f0f70a6b9a",
+    "release_id":  "20260622_170721-fdbc63a3",
+    "nginx_sha256":  "f56b10b13fb8715f8cc115a835c81e81979071454e9bc883a8185df9d7ac000e",
+    "db_backup":  "backup_20260622_170800_20260622_170721-fdbc63a3",
+    "image":  "eopp:20260622_170721-fdbc63a3",
+    "data_sha256":  ""
+}
