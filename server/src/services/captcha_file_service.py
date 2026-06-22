@@ -116,8 +116,20 @@ def calculate_classification(data: dict) -> str | None:
     try:
         from src.captcha_solver_engine.classifier import classify_captcha
         from src.captcha_solver_engine.common import build_captcha_context
+        from src.captcha_solver_engine.digit_recognizer import (
+            predict_confident_digits,
+            rank_variants_by_digit_predictions,
+        )
 
-        classification = classify_captcha(build_captcha_context(data))
+        context = build_captcha_context(data)
+        classification = classify_captcha(context)
+        stored = stored_classification(getattr(classification, "kind", None))
+        if stored != "digit":
+            predictions = predict_confident_digits(context)
+            if predictions:
+                ranked = rank_variants_by_digit_predictions(context.variants, predictions)
+                if ranked and ranked[0]["digit_matches"] >= 2 and ranked[0]["digit_conflicts"] == 0:
+                    return "digit"
     except Exception:
         return None
 

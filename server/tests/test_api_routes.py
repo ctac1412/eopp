@@ -2095,6 +2095,43 @@ class TestCaptchaLabelingApi:
             for row in rows
         )
 
+    def test_calculate_classification_promotes_default_to_digit_from_recognizer(self, client, monkeypatch):
+        from types import SimpleNamespace
+
+        import src.captcha_solver_engine.classifier as classifier_module
+        import src.captcha_solver_engine.common as common_module
+        import src.captcha_solver_engine.digit_recognizer as recognizer_module
+        from src.captcha_solver_engine.digit_recognizer import DigitPrediction
+        from src.captcha_solver_engine.models import CaptchaContext
+        from src.services import captcha_file_service
+
+        context = CaptchaContext(
+            data={},
+            puzzle={},
+            tiles=[],
+            variants=[["a", "b"], ["b", "a"]],
+            images_dict={},
+        )
+        monkeypatch.setattr(common_module, "build_captcha_context", lambda _data: context)
+        monkeypatch.setattr(classifier_module, "classify_captcha", lambda _context: SimpleNamespace(kind="default"))
+        monkeypatch.setattr(
+            recognizer_module,
+            "predict_confident_digits",
+            lambda _context: [
+                DigitPrediction(tile_id="a", digit=1, margin=1.25),
+                DigitPrediction(tile_id="b", digit=2, margin=1.10),
+            ],
+        )
+        monkeypatch.setattr(
+            recognizer_module,
+            "rank_variants_by_digit_predictions",
+            lambda _variants, _predictions, _fallback=None: [
+                {"variant": 0, "digit_matches": 2, "digit_conflicts": 0}
+            ],
+        )
+
+        assert captcha_file_service.calculate_classification({}) == "digit"
+
     def test_admin_captcha_file_classification_accepts_icon_click(self, client, admin_token, tmp_path, monkeypatch):
         import json
 
